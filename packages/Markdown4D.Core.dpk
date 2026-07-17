@@ -1,0 +1,91 @@
+package Markdown4D.Core;
+
+{$R *.res}
+{$IFDEF IMPLICITBUILDING This IFDEF should not be used by users}
+{$ALIGN 8}
+{$ASSERTIONS ON}
+{$BOOLEVAL OFF}
+{$DEBUGINFO OFF}
+{$EXTENDEDSYNTAX ON}
+{$IMPORTEDDATA ON}
+{$IOCHECKS ON}
+{$LOCALSYMBOLS ON}
+{$LONGSTRINGS ON}
+{$OPENSTRINGS ON}
+{$OPTIMIZATION ON}
+{$OVERFLOWCHECKS OFF}
+{$RANGECHECKS OFF}
+{$REFERENCEINFO ON}
+{$SAFEDIVIDE OFF}
+{$STACKFRAMES OFF}
+{$TYPEDADDRESS OFF}
+{$VARSTRINGCHECKS ON}
+{$WRITEABLECONST OFF}
+{$MINENUMSIZE 1}
+{$IMAGEBASE $400000}
+{$DEFINE RELEASE}
+{$ENDIF IMPLICITBUILDING}
+{$DESCRIPTION 'Markdown4D Core (framework-neutral parser, AST, layout and theming)'}
+{$LIBSUFFIX AUTO}
+{$RUNONLY}
+{$IMPLICITBUILD ON}
+
+requires
+  rtl;
+
+contains
+  Markdown4D.Ast.Builder in '..\Source\Core\Markdown4D.Ast.Builder.pas',
+  Markdown4D.Ast.Interfaces in '..\Source\Core\Markdown4D.Ast.Interfaces.pas',
+  Markdown4D.Ast in '..\Source\Core\Markdown4D.Ast.pas',
+  Markdown4D.Defines in '..\Source\Core\Markdown4D.Defines.pas',
+  Markdown4D.Extensions.Chart in '..\Source\Core\Markdown4D.Extensions.Chart.pas',
+  Markdown4D.Extensions.Mermaid in '..\Source\Core\Markdown4D.Extensions.Mermaid.pas',
+  Markdown4D.Extensions.Gfm in '..\Source\Core\Markdown4D.Extensions.Gfm.pas',
+  Markdown4D.Extensions.Interfaces in '..\Source\Core\Markdown4D.Extensions.Interfaces.pas',
+  Markdown4D.Extensions.Sample in '..\Source\Core\Markdown4D.Extensions.Sample.pas',
+  Markdown4D.Highlighter.Interfaces in '..\Source\Core\Markdown4D.Highlighter.Interfaces.pas',
+  Markdown4D.Highlighter.Json in '..\Source\Core\Markdown4D.Highlighter.Json.pas',
+  Markdown4D.Highlighter.Pascal in '..\Source\Core\Markdown4D.Highlighter.Pascal.pas',
+  Markdown4D.Highlighter.Sql in '..\Source\Core\Markdown4D.Highlighter.Sql.pas',
+  Markdown4D.Highlighter.TokenBuilder in '..\Source\Core\Markdown4D.Highlighter.TokenBuilder.pas',
+  Markdown4D.Highlighter.Xml in '..\Source\Core\Markdown4D.Highlighter.Xml.pas',
+  Markdown4D.Html.Entities in '..\Source\Core\Markdown4D.Html.Entities.pas',
+  Markdown4D.Parser.Blocks in '..\Source\Core\Markdown4D.Parser.Blocks.pas',
+  Markdown4D.Parser.HtmlBlocks in '..\Source\Core\Markdown4D.Parser.HtmlBlocks.pas',
+  Markdown4D.Parser.Incremental in '..\Source\Core\Markdown4D.Parser.Incremental.pas',
+  Markdown4D.Parser.Inlines in '..\Source\Core\Markdown4D.Parser.Inlines.pas',
+  Markdown4D.Parser.Interfaces in '..\Source\Core\Markdown4D.Parser.Interfaces.pas',
+  Markdown4D.Parser.LineReader in '..\Source\Core\Markdown4D.Parser.LineReader.pas',
+  Markdown4D.Parser.LineScanner in '..\Source\Core\Markdown4D.Parser.LineScanner.pas',
+  Markdown4D.Parser.LinkSyntax in '..\Source\Core\Markdown4D.Parser.LinkSyntax.pas',
+  Markdown4D.Parser.References in '..\Source\Core\Markdown4D.Parser.References.pas',
+  Markdown4D.Parser.StagingBlock in '..\Source\Core\Markdown4D.Parser.StagingBlock.pas',
+  Markdown4D.Pipeline.Configuration in '..\Source\Core\Markdown4D.Pipeline.Configuration.pas',
+  Markdown4D.Pipeline in '..\Source\Core\Markdown4D.Pipeline.pas',
+  Markdown4D.Renderer.Html in '..\Source\Core\Markdown4D.Renderer.Html.pas',
+  Markdown4D.Text.Unescape in '..\Source\Core\Markdown4D.Text.Unescape.pas',
+  Markdown4D.Toc in '..\Source\Core\Markdown4D.Toc.pas',
+  Markdown4D.Writer.Emphasis in '..\Source\Core\Markdown4D.Writer.Emphasis.pas',
+  Markdown4D.Writer.Markdown in '..\Source\Core\Markdown4D.Writer.Markdown.pas',
+  Markdown4D.Version in '..\Source\Core\Markdown4D.Version.pas',
+  Markdown4D in '..\Source\Core\Markdown4D.pas',
+  Markdown4D.Editor.Highlighter in '..\Source\Layout\Markdown4D.Editor.Highlighter.pas',
+  Markdown4D.Editor.Model in '..\Source\Layout\Markdown4D.Editor.Model.pas',
+  Markdown4D.Editor.Sync in '..\Source\Layout\Markdown4D.Editor.Sync.pas',
+  Markdown4D.Extensions.Chart.BlockOverride in '..\Source\Layout\Markdown4D.Extensions.Chart.BlockOverride.pas',
+  Markdown4D.Extensions.Chart.Layout in '..\Source\Layout\Markdown4D.Extensions.Chart.Layout.pas',
+  Markdown4D.Extensions.Mermaid.BlockOverride in '..\Source\Layout\Markdown4D.Extensions.Mermaid.BlockOverride.pas',
+  Markdown4D.Extensions.Mermaid.Layout in '..\Source\Layout\Markdown4D.Extensions.Mermaid.Layout.pas',
+  Markdown4D.Layout.BlockOverride in '..\Source\Layout\Markdown4D.Layout.BlockOverride.pas',
+  Markdown4D.Layout.DisplayList in '..\Source\Layout\Markdown4D.Layout.DisplayList.pas',
+  Markdown4D.Layout.Engine in '..\Source\Layout\Markdown4D.Layout.Engine.pas',
+  Markdown4D.Layout.HitTest in '..\Source\Layout\Markdown4D.Layout.HitTest.pas',
+  Markdown4D.Layout.Interfaces in '..\Source\Layout\Markdown4D.Layout.Interfaces.pas',
+  Markdown4D.Layout.Primitives in '..\Source\Layout\Markdown4D.Layout.Primitives.pas',
+  Markdown4D.Layout.Renderer in '..\Source\Layout\Markdown4D.Layout.Renderer.pas',
+  Markdown4D.Theme in '..\Source\Layout\Markdown4D.Theme.pas',
+  Markdown4D.Viewer.ImageDownloader in '..\Source\Layout\Markdown4D.Viewer.ImageDownloader.pas',
+  Markdown4D.Viewer.Lifetime in '..\Source\Layout\Markdown4D.Viewer.Lifetime.pas',
+  Markdown4D.Viewer.Model in '..\Source\Layout\Markdown4D.Viewer.Model.pas';
+
+end.
