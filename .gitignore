@@ -1,0 +1,38 @@
+# Never commit the internal project plan
+PLAN.md
+
+# Delphi build output
+__history/
+__recovery/
+Win32/
+Win64/
+Linux64/
+OSX64/
+OSXARM64/
+Android/
+Android64/
+iOSDevice64/
+*.dcu
+*.exe
+*.dll
+*.bpl
+*.dcp
+*.res
+*.map
+*.drc
+*.rsm
+*.tds
+*.local
+*.identcache
+*.projdata
+*.tvsconfig
+*.stat
+*.skincfg
+*.dsk
+
+# Test run output
+Tests/results/
+
+# Package build output
+packages/bpl/
+packages/dcp/

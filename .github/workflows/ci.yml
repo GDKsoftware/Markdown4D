@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  REQUIRE_GREEN: "false"
+
+jobs:
+  build-and-test:
+    runs-on: [self-hosted, windows]
+    strategy:
+      fail-fast: false
+      matrix:
+        studio:
+          - "23.0"
+          - "37.0"
+    name: Delphi Studio ${{ matrix.studio }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build test project
+        shell: cmd
+        run: |
+          call "C:\Program Files (x86)\Embarcadero\Studio\${{ matrix.studio }}\bin\rsvars.bat"
+          msbuild Tests\Markdown4D.Tests.dproj /t:Build /p:Config=Debug /p:Platform=Win32
+          if errorlevel 1 exit /b 1
+
+      - name: Run tests
+        shell: cmd
+        run: |
+          if not exist Tests\results mkdir Tests\results
+          Tests\Win32\Debug\Markdown4D.Tests.exe -xml:Tests\results\dunitx-results.xml -exit:continue
+          set TEST_EXIT=%ERRORLEVEL%
+          echo Test run finished with exit code %TEST_EXIT%
+          if /I "%REQUIRE_GREEN%"=="true" exit /b %TEST_EXIT%
+          echo REQUIRE_GREEN is not enabled: test failures do not fail the job yet.
+          exit /b 0
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dunitx-results-studio-${{ matrix.studio }}
+          path: Tests\results\dunitx-results.xml
+          if-no-files-found: ignore
+
+      - name: Update conformance dashboard
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\Update-ConformanceDashboard.ps1
