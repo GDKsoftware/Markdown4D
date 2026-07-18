@@ -33,9 +33,7 @@ type
       end;
     const
       CodeIndent = 4;
-      MaxHeadingLevel = 6;
       MinThematicMarkers = 3;
-      MinFenceLength = 3;
       MaxOrderedDigits = 9;
       MaxMarkerPaddingColumns = 5;
       HashChar = '#';
@@ -56,7 +54,6 @@ type
       RightParenChar = ')';
       ZeroChar = '0';
       NineChar = '9';
-      LineFeed = #10;
       TrimChars: array[0..1] of Char = (' ', #9);
       ContentTrimChars: array[0..3] of Char = (' ', #9, #10, #13);
     var
@@ -194,6 +191,7 @@ type
 implementation
 
 uses
+  Markdown4D.Defines,
   Markdown4D.Text.Unescape;
 
 constructor TBlockParser.Create(const Configuration: TMarkdownPipelineConfiguration);

@@ -15,8 +15,6 @@ type
   private
     const
       TabStop = 4;
-      Space = ' ';
-      Tab = #9;
     var
       FLine: string;
       FIndex: Integer;
@@ -48,6 +46,9 @@ type
   end;
 
 implementation
+
+uses
+  Markdown4D.Defines;
 
 procedure TLineScanner.Reset(const Line: string);
 begin

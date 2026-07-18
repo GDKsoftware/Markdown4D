@@ -4,6 +4,13 @@ unit Markdown4D.Highlighter.Interfaces;
 
 interface
 
+const
+  // Canonical language identifiers for the bundled highlighters
+  PascalLanguageName = 'pascal';
+  JsonLanguageName = 'json';
+  SqlLanguageName = 'sql';
+  XmlLanguageName = 'xml';
+
 type
   TSyntaxTokenKind = (PlainText, Keyword, StringLiteral, NumberLiteral, Comment, Directive, EscapeSequence, JsonKey,
     TagName, AttributeName, AttributeValue, Entity, CDataSection);

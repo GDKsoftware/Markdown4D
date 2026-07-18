@@ -54,8 +54,6 @@ type
   TStreamingIncrementalParser = class(TInterfacedObject, IMarkdownIncrementalParser)
   private
     const
-      LineFeedChar = #10;
-      CarriageReturnChar = #13;
       MinimumFreezableBlockCount = 2;
       NoRenderedGeneration = -1;
       InitialFrozenVersion = 1;
@@ -199,10 +197,10 @@ begin
   begin
     const Current = FTail[Index];
 
-    if Current = LineFeedChar then
+    if Current = LineFeed then
       Exit(Index);
 
-    const IsSettledCarriageReturn = (Current = CarriageReturnChar) and (Index < TailLength);
+    const IsSettledCarriageReturn = (Current = CarriageReturn) and (Index < TailLength);
     if IsSettledCarriageReturn then
       Exit(Index);
   end;

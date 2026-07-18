@@ -45,17 +45,7 @@ type
     const
       DefaultControlWidth = 300;
       DefaultControlHeight = 200;
-      FlushTimerIntervalMilliseconds = 25;
-      ScrollLineDips = 40;
-      WheelLinesPerNotch = 3;
       SelectionFillColor = TLayoutColor($402F81F7);
-      PascalLanguageName = 'pascal';
-      SqlLanguageName = 'sql';
-      JsonLanguageName = 'json';
-      XmlLanguageName = 'xml';
-      UrlSchemeSeparator = '://';
-      HttpSchemePrefix = 'http://';
-      HttpsSchemePrefix = 'https://';
     var
       FLifetime: IMarkdownViewerLifetime;
       FImages: TMarkdownViewerImageSettings;
@@ -177,11 +167,13 @@ uses
   System.Math.Vectors,
   FMX.Platform,
   Markdown4D.Ast.Interfaces,
+  Markdown4D.Defines,
   Markdown4D.Highlighter.Interfaces,
   Markdown4D.Highlighter.Pascal,
   Markdown4D.Highlighter.Sql,
   Markdown4D.Highlighter.Json,
   Markdown4D.Highlighter.Xml,
+  Markdown4D.Layout.Defaults,
   Markdown4D.Layout.HitTest,
   Markdown4D.Layout.Renderer;
 

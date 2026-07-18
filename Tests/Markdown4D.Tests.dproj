@@ -1,7 +1,7 @@
-<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
         <ProjectGuid>{5A0F31DE-8C64-4E2B-9B7D-2F3A6C1D9E48}</ProjectGuid>
-        <ProjectVersion>20.1</ProjectVersion>
+        <ProjectVersion>20.3</ProjectVersion>
         <FrameworkType>None</FrameworkType>
         <MainSource>Markdown4D.Tests.dpr</MainSource>
         <Base>True</Base>
@@ -9,8 +9,14 @@
         <Platform Condition="'$(Platform)'==''">Win32</Platform>
         <TargetedPlatforms>1</TargetedPlatforms>
         <AppType>Console</AppType>
+        <ProjectName Condition="'$(ProjectName)'==''">Markdown4D.Tests</ProjectName>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
+        <Base>true</Base>
+    </PropertyGroup>
+    <PropertyGroup Condition="('$(Platform)'=='Win64' and '$(Base)'=='true') or '$(Base_Win64)'!=''">
+        <Base_Win64>true</Base_Win64>
+        <CfgParent>Base</CfgParent>
         <Base>true</Base>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Debug' or '$(Cfg_1)'!=''">
@@ -36,6 +42,14 @@
         <DCC_F>false</DCC_F>
         <DCC_K>false</DCC_K>
         <VerInfo_Locale>1033</VerInfo_Locale>
+        <Icon_MainIcon>$(BDS)\bin\delphi_PROJECTICON.ico</Icon_MainIcon>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Base_Win64)'!=''">
+        <DCC_Namespace>Data.Win;Datasnap.Win;Web.Win;Soap.Win;Xml.Win;$(DCC_Namespace)</DCC_Namespace>
+        <BT_BuildType>Debug</BT_BuildType>
+        <VerInfo_Keys>CompanyName=;FileDescription=$(MSBuildProjectName);FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProgramID=com.embarcadero.$(MSBuildProjectName);ProductName=$(MSBuildProjectName);ProductVersion=1.0.0.0;Comments=</VerInfo_Keys>
+        <UWP_DelphiLogo44>$(BDS)\bin\Artwork\Windows\UWP\delphi_UwpDefault_44.png</UWP_DelphiLogo44>
+        <UWP_DelphiLogo150>$(BDS)\bin\Artwork\Windows\UWP\delphi_UwpDefault_150.png</UWP_DelphiLogo150>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_1)'!=''">
         <DCC_Define>DEBUG;$(DCC_Define)</DCC_Define>
@@ -54,6 +68,44 @@
         <DelphiCompile Include="$(MainSource)">
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
+        <DCCReference Include="Markdown4D.Parser.Spec.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Parser.Gfm.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Writer.RoundTrip.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Writer.Canonical.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Ast.Builder.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Parser.Incremental.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Pipeline.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Extensions.Sample.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Toc.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Renderer.Options.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Benchmarks.Scenarios.pas"/>
+        <DCCReference Include="Markdown4D.Performance.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Layout.FakeMeasurer.pas"/>
+        <DCCReference Include="Markdown4D.Layout.Engine.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Layout.HitTest.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Theme.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Layout.Incremental.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Highlighter.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Viewer.Model.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Vcl.Render.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Vcl.Image.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Charts.Corpus.pas"/>
+        <DCCReference Include="Markdown4D.Extensions.Chart.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Extensions.Chart.Layout.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Mermaid.Corpus.pas"/>
+        <DCCReference Include="Markdown4D.Extensions.Mermaid.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Extensions.Mermaid.Layout.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Extensions.Api.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Extensions.V11.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Extensions.Admonition.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Viewer.Extensions.Cluster1.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Vcl.Wedge.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Vcl.Polygon.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Editor.Model.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Editor.Highlighter.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Editor.Sync.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Vcl.Editor.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Vcl.Design.Tests.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
@@ -76,9 +128,12 @@
                 </Source>
             </Delphi.Personality>
             <Platforms>
+                <Platform value="Linux64">False</Platform>
                 <Platform value="Win32">True</Platform>
+                <Platform value="Win64">False</Platform>
             </Platforms>
         </BorlandProject>
+        <ProjectFileVersion>12</ProjectFileVersion>
     </ProjectExtensions>
     <Import Project="$(BDS)\Bin\CodeGear.Delphi.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Delphi.Targets')"/>
     <Import Project="$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj" Condition="Exists('$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj')"/>

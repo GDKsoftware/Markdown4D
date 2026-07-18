@@ -25,21 +25,7 @@ type
       end;
 
     const
-      LineFeed = #10;
-      CarriageReturn = #13;
-      Tab = #9;
-      Space = ' ';
       DeleteCharacter = #127;
-      Backslash = '\';
-      Backtick = '`';
-      Tilde = '~';
-      Asterisk = '*';
-      LessThan = '<';
-      GreaterThan = '>';
-      Ampersand = '&';
-      OpenBracket = '[';
-      OpenParenthesis = '(';
-      CloseParenthesis = ')';
       QuoteMarker = '>';
       QuoteContentPrefix = '> ';
       BulletMarker = '-';
@@ -49,7 +35,6 @@ type
       ThematicBreakText = '___';
       HeadingMarker = '#';
       SetextUnderlines: array[1..2] of string = ('===', '---');
-      MinimumFenceLength = 3;
       HardBreakMarker = '\';
       ImageMarker = '![';
       LinkMiddle = '](';
@@ -63,7 +48,6 @@ type
       TaskUncheckedText = '[ ]';
       TablePipe = '|';
       EscapedPipe = '\|';
-      WwwPrefix = 'www.';
       PercentEncodedFormat = '%%%2.2X';
       OrderedMarkerFormat = '%d%s';
       TableDelimiterCells: array[TMarkdownTableColumnAlignment] of string = ('---', ':---', ':---:', '---:');
@@ -146,6 +130,7 @@ implementation
 uses
   System.Character,
   System.Math,
+  Markdown4D.Defines,
   Markdown4D.Text.Unescape,
   Markdown4D.Parser.Inlines,
   Markdown4D.Writer.Emphasis;
@@ -322,7 +307,7 @@ begin
   if Code.InfoString.Contains(Backtick) then
     FenceChar := Tilde;
 
-  const FenceLength = Max(MinimumFenceLength, LongestRun(Code.Literal, FenceChar) + 1);
+  const FenceLength = Max(MinFenceLength, LongestRun(Code.Literal, FenceChar) + 1);
   const Fence = StringOfChar(FenceChar, FenceLength);
   WriteRaw(Fence);
   WriteRaw(EscapeText(Code.InfoString));
@@ -529,7 +514,7 @@ end;
 
 procedure TMarkdownWriter.LeaveLink(const Node: IMarkdownLink);
 begin
-  var Suffix := LinkMiddle + FormatDestination(Node.Destination) + FormatTitle(Node.Title) + CloseParenthesis;
+  var Suffix := LinkMiddle + FormatDestination(Node.Destination) + FormatTitle(Node.Title) + CloseParen;
 
   if FInTable then
     Suffix := StringReplace(Suffix, TablePipe, EscapedPipe, [rfReplaceAll]);
@@ -555,7 +540,7 @@ begin
     Exit(LessThan + EscapeCharacters(Encoded, [LessThan, GreaterThan, Ampersand, Backslash]) + GreaterThan);
 
   Result := EscapeCharacters(Encoded,
-    [OpenParenthesis, CloseParenthesis, LessThan, GreaterThan, Ampersand, Backslash]);
+    [OpenParen, CloseParen, LessThan, GreaterThan, Ampersand, Backslash]);
 end;
 
 class function TMarkdownWriter.PercentEncodeControlCharacters(const Value: string): string;

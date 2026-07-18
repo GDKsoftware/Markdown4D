@@ -24,15 +24,9 @@ type
     const
       DefaultControlWidth = 400;
       DefaultControlHeight = 300;
-      PreviewDebounceIntervalMilliseconds = 60;
       CaretBlinkIntervalMilliseconds = 500;
-      AutoScrollIntervalMilliseconds = 50;
       DoubleClickWindowMilliseconds = 500;
       DoubleClickSlopDips = 4;
-      TextLeftPaddingDips = 6;
-      GutterPaddingDips = 8;
-      CaretWidthDips = 1;
-      WheelLinesPerNotch = 3;
     var
       FLifetime: IMarkdownViewerLifetime;
       FModel: TMarkdownEditorModel;
@@ -180,7 +174,8 @@ uses
   System.SysUtils,
   System.Math,
   System.Rtti,
-  FMX.Platform;
+  FMX.Platform,
+  Markdown4D.Layout.Defaults;
 
 constructor TMarkdownEditor.Create(Owner: TComponent);
 begin

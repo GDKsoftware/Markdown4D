@@ -78,6 +78,7 @@ contains
   Markdown4D.Extensions.Mermaid.BlockOverride in '..\Source\Layout\Markdown4D.Extensions.Mermaid.BlockOverride.pas',
   Markdown4D.Extensions.Mermaid.Layout in '..\Source\Layout\Markdown4D.Extensions.Mermaid.Layout.pas',
   Markdown4D.Layout.BlockOverride in '..\Source\Layout\Markdown4D.Layout.BlockOverride.pas',
+  Markdown4D.Layout.Defaults in '..\Source\Layout\Markdown4D.Layout.Defaults.pas',
   Markdown4D.Layout.DisplayList in '..\Source\Layout\Markdown4D.Layout.DisplayList.pas',
   Markdown4D.Layout.Engine in '..\Source\Layout\Markdown4D.Layout.Engine.pas',
   Markdown4D.Layout.ExtensionCanvas in '..\Source\Layout\Markdown4D.Layout.ExtensionCanvas.pas',

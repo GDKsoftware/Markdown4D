@@ -28,7 +28,6 @@ type
       SubStateMask = $000000FF;
       LanguageShift = 8;
       LanguageMask = $0000FFFF;
-      MinFenceLength = 3;
     var
       FFenceLanguages: TArray<string>;
     function LanguageIndex(const Language: string): Integer;
@@ -52,6 +51,7 @@ implementation
 
 uses
   System.SysUtils,
+  Markdown4D.Defines,
   Markdown4D.Highlighter.Interfaces;
 
 type

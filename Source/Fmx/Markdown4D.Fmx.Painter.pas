@@ -11,6 +11,7 @@ uses
   FMX.Types,
   FMX.Graphics,
   FMX.TextLayout,
+  Markdown4D.Layout.Defaults,
   Markdown4D.Layout.Interfaces;
 
 type
@@ -21,22 +22,13 @@ type
   TMarkdownFmxPainter = class(TInterfacedObject, IPainter)
   private
     const
-      ReferencePixelsPerInch = 96;
-      ColorChannelMax = 255;
       OpaqueMask = TLayoutColor($FF000000);
       AscentFactor = 0.8;
       MeasurementReferenceText = 'Ag';
       LargeLayoutExtent = 100000.0;
-      MonospaceFamilyName = 'monospace';
-      SansSerifFamilyName = 'sans-serif';
-      SerifFamilyName = 'serif';
-      MonospaceFallbackFamilyName = 'Consolas';
-      SerifFallbackFamilyName = 'Georgia';
-      DefaultFallbackFamilyName = 'Segoe UI';
       PlaceholderBorderColor = TLayoutColor($FF9E9E9E);
       PlaceholderStrokeWidth = 1.0;
       BrokenImageCrossColor = TLayoutColor($FFC0392B);
-      UnbalancedRestoreMessage = 'RestoreState called without a matching SaveState';
       GlyphOverhangLines = 2.0;
     var
       FCanvas: TCanvas;

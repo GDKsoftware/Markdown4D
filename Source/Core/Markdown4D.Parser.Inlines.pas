@@ -8,6 +8,7 @@ uses
   System.SysUtils,
   System.Generics.Collections,
   System.RegularExpressions,
+  Markdown4D.Defines,
   Markdown4D.Extensions.Interfaces,
   Markdown4D.Pipeline.Configuration,
   Markdown4D.Parser.References,
@@ -88,26 +89,10 @@ type
         CanClose: Boolean;
       end;
     const
-      Backslash = '\';
-      LineFeed = #10;
-      Space = ' ';
-      Tab = #9;
-      Asterisk = '*';
-      Underscore = '_';
-      Backtick = '`';
-      LessThan = '<';
-      Ampersand = '&';
       Bang = '!';
-      Tilde = '~';
-      OpenBracket = '[';
-      CloseBracket = ']';
-      OpenParen = '(';
-      CloseParen = ')';
       ImageOpenerText = '![';
       MailtoPrefix = 'mailto:';
-      WwwPrefix = 'www.';
-      HttpSchemePrefix = 'http://';
-      UrlAutolinkSchemes: array[0..2] of string = (HttpSchemePrefix, 'https://', 'ftp://');
+      UrlAutolinkSchemes: array[0..2] of string = (HttpSchemePrefix, HttpsSchemePrefix, 'ftp://');
       HardBreakSpaceCount = 2;
       StrongDelimiterCount = 2;
       CollapsedLabelLength = 2;
