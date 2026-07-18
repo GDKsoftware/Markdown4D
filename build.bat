@@ -90,6 +90,21 @@ for %%K in (
 )
 
 echo.
+echo === Building VCL packages ^(Release, Win64x^) ===
+for %%K in (
+    "%ROOT%packages\Markdown4D.Core.dproj"
+    "%ROOT%packages\Markdown4D.Vcl.dproj"
+    "%ROOT%packages\Markdown4D.Vcl.Design.dproj"
+) do (
+    msbuild "%%~K" /t:Build /p:Config=Release /p:Platform=Win64x /v:m
+    if errorlevel 1 (
+        echo.
+        echo === PACKAGE BUILD FAILED ^(Win64x^): %%~nxK ===
+        exit /b 1
+    )
+)
+
+echo.
 echo === Updating conformance dashboard ===
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\Update-ConformanceDashboard.ps1"
 

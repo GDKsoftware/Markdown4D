@@ -18,9 +18,10 @@ component palette page named **Markdown4D**.
 
 ## Build outputs
 
-- BPL → `$(BDSCOMMONDIR)\Bpl` (e.g. `C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl`) — the standard shared package folder, which is always on the IDE's package search path, so design-time packages and their runtime dependencies load without any PATH configuration
-- DCP → `packages\dcp\Win32\<Config>`
-- DCU → `packages\Win32\<Config>`
+- BPL (Win32) → `$(BDSCOMMONDIR)\Bpl` (e.g. `C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl`) — the standard shared package folder, which is always on the IDE's package search path, so design-time packages and their runtime dependencies load without any PATH configuration
+- BPL (Win64x) → `$(BDSCOMMONDIR)\Bpl\Win64x` — kept out of the Win32 folder because the BPL file names are identical across platforms
+- DCP → `packages\dcp\<Platform>\<Config>`
+- DCU → `packages\<Platform>\<Config>`
 
 `{$LIBSUFFIX AUTO}` appends the compiler's product version to the runtime BPL
 name automatically, so the same sources produce `Markdown4D.Core290.bpl` on
@@ -40,8 +41,12 @@ msbuild packages\Markdown4D.Vcl.Design.dproj  /t:Build /p:Config=Release /p:Plat
 msbuild packages\Markdown4D.Fmx.Design.dproj  /t:Build /p:Config=Release /p:Platform=Win32
 ```
 
-`build.bat` in the repository root also builds all five packages (Release) as
-part of the standard build.
+The `Core`, `Vcl` and `Vcl.Design` packages also target **Win64x** (for 64-bit
+package consumers and the 64-bit IDE); build them the same way with
+`/p:Platform=Win64x`.
+
+`build.bat` in the repository root also builds all five packages (Release,
+Win32) plus the three Win64x VCL packages as part of the standard build.
 
 ## Palette icons
 
