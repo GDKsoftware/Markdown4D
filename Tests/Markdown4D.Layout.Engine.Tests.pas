@@ -47,6 +47,8 @@ type
       TextColorValue = $FF202020;
       LinkColorValue = $FF0A66C2;
       CodeBackgroundColorValue = $FFF0F0F0;
+      CodeSpanBackgroundColorValue = $FFEEEEEE;
+      CodeSpanChipPaddingValue = 3.0;
       BlockQuoteBarColorValue = $FFC0C0C0;
       TableHeaderBackgroundColorValue = $FFE8E8E8;
       ThematicBreakColorValue = $FFB0B0B0;
@@ -66,6 +68,11 @@ type
     class function FindRunByPrefix(const Runs: TArray<IDisplayTextRun>; const Prefix: string): IDisplayTextRun;
     class function FirstRectangleWithFill(const DisplayList: IMarkdownDisplayList;
       const FillColor: TLayoutColor): IDisplayRectangle;
+    class function RectanglesWithFill(const DisplayList: IMarkdownDisplayList;
+      const FillColor: TLayoutColor): TArray<IDisplayRectangle>;
+    class function IndexOfFirstRectangleWithFill(const DisplayList: IMarkdownDisplayList;
+      const FillColor: TLayoutColor): Integer;
+    class function IndexOfFirstRunWithPrefix(const DisplayList: IMarkdownDisplayList; const Prefix: string): Integer;
     class function FirstImageOf(const DisplayList: IMarkdownDisplayList): IDisplayImage;
     class function FirstLineOf(const DisplayList: IMarkdownDisplayList): IDisplayLine;
     class function CheckboxesOf(const DisplayList: IMarkdownDisplayList): TArray<IDisplayCheckbox>;
@@ -129,6 +136,15 @@ type
 
     [Test]
     procedure Layout_ItalicRun_UsesItalicFont;
+
+    [Test]
+    procedure Layout_CodeSpanInHeading_AlignsRunBaselines;
+
+    [Test]
+    procedure Layout_CodeSpan_EmitsBackgroundChipBehindRunWithPadding;
+
+    [Test]
+    procedure Layout_WrappedCodeSpan_EmitsChipPerLine;
 
     [Test]
     procedure Layout_LargeDocument_CompletesWithinBudget;
@@ -492,6 +508,76 @@ begin
   AssertSingle(3 * BaseCharWidth, Run.Bounds.Width);
 end;
 
+procedure TMarkdownLayoutEngineTests.Layout_CodeSpanInHeading_AlignsRunBaselines;
+begin
+  const DisplayList = LayoutMarkdown('# Hi `x`', DefaultWidth);
+
+  const Runs = TextRunsOf(DisplayList);
+  const HeadingRun = FindRunByPrefix(Runs, 'Hi');
+  Assert.IsNotNull(HeadingRun);
+  AssertSingle(HeadingOneFontSize, HeadingRun.Font.Size);
+  AssertSingle(0, HeadingRun.Bounds.Top);
+
+  const CodeRun = FindRunByPrefix(Runs, 'x');
+  Assert.IsNotNull(CodeRun);
+  Assert.AreEqual(CodeFamilyName, CodeRun.Font.FamilyName);
+
+  const HeadingBaselineY = HeadingRun.Bounds.Top + HeadingRun.Baseline;
+  const CodeBaselineY = CodeRun.Bounds.Top + CodeRun.Baseline;
+  AssertSingle(HeadingBaselineY, CodeBaselineY);
+
+  const ExpectedCodeTop = HeadingBaselineY - CodeRun.Baseline;
+  AssertSingle(ExpectedCodeTop, CodeRun.Bounds.Top);
+  const CodeIsShiftedDown = (CodeRun.Bounds.Top > HeadingRun.Bounds.Top);
+  Assert.IsTrue(CodeIsShiftedDown);
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_CodeSpan_EmitsBackgroundChipBehindRunWithPadding;
+begin
+  const DisplayList = LayoutMarkdown('ab `cd`', DefaultWidth);
+
+  const CodeRun = FindRunByPrefix(TextRunsOf(DisplayList), 'cd');
+  Assert.IsNotNull(CodeRun);
+
+  const Chip = FirstRectangleWithFill(DisplayList, CodeSpanBackgroundColorValue);
+  Assert.IsNotNull(Chip);
+  AssertSingle(CodeRun.Bounds.Left - CodeSpanChipPaddingValue, Chip.Bounds.Left);
+  AssertSingle(CodeRun.Bounds.Right + CodeSpanChipPaddingValue, Chip.Bounds.Right);
+  AssertSingle(CodeRun.Bounds.Top, Chip.Bounds.Top);
+  AssertSingle(CodeRun.Bounds.Bottom, Chip.Bounds.Bottom);
+
+  Assert.IsNotNull(Chip.Node);
+  const CarriesCodeSpanNode = (Chip.Node.Kind = TMarkdownNodeKind.CodeSpan);
+  Assert.IsTrue(CarriesCodeSpanNode);
+
+  const ChipIndex = IndexOfFirstRectangleWithFill(DisplayList, CodeSpanBackgroundColorValue);
+  const RunIndex = IndexOfFirstRunWithPrefix(DisplayList, 'cd');
+  const ChipPaintsFirst = (ChipIndex >= 0) and (RunIndex >= 0) and (ChipIndex < RunIndex);
+  Assert.IsTrue(ChipPaintsFirst);
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_WrappedCodeSpan_EmitsChipPerLine;
+begin
+  const WrapWidth = 4.5 * BaseCharWidth;
+  const DisplayList = LayoutMarkdown('`aaaa bbbb`', WrapWidth);
+
+  const Runs = TextRunsOf(DisplayList);
+  Assert.AreEqual(2, Length(Runs));
+  Assert.AreEqual('aaaa', Runs[0].Text);
+  Assert.AreEqual('bbbb', Runs[1].Text);
+
+  const Chips = RectanglesWithFill(DisplayList, CodeSpanBackgroundColorValue);
+  Assert.AreEqual(2, Length(Chips));
+
+  AssertSingle(Runs[0].Bounds.Top, Chips[0].Bounds.Top);
+  AssertSingle(Runs[0].Bounds.Left - CodeSpanChipPaddingValue, Chips[0].Bounds.Left);
+  AssertSingle(Runs[0].Bounds.Right + CodeSpanChipPaddingValue, Chips[0].Bounds.Right);
+
+  AssertSingle(BaseLineHeight, Chips[1].Bounds.Top);
+  AssertSingle(Runs[1].Bounds.Left - CodeSpanChipPaddingValue, Chips[1].Bounds.Left);
+  AssertSingle(Runs[1].Bounds.Right + CodeSpanChipPaddingValue, Chips[1].Bounds.Right);
+end;
+
 procedure TMarkdownLayoutEngineTests.Layout_LargeDocument_CompletesWithinBudget;
 begin
   const Source = BuildLargeDocumentSource;
@@ -568,6 +654,7 @@ begin
   Result.BlockQuoteBarColor := BlockQuoteBarColorValue;
   Result.TableHeaderBackgroundColor := TableHeaderBackgroundColorValue;
   Result.ThematicBreakColor := ThematicBreakColorValue;
+  Result.CodeSpanBackgroundColor := CodeSpanBackgroundColorValue;
   Result.ContentPadding := 0;
 end;
 
@@ -653,6 +740,50 @@ begin
   end;
 
   Result := nil;
+end;
+
+class function TMarkdownLayoutEngineTests.RectanglesWithFill(const DisplayList: IMarkdownDisplayList;
+  const FillColor: TLayoutColor): TArray<IDisplayRectangle>;
+begin
+  Result := nil;
+
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    var Rectangle: IDisplayRectangle;
+    const HasExpectedFill = Supports(DisplayList.Items[Index], IDisplayRectangle, Rectangle) and
+      (Rectangle.FillColor = FillColor);
+    if HasExpectedFill then
+      Result := Result + [Rectangle];
+  end;
+end;
+
+class function TMarkdownLayoutEngineTests.IndexOfFirstRectangleWithFill(const DisplayList: IMarkdownDisplayList;
+  const FillColor: TLayoutColor): Integer;
+begin
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    var Rectangle: IDisplayRectangle;
+    const HasExpectedFill = Supports(DisplayList.Items[Index], IDisplayRectangle, Rectangle) and
+      (Rectangle.FillColor = FillColor);
+    if HasExpectedFill then
+      Exit(Index);
+  end;
+
+  Result := -1;
+end;
+
+class function TMarkdownLayoutEngineTests.IndexOfFirstRunWithPrefix(const DisplayList: IMarkdownDisplayList;
+  const Prefix: string): Integer;
+begin
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    const Matches = Supports(DisplayList.Items[Index], IDisplayTextRun, Run) and Run.Text.StartsWith(Prefix);
+    if Matches then
+      Exit(Index);
+  end;
+
+  Result := -1;
 end;
 
 class function TMarkdownLayoutEngineTests.FirstImageOf(const DisplayList: IMarkdownDisplayList): IDisplayImage;
