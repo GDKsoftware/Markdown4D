@@ -1,0 +1,46 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{7A4C1E92-3B8F-4D6A-9C2E-1F5D8B7A6E30}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="packages\Markdown4D.Core.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="packages\Markdown4D.Vcl.dproj">
+            <Dependencies>packages\Markdown4D.Core.dproj</Dependencies>
+        </Projects>
+        <Projects Include="packages\Markdown4D.Fmx.dproj">
+            <Dependencies>packages\Markdown4D.Core.dproj</Dependencies>
+        </Projects>
+        <Projects Include="packages\Markdown4D.Vcl.Design.dproj">
+            <Dependencies>packages\Markdown4D.Vcl.dproj</Dependencies>
+        </Projects>
+        <Projects Include="packages\Markdown4D.Fmx.Design.dproj">
+            <Dependencies>packages\Markdown4D.Fmx.dproj</Dependencies>
+        </Projects>
+        <Projects Include="Tests\Markdown4D.Tests.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="Tests\Markdown4D.Fmx.Tests.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="Tests\Markdown4D.Benchmarks.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="Examples\MarkdownPad\MarkdownPad.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="Examples\LlmChat\LlmChat.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Import Project="$(MSBuildBinPath)\Microsoft.Common.targets" Condition="'$(BDS)'==''"/>
+    <Import Project="Targets" Condition="'$(BDS)'!=''"/>
+</Project>
