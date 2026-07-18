@@ -8,18 +8,8 @@ type
   TLinkSyntaxScanner = class
   private
     const
-      OpenBracket = '[';
-      CloseBracket = ']';
-      Backslash = '\';
-      LessThan = '<';
-      GreaterThan = '>';
-      OpenParen = '(';
-      CloseParen = ')';
       DoubleQuote = '"';
       SingleQuote = '''';
-      LineFeed = #10;
-      Space = ' ';
-      Tab = #9;
       MaxLabelUnits = 1000;
     var
       FContent: string;
@@ -43,6 +33,7 @@ implementation
 
 uses
   System.SysUtils,
+  Markdown4D.Defines,
   Markdown4D.Text.Unescape;
 
 procedure TLinkSyntaxScanner.Reset(const Content: string; const StartPosition: Integer);

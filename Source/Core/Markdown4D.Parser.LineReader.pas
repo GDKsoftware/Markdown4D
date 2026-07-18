@@ -23,6 +23,9 @@ type
 
 implementation
 
+uses
+  Markdown4D.Defines;
+
 constructor TLineReader.Create(const Source: string);
 begin
   inherited Create;
@@ -40,7 +43,7 @@ begin
 
   var Index := FPosition;
 
-  while (Index <= SourceLength) and (FSource[Index] <> #10) and (FSource[Index] <> #13) do
+  while (Index <= SourceLength) and (FSource[Index] <> LineFeed) and (FSource[Index] <> #13) do
   begin
     Inc(Index);
   end;
@@ -53,7 +56,7 @@ begin
   if HasCarriageReturn then
     Inc(Index);
 
-  const HasLineFeed = (Index <= SourceLength) and (FSource[Index] = #10);
+  const HasLineFeed = (Index <= SourceLength) and (FSource[Index] = LineFeed);
   if HasLineFeed then
     Inc(Index);
 

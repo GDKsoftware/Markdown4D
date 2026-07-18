@@ -23,7 +23,6 @@ type
         WasTightList: Boolean;
       end;
     const
-      LineFeed = #10;
       LanguageClassFormat = ' class="language-%s"';
       HeadingOpenFormat = '<h%d>';
       HeadingCloseFormat = '</h%d>';
@@ -105,6 +104,9 @@ type
   end;
 
 implementation
+
+uses
+  Markdown4D.Defines;
 
 type
   TRendererHtmlWriter = class(TInterfacedObject, IMarkdownHtmlWriter)

@@ -11,8 +11,6 @@ type
   TMarkdownUnescape = class
   private
     const
-      Backslash = '\';
-      Ampersand = '&';
       Semicolon = ';';
       NumberSign = '#';
     class function TryReadEntity(const Value: string; const Start: Integer; out Decoded: string;
@@ -31,6 +29,7 @@ type
 implementation
 
 uses
+  Markdown4D.Defines,
   Markdown4D.Html.Entities;
 
 class function TMarkdownUnescape.Unescape(const Value: string): string;

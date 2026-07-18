@@ -10,6 +10,7 @@ uses
   System.Generics.Collections,
   Winapi.Windows,
   Vcl.Graphics,
+  Markdown4D.Layout.Defaults,
   Markdown4D.Layout.Interfaces;
 
 type
@@ -20,19 +21,10 @@ type
   TMarkdownVclPainter = class(TInterfacedObject, IPainter)
   private
     const
-      ReferencePixelsPerInch = 96;
       OpaqueAlpha = $FF;
-      ColorChannelMax = 255;
-      MonospaceFamilyName = 'monospace';
-      SansSerifFamilyName = 'sans-serif';
-      SerifFamilyName = 'serif';
-      MonospaceFallbackFamilyName = 'Consolas';
-      SerifFallbackFamilyName = 'Georgia';
-      DefaultFallbackFamilyName = 'Segoe UI';
       PlaceholderBorderColor = TLayoutColor($FF9E9E9E);
       PlaceholderStrokeWidth = 1.0;
       BrokenImageCrossColor = TLayoutColor($FFC0392B);
-      UnbalancedRestoreMessage = 'RestoreState called without a matching SaveState';
     var
       FCanvas: TCanvas;
       FPixelsPerInch: Integer;

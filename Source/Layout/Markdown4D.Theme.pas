@@ -6,6 +6,7 @@ interface
 
 uses
   System.JSON,
+  Markdown4D.Defines,
   Markdown4D.Highlighter.Interfaces,
   Markdown4D.Layout.Interfaces;
 
@@ -16,7 +17,6 @@ type
   private
     const
       MinHeadingLevel = 1;
-      MaxHeadingLevel = 6;
       HeadingLevelCount = MaxHeadingLevel - MinHeadingLevel + 1;
     type
       THeadingFontArray = array[MinHeadingLevel..MaxHeadingLevel] of TMarkdownFontStyle;
@@ -250,8 +250,7 @@ type
 implementation
 
 uses
-  System.Generics.Collections,
-  Markdown4D.Defines;
+  System.Generics.Collections;
 
 class function TMarkdownTheme.CreateLight: TMarkdownTheme;
 begin

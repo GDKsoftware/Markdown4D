@@ -26,13 +26,6 @@ type
     const
       DefaultControlWidth = 400;
       DefaultControlHeight = 300;
-      ReferencePixelsPerInch = 96;
-      PreviewDebounceIntervalMilliseconds = 60;
-      AutoScrollIntervalMilliseconds = 50;
-      TextLeftPaddingDips = 6;
-      GutterPaddingDips = 8;
-      CaretWidthDips = 1;
-      WheelLinesPerNotch = 3;
     var
       FLifetime: IMarkdownViewerLifetime;
       FModel: TMarkdownEditorModel;
@@ -174,7 +167,8 @@ uses
   System.SysUtils,
   System.Math,
   System.UITypes,
-  Vcl.Clipbrd;
+  Vcl.Clipbrd,
+  Markdown4D.Layout.Defaults;
 
 constructor TMarkdownEditor.Create(Owner: TComponent);
 begin

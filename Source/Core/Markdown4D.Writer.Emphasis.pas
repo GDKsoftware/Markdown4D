@@ -11,20 +11,6 @@ type
   TEmphasisDelimiterChooser = class
   private
     const
-      LineFeed = #10;
-      CarriageReturn = #13;
-      Tab = #9;
-      Asterisk = '*';
-      Underscore = '_';
-      Backslash = '\';
-      Backtick = '`';
-      Tilde = '~';
-      LessThan = '<';
-      GreaterThan = '>';
-      Ampersand = '&';
-      OpenBracket = '[';
-      CloseBracket = ']';
-      CloseParenthesis = ')';
       ExclamationMark = '!';
     class function HasAsteriskConflict(const Node, Parent: IMarkdownNode; const Index: Integer;
                                        const LastDelimiter: Char; const ParentDelimiterIsAsterisk: Boolean): Boolean;
@@ -58,7 +44,8 @@ implementation
 
 uses
   System.SysUtils,
-  System.Character;
+  System.Character,
+  Markdown4D.Defines;
 
 class function TEmphasisDelimiterChooser.Choose(const Node, Parent: IMarkdownNode; const Index: Integer;
                                                 const PreviousChar, LastDelimiter: Char;
@@ -257,7 +244,7 @@ begin
       TMarkdownNodeKind.CodeSpan:
         Exit(Backtick);
       TMarkdownNodeKind.Link, TMarkdownNodeKind.Image:
-        Exit(CloseParenthesis);
+        Exit(CloseParen);
       TMarkdownNodeKind.Autolink, TMarkdownNodeKind.InlineHtml:
         Exit(GreaterThan);
       TMarkdownNodeKind.SoftLineBreak, TMarkdownNodeKind.HardLineBreak:

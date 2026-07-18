@@ -70,7 +70,6 @@ uses
 
 const
   TaskMarkerSeparator = ' ';
-  LineFeed = #10;
   DefaultBulletStartNumber = 1;
 
 type
