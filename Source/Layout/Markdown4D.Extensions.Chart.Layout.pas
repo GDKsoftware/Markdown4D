@@ -8,6 +8,7 @@ uses
   Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.DisplayList,
+  Markdown4D.Layout.BlockOverride,
   Markdown4D.Theme,
   Markdown4D.Extensions.Chart;
 
@@ -17,6 +18,8 @@ type
     const
       AspectRatioWidth = 16.0;
       AspectRatioHeight = 9.0;
+    class procedure Draw(const Model: IChartModel; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
+      const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
     class function BuildDisplayItems(const Model: IChartModel; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
       const Measurer: ITextMeasurer; const Node: IMarkdownNode): TArray<IDisplayItem>;
     class function PreferredHeight(const AvailableWidth: Single; const Theme: TMarkdownTheme): Single;
@@ -29,9 +32,20 @@ uses
   System.Math,
   System.SysUtils,
   System.Generics.Collections,
-  Markdown4D.Layout.Primitives;
+  Markdown4D.Layout.ExtensionCanvas;
 
 type
+  TChartValueRange = record
+    Minimum: Double;
+    Maximum: Double;
+  end;
+
+  TChartValueAxis = record
+    Minimum: Double;
+    Maximum: Double;
+    Ticks: TArray<Double>;
+  end;
+
   TChartLayoutBuilder = class
   private
     const
@@ -53,8 +67,7 @@ type
       FModel: IChartModel;
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
-      FNode: IMarkdownNode;
-      FItems: TList<IDisplayItem>;
+      FCanvas: IExtensionCanvas;
       FLeft: Single;
       FTop: Single;
       FRight: Single;
@@ -83,14 +96,13 @@ type
     procedure LayoutLine(const PlotLeft, PlotTop, PlotRight, PlotBottom, AxisMin, AxisMax: Single);
     procedure LayoutPie;
     function NiceNum(const Value: Double; const RoundResult: Boolean): Double;
-    procedure BuildValueAxis(const RawMin, RawMax: Double; out AxisMin, AxisMax: Double; out Ticks: TArray<Double>);
-    procedure CollectValueRange(out RawMin, RawMax: Double);
+    function BuildValueAxis(const Range: TChartValueRange): TChartValueAxis;
+    function CollectValueRange: TChartValueRange;
 
   public
     constructor Create(const Model: IChartModel; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
-      const Measurer: ITextMeasurer; const Node: IMarkdownNode);
-    destructor Destroy; override;
-    function Build: TArray<IDisplayItem>;
+      const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
+    procedure Build;
   end;
 
 class function TChartLayouter.PreferredHeight(const AvailableWidth: Single; const Theme: TMarkdownTheme): Single;
@@ -111,24 +123,37 @@ end;
 class function TChartLayouter.BuildDisplayItems(const Model: IChartModel; const Bounds: TLayoutRectF;
   const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Node: IMarkdownNode): TArray<IDisplayItem>;
 begin
-  const Builder = TChartLayoutBuilder.Create(Model, Bounds, Theme, Measurer, Node);
+  const Items = TList<IDisplayItem>.Create;
   try
-    Result := Builder.Build;
+    var Canvas: IExtensionCanvas := TDisplayListExtensionCanvas.Create(Measurer, Items, Node);
+    Draw(Model, Bounds, Theme, Measurer, Canvas);
+
+    Result := Items.ToArray;
+  finally
+    Items.Free;
+  end;
+end;
+
+class procedure TChartLayouter.Draw(const Model: IChartModel; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
+  const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
+begin
+  const Builder = TChartLayoutBuilder.Create(Model, Bounds, Theme, Measurer, Canvas);
+  try
+    Builder.Build;
   finally
     Builder.Free;
   end;
 end;
 
 constructor TChartLayoutBuilder.Create(const Model: IChartModel; const Bounds: TLayoutRectF;
-  const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Node: IMarkdownNode);
+  const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
 begin
   inherited Create;
 
   FModel := Model;
   FTheme := Theme;
   FMeasurer := Measurer;
-  FNode := Node;
-  FItems := TList<IDisplayItem>.Create;
+  FCanvas := Canvas;
 
   const ClampedHeight = Min(Bounds.Height, TChartLayouter.PreferredHeight(Bounds.Width, Theme));
 
@@ -138,14 +163,7 @@ begin
   FBottom := Bounds.Top + ClampedHeight - Padding;
 end;
 
-destructor TChartLayoutBuilder.Destroy;
-begin
-  FItems.Free;
-
-  inherited Destroy;
-end;
-
-function TChartLayoutBuilder.Build: TArray<IDisplayItem>;
+procedure TChartLayoutBuilder.Build;
 begin
   LayoutTitle;
   LayoutLegend;
@@ -160,8 +178,6 @@ begin
         LayoutPie;
     end;
   end;
-
-  Result := FItems.ToArray;
 end;
 
 function TChartLayoutBuilder.LabelFont: TMarkdownFontStyle;
@@ -177,7 +193,7 @@ end;
 procedure TChartLayoutBuilder.EmitRectangle(const Bounds: TLayoutRectF; const FillColor, StrokeColor: TLayoutColor;
   const StrokeWidth: Single);
 begin
-  FItems.Add(TDisplayRectangle.Create(Bounds, FNode, FillColor, StrokeColor, StrokeWidth));
+  FCanvas.FillAndStrokeRectangle(Bounds, FillColor, StrokeColor, StrokeWidth);
 end;
 
 procedure TChartLayoutBuilder.EmitText(const Text: string; const X, Y: Single; const Font: TMarkdownFontStyle;
@@ -186,9 +202,7 @@ begin
   if Text = '' then
     Exit;
 
-  const Size = FMeasurer.MeasureText(Text, Font);
-  const Bounds = TLayoutRectF.Create(X, Y, X + Size.Width, Y + Size.Height);
-  FItems.Add(TDisplayTextRun.Create(Bounds, FNode, Text, Font, Color, FMeasurer.Baseline(Font), 0));
+  FCanvas.DrawText(TLayoutPointF.Create(X, Y), Text, Font, Color);
 end;
 
 procedure TChartLayoutBuilder.EmitCenteredText(const Text: string; const CenterX, Y: Single;
@@ -204,19 +218,13 @@ end;
 procedure TChartLayoutBuilder.EmitLineSegment(const X1, Y1, X2, Y2: Single; const Color: TLayoutColor;
   const StrokeWidth: Single);
 begin
-  const StartPoint = TLayoutPointF.Create(X1, Y1);
-  const EndPoint = TLayoutPointF.Create(X2, Y2);
-  const Bounds = TLayoutRectF.Create(Min(X1, X2), Min(Y1, Y2), Max(X1, X2), Max(Y1, Y2));
-  FItems.Add(TDisplayLine.Create(Bounds, FNode, StartPoint, EndPoint, Color, StrokeWidth));
+  FCanvas.DrawLine(TLayoutPointF.Create(X1, Y1), TLayoutPointF.Create(X2, Y2), Color, StrokeWidth);
 end;
 
 procedure TChartLayoutBuilder.EmitWedge(const CenterX, CenterY, OuterRadius, InnerRadius, StartAngle,
   SweepAngle: Single; const Color: TLayoutColor);
 begin
-  const Center = TLayoutPointF.Create(CenterX, CenterY);
-  const Bounds = TLayoutRectF.Create(CenterX - OuterRadius, CenterY - OuterRadius, CenterX + OuterRadius,
-    CenterY + OuterRadius);
-  FItems.Add(TDisplayWedge.Create(Bounds, FNode, Center, OuterRadius, InnerRadius, StartAngle, SweepAngle, Color));
+  FCanvas.FillWedge(TLayoutPointF.Create(CenterX, CenterY), OuterRadius, InnerRadius, StartAngle, SweepAngle, Color);
 end;
 
 function TChartLayoutBuilder.EntryCount: Integer;
@@ -354,10 +362,10 @@ begin
     FTop := FTop + RowHeight + Padding;
 end;
 
-procedure TChartLayoutBuilder.CollectValueRange(out RawMin, RawMax: Double);
+function TChartLayoutBuilder.CollectValueRange: TChartValueRange;
 begin
-  RawMin := 0;
-  RawMax := 0;
+  Result.Minimum := 0;
+  Result.Maximum := 0;
   var HasValue := False;
 
   if FModel.Stacked then
@@ -378,8 +386,8 @@ begin
           NegativeSum := NegativeSum + Value;
         HasValue := True;
       end;
-      RawMax := Max(RawMax, PositiveSum);
-      RawMin := Min(RawMin, NegativeSum);
+      Result.Maximum := Max(Result.Maximum, PositiveSum);
+      Result.Minimum := Min(Result.Minimum, NegativeSum);
     end;
   end
   else
@@ -392,24 +400,24 @@ begin
         const Value = Dataset.Values[ValueIndex];
         if not HasValue then
         begin
-          RawMin := Value;
-          RawMax := Value;
+          Result.Minimum := Value;
+          Result.Maximum := Value;
           HasValue := True;
         end
         else
         begin
-          RawMin := Min(RawMin, Value);
-          RawMax := Max(RawMax, Value);
+          Result.Minimum := Min(Result.Minimum, Value);
+          Result.Maximum := Max(Result.Maximum, Value);
         end;
       end;
     end;
   end;
 
   if not HasValue then
-    RawMax := 1;
+    Result.Maximum := 1;
 
   if FModel.ChartKind = TChartKind.Bar then
-    RawMin := Min(RawMin, 0);
+    Result.Minimum := Min(Result.Minimum, 0);
 end;
 
 function TChartLayoutBuilder.NiceNum(const Value: Double; const RoundResult: Boolean): Double;
@@ -448,11 +456,10 @@ begin
   Result := NiceFraction * PowerOfTen;
 end;
 
-procedure TChartLayoutBuilder.BuildValueAxis(const RawMin, RawMax: Double; out AxisMin, AxisMax: Double;
-  out Ticks: TArray<Double>);
+function TChartLayoutBuilder.BuildValueAxis(const Range: TChartValueRange): TChartValueAxis;
 begin
-  var Low := RawMin;
-  var High := RawMax;
+  var Low := Range.Minimum;
+  var High := Range.Maximum;
 
   if FModel.HasScaleMin then
     Low := FModel.ScaleMin;
@@ -462,23 +469,23 @@ begin
   if High <= Low then
     High := Low + 1;
 
-  const Range = NiceNum(High - Low, False);
-  const Spacing = NiceNum(Range / (TargetTickCount - 1), True);
+  const Span = NiceNum(High - Low, False);
+  const Spacing = NiceNum(Span / (TargetTickCount - 1), True);
 
   if FModel.HasScaleMin then
-    AxisMin := FModel.ScaleMin
+    Result.Minimum := FModel.ScaleMin
   else
-    AxisMin := Floor(Low / Spacing) * Spacing;
+    Result.Minimum := Floor(Low / Spacing) * Spacing;
 
   if FModel.HasScaleMax then
-    AxisMax := FModel.ScaleMax
+    Result.Maximum := FModel.ScaleMax
   else
-    AxisMax := Ceil(High / Spacing) * Spacing;
+    Result.Maximum := Ceil(High / Spacing) * Spacing;
 
   const Collected = TList<Double>.Create;
   try
-    var Tick := Ceil(AxisMin / Spacing) * Spacing;
-    while Tick <= AxisMax + Spacing * 0.001 do
+    var Tick := Ceil(Result.Minimum / Spacing) * Spacing;
+    while Tick <= Result.Maximum + Spacing * 0.001 do
     begin
       Collected.Add(Tick);
       Tick := Tick + Spacing;
@@ -486,11 +493,11 @@ begin
 
     if Collected.Count = 0 then
     begin
-      Collected.Add(AxisMin);
-      Collected.Add(AxisMax);
+      Collected.Add(Result.Minimum);
+      Collected.Add(Result.Maximum);
     end;
 
-    Ticks := Collected.ToArray;
+    Result.Ticks := Collected.ToArray;
   finally
     Collected.Free;
   end;
@@ -498,19 +505,13 @@ end;
 
 procedure TChartLayoutBuilder.LayoutAxes;
 begin
-  var RawMin: Double;
-  var RawMax: Double;
-  CollectValueRange(RawMin, RawMax);
-
-  var AxisMin: Double;
-  var AxisMax: Double;
-  var Ticks: TArray<Double>;
-  BuildValueAxis(RawMin, RawMax, AxisMin, AxisMax, Ticks);
+  const Range = CollectValueRange;
+  const Axis = BuildValueAxis(Range);
 
   const Font = LabelFont;
 
   var GutterWidth := 0.0;
-  for var Tick in Ticks do
+  for var Tick in Axis.Ticks do
   begin
     const Text = Format(TickLabelFormat, [Tick]);
     GutterWidth := Max(GutterWidth, FMeasurer.MeasureText(Text, Font).Width);
@@ -527,10 +528,10 @@ begin
   if (PlotRight <= PlotLeft) or (PlotBottom <= PlotTop) then
     Exit;
 
-  const AxisSpan = AxisMax - AxisMin;
-  for var Tick in Ticks do
+  const AxisSpan = Axis.Maximum - Axis.Minimum;
+  for var Tick in Axis.Ticks do
   begin
-    const Ratio = (Tick - AxisMin) / AxisSpan;
+    const Ratio = (Tick - Axis.Minimum) / AxisSpan;
     const Y = PlotBottom - Ratio * (PlotBottom - PlotTop);
     EmitLineSegment(PlotLeft, Y, PlotRight, Y, FTheme.ChartGridLineColor, GridStrokeWidth);
 
@@ -547,9 +548,9 @@ begin
   end;
 
   if FModel.ChartKind = TChartKind.Bar then
-    LayoutBars(PlotLeft, PlotTop, PlotRight, PlotBottom, AxisMin, AxisMax)
+    LayoutBars(PlotLeft, PlotTop, PlotRight, PlotBottom, Axis.Minimum, Axis.Maximum)
   else
-    LayoutLine(PlotLeft, PlotTop, PlotRight, PlotBottom, AxisMin, AxisMax);
+    LayoutLine(PlotLeft, PlotTop, PlotRight, PlotBottom, Axis.Minimum, Axis.Maximum);
 end;
 
 procedure TChartLayoutBuilder.LayoutBars(const PlotLeft, PlotTop, PlotRight, PlotBottom, AxisMin, AxisMax: Single);

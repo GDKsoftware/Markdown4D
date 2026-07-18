@@ -7,7 +7,7 @@ external dependencies.
 
 <!-- badges -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Version 1.0.0](https://img.shields.io/badge/version-1.0.0-blue.svg)](CHANGELOG.md)
+[![Version 1.1.0](https://img.shields.io/badge/version-1.1.0-blue.svg)](CHANGELOG.md)
 [![Delphi 12+](https://img.shields.io/badge/Delphi-12%2B-e62329.svg)](https://www.embarcadero.com/products/delphi)
 [![CommonMark 0.31.2](https://img.shields.io/badge/CommonMark-0.31.2%20652%2F652-1f6feb.svg)](https://spec.commonmark.org/0.31.2/)
 
@@ -203,8 +203,8 @@ and every package, and regenerates the conformance dashboard above.
 - [docs/API.md](docs/API.md) — the public surface: facade, pipeline, AST,
   builder, TOC, theme, and the viewer / editor components.
 - [docs/EXTENSIONS.md](docs/EXTENSIONS.md) — writing extensions: the `==mark==`
-  parser extension, the chart custom-rendering reference, and the bundled
-  mermaid diagram extension.
+  parser extension, an admonition custom-rendering walkthrough on the
+  `IExtensionCanvas`, and the bundled chart and mermaid extensions.
 - [docs/STREAMING.md](docs/STREAMING.md) — the LLM / streaming integration
   guide: `AppendMarkdown`, debounce, threading, charts and `Text` semantics.
 - [packages/INSTALL.md](packages/INSTALL.md) — package build and IDE install.

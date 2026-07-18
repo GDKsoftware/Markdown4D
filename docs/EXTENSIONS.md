@@ -6,10 +6,27 @@ Markdown4D is extensible at two layers:
    builder. An extension implements `IMarkdownExtension` and registers parsers,
    delimiter processors, renderer hooks or document processors.
 2. **Native (canvas) rendering** — teach the VCL / FMX viewer to draw a block
-   itself through an `ILayoutBlockOverride`.
+   itself through an `ILayoutBlockOverride`, painting onto the neutral
+   `IExtensionCanvas`.
 
-This guide walks the bundled `==mark==` extension as the parsing example, then
-the chart extension as the custom-rendering reference.
+This guide walks three worked examples, all built purely on the public API:
+
+- the sample `==mark==` extension (unit `Markdown4D.Extensions.Sample`, opt-in via
+  `Use(TMarkExtension.Create)` — it is **not** auto-registered by `UseGfm`) — the
+  **parser** reference;
+- an **admonition** extension — the **custom-rendering** walkthrough, combining a
+  document processor, the node extension-data channel and a canvas block
+  override;
+- the shipped **chart** and **mermaid** extensions — the bundled references that
+  follow the same shape at full scale.
+
+> **Priorities without magic numbers.** Every registration point takes an integer
+> priority. Use the named constants on `TMarkdownPriorities` (unit
+> `Markdown4D.Extensions.Interfaces`) instead of bare numbers: `Highest`, `High`,
+> `AboveNormal`, `Normal`, `BelowNormal`, `Low`, `Lowest`, and the extension
+> slots `ExtensionParser` (block, inline and delimiter parsers),
+> `ExtensionProcessor` (document processors), `ExtensionRenderer` (renderer hooks)
+> and `ExtensionLayoutOverride` (canvas block overrides).
 
 ## Part 1 — a parser extension: `==mark==`
 
@@ -62,12 +79,11 @@ const
   MarkDelimiterMinimumLength = 2;
   MarkOpenTag = '<mark>';
   MarkCloseTag = '</mark>';
-  MarkPriority = 50;
 
 procedure TMarkExtension.Setup(const Pipeline: IMarkdownPipelineBuilder);
 begin
-  Pipeline.RegisterDelimiterProcessor(TMarkDelimiterProcessor.Create, MarkPriority);
-  Pipeline.RegisterRendererHook(TMarkRendererHook.Create, MarkPriority);
+  Pipeline.RegisterDelimiterProcessor(TMarkDelimiterProcessor.Create, TMarkdownPriorities.ExtensionParser);
+  Pipeline.RegisterRendererHook(TMarkRendererHook.Create, TMarkdownPriorities.ExtensionRenderer);
 end;
 ```
 
@@ -154,55 +170,225 @@ Block and inline parsers register with a **trigger-character** string (the
 characters that may begin the construct) and a **priority**. Delimiter
 processors key off `DelimiterCharacter`; renderer hooks off `NodeName`.
 
-## Part 2 — a custom-rendering extension: charts
+When two delimiter processors claim the same `DelimiterCharacter` — for example a
+new `=` extension registered alongside the sample `==mark==` — the pipeline
+resolves the collision exactly as it does for renderer hooks and block overrides:
+by **priority, then registration order**. The highest priority wins, and among
+equal priorities the first registered wins. Register your processor above
+`TMarkdownPriorities.ExtensionParser` if it must beat another extension for the
+same character.
 
-HTML rendering is not always the goal. The chart extension turns a fenced code
-block of chart JSON into a real bar / line / pie / doughnut graphic drawn
-directly on the viewer canvas. It combines three pieces:
+## Part 2 — a custom-rendering walkthrough: admonitions
 
-1. a **document processor** that recognises chart code blocks and stashes a
-   parsed model on the node via the **extension-data channel**;
-2. an **`ILayoutBlockOverride`** that claims those nodes during layout and emits
-   drawing primitives — including the **wedge** primitive for pie slices;
-3. registration of both, at parse time and at layout time.
+HTML rendering is not always the goal. This walkthrough builds a complete
+extension that draws GitHub-style alert callouts (`> [!NOTE]`, `> [!WARNING]`, …)
+as a coloured banner on the viewer canvas — using nothing but the public API. It
+combines the three moving parts every native-rendering extension shares:
 
-### The data channel
+1. a **document processor** that recognises the construct and stashes a small
+   payload on the node through the **extension-data channel**;
+2. an **`ILayoutBlockOverride`** that claims those nodes during layout and draws
+   them through the **`IExtensionCanvas`**;
+3. registration in two places — the processor at parse time, the override at
+   layout time.
+
+The same three parts scale up to the shipped chart and mermaid extensions in
+Part 3.
+
+### The extension-data channel
 
 Every `IMarkdownNode` carries a keyed slot for interface payloads —
-`SetExtensionData(Key, Data)` and `TryGetExtensionData(Key, out Data)`. The
-chart document processor parses the JSON once and caches the resulting
-`IChartModel` on the node, so layout never re-parses:
+`SetExtensionData(Key, Data)` and `TryGetExtensionData(Key, out Data)`. Use it
+for any per-node state an extension computes once and consumes later. Key it with
+a unique string.
+
+The admonition payload is a tiny interface holding the alert kind:
 
 ```pascal
-class procedure TChartExtension.Process(const Document: IMarkdownDocument);
-// walks the tree; for each fenced code block that parses as chart JSON:
-//   Node.SetExtensionData(ChartModelExtensionKey, Model);
+unit Sample.Admonition;
+
+interface
+
+uses
+  Markdown4D.Ast.Interfaces,
+  Markdown4D.Extensions.Interfaces,
+  Markdown4D.Layout.Interfaces,
+  Markdown4D.Layout.BlockOverride,
+  Markdown4D.Theme;
+
+type
+  IAdmonitionTag = interface
+    ['{4F1B8C2A-7D63-4E09-9A15-2C6E5B0D3A88}']
+    function GetKind: string;
+    property Kind: string read GetKind;
+  end;
+
+  TAdmonitionExtension = class(TInterfacedObject, IMarkdownExtension)
+  public
+    procedure Setup(const Pipeline: IMarkdownPipelineBuilder);
+  end;
+
+  TAdmonitionBlockOverride = class(TInterfacedObject, ILayoutBlockOverride)
+  strict private
+    class var FRegistered: Boolean;
+    function GetName: string;
+    function Handles(const Node: IMarkdownNode): Boolean;
+    function LayoutBlock(const Node: IMarkdownNode; const Top: Single; const Context: ILayoutBlockContext): Single;
+  public
+    const
+      OverrideName = 'sample.admonition';
+      BannerHeight = 24.0;
+    class procedure RegisterOverride;
+  end;
+
+implementation
+
+uses
+  System.SysUtils,
+  System.Generics.Collections,
+  Markdown4D.Layout.Engine;
+
+const
+  ExtensionDataKey = 'sample.admonition.kind';
+  KnownKinds: array[0..4] of string = ('NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION');
 ```
 
-The block override reads it back:
+The concrete tag and a typed reader/writer pair keep the channel access in one
+place:
 
 ```pascal
-class function TChartExtension.TryGetModel(const Node: IMarkdownNode;
-  out Model: IChartModel): Boolean;
+type
+  TAdmonitionTag = class(TInterfacedObject, IAdmonitionTag)
+  private
+    FKind: string;
+  public
+    constructor Create(const Kind: string);
+    function GetKind: string;
+  end;
+
+constructor TAdmonitionTag.Create(const Kind: string);
 begin
-  Model := nil;
-  if Node = nil then
-    Exit(False);
+  inherited Create;
+
+  FKind := Kind;
+end;
+
+function TAdmonitionTag.GetKind: string;
+begin
+  Result := FKind;
+end;
+
+function TryGetAdmonitionKind(const Node: IMarkdownNode; out Kind: string): Boolean;
+begin
+  Kind := '';
 
   var Data: IInterface;
-  Result := Node.TryGetExtensionData(ChartModelExtensionKey, Data)
-    and Supports(Data, IChartModel, Model);
+  if not Node.TryGetExtensionData(ExtensionDataKey, Data) then
+    Exit(False);
+
+  var Tag: IAdmonitionTag;
+  Result := Supports(Data, IAdmonitionTag, Tag);
+  if Result then
+    Kind := Tag.Kind;
 end;
 ```
 
-Use this channel for any per-node state an extension computes once and consumes
-later. Key it with a unique string (the chart extension uses
-`'markdown4d.chart.model'`).
+### The document processor
+
+An `IMarkdownDocumentProcessor` runs once over the finished AST. This one walks
+the tree iteratively (never recurse an arbitrary-depth document), and for every
+block quote whose first line is a known `[!KIND]` marker it caches a tag on the
+node. It touches nothing else, so documents without alerts are unaffected.
+
+```pascal
+type
+  TAdmonitionProcessor = class(TInterfacedObject, IMarkdownDocumentProcessor)
+  private
+    class function FirstLiteral(const BlockQuote: IMarkdownNode): string; static;
+    class function TryMatchKind(const FirstLine: string; out Kind: string): Boolean; static;
+  public
+    procedure Process(const Document: IMarkdownDocument);
+  end;
+
+procedure TAdmonitionProcessor.Process(const Document: IMarkdownDocument);
+begin
+  const Pending = TStack<IMarkdownNode>.Create;
+  try
+    Pending.Push(Document);
+
+    while Pending.Count > 0 do
+    begin
+      const Current = Pending.Pop;
+
+      if Current.Kind = TMarkdownNodeKind.BlockQuote then
+      begin
+        var Kind: string;
+        if TryMatchKind(FirstLiteral(Current), Kind) then
+          Current.SetExtensionData(ExtensionDataKey, TAdmonitionTag.Create(Kind));
+      end;
+
+      for var Index := Current.ChildCount - 1 downto 0 do
+      begin
+        Pending.Push(Current.Children[Index]);
+      end;
+    end;
+  finally
+    Pending.Free;
+  end;
+end;
+
+class function TAdmonitionProcessor.FirstLiteral(const BlockQuote: IMarkdownNode): string;
+begin
+  Result := '';
+
+  if BlockQuote.ChildCount = 0 then
+    Exit;
+
+  const Paragraph = BlockQuote.Children[0];
+  if (Paragraph.Kind <> TMarkdownNodeKind.Paragraph) or (Paragraph.ChildCount = 0) then
+    Exit;
+
+  var Text: IMarkdownText;
+  if Supports(Paragraph.Children[0], IMarkdownText, Text) then
+    Result := Text.Literal;
+end;
+
+class function TAdmonitionProcessor.TryMatchKind(const FirstLine: string; out Kind: string): Boolean;
+begin
+  Kind := '';
+
+  const Trimmed = FirstLine.Trim;
+  const HasMarker = Trimmed.StartsWith('[!') and Trimmed.EndsWith(']');
+  if not HasMarker then
+    Exit(False);
+
+  const Inner = Trimmed.Substring(2, Length(Trimmed) - 3);
+  for var Known in KnownKinds do
+  begin
+    if Known = Inner then
+    begin
+      Kind := Inner;
+      Exit(True);
+    end;
+  end;
+
+  Result := False;
+end;
+```
+
+The extension bundles the processor at the `ExtensionProcessor` priority:
+
+```pascal
+procedure TAdmonitionExtension.Setup(const Pipeline: IMarkdownPipelineBuilder);
+begin
+  Pipeline.RegisterDocumentProcessor(TAdmonitionProcessor.Create, TMarkdownPriorities.ExtensionProcessor);
+end;
+```
 
 ### The block-override contract
 
 Unit `Markdown4D.Layout.BlockOverride`. An override decides which nodes it
-handles and lays them out by emitting primitives through the context:
+handles and lays them out by drawing through the context's canvas:
 
 ```pascal
 type
@@ -215,115 +401,200 @@ type
   end;
 ```
 
-`Handles` returns `True` for nodes this override owns. `LayoutBlock` receives the
-node, the `Top` at which it must lay out, and a context exposing the available
-`Width`, the active `Theme`, and a text `Measurer`. It emits primitives and
-returns the block's height. The context emit methods:
+`Handles` returns `True` for nodes this override owns — here, block quotes the
+processor tagged. `LayoutBlock` receives the node, the `Top` at which it must lay
+out, and a context exposing the available `Width`, the active `Theme`, a text
+`Measurer`, and the `Canvas`. It draws onto the canvas and returns the block's
+height.
 
-| Method | Draws |
-|--------|-------|
-| `EmitRectangle(Bounds, FillColor, StrokeColor, StrokeWidth)` | A filled / stroked rectangle |
-| `EmitTextRun(TopLeft, Text, Font, Color)` | A run of text |
-| `EmitLine(StartPoint, EndPoint, Color, StrokeWidth)` | A straight line (axes, gridlines) |
-| `EmitWedge(Center, OuterRadius, InnerRadius, StartAngle, SweepAngle, Color)` | An annular wedge — the pie / doughnut slice primitive |
+**The `Theme`** is a `TMarkdownTheme` (unit `Markdown4D.Theme`) — the same record
+the viewer paints the rest of the document with. Add `Markdown4D.Theme` to your
+uses clause to name the type. Besides the members this example touches
+(`CodeBackgroundColor`, `LinkColor`, `TextColor`, `BaseFont`) it exposes every
+colour, font and metric the built-in blocks use — `BlockQuoteBarColor`,
+`CodeFont`, `CodeTextColor`, `ContentPadding`, `ChartPalette`, `ChartTextColor`,
+and the rest. Read `Markdown4D.Theme.pas` for the full member list, and prefer
+theme members over hard-coded colours so your block tracks the light and dark
+presets.
 
-`EmitWedge` is the reason charts render natively: a pie slice is a wedge with
-`InnerRadius = 0`; a doughnut slice keeps a positive inner radius. Angles are in
-degrees.
-
-Here is a complete, self-contained override that draws a framed block with a
-half-doughnut gauge and a caption — exercising rectangle, wedge and text:
+**Coordinate origin.** The context's coordinate space is local to the block. The
+`Top` you receive is already inset by the theme's `ContentPadding` **vertically**,
+so draw at the `Top` you are given. The **x** origin is `0`, and `Context.Width`
+is the content width already reduced by the left content padding and the block's
+own indent (`FWidth - ContentPadding - Command.X`) — it is **not** the full page
+width. Drawing conventionally starts at `x = 0` and fills to `Context.Width`, as
+the shipped chart and mermaid overrides do. A block that fills `0..Width` therefore
+sits flush with the left content edge but is not full-bleed on the right; it is not
+horizontally inset to match body text, because `Top` is pre-padded while the x
+origin is not.
 
 ```pascal
-unit Sample.GaugeOverride;
-
-interface
-
-uses
-  Markdown4D.Ast.Interfaces,
-  Markdown4D.Layout.Interfaces,
-  Markdown4D.Layout.BlockOverride;
-
-type
-  TGaugeBlockOverride = class(TInterfacedObject, ILayoutBlockOverride)
-  public
-    const
-      OverrideName = 'demo.gauge';
-      OverridePriority = 100;
-    class var
-      FRegistered: Boolean;
-    function GetName: string;
-    function Handles(const Node: IMarkdownNode): Boolean;
-    function LayoutBlock(const Node: IMarkdownNode; const Top: Single;
-      const Context: ILayoutBlockContext): Single;
-    class procedure RegisterOverride;
-  end;
-
-implementation
-
-uses
-  System.SysUtils,
-  Markdown4D.Layout.Engine;
-
-const
-  BlockHeight = 120.0;
-  BorderStrokeWidth = 1.0;
-  GaugeInfoString = 'gauge';
-
-class procedure TGaugeBlockOverride.RegisterOverride;
-begin
-  if FRegistered then
-    Exit;
-
-  TMarkdownLayoutEngine.RegisterBlockOverride(TGaugeBlockOverride.Create, OverridePriority);
-  FRegistered := True;
-end;
-
-function TGaugeBlockOverride.GetName: string;
+function TAdmonitionBlockOverride.GetName: string;
 begin
   Result := OverrideName;
 end;
 
-function TGaugeBlockOverride.Handles(const Node: IMarkdownNode): Boolean;
+function TAdmonitionBlockOverride.Handles(const Node: IMarkdownNode): Boolean;
 begin
-  var Code: IMarkdownCodeBlock;
-  Result := Supports(Node, IMarkdownCodeBlock, Code) and Code.IsFenced
-    and (Code.InfoString = GaugeInfoString);
+  const IsBlockQuote = (Node.Kind = TMarkdownNodeKind.BlockQuote);
+
+  var Kind: string;
+  Result := IsBlockQuote and TryGetAdmonitionKind(Node, Kind);
 end;
 
-function TGaugeBlockOverride.LayoutBlock(const Node: IMarkdownNode; const Top: Single;
+function TAdmonitionBlockOverride.LayoutBlock(const Node: IMarkdownNode; const Top: Single;
   const Context: ILayoutBlockContext): Single;
 begin
-  const Bounds = TLayoutRectF.Create(0, Top, Context.Width, Top + BlockHeight);
-  Context.EmitRectangle(Bounds, Context.Theme.CodeBackgroundColor,
-    Context.Theme.TableBorderColor, BorderStrokeWidth);
+  var Kind: string;
+  if not TryGetAdmonitionKind(Node, Kind) then
+    Exit(0);
 
-  const Center = TLayoutPointF.Create(Context.Width / 2, Top + BlockHeight);
-  Context.EmitWedge(Center, 90, 45, 180, 180, Context.Theme.LinkColor);
+  const Canvas = Context.Canvas;
+  const Bounds = TLayoutRectF.Create(0, Top, Context.Width, Top + BannerHeight);
 
-  Context.EmitTextRun(TLayoutPointF.Create(Bounds.Left + 8, Top + 8), 'Gauge',
-    Context.Theme.BaseFont, Context.Theme.TextColor);
+  Canvas.FillAndStrokeRectangle(Bounds, Context.Theme.CodeBackgroundColor, Context.Theme.LinkColor, 1);
+  Canvas.DrawText(TLayoutPointF.Create(0, Top), Kind, Context.Theme.BaseFont, Context.Theme.TextColor);
 
-  Result := BlockHeight;
+  Result := BannerHeight;
 end;
-
-end.
 ```
 
-The shipped `TChartBlockOverride` (unit `Markdown4D.Extensions.Chart.BlockOverride`)
-follows the same shape but delegates its geometry to `TChartLayouter`, which
-builds axes, bars, lines, legends and wedges from the cached `IChartModel`.
+### The canvas
+
+`ILayoutBlockContext.Canvas` is an `IExtensionCanvas` — the single, neutral
+drawing surface. Its primitives:
+
+| Method | Draws |
+|--------|-------|
+| `FillRectangle(Bounds, Color)` | A filled rectangle |
+| `DrawRectangle(Bounds, StrokeColor, StrokeWidth)` | A stroked rectangle |
+| `FillAndStrokeRectangle(Bounds, FillColor, StrokeColor, StrokeWidth)` | A filled and stroked rectangle in one primitive |
+| `DrawText(TopLeft, Text, Font, Color)` | A run of text |
+| `DrawLine(StartPoint, EndPoint, Color, StrokeWidth)` | A straight line (axes, gridlines, lifelines) |
+| `DrawDashedLine(StartPoint, EndPoint, Color, StrokeWidth)` | A dashed line |
+| `FillPolygon(Points, Color)` | A filled polygon (arrowheads, diamond nodes) |
+| `FillWedge(Center, OuterRadius, InnerRadius, StartAngle, SweepAngle, Color)` | An annular wedge — the pie / doughnut slice primitive; angles in degrees |
+| `DrawImage(Bounds, Source, AltText)` | An image slot |
+| `MeasureText(Text, Font)` | Measures without drawing |
+| `SaveState` / `SetClip(Bounds)` / `RestoreState` | Push a clip region and pop it |
+
+`FillAndStrokeRectangle` keeps a filled-and-stroked box (a mermaid node, a
+sequence participant) as a **single** display item, so its bounds are never
+duplicated across two primitives. `FillWedge` is why charts render natively: a
+pie slice is a wedge with `InnerRadius = 0`; a doughnut slice keeps a positive
+inner radius.
 
 ### Registration
 
-Charts need registration in two places:
+The single most common mistake: **the viewer does not run your parse-time
+pipeline.** `TMarkdownViewerModel` parses with a fixed
+`TMarkdown.Parse(..., Gfm)` and then, at layout time, runs every processor
+registered with the static `TLayoutDocumentProcessorRegistry` before it lays the
+document out. An extension installed only into an `IMarkdownPipelineBuilder`
+(through `Use`) never runs in the viewer — so its tag is never cached, `Handles`
+returns `False`, and the banner never draws.
 
-- **Parse time** — install `TChartExtension` in the pipeline so chart models are
-  parsed and cached once, and layout never re-parses. This is optional: the block
-  override also parses on demand, so the viewer still renders charts even though
-  its internal GFM pipeline (`UseGfm`) does not register the chart extension.
-- **Layout time** — register the block override once per process before the
-  viewer lays out:
+A native-rendering extension therefore registers in **two layout-time registries**,
+both from a single guarded `RegisterOverride`:
+
+- the **document processor** with `TLayoutDocumentProcessorRegistry.Register`, so
+  the `[!KIND]` tag is cached on the node during the viewer's layout pass;
+- the **block override** with `TMarkdownLayoutEngine.RegisterBlockOverride`, so
+  the tagged node is claimed and drawn.
+
+```pascal
+class procedure TAdmonitionBlockOverride.RegisterOverride;
+begin
+  if FRegistered then
+    Exit;
+
+  TMarkdownLayoutEngine.RegisterBlockOverride(TAdmonitionBlockOverride.Create,
+    TMarkdownPriorities.ExtensionLayoutOverride);
+  TLayoutDocumentProcessorRegistry.Register(TAdmonitionProcessor.Create);
+
+  FRegistered := True;
+end;
+```
+
+Declare `class var FRegistered: Boolean;` (strict private) on the override so the
+guard makes repeated calls from several forms harmless — the shipped chart and
+mermaid overrides register in exactly this shape. `TAdmonitionExtension` (the
+pipeline extension from Part 2) remains useful when you drive the HTML or AST
+pipeline yourself, where it caches the tag at parse time; but it has no effect on
+the viewer, which ignores author pipelines.
+
+`RegisterBlockOverride` / `ClearBlockOverrides` and
+`TLayoutDocumentProcessorRegistry.Register` / `.Clear` are the public front of the
+two static layout registries in unit `Markdown4D.Layout.BlockOverride`
+(`RegisterBlockOverride` / `ClearBlockOverrides` are surfaced on
+`TMarkdownLayoutEngine`). Tests reset both with
+`TMarkdownLayoutEngine.ClearBlockOverrides`, which clears the override registry
+**and** the document-processor registry.
+
+**Laying out without the viewer.** `TMarkdownLayoutEngine.LayoutDocument` does
+**not** run `TLayoutDocumentProcessorRegistry.Process` — only
+`TMarkdownViewerModel` does, immediately after it parses. If you lay out a freshly
+parsed document directly through `LayoutDocument` (bypassing the viewer model),
+run the processors yourself first, or the tagged nodes will not be cached and your
+override will see nothing:
+
+```pascal
+const Document = TMarkdown.Parse(Source, TMarkdownDialect.Gfm);
+TLayoutDocumentProcessorRegistry.Process(Document);
+const DisplayList = TMarkdownLayoutEngine.LayoutDocument(Document, Width, Theme, Measurer);
+```
+
+### Priorities and resolution
+
+Both the pipeline and the block-override registry resolve by **priority, then
+registration order**: the highest priority wins, and among equal priorities the
+first registered wins. `ExtensionLayoutOverride` (100) sits above the built-in
+block rendering an override supersedes; raise it further if you must beat another
+override for the same node.
+
+## Part 3 — the bundled chart and mermaid extensions
+
+The shipped chart and mermaid extensions are the same three parts at full scale.
+
+### Charts
+
+A fenced code block of chart JSON renders as a real bar / line / pie / doughnut
+graphic. `TChartExtension` (unit `Markdown4D.Extensions.Chart`) is the document
+processor: it parses the JSON once and caches an `IChartModel` on the node under
+`'markdown4d.chart.model'`, so layout never re-parses. `TChartBlockOverride`
+(unit `Markdown4D.Extensions.Chart.BlockOverride`) claims those nodes and
+delegates its geometry to `TChartLayouter`, which builds axes, bars, lines,
+legends and wedges onto the canvas.
+
+Consumers can read the cached model back:
+
+```pascal
+uses
+  System.SysUtils,
+  Markdown4D.Ast.Interfaces,
+  Markdown4D.Extensions.Chart;
+
+function ChartKindName(const Node: IMarkdownNode): string;
+begin
+  var Model: IChartModel;
+  if not TChartExtension.TryGetModel(Node, Model) then
+    Exit('not a cached chart');
+
+  Result := Format('chart with %d datasets', [Model.DatasetCount]);
+end;
+```
+
+Chart registration mirrors the admonition, and for the same reason: the viewer's
+fixed GFM pipeline does not register the chart extension, so charts render only
+because `TChartBlockOverride.RegisterOverride` installs **both** halves at layout
+time. It calls `TMarkdownLayoutEngine.RegisterBlockOverride` for the override
+**and** `TLayoutDocumentProcessorRegistry.Register(TChartExtension.CreateDocumentProcessor)`
+for the document processor. That processor — not any on-demand parse in the
+override — is what runs during `TMarkdownViewerModel`'s layout pass and caches the
+`IChartModel`; `TChartBlockOverride.Handles` then merely reads the cached model
+back through `TChartExtension.TryGetModel` (no parsing). Installing
+`TChartExtension` in an author pipeline is optional and only matters when you drive
+the HTML or AST pipeline yourself. The single call is idempotent:
 
 ```pascal
 uses
@@ -332,57 +603,34 @@ uses
 TChartBlockOverride.RegisterOverride;
 ```
 
-`RegisterOverride` is idempotent — it guards with a class flag, so calling it
-from several forms is harmless.
+### Mermaid
 
-### Priorities and resolution
-
-Both the pipeline and the block-override registry resolve by **priority, then
-registration order**: the highest priority wins, and among equal priorities the
-first registered wins. Give an override a higher priority than any it must beat;
-the built-in list rendering, for example, is the default a chart override
-supersedes for code-block nodes.
-
-## Part 3 — the bundled mermaid extension
-
-The mermaid extension follows the exact shape of the chart extension: a code
-block whose info string is `mermaid` (the GitHub convention) is parsed into an
-`IMermaidModel` and drawn natively by a block override
-(`TMermaidBlockOverride`, unit `Markdown4D.Extensions.Mermaid.BlockOverride`).
-The AST keeps the block as a plain fenced code block, the HTML renderer emits a
-normal `<pre><code class="language-mermaid">` (browsers render mermaid
-themselves), and the markdown writer preserves the source byte-for-byte. Nothing
-is ever evaluated as code.
-
-### Supported subset
+A fenced code block whose info string is `mermaid` (the GitHub convention) is
+parsed into an `IMermaidModel` and drawn natively by `TMermaidBlockOverride`
+(unit `Markdown4D.Extensions.Mermaid.BlockOverride`). The AST keeps the block as
+a plain fenced code block, the HTML renderer emits a normal
+`<pre><code class="language-mermaid">` (browsers render mermaid themselves), and
+the markdown writer preserves the source byte-for-byte. Nothing is ever
+evaluated as code.
 
 | Diagram | Header | What renders |
 |---------|--------|--------------|
-| Flowchart | `flowchart` / `graph` + `TD` `TB` `LR` `BT` `RL` | Node shapes `id[rect]`, `id(rounded)`, `id([stadium])`, `id((circle))`, `id{diamond}`; edges `-->` `---` `-.->` `==>` with `\|labels\|`; quoted / unicode labels; ranked layout with arrowheads |
-| Sequence | `sequenceDiagram` | `participant` / `actor` declarations (and implicit); messages `->>` `-->>` `-x` `->` (solid / dashed, arrow / open / cross heads); `activate` / `deactivate` via `+` / `-`; `Note left of` / `right of` / `over` |
+| Flowchart | `flowchart` / `graph` + `TD` `TB` `LR` `BT` `RL` | Node shapes `id[rect]`, `id(rounded)`, `id([stadium])`, `id((circle))`, `id{diamond}`; edges `-->` `---` `-.->` `==>` with `\|labels\|`; ranked layout with arrowheads |
+| Sequence | `sequenceDiagram` | `participant` / `actor` declarations; messages `->>` `-->>` `-x` `->`; `activate` / `deactivate` via `+` / `-`; `Note left of` / `right of` / `over` |
 | Pie | `pie` (+ optional `title`) | `"label" : value` slices as one wedge each, legend and percentage labels |
 
-### Fallback rules — never an exception
+**Fallback — never an exception.** The override claims a node **only when a model
+parses**, so anything outside the subset degrades to an ordinary highlighted code
+block instead of raising: an unknown diagram type (`gantt`, `classDiagram`, …), a
+parse error anywhere in the body, or a flowchart above the 500-node ceiling.
 
-The override claims a node **only when a model parses**, so anything outside the
-subset degrades to an ordinary highlighted code block instead of raising:
+Streaming is handled by the document processor, which caches a model **only for a
+closed fence**: while a fence is still streaming the block stays an ordinary code
+block until its closing fence arrives. The viewer runs that same processor at
+layout time, so the behaviour is identical on both paths — a partial diagram
+renders as plain code and upgrades to a native diagram once its fence closes.
 
-- an unknown diagram type (`gantt`, `classDiagram`, `stateDiagram`, …);
-- a parse error anywhere in the body;
-- a flowchart above the 500-node ceiling.
-
-Streaming is handled at parse time, not in the override. On the pipeline path the
-document processor caches a model **only for a closed fence** (`IsClosedFence` in
-`TMermaidExtension.Process`), so while a fence is still streaming no model is
-cached and the block stays an ordinary code block until the closing fence
-arrives. Note that this closed-fence gate is a property of the document
-processor: the viewer's on-demand override (see below) parses whatever the block
-currently holds, so a syntactically valid partial diagram can render in the
-native viewer before its fence closes.
-
-`TMermaidExtension.TryGetModel` reads back a cached model, and the override falls
-back to parsing on demand — the same two-step the chart override uses. Consumers
-can inspect the parsed model directly:
+`TMermaidExtension.TryGetModel` reads back a cached model:
 
 ```pascal
 uses
@@ -410,10 +658,7 @@ begin
 end;
 ```
 
-### Registration
-
-Like charts, register the block override once per process before the viewer
-lays out — it is idempotent:
+Mermaid registration is the same idempotent, layout-time call:
 
 ```pascal
 uses
@@ -422,18 +667,15 @@ uses
 TMermaidBlockOverride.RegisterOverride;
 ```
 
-The arrowheads and diamond nodes are filled polygons, so the block-override
-context also exposes `EmitPolygon(Points, Color)` alongside the rectangle, text,
-line and wedge emitters.
-
 ## Lifetime and threading rules
 
 - **Extensions are stateless and reusable.** `Setup` runs once when the pipeline
   is built. Keep per-parse state out of the extension object; use the node
   extension-data channel for per-node state.
 - **Register block overrides once.** The registry is process-wide and static.
-  Guard registration with a flag (as `RegisterOverride` does) so repeated calls
-  are no-ops. There is no automatic unregister; overrides live for the process.
+  Guard registration with a flag so repeated calls are no-ops. There is no
+  automatic unregister; overrides live for the process. Tests call
+  `TMarkdownLayoutEngine.ClearBlockOverrides` to reset it.
 - **Layout runs on the UI thread.** `LayoutBlock` is called during the viewer's
   layout pass. Do only measuring and primitive emission there — no blocking I/O,
   no network. Resolve data earlier (at parse time, into extension data).
@@ -449,6 +691,7 @@ line and wedge emitters.
 - Escape user text with `WriteEscaped` in renderer hooks.
 - Fail soft: if your model is missing or malformed, lay out nothing (return `0`)
   or fall back to the default rendering rather than raising.
+- Reach for `TMarkdownPriorities` constants instead of literal priority numbers.
 
 **Don't**
 

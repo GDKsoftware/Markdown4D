@@ -110,7 +110,7 @@ end;
 function TDummyBlockOverride.LayoutBlock(const Node: IMarkdownNode; const Top: Single;
   const Context: ILayoutBlockContext): Single;
 begin
-  Context.EmitRectangle(TLayoutRectF.Create(0, Top, Context.Width, Top + BlockHeight), MarkerFillColor, 0, 0);
+  Context.Canvas.FillRectangle(TLayoutRectF.Create(0, Top, Context.Width, Top + BlockHeight), MarkerFillColor);
   Result := BlockHeight;
 end;
 

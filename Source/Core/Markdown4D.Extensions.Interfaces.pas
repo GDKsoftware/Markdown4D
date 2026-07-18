@@ -10,6 +10,39 @@ uses
 type
   TMarkdownBlockStart = (NoMatch, Container, Leaf);
 
+  TMarkdownPriorities = record
+  public
+    const
+      Highest = 1000;
+      High = 800;
+      AboveNormal = 700;
+      Normal = 500;
+      BelowNormal = 300;
+      Low = 200;
+      Lowest = 0;
+      BlockQuoteStart = 900;
+      AtxHeadingStart = 850;
+      FencedCodeStart = 800;
+      HtmlBlockStart = 750;
+      SetextHeadingStart = 700;
+      ThematicBreakStart = 650;
+      ListItemStart = 600;
+      IndentedCodeStart = 550;
+      BackslashInline = 900;
+      LineEndingInline = 850;
+      EmphasisInline = 800;
+      CodeSpanInline = 750;
+      AngleBracketInline = 700;
+      EntityInline = 650;
+      LinkOpenerInline = 600;
+      ImageOpenerInline = 550;
+      LinkCloserInline = 500;
+      ExtensionParser = 100;
+      ExtensionProcessor = 100;
+      ExtensionRenderer = 50;
+      ExtensionLayoutOverride = 100;
+  end;
+
   IMarkdownPipelineBuilder = interface;
 
   IMarkdownExtension = interface
@@ -21,6 +54,8 @@ type
     ['{105D08B3-54BA-4CB6-A240-487BCB25509D}']
     procedure WriteRaw(const Html: string);
     procedure WriteEscaped(const Text: string);
+    function EscapeAttribute(const Value: string): string;
+    procedure WriteAttribute(const Name, Value: string);
   end;
 
   IMarkdownBlockParserContext = interface

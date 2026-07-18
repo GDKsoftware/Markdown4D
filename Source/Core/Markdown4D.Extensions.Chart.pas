@@ -71,11 +71,12 @@ type
       ChartTypeValue = 'chart';
       ChartDataKey = 'data';
       ChartModelExtensionKey = 'markdown4d.chart.model';
-      ChartProcessorPriority = 100;
+      ChartProcessorPriority = TMarkdownPriorities.ExtensionProcessor;
     procedure Setup(const Pipeline: IMarkdownPipelineBuilder);
     class function IsChartCodeBlock(const Node: IMarkdownNode): Boolean;
     class function TryParse(const Code: IMarkdownCodeBlock; out Model: IChartModel): Boolean;
     class function TryGetModel(const Node: IMarkdownNode; out Model: IChartModel): Boolean;
+    class function CreateDocumentProcessor: IMarkdownDocumentProcessor;
     class procedure Process(const Document: IMarkdownDocument);
   end;
 
@@ -639,7 +640,12 @@ end;
 
 procedure TChartExtension.Setup(const Pipeline: IMarkdownPipelineBuilder);
 begin
-  Pipeline.RegisterDocumentProcessor(TChartDocumentProcessor.Create, ChartProcessorPriority);
+  Pipeline.RegisterDocumentProcessor(CreateDocumentProcessor, ChartProcessorPriority);
+end;
+
+class function TChartExtension.CreateDocumentProcessor: IMarkdownDocumentProcessor;
+begin
+  Result := TChartDocumentProcessor.Create;
 end;
 
 class function TChartExtension.IsChartCodeBlock(const Node: IMarkdownNode): Boolean;

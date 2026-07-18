@@ -5,6 +5,7 @@ unit Markdown4D.Toc;
 interface
 
 uses
+  System.Generics.Collections,
   Markdown4D.Ast.Interfaces;
 
 type
@@ -28,6 +29,7 @@ type
     ['{FD266CFD-7347-4ABF-8A2F-3F1900D22AF0}']
     function GetEntryCount: Integer;
     function GetEntry(const Index: Integer): IMarkdownTocEntry;
+    function GetEnumerator: TEnumerator<IMarkdownTocEntry>;
     property EntryCount: Integer read GetEntryCount;
     property Entries[const Index: Integer]: IMarkdownTocEntry read GetEntry;
   end;
@@ -41,8 +43,7 @@ implementation
 
 uses
   System.SysUtils,
-  System.Character,
-  System.Generics.Collections;
+  System.Character;
 
 type
   TMarkdownTocEntry = class(TInterfacedObject, IMarkdownTocEntry)
@@ -75,6 +76,7 @@ type
     destructor Destroy; override;
     function GetEntryCount: Integer;
     function GetEntry(const Index: Integer): IMarkdownTocEntry;
+    function GetEnumerator: TEnumerator<IMarkdownTocEntry>;
     procedure AddEntry(const Entry: IMarkdownTocEntry);
   end;
 
@@ -327,6 +329,11 @@ end;
 function TMarkdownTocInstance.GetEntry(const Index: Integer): IMarkdownTocEntry;
 begin
   Result := FEntries[Index];
+end;
+
+function TMarkdownTocInstance.GetEnumerator: TEnumerator<IMarkdownTocEntry>;
+begin
+  Result := FEntries.GetEnumerator;
 end;
 
 procedure TMarkdownTocInstance.AddEntry(const Entry: IMarkdownTocEntry);

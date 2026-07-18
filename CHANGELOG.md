@@ -4,6 +4,71 @@ All notable changes to Markdown4D are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0]
+
+A plumbing and extension-API release. End-user rendering is unchanged — the same
+CommonMark, GFM, round-trip, chart and mermaid output — but the surface an
+extension author draws and registers against is now unified and consistent.
+
+### Added
+
+- **`IExtensionCanvas`** (unit `Markdown4D.Layout.BlockOverride`) — a single,
+  framework-neutral drawing surface for layout block overrides. It exposes
+  `FillRectangle`, `DrawRectangle`, `FillAndStrokeRectangle`, `DrawText`,
+  `DrawLine`, `DrawDashedLine`, `FillPolygon`, `FillWedge`, `DrawImage`,
+  `MeasureText`, and `SaveState` / `SetClip` / `RestoreState`. An override reaches
+  it through `ILayoutBlockContext.Canvas`. The reusable
+  `TDisplayListExtensionCanvas` lives in the new unit
+  `Markdown4D.Layout.ExtensionCanvas`.
+- **`FillAndStrokeRectangle`** on the canvas — a filled-and-stroked rectangle as
+  one primitive (mermaid nodes, sequence participant boxes), so bounds are never
+  duplicated across two display items.
+- **`TMarkdownPriorities`** (unit `Markdown4D.Extensions.Interfaces`) — named
+  priority constants for every registration point: `Highest`, `High`,
+  `AboveNormal`, `Normal`, `BelowNormal`, `Low`, `Lowest`, the built-in
+  block / inline parser priorities, and the extension slots
+  `ExtensionProcessor` (100), `ExtensionRenderer` (50) and
+  `ExtensionLayoutOverride` (100). Registrations no longer need magic numbers.
+- **Scoped layout registries** — `TLayoutBlockOverrideRegistry` and
+  `TLayoutDocumentProcessorRegistry` (unit `Markdown4D.Layout.BlockOverride`)
+  back `TMarkdownLayoutEngine.RegisterBlockOverride` /
+  `ClearBlockOverrides`, with a single, documented priority-then-registration
+  resolution shared with the pipeline.
+
+### Changed
+
+- **Viewer pipeline caching** — the viewer model relays out against the facade's
+  cached per-dialect GFM pipeline instead of building a pipeline on every relayout,
+  and runs the layout document-processor registry over the parsed document.
+- Chart and mermaid layouters now draw onto an `IExtensionCanvas` rather than
+  assembling display items directly; the shipped block overrides,
+  layout-geometry output and corpora are byte-for-byte unchanged.
+
+### Breaking (extension API)
+
+The ad-hoc `Emit*` methods on `ILayoutBlockContext` were removed in favour of the
+unified canvas. A block override that drew through the context must now draw
+through `Context.Canvas`:
+
+| 1.0.0 — `ILayoutBlockContext` | 1.1.0 — `Context.Canvas` (`IExtensionCanvas`) |
+|-------------------------------|------------------------------------------------|
+| `Context.EmitRectangle(Bounds, Fill)` | `Context.Canvas.FillRectangle(Bounds, Fill)` |
+| `Context.EmitRectangle(Bounds, Fill, Stroke, Width)` | `Context.Canvas.FillAndStrokeRectangle(Bounds, Fill, Stroke, Width)` |
+| `Context.EmitTextRun(TopLeft, Text, Font, Color)` | `Context.Canvas.DrawText(TopLeft, Text, Font, Color)` |
+| `Context.EmitLine(P1, P2, Color, Width)` | `Context.Canvas.DrawLine(P1, P2, Color, Width)` |
+| `Context.EmitWedge(Center, Outer, Inner, Start, Sweep, Color)` | `Context.Canvas.FillWedge(Center, Outer, Inner, Start, Sweep, Color)` |
+| `Context.EmitPolygon(Points, Color)` | `Context.Canvas.FillPolygon(Points, Color)` |
+
+`ILayoutBlockOverride`, `Handles`, `LayoutBlock` and the two-place
+(parse-time processor, layout-time override) registration model are otherwise
+unchanged. The parsing pipeline API (`IMarkdownExtension`, the `Register*`
+methods, renderer hooks, delimiter processors, document processors) is
+source-compatible with 1.0.0.
+
+### Requirements
+
+- Delphi 12 Athens or later. Pure RTL — zero external dependencies. MIT licensed.
+
 ## [1.0.0]
 
 The first stable release of Markdown4D — a native Delphi markdown library and
@@ -74,4 +139,5 @@ component set with no external dependencies.
 
 - Delphi 12 Athens or later. Pure RTL — zero external dependencies. MIT licensed.
 
+[1.1.0]: https://github.com/gdksoftware/Markdown4D/releases/tag/v1.1.0
 [1.0.0]: https://github.com/gdksoftware/Markdown4D/releases/tag/v1.0.0

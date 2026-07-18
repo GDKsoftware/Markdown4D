@@ -37,7 +37,7 @@ type
   end;
 ```
 
-`Version` returns the library version string (`'1.0.0'`, defined as
+`Version` returns the library version string (`'1.1.0'`, defined as
 `Markdown4DVersion` in unit `Markdown4D.Version`).
 
 `TMarkdownDialect` (unit `Markdown4D.Defines`) is `(CommonMark, Gfm)`. The
@@ -104,8 +104,12 @@ type
 | `TagFilter` | Applies the GFM tag filter to raw HTML |
 | `Register*` | Adds a single parser, processor or hook at a given priority |
 
-Higher priority wins; ties break by registration order. A built pipeline is
-thread-safe to reuse for parsing and rendering.
+Higher priority wins; ties break by registration order. Rather than passing
+magic numbers, use the named constants on `TMarkdownPriorities` (unit
+`Markdown4D.Extensions.Interfaces`) — `Highest`, `High`, `AboveNormal`,
+`Normal`, `BelowNormal`, `Low`, `Lowest`, and the extension slots
+`ExtensionProcessor`, `ExtensionRenderer` and `ExtensionLayoutOverride`. A built
+pipeline is thread-safe to reuse for parsing and rendering.
 
 ```pascal
 uses

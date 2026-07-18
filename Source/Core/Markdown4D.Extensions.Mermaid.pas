@@ -136,12 +136,13 @@ type
     const
       MermaidInfoString = 'mermaid';
       MermaidModelExtensionKey = 'markdown4d.mermaid.model';
-      MermaidProcessorPriority = 100;
+      MermaidProcessorPriority = TMarkdownPriorities.ExtensionProcessor;
       MaxNodeCount = 500;
     procedure Setup(const Pipeline: IMarkdownPipelineBuilder);
     class function IsMermaidCodeBlock(const Node: IMarkdownNode): Boolean;
     class function TryParse(const Code: IMarkdownCodeBlock; out Model: IMermaidModel): Boolean;
     class function TryGetModel(const Node: IMarkdownNode; out Model: IMermaidModel): Boolean;
+    class function CreateDocumentProcessor: IMarkdownDocumentProcessor;
     class procedure Process(const Document: IMarkdownDocument);
   end;
 
@@ -1274,7 +1275,12 @@ end;
 
 procedure TMermaidExtension.Setup(const Pipeline: IMarkdownPipelineBuilder);
 begin
-  Pipeline.RegisterDocumentProcessor(TMermaidDocumentProcessor.Create, MermaidProcessorPriority);
+  Pipeline.RegisterDocumentProcessor(CreateDocumentProcessor, MermaidProcessorPriority);
+end;
+
+class function TMermaidExtension.CreateDocumentProcessor: IMarkdownDocumentProcessor;
+begin
+  Result := TMermaidDocumentProcessor.Create;
 end;
 
 class function TMermaidExtension.IsMermaidInfoString(const InfoString: string): Boolean;

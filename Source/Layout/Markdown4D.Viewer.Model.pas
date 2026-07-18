@@ -120,6 +120,7 @@ uses
   System.Math,
   Markdown4D,
   Markdown4D.Defines,
+  Markdown4D.Layout.BlockOverride,
   Markdown4D.Layout.Engine;
 
 class function TMarkdownFoundRange.Create(const ItemIndex, StartCharacter,
@@ -408,6 +409,8 @@ begin
     Exit;
 
   const Document = TMarkdown.Parse(FText, TMarkdownDialect.Gfm);
+  TLayoutDocumentProcessorRegistry.Process(Document);
+
   FDisplayList := TMarkdownLayoutEngine.LayoutDocument(Document, FViewportWidth, FTheme, FMeasurer, Self);
   Inc(FLayoutCount);
   RegisterImageSlots;
