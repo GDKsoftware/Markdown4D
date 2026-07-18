@@ -33,12 +33,6 @@ type
       GutterPaddingDips = 8;
       CaretWidthDips = 1;
       WheelLinesPerNotch = 3;
-      DesignSampleMarkdown =
-        '# Markdown4D Editor'#10#10 +
-        'Type **markdown** with live syntax highlighting.'#10#10 +
-        '- First item'#10 +
-        '- Second item'#10#10 +
-        'Inline `code` span.';
     var
       FLifetime: IMarkdownViewerLifetime;
       FModel: TMarkdownEditorModel;
@@ -176,6 +170,7 @@ type
 implementation
 
 uses
+  Markdown4D.DesignSample,
   System.SysUtils,
   System.Math,
   System.UITypes,
@@ -383,7 +378,7 @@ begin
     Exit;
 
   FDesignSampleActive := True;
-  FModel.LoadText(DesignSampleMarkdown);
+  FModel.LoadText(TMarkdownDesignSample.Markdown);
   UpdateScrollBar;
 end;
 
@@ -752,6 +747,8 @@ end;
 procedure TMarkdownEditor.CreateWnd;
 begin
   inherited CreateWnd;
+
+  EnsureDesignSample;
 
   FMeasurePainter.PixelsPerInch := CurrentPPI;
   UpdateScrollBar;

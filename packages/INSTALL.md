@@ -18,7 +18,7 @@ component palette page named **Markdown4D**.
 
 ## Build outputs
 
-- BPL → `packages\bpl\Win32\<Config>`
+- BPL → `$(BDSCOMMONDIR)\Bpl` (e.g. `C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl`) — the standard shared package folder, which is always on the IDE's package search path, so design-time packages and their runtime dependencies load without any PATH configuration
 - DCP → `packages\dcp\Win32\<Config>`
 - DCU → `packages\Win32\<Config>`
 
@@ -75,10 +75,10 @@ is **not** performed by the automated build.
 4. Add the DCP output folder to the library path so projects can find the
    runtime `.dcp`s: Tools ▸ Options ▸ Language ▸ Delphi ▸ Library ▸ *Library
    path* (Win32) → add `...\packages\dcp\Win32\Release`.
-5. Add the BPL output folder (`...\packages\bpl\Win32\Release`) to the system
-   `PATH`, or copy the runtime BPLs next to your application, so applications
-   that use runtime packages can load them at run time. Applications linked
-   without runtime packages (the default) need nothing extra.
+5. Applications linked without runtime packages (the default) need nothing
+   extra. Only when an application is built WITH runtime packages and runs
+   outside the IDE do the runtime BPLs need to be findable: copy them next to
+   the executable or add the shared Bpl folder to the system `PATH`.
 6. Drop `TMarkdownViewer` / `TMarkdownEditor` from the **Markdown4D** palette
    page onto a form. The control renders a live sample document at design time.
 
