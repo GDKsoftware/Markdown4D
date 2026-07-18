@@ -5,7 +5,7 @@ unit Markdown4D.Version;
 interface
 
 const
-  Markdown4DVersion = '1.0.0';
+  Markdown4DVersion = '1.1.0';
 
 implementation
 

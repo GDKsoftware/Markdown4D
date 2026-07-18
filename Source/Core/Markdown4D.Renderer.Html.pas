@@ -115,6 +115,8 @@ type
     constructor Create(const Output: TStringBuilder);
     procedure WriteRaw(const Html: string);
     procedure WriteEscaped(const Text: string);
+    function EscapeAttribute(const Value: string): string;
+    procedure WriteAttribute(const Name, Value: string);
   end;
 
 class function TMarkdownHtmlRenderer.RenderDocument(const Document: IMarkdownDocument): string;
@@ -648,6 +650,25 @@ end;
 procedure TRendererHtmlWriter.WriteEscaped(const Text: string);
 begin
   FOutput.Append(TMarkdownHtmlRenderer.EscapeHtml(Text));
+end;
+
+function TRendererHtmlWriter.EscapeAttribute(const Value: string): string;
+begin
+  const WithAmpersands = StringReplace(Value, '&', '&amp;', [rfReplaceAll]);
+  const WithLessThan = StringReplace(WithAmpersands, '<', '&lt;', [rfReplaceAll]);
+  const WithGreaterThan = StringReplace(WithLessThan, '>', '&gt;', [rfReplaceAll]);
+  const WithQuotes = StringReplace(WithGreaterThan, '"', '&quot;', [rfReplaceAll]);
+
+  Result := StringReplace(WithQuotes, '''', '&#39;', [rfReplaceAll]);
+end;
+
+procedure TRendererHtmlWriter.WriteAttribute(const Name, Value: string);
+begin
+  FOutput.Append(' ');
+  FOutput.Append(Name);
+  FOutput.Append('="');
+  FOutput.Append(EscapeAttribute(Value));
+  FOutput.Append('"');
 end;
 
 end.

@@ -6,26 +6,42 @@ interface
 
 uses
   Markdown4D.Ast.Interfaces,
+  Markdown4D.Extensions.Interfaces,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Theme;
 
 type
+  IExtensionCanvas = interface
+    ['{4B9F1D62-8C07-4A53-9E21-3D6B0F5A7C84}']
+    function MeasureText(const Text: string; const Font: TMarkdownFontStyle): TLayoutSizeF;
+    procedure DrawText(const TopLeft: TLayoutPointF; const Text: string; const Font: TMarkdownFontStyle;
+      const Color: TLayoutColor);
+    procedure DrawLine(const StartPoint, EndPoint: TLayoutPointF; const Color: TLayoutColor; const StrokeWidth: Single);
+    procedure DrawDashedLine(const StartPoint, EndPoint: TLayoutPointF; const Color: TLayoutColor;
+      const StrokeWidth: Single);
+    procedure FillRectangle(const Bounds: TLayoutRectF; const Color: TLayoutColor);
+    procedure DrawRectangle(const Bounds: TLayoutRectF; const StrokeColor: TLayoutColor; const StrokeWidth: Single);
+    procedure FillAndStrokeRectangle(const Bounds: TLayoutRectF; const FillColor, StrokeColor: TLayoutColor;
+      const StrokeWidth: Single);
+    procedure FillPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor);
+    procedure FillWedge(const Center: TLayoutPointF; const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single;
+      const Color: TLayoutColor);
+    procedure DrawImage(const Bounds: TLayoutRectF; const Source, AltText: string);
+    procedure SaveState;
+    procedure SetClip(const Bounds: TLayoutRectF);
+    procedure RestoreState;
+  end;
+
   ILayoutBlockContext = interface
     ['{5E1A7C34-9B62-4D08-A5F1-72C0E4B36D91}']
     function GetMeasurer: ITextMeasurer;
     function GetTheme: TMarkdownTheme;
     function GetWidth: Single;
-    procedure EmitRectangle(const Bounds: TLayoutRectF; const FillColor, StrokeColor: TLayoutColor;
-      const StrokeWidth: Single);
-    procedure EmitTextRun(const TopLeft: TLayoutPointF; const Text: string; const Font: TMarkdownFontStyle;
-      const Color: TLayoutColor);
-    procedure EmitLine(const StartPoint, EndPoint: TLayoutPointF; const Color: TLayoutColor; const StrokeWidth: Single);
-    procedure EmitWedge(const Center: TLayoutPointF; const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single;
-      const Color: TLayoutColor);
-    procedure EmitPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor);
+    function GetCanvas: IExtensionCanvas;
     property Measurer: ITextMeasurer read GetMeasurer;
     property Theme: TMarkdownTheme read GetTheme;
     property Width: Single read GetWidth;
+    property Canvas: IExtensionCanvas read GetCanvas;
   end;
 
   ILayoutBlockOverride = interface
@@ -51,6 +67,17 @@ type
   public
     class procedure Register(const Handler: ILayoutBlockOverride; const Priority: Integer);
     class function TryFind(const Node: IMarkdownNode; out Handler: ILayoutBlockOverride): Boolean;
+    class procedure Clear;
+  end;
+
+  TLayoutDocumentProcessorRegistry = class
+  private
+    class var
+      FProcessors: TArray<IMarkdownDocumentProcessor>;
+
+  public
+    class procedure Register(const Processor: IMarkdownDocumentProcessor);
+    class procedure Process(const Document: IMarkdownDocument);
     class procedure Clear;
   end;
 
@@ -96,6 +123,27 @@ class procedure TLayoutBlockOverrideRegistry.Clear;
 begin
   FRegistrations := nil;
   FNextOrdinal := 0;
+end;
+
+class procedure TLayoutDocumentProcessorRegistry.Register(const Processor: IMarkdownDocumentProcessor);
+begin
+  FProcessors := FProcessors + [Processor];
+end;
+
+class procedure TLayoutDocumentProcessorRegistry.Process(const Document: IMarkdownDocument);
+begin
+  if Document = nil then
+    Exit;
+
+  for var Processor in FProcessors do
+  begin
+    Processor.Process(Document);
+  end;
+end;
+
+class procedure TLayoutDocumentProcessorRegistry.Clear;
+begin
+  FProcessors := nil;
 end;
 
 end.

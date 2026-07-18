@@ -8,12 +8,15 @@ uses
   Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.DisplayList,
+  Markdown4D.Layout.BlockOverride,
   Markdown4D.Theme,
   Markdown4D.Extensions.Mermaid;
 
 type
   TMermaidLayouter = class
   public
+    class procedure Draw(const Model: IMermaidModel; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
+      const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
     class function BuildDisplayItems(const Model: IMermaidModel; const Bounds: TLayoutRectF;
       const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Node: IMarkdownNode): TArray<IDisplayItem>;
     class function PreferredHeight(const Model: IMermaidModel; const AvailableWidth: Single;
@@ -27,7 +30,7 @@ uses
   System.SysUtils,
   System.Generics.Collections,
   System.Generics.Defaults,
-  Markdown4D.Layout.Primitives;
+  Markdown4D.Layout.ExtensionCanvas;
 
 type
   TMermaidNodeBox = record
@@ -53,8 +56,7 @@ type
       FModel: IMermaidModel;
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
-      FNode: IMarkdownNode;
-      FItems: TList<IDisplayItem>;
+      FCanvas: IExtensionCanvas;
     procedure EmitRectangle(const Bounds: TLayoutRectF; const FillColor, StrokeColor: TLayoutColor;
       const StrokeWidth: Single);
     procedure EmitPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor);
@@ -68,8 +70,7 @@ type
 
   public
     constructor Create(const Model: IMermaidModel; const Theme: TMarkdownTheme; const Measurer: ITextMeasurer;
-      const Node: IMarkdownNode);
-    destructor Destroy; override;
+      const Canvas: IExtensionCanvas);
   end;
 
   TMermaidFlowchartBuilder = class(TMermaidBuilderBase)
@@ -131,8 +132,8 @@ type
 
   public
     constructor Create(const Model: IMermaidModel; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
-      const Measurer: ITextMeasurer; const Node: IMarkdownNode);
-    function Build: TArray<IDisplayItem>;
+      const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
+    procedure Build;
     function ContentHeight: Single;
   end;
 
@@ -206,9 +207,9 @@ type
 
   public
     constructor Create(const Model: IMermaidModel; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
-      const Measurer: ITextMeasurer; const Node: IMarkdownNode);
+      const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
     destructor Destroy; override;
-    function Build: TArray<IDisplayItem>;
+    procedure Build;
     function ContentHeight: Single;
   end;
 
@@ -240,39 +241,53 @@ type
 
   public
     constructor Create(const Model: IMermaidModel; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
-      const Measurer: ITextMeasurer; const Node: IMarkdownNode);
+      const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
     class function PreferredHeightForWidth(const AvailableWidth: Single): Single; static;
-    function Build: TArray<IDisplayItem>;
+    procedure Build;
     function ContentHeight: Single;
   end;
 
 class function TMermaidLayouter.BuildDisplayItems(const Model: IMermaidModel; const Bounds: TLayoutRectF;
   const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Node: IMarkdownNode): TArray<IDisplayItem>;
 begin
+  const Items = TList<IDisplayItem>.Create;
+  try
+    var Canvas: IExtensionCanvas := TDisplayListExtensionCanvas.Create(Measurer, Items, Node);
+    Draw(Model, Bounds, Theme, Measurer, Canvas);
+
+    Result := Items.ToArray;
+  finally
+    Items.Free;
+  end;
+end;
+
+class procedure TMermaidLayouter.Draw(const Model: IMermaidModel; const Bounds: TLayoutRectF;
+  const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
+begin
   case Model.DiagramKind of
     TMermaidDiagramKind.Sequence:
       begin
-        const Builder = TMermaidSequenceBuilder.Create(Model, Bounds, Theme, Measurer, Node);
+        const Builder = TMermaidSequenceBuilder.Create(Model, Bounds, Theme, Measurer, Canvas);
         try
-          Result := Builder.Build;
+          Builder.Build;
         finally
           Builder.Free;
         end;
       end;
     TMermaidDiagramKind.Pie:
       begin
-        const Builder = TMermaidPieBuilder.Create(Model, Bounds, Theme, Measurer, Node);
+        const Builder = TMermaidPieBuilder.Create(Model, Bounds, Theme, Measurer, Canvas);
         try
-          Result := Builder.Build;
+          Builder.Build;
         finally
           Builder.Free;
         end;
       end;
   else
     begin
-      const Builder = TMermaidFlowchartBuilder.Create(Model, Bounds, Theme, Measurer, Node);
+      const Builder = TMermaidFlowchartBuilder.Create(Model, Bounds, Theme, Measurer, Canvas);
       try
-        Result := Builder.Build;
+        Builder.Build;
       finally
         Builder.Free;
       end;
@@ -283,96 +298,75 @@ end;
 class function TMermaidLayouter.PreferredHeight(const Model: IMermaidModel; const AvailableWidth: Single;
   const Theme: TMarkdownTheme; const Measurer: ITextMeasurer): Single;
 begin
-  const Bounds = TLayoutRectF.Create(0, 0, AvailableWidth, AvailableWidth);
+  const Items = TList<IDisplayItem>.Create;
+  try
+    var Canvas: IExtensionCanvas := TDisplayListExtensionCanvas.Create(Measurer, Items, nil);
+    const Bounds = TLayoutRectF.Create(0, 0, AvailableWidth, AvailableWidth);
 
-  case Model.DiagramKind of
-    TMermaidDiagramKind.Sequence:
+    case Model.DiagramKind of
+      TMermaidDiagramKind.Sequence:
+        begin
+          const Builder = TMermaidSequenceBuilder.Create(Model, Bounds, Theme, Measurer, Canvas);
+          try
+            Builder.Build;
+            Result := Builder.ContentHeight;
+          finally
+            Builder.Free;
+          end;
+        end;
+      TMermaidDiagramKind.Pie:
+        begin
+          const PieBounds = TLayoutRectF.Create(0, 0, AvailableWidth, TMermaidPieBuilder.PreferredHeightForWidth(AvailableWidth));
+          const Builder = TMermaidPieBuilder.Create(Model, PieBounds, Theme, Measurer, Canvas);
+          try
+            Builder.Build;
+            Result := Builder.ContentHeight;
+          finally
+            Builder.Free;
+          end;
+        end;
+    else
       begin
-        const Builder = TMermaidSequenceBuilder.Create(Model, Bounds, Theme, Measurer, nil);
+        const Builder = TMermaidFlowchartBuilder.Create(Model, Bounds, Theme, Measurer, Canvas);
         try
           Builder.Build;
           Result := Builder.ContentHeight;
         finally
           Builder.Free;
         end;
-      end;
-    TMermaidDiagramKind.Pie:
-      begin
-        const PieBounds = TLayoutRectF.Create(0, 0, AvailableWidth, TMermaidPieBuilder.PreferredHeightForWidth(AvailableWidth));
-        const Builder = TMermaidPieBuilder.Create(Model, PieBounds, Theme, Measurer, nil);
-        try
-          Builder.Build;
-          Result := Builder.ContentHeight;
-        finally
-          Builder.Free;
-        end;
-      end;
-  else
-    begin
-      const Builder = TMermaidFlowchartBuilder.Create(Model, Bounds, Theme, Measurer, nil);
-      try
-        Builder.Build;
-        Result := Builder.ContentHeight;
-      finally
-        Builder.Free;
       end;
     end;
+  finally
+    Items.Free;
   end;
 end;
 
 constructor TMermaidBuilderBase.Create(const Model: IMermaidModel; const Theme: TMarkdownTheme;
-  const Measurer: ITextMeasurer; const Node: IMarkdownNode);
+  const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
 begin
   inherited Create;
 
   FModel := Model;
   FTheme := Theme;
   FMeasurer := Measurer;
-  FNode := Node;
-  FItems := TList<IDisplayItem>.Create;
-end;
-
-destructor TMermaidBuilderBase.Destroy;
-begin
-  FItems.Free;
-
-  inherited Destroy;
+  FCanvas := Canvas;
 end;
 
 procedure TMermaidBuilderBase.EmitRectangle(const Bounds: TLayoutRectF; const FillColor, StrokeColor: TLayoutColor;
   const StrokeWidth: Single);
 begin
-  FItems.Add(TDisplayRectangle.Create(Bounds, FNode, FillColor, StrokeColor, StrokeWidth));
+  FCanvas.FillAndStrokeRectangle(Bounds, FillColor, StrokeColor, StrokeWidth);
 end;
 
 procedure TMermaidBuilderBase.EmitPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor);
 begin
-  if Length(Points) = 0 then
-    Exit;
-
-  var MinX := Points[0].X;
-  var MinY := Points[0].Y;
-  var MaxX := Points[0].X;
-  var MaxY := Points[0].Y;
-
-  for var Point in Points do
-  begin
-    MinX := Min(MinX, Point.X);
-    MinY := Min(MinY, Point.Y);
-    MaxX := Max(MaxX, Point.X);
-    MaxY := Max(MaxY, Point.Y);
-  end;
-
-  const Bounds = TLayoutRectF.Create(MinX, MinY, MaxX, MaxY);
-  FItems.Add(TDisplayPolygon.Create(Bounds, FNode, Points, Color));
+  FCanvas.FillPolygon(Points, Color);
 end;
 
 procedure TMermaidBuilderBase.EmitLine(const StartPoint, EndPoint: TLayoutPointF; const Color: TLayoutColor;
   const StrokeWidth: Single);
 begin
-  const Bounds = TLayoutRectF.Create(Min(StartPoint.X, EndPoint.X), Min(StartPoint.Y, EndPoint.Y),
-    Max(StartPoint.X, EndPoint.X), Max(StartPoint.Y, EndPoint.Y));
-  FItems.Add(TDisplayLine.Create(Bounds, FNode, StartPoint, EndPoint, Color, StrokeWidth));
+  FCanvas.DrawLine(StartPoint, EndPoint, Color, StrokeWidth);
 end;
 
 procedure TMermaidBuilderBase.EmitDashedLine(const StartPoint, EndPoint: TLayoutPointF; const Color: TLayoutColor;
@@ -404,9 +398,7 @@ begin
   if Text = '' then
     Exit;
 
-  const Size = FMeasurer.MeasureText(Text, Font);
-  const Bounds = TLayoutRectF.Create(X, Top, X + Size.Width, Top + Size.Height);
-  FItems.Add(TDisplayTextRun.Create(Bounds, FNode, Text, Font, Color, FMeasurer.Baseline(Font), 0));
+  FCanvas.DrawText(TLayoutPointF.Create(X, Top), Text, Font, Color);
 end;
 
 procedure TMermaidBuilderBase.EmitCenteredText(const Text: string; const CenterX, Top: Single;
@@ -420,18 +412,18 @@ begin
 end;
 
 constructor TMermaidFlowchartBuilder.Create(const Model: IMermaidModel; const Bounds: TLayoutRectF;
-  const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Node: IMarkdownNode);
+  const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
 begin
-  inherited Create(Model, Theme, Measurer, Node);
+  inherited Create(Model, Theme, Measurer, Canvas);
 
   FBounds := Bounds;
 end;
 
-function TMermaidFlowchartBuilder.Build: TArray<IDisplayItem>;
+procedure TMermaidFlowchartBuilder.Build;
 begin
   const NodeCount = FModel.NodeCount;
   if NodeCount = 0 then
-    Exit(FItems.ToArray);
+    Exit;
 
   MeasureNodes;
   BuildAdjacency;
@@ -444,8 +436,6 @@ begin
 
   EmitNodes;
   EmitEdges;
-
-  Result := FItems.ToArray;
 end;
 
 function TMermaidFlowchartBuilder.ContentHeight: Single;
@@ -1050,8 +1040,7 @@ end;
 procedure TMermaidFlowchartBuilder.EmitWedge(const Center: TLayoutPointF; const Radius: Single;
   const Color: TLayoutColor);
 begin
-  const Bounds = TLayoutRectF.Create(Center.X - Radius, Center.Y - Radius, Center.X + Radius, Center.Y + Radius);
-  FItems.Add(TDisplayWedge.Create(Bounds, FNode, Center, Radius, 0, 0, 360, Color));
+  FCanvas.FillWedge(Center, Radius, 0, 0, 360, Color);
 end;
 
 class function TMermaidFlowchartBuilder.NodeCenter(const Box: TMermaidNodeBox): TLayoutPointF;
@@ -1099,9 +1088,9 @@ begin
 end;
 
 constructor TMermaidSequenceBuilder.Create(const Model: IMermaidModel; const Bounds: TLayoutRectF;
-  const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Node: IMarkdownNode);
+  const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
 begin
-  inherited Create(Model, Theme, Measurer, Node);
+  inherited Create(Model, Theme, Measurer, Canvas);
 
   FBounds := Bounds;
   FBars := TList<TMermaidActivationBar>.Create;
@@ -1114,10 +1103,10 @@ begin
   inherited Destroy;
 end;
 
-function TMermaidSequenceBuilder.Build: TArray<IDisplayItem>;
+procedure TMermaidSequenceBuilder.Build;
 begin
   if FModel.ParticipantCount = 0 then
-    Exit(FItems.ToArray);
+    Exit;
 
   MeasureParticipants;
   LayoutColumns;
@@ -1129,8 +1118,6 @@ begin
   EmitActivations;
   EmitMessages;
   EmitNotes;
-
-  Result := FItems.ToArray;
 end;
 
 function TMermaidSequenceBuilder.ContentHeight: Single;
@@ -1510,9 +1497,9 @@ begin
 end;
 
 constructor TMermaidPieBuilder.Create(const Model: IMermaidModel; const Bounds: TLayoutRectF;
-  const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Node: IMarkdownNode);
+  const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
 begin
-  inherited Create(Model, Theme, Measurer, Node);
+  inherited Create(Model, Theme, Measurer, Canvas);
 
   const ClampedHeight = Min(Bounds.Height, PreferredHeightForWidth(Bounds.Width));
 
@@ -1528,7 +1515,7 @@ begin
   Result := AvailableWidth * AspectRatioHeight / AspectRatioWidth;
 end;
 
-function TMermaidPieBuilder.Build: TArray<IDisplayItem>;
+procedure TMermaidPieBuilder.Build;
 begin
   LayoutTitle;
   LayoutLegend;
@@ -1536,8 +1523,6 @@ begin
   const HasPlotArea = (FRight > FLeft) and (FBottom > FTop);
   if HasPlotArea then
     LayoutWedges;
-
-  Result := FItems.ToArray;
 end;
 
 function TMermaidPieBuilder.ContentHeight: Single;
@@ -1658,10 +1643,7 @@ end;
 procedure TMermaidPieBuilder.EmitWedge(const CenterX, CenterY, OuterRadius, StartAngle, SweepAngle: Single;
   const Color: TLayoutColor);
 begin
-  const Center = TLayoutPointF.Create(CenterX, CenterY);
-  const Bounds = TLayoutRectF.Create(CenterX - OuterRadius, CenterY - OuterRadius, CenterX + OuterRadius,
-    CenterY + OuterRadius);
-  FItems.Add(TDisplayWedge.Create(Bounds, FNode, Center, OuterRadius, 0, StartAngle, SweepAngle, Color));
+  FCanvas.FillWedge(TLayoutPointF.Create(CenterX, CenterY), OuterRadius, 0, StartAngle, SweepAngle, Color);
 end;
 
 end.
