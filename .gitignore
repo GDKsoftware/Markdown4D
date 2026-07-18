@@ -6,6 +6,7 @@ __history/
 __recovery/
 Win32/
 Win64/
+Win64x/
 Linux64/
 OSX64/
 OSXARM64/
