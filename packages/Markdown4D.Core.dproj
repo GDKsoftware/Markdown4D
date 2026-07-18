@@ -26,13 +26,14 @@
     <PropertyGroup Condition="'$(Base)'!=''">
         <SanitizedProjectName>Markdown4D_Core</SanitizedProjectName>
         <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
-        <DCC_BplOutput>.\bpl\$(Platform)\$(Config)</DCC_BplOutput>
+        <DCC_BplOutput>$(BDSCOMMONDIR)\Bpl</DCC_BplOutput>
         <DCC_DcpOutput>.\dcp\$(Platform)\$(Config)</DCC_DcpOutput>
         <DCC_UnitSearchPath>.\dcp\$(Platform)\$(Config);.\$(Platform)\$(Config);$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;System.Win;Winapi;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
         <DCC_ImageBase>00400000</DCC_ImageBase>
         <GenDll>true</GenDll>
         <GenPackage>true</GenPackage>
+        <DllSuffix>$(Auto)</DllSuffix>
         <RuntimeOnlyPackage>true</RuntimeOnlyPackage>
         <DCC_E>false</DCC_E>
         <DCC_N>false</DCC_N>

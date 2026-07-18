@@ -58,12 +58,6 @@ type
       UrlSchemeSeparator = '://';
       HttpSchemePrefix = 'http://';
       HttpsSchemePrefix = 'https://';
-      DesignSampleMarkdown =
-        '# Markdown4D'#10#10 +
-        'Live **preview** inside the form designer.'#10#10 +
-        '- First item'#10 +
-        '- Second item'#10#10 +
-        'Inline `code` span.';
     var
       FLifetime: IMarkdownViewerLifetime;
       FImages: TMarkdownViewerImageSettings;
@@ -179,6 +173,7 @@ type
 implementation
 
 uses
+  Markdown4D.DesignSample,
   System.Math,
   System.UITypes,
   System.IOUtils,
@@ -369,6 +364,8 @@ procedure TMarkdownViewer.CreateWnd;
 begin
   inherited CreateWnd;
 
+  EnsureDesignSample;
+
   FModel.SetViewport(ClientWidth, ClientHeight);
   ResolvePendingImages;
   UpdateScrollBar;
@@ -414,7 +411,7 @@ begin
     Exit;
 
   FDesignSampleActive := True;
-  FModel.Text := DesignSampleMarkdown;
+  FModel.Text := TMarkdownDesignSample.Markdown;
   UpdateScrollBar;
 end;
 
