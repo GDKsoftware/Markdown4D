@@ -28,7 +28,7 @@ package Markdown4D.Vcl;
 {$DESCRIPTION 'Markdown4D VCL viewer and editor controls (runtime)'}
 {$LIBSUFFIX AUTO}
 {$RUNONLY}
-{$IMPLICITBUILD ON}
+{$IMPLICITBUILD OFF}
 
 requires
   rtl,
