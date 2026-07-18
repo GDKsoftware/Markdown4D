@@ -28,7 +28,7 @@ package Markdown4D.Fmx;
 {$DESCRIPTION 'Markdown4D FMX viewer and editor controls (runtime)'}
 {$LIBSUFFIX AUTO}
 {$RUNONLY}
-{$IMPLICITBUILD ON}
+{$IMPLICITBUILD OFF}
 
 requires
   rtl,

@@ -28,7 +28,7 @@ package Markdown4D.Core;
 {$DESCRIPTION 'Markdown4D Core (framework-neutral parser, AST, layout and theming)'}
 {$LIBSUFFIX AUTO}
 {$RUNONLY}
-{$IMPLICITBUILD ON}
+{$IMPLICITBUILD OFF}
 
 requires
   rtl;
