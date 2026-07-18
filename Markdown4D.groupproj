@@ -41,6 +41,104 @@
             <Default.Personality/>
         </BorlandProject>
     </ProjectExtensions>
-    <Import Project="$(MSBuildBinPath)\Microsoft.Common.targets" Condition="'$(BDS)'==''"/>
-    <Import Project="Targets" Condition="'$(BDS)'!=''"/>
+    <Target Name="Markdown4D_Core">
+        <MSBuild Projects="packages\Markdown4D.Core.dproj"/>
+    </Target>
+    <Target Name="Markdown4D_Core:Clean">
+        <MSBuild Projects="packages\Markdown4D.Core.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="Markdown4D_Core:Make">
+        <MSBuild Projects="packages\Markdown4D.Core.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Markdown4D_Vcl" DependsOnTargets="Markdown4D_Core">
+        <MSBuild Projects="packages\Markdown4D.Vcl.dproj"/>
+    </Target>
+    <Target Name="Markdown4D_Vcl:Clean">
+        <MSBuild Projects="packages\Markdown4D.Vcl.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="Markdown4D_Vcl:Make">
+        <MSBuild Projects="packages\Markdown4D.Vcl.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Markdown4D_Fmx" DependsOnTargets="Markdown4D_Core">
+        <MSBuild Projects="packages\Markdown4D.Fmx.dproj"/>
+    </Target>
+    <Target Name="Markdown4D_Fmx:Clean">
+        <MSBuild Projects="packages\Markdown4D.Fmx.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="Markdown4D_Fmx:Make">
+        <MSBuild Projects="packages\Markdown4D.Fmx.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Markdown4D_Vcl_Design" DependsOnTargets="Markdown4D_Vcl">
+        <MSBuild Projects="packages\Markdown4D.Vcl.Design.dproj"/>
+    </Target>
+    <Target Name="Markdown4D_Vcl_Design:Clean">
+        <MSBuild Projects="packages\Markdown4D.Vcl.Design.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="Markdown4D_Vcl_Design:Make">
+        <MSBuild Projects="packages\Markdown4D.Vcl.Design.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Markdown4D_Fmx_Design" DependsOnTargets="Markdown4D_Fmx">
+        <MSBuild Projects="packages\Markdown4D.Fmx.Design.dproj"/>
+    </Target>
+    <Target Name="Markdown4D_Fmx_Design:Clean">
+        <MSBuild Projects="packages\Markdown4D.Fmx.Design.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="Markdown4D_Fmx_Design:Make">
+        <MSBuild Projects="packages\Markdown4D.Fmx.Design.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Markdown4D_Tests">
+        <MSBuild Projects="Tests\Markdown4D.Tests.dproj"/>
+    </Target>
+    <Target Name="Markdown4D_Tests:Clean">
+        <MSBuild Projects="Tests\Markdown4D.Tests.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="Markdown4D_Tests:Make">
+        <MSBuild Projects="Tests\Markdown4D.Tests.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Markdown4D_Fmx_Tests">
+        <MSBuild Projects="Tests\Markdown4D.Fmx.Tests.dproj"/>
+    </Target>
+    <Target Name="Markdown4D_Fmx_Tests:Clean">
+        <MSBuild Projects="Tests\Markdown4D.Fmx.Tests.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="Markdown4D_Fmx_Tests:Make">
+        <MSBuild Projects="Tests\Markdown4D.Fmx.Tests.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Markdown4D_Benchmarks">
+        <MSBuild Projects="Tests\Markdown4D.Benchmarks.dproj"/>
+    </Target>
+    <Target Name="Markdown4D_Benchmarks:Clean">
+        <MSBuild Projects="Tests\Markdown4D.Benchmarks.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="Markdown4D_Benchmarks:Make">
+        <MSBuild Projects="Tests\Markdown4D.Benchmarks.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="MarkdownPad">
+        <MSBuild Projects="Examples\MarkdownPad\MarkdownPad.dproj"/>
+    </Target>
+    <Target Name="MarkdownPad:Clean">
+        <MSBuild Projects="Examples\MarkdownPad\MarkdownPad.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MarkdownPad:Make">
+        <MSBuild Projects="Examples\MarkdownPad\MarkdownPad.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="LlmChat">
+        <MSBuild Projects="Examples\LlmChat\LlmChat.dproj"/>
+    </Target>
+    <Target Name="LlmChat:Clean">
+        <MSBuild Projects="Examples\LlmChat\LlmChat.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="LlmChat:Make">
+        <MSBuild Projects="Examples\LlmChat\LlmChat.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="Markdown4D_Core;Markdown4D_Vcl;Markdown4D_Fmx;Markdown4D_Vcl_Design;Markdown4D_Fmx_Design;Markdown4D_Tests;Markdown4D_Fmx_Tests;Markdown4D_Benchmarks;MarkdownPad;LlmChat"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="Markdown4D_Core:Clean;Markdown4D_Vcl:Clean;Markdown4D_Fmx:Clean;Markdown4D_Vcl_Design:Clean;Markdown4D_Fmx_Design:Clean;Markdown4D_Tests:Clean;Markdown4D_Fmx_Tests:Clean;Markdown4D_Benchmarks:Clean;MarkdownPad:Clean;LlmChat:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="Markdown4D_Core:Make;Markdown4D_Vcl:Make;Markdown4D_Fmx:Make;Markdown4D_Vcl_Design:Make;Markdown4D_Fmx_Design:Make;Markdown4D_Tests:Make;Markdown4D_Fmx_Tests:Make;Markdown4D_Benchmarks:Make;MarkdownPad:Make;LlmChat:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
 </Project>
