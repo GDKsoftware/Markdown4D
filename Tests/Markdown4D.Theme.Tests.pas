@@ -23,6 +23,7 @@ type
       SingleTolerance = 0.001;
       DefaultContentPaddingValue = 16.0;
       OverrideContentPadding = 42.0;
+      OverrideCodeSpanBackground = $FF7788AA;
 
   public
     [Test]
@@ -42,6 +43,12 @@ type
 
     [Test]
     procedure ContentPadding_SurvivesJsonRoundTrip;
+
+    [Test]
+    procedure CodeSpanBackground_BothPresets_MatchCodeBackgroundTone;
+
+    [Test]
+    procedure CodeSpanBackground_SurvivesJsonRoundTrip;
   end;
 
 implementation
@@ -160,6 +167,46 @@ begin
     try
       Loaded.LoadFromJson(SavedJson);
       Assert.AreEqual(Double(OverrideContentPadding), Double(Loaded.ContentPadding), SingleTolerance);
+    finally
+      Loaded.Free;
+    end;
+  finally
+    Source.Free;
+  end;
+end;
+
+procedure TMarkdownThemeTests.CodeSpanBackground_BothPresets_MatchCodeBackgroundTone;
+begin
+  const Light = TMarkdownTheme.CreateLight;
+  try
+    const LightMatchesTone = (Light.CodeSpanBackgroundColor = Light.CodeBackgroundColor);
+    Assert.IsTrue(LightMatchesTone);
+  finally
+    Light.Free;
+  end;
+
+  const Dark = TMarkdownTheme.CreateDark;
+  try
+    const DarkMatchesTone = (Dark.CodeSpanBackgroundColor = Dark.CodeBackgroundColor);
+    Assert.IsTrue(DarkMatchesTone);
+  finally
+    Dark.Free;
+  end;
+end;
+
+procedure TMarkdownThemeTests.CodeSpanBackground_SurvivesJsonRoundTrip;
+begin
+  const Source = TMarkdownTheme.CreateLight;
+  try
+    Source.CodeSpanBackgroundColor := OverrideCodeSpanBackground;
+    const SavedJson = Source.SaveToJson;
+
+    const Loaded = TMarkdownTheme.CreateDark;
+    try
+      Loaded.LoadFromJson(SavedJson);
+
+      const RoundTrips = (Loaded.CodeSpanBackgroundColor = OverrideCodeSpanBackground);
+      Assert.IsTrue(RoundTrips);
     finally
       Loaded.Free;
     end;

@@ -45,6 +45,7 @@ uses
   Markdown4D.Defines,
   Markdown4D.Parser.Inlines,
   Markdown4D.Highlighter.Interfaces,
+  Markdown4D.Layout.ExtensionCanvas,
   Markdown4D.Layout.Primitives;
 
 type
@@ -62,6 +63,7 @@ type
     Source: string;
     AltText: string;
     Checked: Boolean;
+    CodeSpan: Boolean;
   end;
 
   TInlineStyle = record
@@ -80,6 +82,7 @@ type
   private
     const
       FitEpsilon = 0.01;
+      CodeSpanChipPadding = 3.0;
     var
       FMeasurer: ITextMeasurer;
       FItems: TList<IDisplayItem>;
@@ -88,10 +91,12 @@ type
       FLineTop: Single;
       FAvailableWidth: Single;
       FBaseFont: TMarkdownFontStyle;
+      FCodeSpanBackground: TLayoutColor;
       FCommitted: TList<TInlineAtom>;
       FPending: TList<TInlineAtom>;
       FLineWidth: Single;
       FPendingWidth: Single;
+      FLineBaseline: Single;
       FCursor: Single;
       FGroupOpen: Boolean;
       FGroupText: string;
@@ -100,6 +105,7 @@ type
       FGroupColor: TLayoutColor;
       FGroupNode: IMarkdownNode;
       FGroupStartOffset: Integer;
+      FGroupCodeSpan: Boolean;
     procedure AddWordLike(const Atom: TInlineAtom);
     procedure ForceBreakWord(const Atom: TInlineAtom);
     function MaxCharsFitting(const Text: string; const Font: TMarkdownFontStyle): Integer;
@@ -107,11 +113,13 @@ type
     procedure CommitAtom(const Atom: TInlineAtom);
     procedure FlushLine;
     function LineAdvance: Single;
+    function LineBaseline: Single;
     procedure EmitLineItems(const Advance: Single);
     procedure EmitLineAtom(const Atom: TInlineAtom; const Advance: Single);
     procedure OpenGroup(const Atom: TInlineAtom);
     procedure AppendToGroup(const Atom: TInlineAtom);
     procedure CloseGroup;
+    procedure EmitCodeSpanChip(const RunBounds: TLayoutRectF);
     function SameRunStyle(const Atom: TInlineAtom): Boolean;
     class function FontsEqual(const Left, Right: TMarkdownFontStyle): Boolean;
     procedure EmitImageItem(const Atom: TInlineAtom);
@@ -119,7 +127,8 @@ type
 
   public
     constructor Create(const Measurer: ITextMeasurer; const Items: TList<IDisplayItem>;
-      const Left, Top, AvailableWidth: Single; const BaseFont: TMarkdownFontStyle);
+      const Left, Top, AvailableWidth: Single; const BaseFont: TMarkdownFontStyle;
+      const CodeSpanBackground: TLayoutColor);
     destructor Destroy; override;
     procedure AddAtom(const Atom: TInlineAtom);
     function Finish: Single;
@@ -132,21 +141,15 @@ type
     FWidth: Single;
     FItems: TList<IDisplayItem>;
     FNode: IMarkdownNode;
+    FCanvas: IExtensionCanvas;
     function GetMeasurer: ITextMeasurer;
     function GetTheme: TMarkdownTheme;
     function GetWidth: Single;
+    function GetCanvas: IExtensionCanvas;
 
   public
     constructor Create(const Measurer: ITextMeasurer; const Theme: TMarkdownTheme; const Width: Single;
       const Items: TList<IDisplayItem>; const Node: IMarkdownNode);
-    procedure EmitRectangle(const Bounds: TLayoutRectF; const FillColor, StrokeColor: TLayoutColor;
-      const StrokeWidth: Single);
-    procedure EmitTextRun(const TopLeft: TLayoutPointF; const Text: string; const Font: TMarkdownFontStyle;
-      const Color: TLayoutColor);
-    procedure EmitLine(const StartPoint, EndPoint: TLayoutPointF; const Color: TLayoutColor; const StrokeWidth: Single);
-    procedure EmitWedge(const Center: TLayoutPointF; const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single;
-      const Color: TLayoutColor);
-    procedure EmitPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor);
   end;
 
   TLayoutCommandKind = (Block, Gap, QuoteBar, ListItem);
@@ -395,6 +398,7 @@ end;
 class procedure TMarkdownLayoutEngine.ClearBlockOverrides;
 begin
   TLayoutBlockOverrideRegistry.Clear;
+  TLayoutDocumentProcessorRegistry.Clear;
 end;
 
 class procedure TMarkdownLayoutEngine.ValidateLayoutArguments(const Document: IMarkdownDocument;
@@ -697,7 +701,8 @@ procedure TLayoutWorker.LayoutInlineBlock(const Container: IMarkdownNode; const 
 begin
   const Atoms = CollectInlineAtoms(Container, BaseFont, TextColor);
   try
-    const Wrapper = TInlineWrapper.Create(FMeasurer, FItems, X, FCurrentY, ContentRight - X, BaseFont);
+    const Wrapper = TInlineWrapper.Create(FMeasurer, FItems, X, FCurrentY, ContentRight - X, BaseFont,
+      FTheme.CodeSpanBackgroundColor);
     try
       for var Atom in Atoms do
       begin
@@ -751,9 +756,8 @@ begin
 end;
 
 function TLayoutWorker.EmitHighlightedCodeLine(const Command: TLayoutCommand;
-                                               const Highlighter: IMarkdownSyntaxHighlighter; const LineText: string;
-                                               const Top, LineHeight: Single;
-                                               const LineStart, State: Integer): Integer;
+  const Highlighter: IMarkdownSyntaxHighlighter; const LineText: string; const Top, LineHeight: Single;
+  const LineStart, State: Integer): Integer;
 begin
   const Line = Highlighter.TokenizeLine(LineText, State);
   Result := Line.NextState;
@@ -772,7 +776,7 @@ begin
 end;
 
 procedure TLayoutWorker.EmitPlainCodeLine(const Command: TLayoutCommand; const LineText: string;
-                                          const Top, LineHeight: Single; const LineStart: Integer);
+  const Top, LineHeight: Single; const LineStart: Integer);
 begin
   const Padding = FTheme.CodePadding;
   const Size = FMeasurer.MeasureText(LineText, FTheme.CodeFont);
@@ -952,7 +956,7 @@ begin
   const FirstItemIndex = FItems.Count;
 
   const Wrapper = TInlineWrapper.Create(FMeasurer, FItems, CellLeft + Padding, RowTop, ColumnWidth - 2 * Padding,
-    RowFont);
+    RowFont, FTheme.CodeSpanBackgroundColor);
   try
     for var Atom in Atoms do
     begin
@@ -1158,7 +1162,15 @@ begin
   CodeStyle.Font.Strikeout := Style.Font.Strikeout;
   CodeStyle.Color := FTheme.CodeTextColor;
 
+  const FirstAtomIndex = Atoms.Count;
   AppendTextAtoms(Atoms, (Child as IMarkdownText).Literal, CodeStyle, Child);
+
+  for var Index := FirstAtomIndex to Atoms.Count - 1 do
+  begin
+    var Atom := Atoms[Index];
+    Atom.CodeSpan := True;
+    Atoms[Index] := Atom;
+  end;
 end;
 
 procedure TLayoutWorker.AppendHardBreakAtom(const Atoms: TList<TInlineAtom>);
@@ -1327,64 +1339,17 @@ begin
   Result := FWidth;
 end;
 
-procedure TLayoutBlockContext.EmitRectangle(const Bounds: TLayoutRectF; const FillColor, StrokeColor: TLayoutColor;
-  const StrokeWidth: Single);
+function TLayoutBlockContext.GetCanvas: IExtensionCanvas;
 begin
-  FItems.Add(TDisplayRectangle.Create(Bounds, FNode, FillColor, StrokeColor, StrokeWidth));
-end;
+  if FCanvas = nil then
+    FCanvas := TDisplayListExtensionCanvas.Create(FMeasurer, FItems, FNode);
 
-procedure TLayoutBlockContext.EmitTextRun(const TopLeft: TLayoutPointF; const Text: string;
-  const Font: TMarkdownFontStyle; const Color: TLayoutColor);
-begin
-  const Size = FMeasurer.MeasureText(Text, Font);
-  const Bounds = TLayoutRectF.CreateFromOrigin(TopLeft, Size);
-
-  FItems.Add(TDisplayTextRun.Create(Bounds, FNode, Text, Font, Color, FMeasurer.Baseline(Font), 0));
-end;
-
-procedure TLayoutBlockContext.EmitLine(const StartPoint, EndPoint: TLayoutPointF; const Color: TLayoutColor;
-  const StrokeWidth: Single);
-begin
-  const Bounds = TLayoutRectF.Create(Min(StartPoint.X, EndPoint.X), Min(StartPoint.Y, EndPoint.Y),
-    Max(StartPoint.X, EndPoint.X), Max(StartPoint.Y, EndPoint.Y));
-
-  FItems.Add(TDisplayLine.Create(Bounds, FNode, StartPoint, EndPoint, Color, StrokeWidth));
-end;
-
-procedure TLayoutBlockContext.EmitWedge(const Center: TLayoutPointF;
-  const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single; const Color: TLayoutColor);
-begin
-  const Bounds = TLayoutRectF.Create(Center.X - OuterRadius, Center.Y - OuterRadius, Center.X + OuterRadius,
-    Center.Y + OuterRadius);
-
-  FItems.Add(TDisplayWedge.Create(Bounds, FNode, Center, OuterRadius, InnerRadius, StartAngle, SweepAngle, Color));
-end;
-
-procedure TLayoutBlockContext.EmitPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor);
-begin
-  if Length(Points) = 0 then
-    Exit;
-
-  var Left := Points[0].X;
-  var Top := Points[0].Y;
-  var Right := Points[0].X;
-  var Bottom := Points[0].Y;
-
-  for var Index := 1 to High(Points) do
-  begin
-    Left := Min(Left, Points[Index].X);
-    Top := Min(Top, Points[Index].Y);
-    Right := Max(Right, Points[Index].X);
-    Bottom := Max(Bottom, Points[Index].Y);
-  end;
-
-  const Bounds = TLayoutRectF.Create(Left, Top, Right, Bottom);
-
-  FItems.Add(TDisplayPolygon.Create(Bounds, FNode, Points, Color));
+  Result := FCanvas;
 end;
 
 constructor TInlineWrapper.Create(const Measurer: ITextMeasurer; const Items: TList<IDisplayItem>;
-  const Left, Top, AvailableWidth: Single; const BaseFont: TMarkdownFontStyle);
+  const Left, Top, AvailableWidth: Single; const BaseFont: TMarkdownFontStyle;
+  const CodeSpanBackground: TLayoutColor);
 begin
   inherited Create;
 
@@ -1395,6 +1360,7 @@ begin
   FLineTop := Top;
   FAvailableWidth := AvailableWidth;
   FBaseFont := BaseFont;
+  FCodeSpanBackground := CodeSpanBackground;
   FCommitted := TList<TInlineAtom>.Create;
   FPending := TList<TInlineAtom>.Create;
 end;
@@ -1542,10 +1508,26 @@ begin
     Result := FMeasurer.LineHeight(FBaseFont);
 end;
 
+function TInlineWrapper.LineBaseline: Single;
+begin
+  Result := 0;
+
+  for var Atom in FCommitted do
+  begin
+    const IsText = (Atom.Kind = TInlineAtomKind.WordToken) or (Atom.Kind = TInlineAtomKind.SpaceToken);
+    if IsText then
+      Result := Max(Result, FMeasurer.Baseline(Atom.Font));
+  end;
+
+  if Result = 0 then
+    Result := FMeasurer.Baseline(FBaseFont);
+end;
+
 procedure TInlineWrapper.EmitLineItems(const Advance: Single);
 begin
   FCursor := FLeft;
   FGroupOpen := False;
+  FLineBaseline := LineBaseline;
 
   for var Index := 0 to FCommitted.Count - 1 do
   begin
@@ -1594,6 +1576,7 @@ begin
   FGroupColor := Atom.Color;
   FGroupNode := Atom.Node;
   FGroupStartOffset := Atom.StartOffset;
+  FGroupCodeSpan := Atom.CodeSpan;
 end;
 
 procedure TInlineWrapper.AppendToGroup(const Atom: TInlineAtom);
@@ -1607,18 +1590,33 @@ begin
   if not FGroupOpen then
     Exit;
 
+  const RunBaseline = FMeasurer.Baseline(FGroupFont);
   const RunHeight = FMeasurer.LineHeight(FGroupFont);
-  const Bounds = TLayoutRectF.Create(FCursor, FLineTop, FCursor + FGroupWidth, FLineTop + RunHeight);
-  FItems.Add(TDisplayTextRun.Create(Bounds, FGroupNode, FGroupText, FGroupFont, FGroupColor,
-    FMeasurer.Baseline(FGroupFont), FGroupStartOffset));
+  const Top = FLineTop + (FLineBaseline - RunBaseline);
+  const Bounds = TLayoutRectF.Create(FCursor, Top, FCursor + FGroupWidth, Top + RunHeight);
+
+  if FGroupCodeSpan then
+    EmitCodeSpanChip(Bounds);
+
+  FItems.Add(TDisplayTextRun.Create(Bounds, FGroupNode, FGroupText, FGroupFont, FGroupColor, RunBaseline,
+    FGroupStartOffset));
 
   FCursor := FCursor + FGroupWidth;
   FGroupOpen := False;
 end;
 
+procedure TInlineWrapper.EmitCodeSpanChip(const RunBounds: TLayoutRectF);
+begin
+  const ChipBounds = TLayoutRectF.Create(RunBounds.Left - CodeSpanChipPadding, RunBounds.Top,
+    RunBounds.Right + CodeSpanChipPadding, RunBounds.Bottom);
+
+  FItems.Add(TDisplayRectangle.Create(ChipBounds, FGroupNode, FCodeSpanBackground, 0, 0));
+end;
+
 function TInlineWrapper.SameRunStyle(const Atom: TInlineAtom): Boolean;
 begin
-  Result := FontsEqual(FGroupFont, Atom.Font) and (FGroupColor = Atom.Color) and (FGroupNode = Atom.Node);
+  Result := FontsEqual(FGroupFont, Atom.Font) and (FGroupColor = Atom.Color) and (FGroupNode = Atom.Node) and
+    (FGroupCodeSpan = Atom.CodeSpan);
 end;
 
 class function TInlineWrapper.FontsEqual(const Left, Right: TMarkdownFontStyle): Boolean;

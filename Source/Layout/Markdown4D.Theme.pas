@@ -33,6 +33,7 @@ type
         LinkColor: TLayoutColor;
         CodeTextColor: TLayoutColor;
         CodeBackgroundColor: TLayoutColor;
+        CodeSpanBackgroundColor: TLayoutColor;
         BlockQuoteBarColor: TLayoutColor;
         BlockQuoteTextColor: TLayoutColor;
         TableHeaderBackgroundColor: TLayoutColor;
@@ -106,6 +107,7 @@ type
       LinkColorKey = 'linkColor';
       CodeTextColorKey = 'codeTextColor';
       CodeBackgroundColorKey = 'codeBackgroundColor';
+      CodeSpanBackgroundColorKey = 'codeSpanBackground';
       BlockQuoteBarColorKey = 'blockQuoteBarColor';
       BlockQuoteTextColorKey = 'blockQuoteTextColor';
       TableHeaderBackgroundColorKey = 'tableHeaderBackgroundColor';
@@ -147,6 +149,7 @@ type
       FLinkColor: TLayoutColor;
       FCodeTextColor: TLayoutColor;
       FCodeBackgroundColor: TLayoutColor;
+      FCodeSpanBackgroundColor: TLayoutColor;
       FBlockQuoteBarColor: TLayoutColor;
       FBlockQuoteTextColor: TLayoutColor;
       FTableHeaderBackgroundColor: TLayoutColor;
@@ -217,6 +220,7 @@ type
     property LinkColor: TLayoutColor read FLinkColor write FLinkColor;
     property CodeTextColor: TLayoutColor read FCodeTextColor write FCodeTextColor;
     property CodeBackgroundColor: TLayoutColor read FCodeBackgroundColor write FCodeBackgroundColor;
+    property CodeSpanBackgroundColor: TLayoutColor read FCodeSpanBackgroundColor write FCodeSpanBackgroundColor;
     property BlockQuoteBarColor: TLayoutColor read FBlockQuoteBarColor write FBlockQuoteBarColor;
     property BlockQuoteTextColor: TLayoutColor read FBlockQuoteTextColor write FBlockQuoteTextColor;
     property TableHeaderBackgroundColor: TLayoutColor read FTableHeaderBackgroundColor write FTableHeaderBackgroundColor;
@@ -273,6 +277,7 @@ begin
   Result.FLinkColor := $FF4493F8;
   Result.FCodeTextColor := DarkInkColor;
   Result.FCodeBackgroundColor := DarkSurfaceColor;
+  Result.FCodeSpanBackgroundColor := DarkSurfaceColor;
   Result.FBlockQuoteBarColor := DarkBorderColor;
   Result.FBlockQuoteTextColor := $FF9198A1;
   Result.FTableHeaderBackgroundColor := DarkSurfaceColor;
@@ -319,6 +324,7 @@ begin
   FLinkColor := $FF0969DA;
   FCodeTextColor := LightInkColor;
   FCodeBackgroundColor := LightSurfaceColor;
+  FCodeSpanBackgroundColor := LightSurfaceColor;
   FBlockQuoteBarColor := LightBorderColor;
   FBlockQuoteTextColor := $FF59636E;
   FTableHeaderBackgroundColor := LightSurfaceColor;
@@ -356,6 +362,7 @@ begin
     AddColorPair(Root, LinkColorKey, FLinkColor);
     AddColorPair(Root, CodeTextColorKey, FCodeTextColor);
     AddColorPair(Root, CodeBackgroundColorKey, FCodeBackgroundColor);
+    AddColorPair(Root, CodeSpanBackgroundColorKey, FCodeSpanBackgroundColor);
     AddColorPair(Root, BlockQuoteBarColorKey, FBlockQuoteBarColor);
     AddColorPair(Root, BlockQuoteTextColorKey, FBlockQuoteTextColor);
     AddColorPair(Root, TableHeaderBackgroundColorKey, FTableHeaderBackgroundColor);
@@ -485,6 +492,7 @@ begin
   Result.LinkColor := ReadColor(Root, LinkColorKey);
   Result.CodeTextColor := ReadColor(Root, CodeTextColorKey);
   Result.CodeBackgroundColor := ReadColor(Root, CodeBackgroundColorKey);
+  Result.CodeSpanBackgroundColor := ReadColor(Root, CodeSpanBackgroundColorKey);
   Result.BlockQuoteBarColor := ReadColor(Root, BlockQuoteBarColorKey);
   Result.BlockQuoteTextColor := ReadColor(Root, BlockQuoteTextColorKey);
   Result.TableHeaderBackgroundColor := ReadColor(Root, TableHeaderBackgroundColorKey);
@@ -526,6 +534,7 @@ begin
   FLinkColor := Data.LinkColor;
   FCodeTextColor := Data.CodeTextColor;
   FCodeBackgroundColor := Data.CodeBackgroundColor;
+  FCodeSpanBackgroundColor := Data.CodeSpanBackgroundColor;
   FBlockQuoteBarColor := Data.BlockQuoteBarColor;
   FBlockQuoteTextColor := Data.BlockQuoteTextColor;
   FTableHeaderBackgroundColor := Data.TableHeaderBackgroundColor;
