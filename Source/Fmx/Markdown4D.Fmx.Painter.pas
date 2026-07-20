@@ -42,7 +42,6 @@ type
       FImageResolver: TMarkdownFmxImageResolver;
       FBrokenImageQuery: TMarkdownFmxBrokenImageQuery;
     function ResolveFamilyName(const FamilyName: string): string;
-    class function FontStylesOf(const Font: TMarkdownFontStyle): TFontStyles;
     function FontKey(const Font: TMarkdownFontStyle): string;
     procedure ConfigureLayout(const Font: TMarkdownFontStyle; const Text: string);
     procedure ApplyCanvasFont(const Font: TMarkdownFontStyle);
@@ -50,7 +49,6 @@ type
     procedure DrawImagePlaceholder(const Bounds: TLayoutRectF);
     procedure DrawBrokenImagePlaceholder(const Bounds: TLayoutRectF);
     class function ToRectF(const Bounds: TLayoutRectF): TRectF;
-    class function AlphaOf(const Color: TLayoutColor): Byte;
     class function OpacityOf(const Color: TLayoutColor): Single;
 
   public
@@ -81,7 +79,8 @@ implementation
 
 uses
   System.SysUtils,
-  Markdown4D.Defines;
+  Markdown4D.Defines,
+  Markdown4D.Viewer.Shared;
 
 constructor TMarkdownFmxPainter.Create(const Canvas: TCanvas; const PixelsPerInch: Integer);
 begin
@@ -138,7 +137,7 @@ begin
   try
     FLayout.Font.Family := ResolveFamilyName(Font.FamilyName);
     FLayout.Font.Size := Font.Size;
-    FLayout.Font.Style := FontStylesOf(Font);
+    FLayout.Font.Style := TMarkdownViewerShared.FontStylesOf(Font);
     FLayout.WordWrap := False;
     FLayout.MaxSize := TPointF.Create(LargeLayoutExtent, LargeLayoutExtent);
     FLayout.Text := Text;
@@ -163,7 +162,7 @@ end;
 
 procedure TMarkdownFmxPainter.FillRect(const Bounds: TLayoutRectF; const Color: TLayoutColor);
 begin
-  if AlphaOf(Color) = 0 then
+  if TMarkdownViewerShared.AlphaOf(Color) = 0 then
     Exit;
 
   FCanvas.Fill.Kind := TBrushKind.Solid;
@@ -174,7 +173,7 @@ end;
 procedure TMarkdownFmxPainter.DrawRect(const Bounds: TLayoutRectF; const Color: TLayoutColor;
   const StrokeWidth: Single);
 begin
-  const IsInvisible = (AlphaOf(Color) = 0) or (StrokeWidth <= 0);
+  const IsInvisible = (TMarkdownViewerShared.AlphaOf(Color) = 0) or (StrokeWidth <= 0);
   if IsInvisible then
     Exit;
 
@@ -187,7 +186,7 @@ end;
 procedure TMarkdownFmxPainter.DrawLine(const StartPoint, EndPoint: TLayoutPointF; const Color: TLayoutColor;
   const StrokeWidth: Single);
 begin
-  if AlphaOf(Color) = 0 then
+  if TMarkdownViewerShared.AlphaOf(Color) = 0 then
     Exit;
 
   FCanvas.Stroke.Kind := TBrushKind.Solid;
@@ -246,7 +245,7 @@ end;
 procedure TMarkdownFmxPainter.FillWedge(const Center: TLayoutPointF;
   const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single; const Color: TLayoutColor);
 begin
-  if (AlphaOf(Color) = 0) or (OuterRadius <= 0) or (SweepAngle = 0) then
+  if (TMarkdownViewerShared.AlphaOf(Color) = 0) or (OuterRadius <= 0) or (SweepAngle = 0) then
     Exit;
 
   const CenterPoint = TPointF.Create(Center.X, Center.Y);
@@ -276,7 +275,7 @@ end;
 
 procedure TMarkdownFmxPainter.FillPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor);
 begin
-  if (AlphaOf(Color) = 0) or (Length(Points) < 3) then
+  if (TMarkdownViewerShared.AlphaOf(Color) = 0) or (Length(Points) < 3) then
     Exit;
 
   const Path = TPathData.Create;
@@ -324,7 +323,7 @@ begin
 
   FCanvas.Font.Family := ResolveFamilyName(Font.FamilyName);
   FCanvas.Font.Size := Font.Size;
-  FCanvas.Font.Style := FontStylesOf(Font);
+  FCanvas.Font.Style := TMarkdownViewerShared.FontStylesOf(Font);
 
   FAppliedFontKey := Key;
   FHasAppliedFont := True;
@@ -332,14 +331,8 @@ end;
 
 function TMarkdownFmxPainter.ResolveFamilyName(const FamilyName: string): string;
 begin
-  if SameText(FamilyName, MonospaceFamilyName) then
-    Exit(MonospaceFallbackFamilyName);
-
-  if SameText(FamilyName, SansSerifFamilyName) then
-    Exit(DefaultFallbackFamilyName);
-
-  if SameText(FamilyName, SerifFamilyName) then
-    Exit(SerifFallbackFamilyName);
+  if TMarkdownViewerShared.TryResolveGenericFamily(FamilyName, Result) then
+    Exit;
 
   if FamilyName = '' then
     Exit(DefaultFallbackFamilyName);
@@ -347,22 +340,10 @@ begin
   Result := FamilyName;
 end;
 
-class function TMarkdownFmxPainter.FontStylesOf(const Font: TMarkdownFontStyle): TFontStyles;
-begin
-  Result := [];
-  if Font.Bold then
-    Include(Result, TFontStyle.fsBold);
-  if Font.Italic then
-    Include(Result, TFontStyle.fsItalic);
-  if Font.Underline then
-    Include(Result, TFontStyle.fsUnderline);
-  if Font.Strikeout then
-    Include(Result, TFontStyle.fsStrikeOut);
-end;
-
 function TMarkdownFmxPainter.FontKey(const Font: TMarkdownFontStyle): string;
 begin
-  Result := Format('%s|%.2f|%d', [ResolveFamilyName(Font.FamilyName), Font.Size, Byte(FontStylesOf(Font))]);
+  Result := Format('%s|%.2f|%d', [ResolveFamilyName(Font.FamilyName), Font.Size,
+    Byte(TMarkdownViewerShared.FontStylesOf(Font))]);
 end;
 
 class function TMarkdownFmxPainter.ToRectF(const Bounds: TLayoutRectF): TRectF;
@@ -370,14 +351,9 @@ begin
   Result := TRectF.Create(Bounds.Left, Bounds.Top, Bounds.Right, Bounds.Bottom);
 end;
 
-class function TMarkdownFmxPainter.AlphaOf(const Color: TLayoutColor): Byte;
-begin
-  Result := Color shr 24;
-end;
-
 class function TMarkdownFmxPainter.OpacityOf(const Color: TLayoutColor): Single;
 begin
-  Result := AlphaOf(Color) / ColorChannelMax;
+  Result := TMarkdownViewerShared.AlphaOf(Color) / ColorChannelMax;
 end;
 
 end.

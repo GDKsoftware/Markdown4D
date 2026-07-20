@@ -71,7 +71,6 @@ type
       FOnLinkHover: TMarkdownLinkHoverEvent;
       FOnResolveImage: TMarkdownResolveImageEvent;
       FOnScroll: TNotifyEvent;
-    procedure RegisterDefaultHighlighters;
     function InvokeOnMainThread(const Action: TThreadProcedure): Boolean;
     procedure HandleFlushTimer(Sender: TObject);
     procedure ResolvePendingImages;
@@ -83,8 +82,6 @@ type
     procedure ApplyLoadedPicture(const Source: string; const Picture: TPicture);
     procedure ApplyFailedImage(const Source: string);
     procedure StoreLoadedImage(const Source: string; const Graphic: TGraphic);
-    function TryResolveImageUrl(const Source: string; out Url: string): Boolean;
-    class function IsHttpUrl(const Url: string): Boolean;
     function ResolveLoadedImage(const Source: string): TGraphic;
     function IsImageBroken(const Source: string): Boolean;
     procedure RenderToBuffer;
@@ -171,15 +168,10 @@ uses
   Vcl.Imaging.jpeg,
   Vcl.Imaging.GIFImg,
   Markdown4D.Ast.Interfaces,
-  Markdown4D.Defines,
-  Markdown4D.Highlighter.Interfaces,
-  Markdown4D.Highlighter.Pascal,
-  Markdown4D.Highlighter.Sql,
-  Markdown4D.Highlighter.Json,
-  Markdown4D.Highlighter.Xml,
   Markdown4D.Layout.Defaults,
   Markdown4D.Layout.HitTest,
-  Markdown4D.Layout.Renderer;
+  Markdown4D.Layout.Renderer,
+  Markdown4D.Viewer.Shared;
 
 procedure TMarkdownViewerImageSettings.Assign(Source: TPersistent);
 begin
@@ -220,24 +212,7 @@ begin
   FFlushTimer.Interval := FlushTimerIntervalMilliseconds;
   FFlushTimer.OnTimer := HandleFlushTimer;
 
-  RegisterDefaultHighlighters;
-end;
-
-procedure TMarkdownViewer.RegisterDefaultHighlighters;
-begin
-  var Existing: IMarkdownSyntaxHighlighter;
-
-  if not THighlighterRegistry.TryGet(PascalLanguageName, Existing) then
-    THighlighterRegistry.Register(PascalLanguageName, TPascalSyntaxHighlighter.Create);
-
-  if not THighlighterRegistry.TryGet(SqlLanguageName, Existing) then
-    THighlighterRegistry.Register(SqlLanguageName, TSqlSyntaxHighlighter.Create);
-
-  if not THighlighterRegistry.TryGet(JsonLanguageName, Existing) then
-    THighlighterRegistry.Register(JsonLanguageName, TJsonSyntaxHighlighter.Create);
-
-  if not THighlighterRegistry.TryGet(XmlLanguageName, Existing) then
-    THighlighterRegistry.Register(XmlLanguageName, TXmlSyntaxHighlighter.Create);
+  TMarkdownViewerShared.RegisterDefaultHighlighters;
 end;
 
 function TMarkdownViewer.InvokeOnMainThread(const Action: TThreadProcedure): Boolean;
@@ -678,7 +653,7 @@ begin
     Exit;
 
   var Url: string;
-  if not TryResolveImageUrl(Source, Url) then
+  if not TMarkdownViewerShared.TryResolveImageUrl(Source, FImages.BaseUrl, FDocumentFolder, Url) then
   begin
     ApplyFailedImage(Source);
     Exit;
@@ -687,7 +662,7 @@ begin
   if TryResolveImageThroughEvent(Source, Url) then
     Exit;
 
-  if IsHttpUrl(Url) then
+  if TMarkdownViewerShared.IsHttpUrl(Url) then
   begin
     FRequestedImageSources.Add(Source, True);
     FImageDownloader.Download(Source, Url);
@@ -807,38 +782,6 @@ begin
   end;
 
   FLoadedImages.AddOrSetValue(Source, Clone);
-end;
-
-function TMarkdownViewer.TryResolveImageUrl(const Source: string; out Url: string): Boolean;
-begin
-  Url := Source;
-  try
-    if Source.Contains(UrlSchemeSeparator) then
-      Exit(True);
-
-    if FImages.BaseUrl <> '' then
-    begin
-      if FImages.BaseUrl.Contains(UrlSchemeSeparator) then
-        Url := FImages.BaseUrl + Source
-      else
-        Url := TPath.Combine(FImages.BaseUrl, Source);
-      Exit(True);
-    end;
-
-    const UsesDocumentFolder = (FDocumentFolder <> '') and not TPath.IsPathRooted(Source);
-    if UsesDocumentFolder then
-      Url := TPath.Combine(FDocumentFolder, Source);
-
-    Result := True;
-  except
-    on Exception do
-      Result := False;
-  end;
-end;
-
-class function TMarkdownViewer.IsHttpUrl(const Url: string): Boolean;
-begin
-  Result := Url.StartsWith(HttpSchemePrefix, True) or Url.StartsWith(HttpsSchemePrefix, True);
 end;
 
 function TMarkdownViewer.GetContentHeight: Integer;

@@ -137,6 +137,7 @@
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.ImageDownloader.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.Lifetime.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.Model.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.Shared.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

@@ -89,6 +89,7 @@ contains
   Markdown4D.Theme in '..\Source\Layout\Markdown4D.Theme.pas',
   Markdown4D.Viewer.ImageDownloader in '..\Source\Layout\Markdown4D.Viewer.ImageDownloader.pas',
   Markdown4D.Viewer.Lifetime in '..\Source\Layout\Markdown4D.Viewer.Lifetime.pas',
-  Markdown4D.Viewer.Model in '..\Source\Layout\Markdown4D.Viewer.Model.pas';
+  Markdown4D.Viewer.Model in '..\Source\Layout\Markdown4D.Viewer.Model.pas',
+  Markdown4D.Viewer.Shared in '..\Source\Layout\Markdown4D.Viewer.Shared.pas';
 
 end.
