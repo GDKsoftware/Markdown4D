@@ -16,7 +16,7 @@ type
   public
     constructor Create;
     destructor Destroy; override;
-    procedure Add(const Kind: TSyntaxTokenKind; const Start, Length: Integer);
+    procedure Add(const Kind: TSyntaxTokenKind; const StartIndex, TokenLength: Integer);
     function ToLine(const NextState: Integer): TSyntaxLine;
   end;
 
@@ -36,9 +36,9 @@ begin
   inherited Destroy;
 end;
 
-procedure TSyntaxTokenBuilder.Add(const Kind: TSyntaxTokenKind; const Start, Length: Integer);
+procedure TSyntaxTokenBuilder.Add(const Kind: TSyntaxTokenKind; const StartIndex, TokenLength: Integer);
 begin
-  const HasContent = (Length > 0);
+  const HasContent = (TokenLength > 0);
   if not HasContent then
     Exit;
 
@@ -47,16 +47,16 @@ begin
   begin
     var Last := FTokens[LastIndex];
     const CanMerge = (Kind = TSyntaxTokenKind.PlainText) and (Last.Kind = TSyntaxTokenKind.PlainText) and
-      (Last.Start + Last.Length = Start);
+      (Last.Start + Last.Length = StartIndex);
     if CanMerge then
     begin
-      Last.Length := Last.Length + Length;
+      Last.Length := Last.Length + TokenLength;
       FTokens[LastIndex] := Last;
       Exit;
     end;
   end;
 
-  FTokens.Add(TSyntaxToken.Create(Kind, Start, Length));
+  FTokens.Add(TSyntaxToken.Create(Kind, StartIndex, TokenLength));
 end;
 
 function TSyntaxTokenBuilder.ToLine(const NextState: Integer): TSyntaxLine;

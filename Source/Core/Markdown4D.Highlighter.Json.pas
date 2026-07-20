@@ -37,6 +37,9 @@ type
       Letters = ['A'..'Z', 'a'..'z'];
       SignCharacters = ['+', '-'];
       WhitespaceCharacters = [' ', #9];
+      MinusSign = '-';
+      DecimalPoint = '.';
+      ExponentIndicators = ['e', 'E'];
     var
       FLine: string;
       FState: Integer;
@@ -105,7 +108,7 @@ begin
   const Current = FLine[FPosition];
 
   const StartsNumber = CharInSet(Current, Digits) or
-    ((Current = '-') and CharInSet(CharAt(FPosition + 1), Digits));
+    ((Current = MinusSign) and CharInSet(CharAt(FPosition + 1), Digits));
 
   if Current = QuoteCharacter then
     ScanString
@@ -193,7 +196,7 @@ procedure TJsonLineScanner.ScanNumber;
 begin
   const Start = FPosition;
 
-  if FLine[FPosition] = '-' then
+  if FLine[FPosition] = MinusSign then
     Inc(FPosition);
 
   while (FPosition <= Length(FLine)) and CharInSet(FLine[FPosition], Digits) do
@@ -201,7 +204,7 @@ begin
     Inc(FPosition);
   end;
 
-  const HasFraction = (CharAt(FPosition) = '.') and CharInSet(CharAt(FPosition + 1), Digits);
+  const HasFraction = (CharAt(FPosition) = DecimalPoint) and CharInSet(CharAt(FPosition + 1), Digits);
   if HasFraction then
   begin
     Inc(FPosition);
@@ -214,7 +217,7 @@ begin
 
   const HasSignedExponent = CharInSet(CharAt(FPosition + 1), SignCharacters) and
     CharInSet(CharAt(FPosition + 2), Digits);
-  const HasExponent = CharInSet(CharAt(FPosition), ['e', 'E']) and
+  const HasExponent = CharInSet(CharAt(FPosition), ExponentIndicators) and
     (CharInSet(CharAt(FPosition + 1), Digits) or HasSignedExponent);
   if HasExponent then
   begin
