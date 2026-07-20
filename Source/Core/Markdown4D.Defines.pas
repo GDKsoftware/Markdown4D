@@ -24,6 +24,7 @@ const
   CloseBracket = ']';
   OpenParen = '(';
   CloseParen = ')';
+  ExclamationMark = '!';
 
   // HTML-significant characters
   Ampersand = '&';

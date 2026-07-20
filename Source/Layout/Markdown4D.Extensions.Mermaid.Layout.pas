@@ -48,6 +48,14 @@ type
     Ordinal: Integer;
   end;
 
+  TMermaidLayeredMetrics = record
+    RankMainStart: TArray<Single>;
+    RankMainSize: TArray<Single>;
+    RankCrossWidth: TArray<Single>;
+    TotalMain: Single;
+    TotalCross: Single;
+  end;
+
   TMermaidBuilderBase = class
   protected
     const
@@ -116,9 +124,22 @@ type
     procedure BuildAdjacency;
     function TryRank(out MaxRank: Integer): Boolean;
     procedure LayoutLayered(const MaxRank: Integer);
+    function BuildRankMembers(const Members: TObjectList<TList<Integer>>;
+      const MaxRank: Integer): TArray<TList<Integer>>;
+    function ComputeRankMainSizes(const Members: TArray<TList<Integer>>; const MaxRank: Integer;
+      const Horizontal: Boolean): TArray<Single>;
+    function ComputeRankMainStarts(const RankMainSize: TArray<Single>; const MaxRank: Integer;
+      out TotalMain: Single): TArray<Single>;
+    function ComputeRankCrossWidths(const Members: TArray<TList<Integer>>; const MaxRank: Integer;
+      const Horizontal: Boolean; out TotalCross: Single): TArray<Single>;
+    procedure PlaceLayeredNodes(const Members: TArray<TList<Integer>>; const MaxRank: Integer;
+      const Horizontal: Boolean; const Metrics: TMermaidLayeredMetrics);
     procedure OrderRanks(const Members: TArray<TList<Integer>>; const MaxRank: Integer);
     procedure SortRankByAdjacent(const Members: TArray<TList<Integer>>; const Rank, ReferenceRank: Integer;
       const UsePredecessors: Boolean);
+    function BuildReferencePositions(const Reference: TList<Integer>): TArray<Integer>;
+    function ComputeBarycenterKeys(const Current: TList<Integer>; const ReferencePosition: TArray<Integer>;
+      const UsePredecessors: Boolean): TArray<TMermaidBaryKey>;
     procedure LayoutGrid;
     procedure EmitNodes;
     procedure EmitNodeShape(const Index: Integer);
@@ -679,125 +700,150 @@ end;
 
 procedure TMermaidFlowchartBuilder.LayoutLayered(const MaxRank: Integer);
 begin
-  const NodeCount = FModel.NodeCount;
   const Horizontal = IsHorizontal;
 
   const Members = TObjectList<TList<Integer>>.Create(True);
   try
-    for var Rank := 0 to MaxRank do
-    begin
-      Members.Add(TList<Integer>.Create);
-    end;
-
-    for var Index := 0 to NodeCount - 1 do
-    begin
-      Members[FBoxes[Index].Rank].Add(Index);
-    end;
-
-    var MemberArray: TArray<TList<Integer>>;
-    SetLength(MemberArray, MaxRank + 1);
-    for var Rank := 0 to MaxRank do
-    begin
-      MemberArray[Rank] := Members[Rank];
-    end;
+    const MemberArray = BuildRankMembers(Members, MaxRank);
 
     OrderRanks(MemberArray, MaxRank);
 
-    var RankMainSize: TArray<Single>;
-    SetLength(RankMainSize, MaxRank + 1);
-    for var Rank := 0 to MaxRank do
-    begin
-      var Value := 0.0;
-      for var NodeIndex in MemberArray[Rank] do
-      begin
-        Value := Max(Value, MainSize(FBoxes[NodeIndex], Horizontal));
-      end;
-      RankMainSize[Rank] := Value;
-    end;
+    var Metrics: TMermaidLayeredMetrics;
+    Metrics.RankMainSize := ComputeRankMainSizes(MemberArray, MaxRank, Horizontal);
+    Metrics.RankMainStart := ComputeRankMainStarts(Metrics.RankMainSize, MaxRank, Metrics.TotalMain);
+    Metrics.RankCrossWidth := ComputeRankCrossWidths(MemberArray, MaxRank, Horizontal, Metrics.TotalCross);
 
-    var RankMainStart: TArray<Single>;
-    SetLength(RankMainStart, MaxRank + 1);
-    var MainCursor := 0.0;
-    for var Rank := 0 to MaxRank do
-    begin
-      RankMainStart[Rank] := MainCursor;
-      MainCursor := MainCursor + RankMainSize[Rank] + RankGap;
-    end;
-    const TotalMain = MainCursor - RankGap;
-
-    if IsReversed then
-    begin
-      for var Rank := 0 to MaxRank do
-      begin
-        RankMainStart[Rank] := TotalMain - RankMainStart[Rank] - RankMainSize[Rank];
-      end;
-    end;
-
-    var RankCrossWidth: TArray<Single>;
-    SetLength(RankCrossWidth, MaxRank + 1);
-    var TotalCross := 0.0;
-    for var Rank := 0 to MaxRank do
-    begin
-      var Width := 0.0;
-      for var NodeIndex in MemberArray[Rank] do
-      begin
-        Width := Width + CrossSize(FBoxes[NodeIndex], Horizontal) + SiblingGap;
-      end;
-      if Width > 0 then
-        Width := Width - SiblingGap;
-      RankCrossWidth[Rank] := Width;
-      TotalCross := Max(TotalCross, Width);
-    end;
-
-    if Horizontal then
-    begin
-      FContentWidth := TotalMain;
-      FContentHeight := TotalCross;
-    end
-    else
-    begin
-      FContentWidth := TotalCross;
-      FContentHeight := TotalMain;
-    end;
-
-    const OriginX = FBounds.Left + Max(0.0, (FBounds.Width - FContentWidth) / 2);
-    const OriginY = FBounds.Top + DiagramMargin;
-
-    var OriginMain := OriginY;
-    var OriginCross := OriginX;
-    if Horizontal then
-    begin
-      OriginMain := OriginX;
-      OriginCross := OriginY;
-    end;
-
-    for var Rank := 0 to MaxRank do
-    begin
-      const Offset = (TotalCross - RankCrossWidth[Rank]) / 2;
-      var CrossCursor := 0.0;
-
-      for var NodeIndex in MemberArray[Rank] do
-      begin
-        const CrossPos = OriginCross + Offset + CrossCursor;
-        const MainPos = OriginMain + RankMainStart[Rank] +
-          (RankMainSize[Rank] - MainSize(FBoxes[NodeIndex], Horizontal)) / 2;
-
-        if Horizontal then
-        begin
-          FBoxes[NodeIndex].X := MainPos;
-          FBoxes[NodeIndex].Y := CrossPos;
-        end
-        else
-        begin
-          FBoxes[NodeIndex].X := CrossPos;
-          FBoxes[NodeIndex].Y := MainPos;
-        end;
-
-        CrossCursor := CrossCursor + CrossSize(FBoxes[NodeIndex], Horizontal) + SiblingGap;
-      end;
-    end;
+    PlaceLayeredNodes(MemberArray, MaxRank, Horizontal, Metrics);
   finally
     Members.Free;
+  end;
+end;
+
+function TMermaidFlowchartBuilder.BuildRankMembers(const Members: TObjectList<TList<Integer>>;
+  const MaxRank: Integer): TArray<TList<Integer>>;
+begin
+  for var Rank := 0 to MaxRank do
+  begin
+    Members.Add(TList<Integer>.Create);
+  end;
+
+  SetLength(Result, MaxRank + 1);
+  for var Rank := 0 to MaxRank do
+  begin
+    Result[Rank] := Members[Rank];
+  end;
+
+  const NodeCount = FModel.NodeCount;
+  for var Index := 0 to NodeCount - 1 do
+  begin
+    Result[FBoxes[Index].Rank].Add(Index);
+  end;
+end;
+
+function TMermaidFlowchartBuilder.ComputeRankMainSizes(const Members: TArray<TList<Integer>>;
+  const MaxRank: Integer; const Horizontal: Boolean): TArray<Single>;
+begin
+  SetLength(Result, MaxRank + 1);
+  for var Rank := 0 to MaxRank do
+  begin
+    var Value := 0.0;
+    for var NodeIndex in Members[Rank] do
+    begin
+      Value := Max(Value, MainSize(FBoxes[NodeIndex], Horizontal));
+    end;
+    Result[Rank] := Value;
+  end;
+end;
+
+function TMermaidFlowchartBuilder.ComputeRankMainStarts(const RankMainSize: TArray<Single>;
+  const MaxRank: Integer; out TotalMain: Single): TArray<Single>;
+begin
+  SetLength(Result, MaxRank + 1);
+  var MainCursor := 0.0;
+  for var Rank := 0 to MaxRank do
+  begin
+    Result[Rank] := MainCursor;
+    MainCursor := MainCursor + RankMainSize[Rank] + RankGap;
+  end;
+  TotalMain := MainCursor - RankGap;
+
+  if IsReversed then
+  begin
+    for var Rank := 0 to MaxRank do
+    begin
+      Result[Rank] := TotalMain - Result[Rank] - RankMainSize[Rank];
+    end;
+  end;
+end;
+
+function TMermaidFlowchartBuilder.ComputeRankCrossWidths(const Members: TArray<TList<Integer>>;
+  const MaxRank: Integer; const Horizontal: Boolean; out TotalCross: Single): TArray<Single>;
+begin
+  SetLength(Result, MaxRank + 1);
+  TotalCross := 0.0;
+  for var Rank := 0 to MaxRank do
+  begin
+    var Width := 0.0;
+    for var NodeIndex in Members[Rank] do
+    begin
+      Width := Width + CrossSize(FBoxes[NodeIndex], Horizontal) + SiblingGap;
+    end;
+    if Width > 0 then
+      Width := Width - SiblingGap;
+    Result[Rank] := Width;
+    TotalCross := Max(TotalCross, Width);
+  end;
+end;
+
+procedure TMermaidFlowchartBuilder.PlaceLayeredNodes(const Members: TArray<TList<Integer>>;
+  const MaxRank: Integer; const Horizontal: Boolean; const Metrics: TMermaidLayeredMetrics);
+begin
+  if Horizontal then
+  begin
+    FContentWidth := Metrics.TotalMain;
+    FContentHeight := Metrics.TotalCross;
+  end
+  else
+  begin
+    FContentWidth := Metrics.TotalCross;
+    FContentHeight := Metrics.TotalMain;
+  end;
+
+  const OriginX = FBounds.Left + Max(0.0, (FBounds.Width - FContentWidth) / 2);
+  const OriginY = FBounds.Top + DiagramMargin;
+
+  var OriginMain := OriginY;
+  var OriginCross := OriginX;
+  if Horizontal then
+  begin
+    OriginMain := OriginX;
+    OriginCross := OriginY;
+  end;
+
+  for var Rank := 0 to MaxRank do
+  begin
+    const Offset = (Metrics.TotalCross - Metrics.RankCrossWidth[Rank]) / 2;
+    var CrossCursor := 0.0;
+
+    for var NodeIndex in Members[Rank] do
+    begin
+      const CrossPos = OriginCross + Offset + CrossCursor;
+      const MainPos = OriginMain + Metrics.RankMainStart[Rank] +
+        (Metrics.RankMainSize[Rank] - MainSize(FBoxes[NodeIndex], Horizontal)) / 2;
+
+      if Horizontal then
+      begin
+        FBoxes[NodeIndex].X := MainPos;
+        FBoxes[NodeIndex].Y := CrossPos;
+      end
+      else
+      begin
+        FBoxes[NodeIndex].X := CrossPos;
+        FBoxes[NodeIndex].Y := MainPos;
+      end;
+
+      CrossCursor := CrossCursor + CrossSize(FBoxes[NodeIndex], Horizontal) + SiblingGap;
+    end;
   end;
 end;
 
@@ -824,21 +870,41 @@ begin
   if Current.Count <= 1 then
     Exit;
 
-  var ReferencePosition: TArray<Integer>;
-  SetLength(ReferencePosition, FModel.NodeCount);
-  for var Index := 0 to High(ReferencePosition) do
+  const ReferencePosition = BuildReferencePositions(Members[ReferenceRank]);
+  var Keys := ComputeBarycenterKeys(Current, ReferencePosition, UsePredecessors);
+
+  TArray.Sort<TMermaidBaryKey>(Keys, TComparer<TMermaidBaryKey>.Construct(
+    function(const Left, Right: TMermaidBaryKey): Integer
+    begin
+      Result := CompareValue(Left.Bary, Right.Bary);
+      if Result = 0 then
+        Result := Left.Ordinal - Right.Ordinal;
+    end));
+
+  for var Index := 0 to Current.Count - 1 do
   begin
-    ReferencePosition[Index] := -1;
+    Current[Index] := Keys[Index].Node;
+  end;
+end;
+
+function TMermaidFlowchartBuilder.BuildReferencePositions(const Reference: TList<Integer>): TArray<Integer>;
+begin
+  SetLength(Result, FModel.NodeCount);
+  for var Index := 0 to High(Result) do
+  begin
+    Result[Index] := -1;
   end;
 
-  const Reference = Members[ReferenceRank];
   for var Position := 0 to Reference.Count - 1 do
   begin
-    ReferencePosition[Reference[Position]] := Position;
+    Result[Reference[Position]] := Position;
   end;
+end;
 
-  var Keys: TArray<TMermaidBaryKey>;
-  SetLength(Keys, Current.Count);
+function TMermaidFlowchartBuilder.ComputeBarycenterKeys(const Current: TList<Integer>;
+  const ReferencePosition: TArray<Integer>; const UsePredecessors: Boolean): TArray<TMermaidBaryKey>;
+begin
+  SetLength(Result, Current.Count);
 
   for var Index := 0 to Current.Count - 1 do
   begin
@@ -862,25 +928,12 @@ begin
     end;
 
     if Count > 0 then
-      Keys[Index].Bary := Sum / Count
+      Result[Index].Bary := Sum / Count
     else
-      Keys[Index].Bary := Index;
+      Result[Index].Bary := Index;
 
-    Keys[Index].Node := NodeIndex;
-    Keys[Index].Ordinal := Index;
-  end;
-
-  TArray.Sort<TMermaidBaryKey>(Keys, TComparer<TMermaidBaryKey>.Construct(
-    function(const Left, Right: TMermaidBaryKey): Integer
-    begin
-      Result := CompareValue(Left.Bary, Right.Bary);
-      if Result = 0 then
-        Result := Left.Ordinal - Right.Ordinal;
-    end));
-
-  for var Index := 0 to Current.Count - 1 do
-  begin
-    Current[Index] := Keys[Index].Node;
+    Result[Index].Node := NodeIndex;
+    Result[Index].Ordinal := Index;
   end;
 end;
 
