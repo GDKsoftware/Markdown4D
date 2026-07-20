@@ -739,7 +739,7 @@ begin
   const AllowInterruptingKind = (Container.Kind <> TMarkdownNodeKind.Paragraph) and (not MaybeLazyParagraph);
   const LineRest = FScanner.TextFrom(FScanner.NextNonSpaceIndex);
 
-  var HtmlKind: Integer;
+  var HtmlKind: THtmlBlockKind;
   if not FHtmlScanner.TryMatchStart(LineRest, AllowInterruptingKind, HtmlKind) then
     Exit(TMarkdownBlockStart.NoMatch);
 

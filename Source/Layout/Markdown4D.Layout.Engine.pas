@@ -169,57 +169,12 @@ type
     Tight: Boolean;
   end;
 
-  TLayoutWorker = class
+  TInlineAtomCollector = class
   private
-    const
-      BulletMarkerText = #$2022;
-      OrderedMarkerFormat = '%d.';
-      LineEpsilon = 0.01;
-      ShiftEpsilon = 0.0001;
-    var
-      FTheme: TMarkdownTheme;
-      FMeasurer: ITextMeasurer;
-      FWidth: Single;
-      FItems: TList<IDisplayItem>;
-      FImageSizes: IMarkdownImageSizeProvider;
-      FCommands: TList<TLayoutCommand>;
-      FCurrentY: Single;
-    procedure ProcessCommand(const Command: TLayoutCommand);
-    procedure ProcessBlock(const Command: TLayoutCommand);
-    procedure ApplyBlockOverride(const Command: TLayoutCommand; const Handler: ILayoutBlockOverride);
-    procedure ProcessListItem(const Command: TLayoutCommand);
-    procedure EmitListMarker(const Command: TLayoutCommand);
-    procedure PushBlockQuote(const Command: TLayoutCommand);
-    procedure EmitQuoteBar(const Command: TLayoutCommand);
-    procedure PushList(const Command: TLayoutCommand);
-    procedure PushContainerChildren(const Container: IMarkdownNode; const X: Single; const TextColor: TLayoutColor);
-    procedure PushBlock(const Node: IMarkdownNode; const X: Single; const TextColor: TLayoutColor);
-    procedure PushGap(const Amount: Single);
-    procedure LayoutInlineBlock(const Container: IMarkdownNode; const X: Single; const BaseFont: TMarkdownFontStyle;
-      const TextColor: TLayoutColor);
-    procedure EmitCodeBlock(const Command: TLayoutCommand);
-    function EmitHighlightedCodeLine(const Command: TLayoutCommand; const Highlighter: IMarkdownSyntaxHighlighter;
-      const LineText: string; const Top, LineHeight: Single; const LineStart, State: Integer): Integer;
-    procedure EmitPlainCodeLine(const Command: TLayoutCommand; const LineText: string; const Top, LineHeight: Single;
-      const LineStart: Integer);
-    class function CodeLanguageOf(const Code: IMarkdownCodeBlock): string;
-    procedure EmitHtmlBlock(const Command: TLayoutCommand);
-    procedure EmitThematicBreak(const Command: TLayoutCommand);
-    procedure LayoutTable(const Command: TLayoutCommand);
-    function MeasureTableCells(const Command: TLayoutCommand; const ColumnCount: Integer;
-      const Cells: TObjectList<TList<TInlineAtom>>): TArray<Single>;
-    function ClampColumnWidths(const NaturalWidths: TArray<Single>): TArray<Single>;
-    procedure PlaceTableRows(const Command: TLayoutCommand; const ColumnCount: Integer;
-      const Cells: TObjectList<TList<TInlineAtom>>; const ColumnWidths: TArray<Single>);
-    function PlaceTableCell(const Row: IMarkdownNode; const ColumnIndex: Integer; const Atoms: TList<TInlineAtom>;
-      const CellLeft, RowTop, ColumnWidth: Single; const RowFont: TMarkdownFontStyle): Single;
-    procedure AlignCellItems(const FirstIndex, LastIndex: Integer; const Alignment: TMarkdownTableColumnAlignment;
-      const ContentRightEdge: Single);
-    function MaxRightOnLine(const FirstIndex, LastIndex: Integer; const Reference: TLayoutRectF): Single;
-    function TableRowFont(const Row: IMarkdownNode): TMarkdownFontStyle;
-    class function NaturalWidthOf(const Atoms: TList<TInlineAtom>): Single;
-    function CollectInlineAtoms(const Container: IMarkdownNode; const BaseFont: TMarkdownFontStyle;
-      const BaseColor: TLayoutColor): TList<TInlineAtom>;
+    FMeasurer: ITextMeasurer;
+    FTheme: TMarkdownTheme;
+    FImageSizes: IMarkdownImageSizeProvider;
+    FContentRight: Single;
     procedure HandleInlineChild(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
       const Child: IMarkdownNode; const Style: TInlineStyle);
     procedure AppendTextAtoms(const Atoms: TList<TInlineAtom>; const Text: string; const Style: TInlineStyle;
@@ -235,6 +190,86 @@ type
     class procedure PushStyledFrame(const Frames: TList<TInlineFrame>; const Node: IMarkdownNode;
       const Style: TInlineStyle);
     class function CollectPlainText(const Node: IMarkdownNode): string;
+
+  public
+    constructor Create(const Measurer: ITextMeasurer; const Theme: TMarkdownTheme;
+      const ImageSizes: IMarkdownImageSizeProvider; const ContentRight: Single);
+    function Collect(const Container: IMarkdownNode; const BaseFont: TMarkdownFontStyle;
+      const BaseColor: TLayoutColor): TList<TInlineAtom>;
+  end;
+
+  TTableLayout = class
+  private
+    const
+      LineEpsilon = 0.01;
+    var
+      FTheme: TMarkdownTheme;
+      FMeasurer: ITextMeasurer;
+      FItems: TList<IDisplayItem>;
+      FCollector: TInlineAtomCollector;
+      FCurrentY: Single;
+    function MeasureTableCells(const Command: TLayoutCommand; const ColumnCount: Integer;
+      const Cells: TObjectList<TList<TInlineAtom>>): TArray<Single>;
+    function ClampColumnWidths(const NaturalWidths: TArray<Single>): TArray<Single>;
+    procedure PlaceTableRows(const Command: TLayoutCommand; const ColumnCount: Integer;
+      const Cells: TObjectList<TList<TInlineAtom>>; const ColumnWidths: TArray<Single>);
+    procedure PlaceTableRow(const Command: TLayoutCommand; const RowIndex, ColumnCount: Integer;
+      const Cells: TObjectList<TList<TInlineAtom>>; const ColumnWidths: TArray<Single>; const TableWidth: Single);
+    function PlaceTableCell(const Row: IMarkdownNode; const ColumnIndex: Integer; const Atoms: TList<TInlineAtom>;
+      const CellLeft, RowTop, ColumnWidth: Single; const RowFont: TMarkdownFontStyle): Single;
+    procedure AlignCellItems(const FirstIndex, LastIndex: Integer; const Alignment: TMarkdownTableColumnAlignment;
+      const ContentRightEdge: Single);
+    function MaxRightOnLine(const FirstIndex, LastIndex: Integer; const Reference: TLayoutRectF): Single;
+    function TableRowFont(const Row: IMarkdownNode): TMarkdownFontStyle;
+    class function NaturalWidthOf(const Atoms: TList<TInlineAtom>): Single;
+
+  public
+    constructor Create(const Theme: TMarkdownTheme; const Measurer: ITextMeasurer;
+      const Items: TList<IDisplayItem>; const Collector: TInlineAtomCollector);
+    function Layout(const Command: TLayoutCommand; const StartY: Single): Single;
+  end;
+
+  TLayoutWorker = class
+  private
+    const
+      BulletMarkerText = #$2022;
+      OrderedMarkerFormat = '%d.';
+      ShiftEpsilon = 0.0001;
+    var
+      FTheme: TMarkdownTheme;
+      FMeasurer: ITextMeasurer;
+      FWidth: Single;
+      FItems: TList<IDisplayItem>;
+      FImageSizes: IMarkdownImageSizeProvider;
+      FCommands: TList<TLayoutCommand>;
+      FCollector: TInlineAtomCollector;
+      FCurrentY: Single;
+    procedure ProcessCommand(const Command: TLayoutCommand);
+    procedure ProcessBlock(const Command: TLayoutCommand);
+    procedure ApplyBlockOverride(const Command: TLayoutCommand; const Handler: ILayoutBlockOverride);
+    procedure ProcessListItem(const Command: TLayoutCommand);
+    procedure EmitListMarker(const Command: TLayoutCommand);
+    procedure PushBlockQuote(const Command: TLayoutCommand);
+    procedure EmitQuoteBar(const Command: TLayoutCommand);
+    procedure PushList(const Command: TLayoutCommand);
+    procedure PushContainerChildren(const Container: IMarkdownNode; const X: Single; const TextColor: TLayoutColor);
+    procedure PushBlock(const Node: IMarkdownNode; const X: Single; const TextColor: TLayoutColor);
+    procedure PushGap(const Amount: Single);
+    procedure LayoutInlineBlock(const Container: IMarkdownNode; const X: Single; const BaseFont: TMarkdownFontStyle;
+      const TextColor: TLayoutColor);
+    procedure EmitCodeBlock(const Command: TLayoutCommand);
+    procedure EmitCodeLines(const Command: TLayoutCommand; const Code: IMarkdownCodeBlock; const Lines: TArray<string>;
+      const LineHeight, Padding: Single);
+    function EmitHighlightedCodeLine(const Command: TLayoutCommand; const Highlighter: IMarkdownSyntaxHighlighter;
+      const LineText: string; const Top, LineHeight: Single; const LineStart, State: Integer): Integer;
+    procedure EmitPlainCodeLine(const Command: TLayoutCommand; const LineText: string; const Top, LineHeight: Single;
+      const LineStart: Integer);
+    class function CodeLanguageOf(const Code: IMarkdownCodeBlock): string;
+    procedure EmitHtmlBlock(const Command: TLayoutCommand);
+    procedure EmitThematicBreak(const Command: TLayoutCommand);
+    procedure LayoutTable(const Command: TLayoutCommand);
+    function CollectInlineAtoms(const Container: IMarkdownNode; const BaseFont: TMarkdownFontStyle;
+      const BaseColor: TLayoutColor): TList<TInlineAtom>;
     class function SplitCodeLines(const Literal: string): TArray<string>;
     class function ShiftedItem(const Item: IDisplayItem; const DeltaX, DeltaY: Single): IDisplayItem;
     function ContentRight: Single;
@@ -244,6 +279,10 @@ type
       const Items: TList<IDisplayItem>; const ImageSizes: IMarkdownImageSizeProvider);
     destructor Destroy; override;
     function LayoutBlock(const Node: IMarkdownNode; const Top: Single): Single;
+    function RecomputeBlock(const Node: IMarkdownNode; const Index: Integer; var Y: Single;
+      const PreviousBelow: Single): TLayoutBlockInfo;
+    function ReusePreviousBlock(const Previous: IMarkdownDisplayList; const ChangedRange: TLayoutBlockRange;
+      const Index: Integer; var Y: Single; const PreviousBelow: Single): TLayoutBlockInfo;
     function SpacingAboveOf(const Node: IMarkdownNode): Single;
     function SpacingBelowOf(const Node: IMarkdownNode): Single;
     procedure AppendPreviousBlock(const Previous: IMarkdownDisplayList; const Info: TLayoutBlockInfo;
@@ -334,8 +373,8 @@ begin
       var Recomputed: TArray<Integer>;
       SetLength(Recomputed, ChangedRange.NewBlockCount);
 
-      var Y := Theme.ContentPadding;
-      var PreviousBelow := 0.0;
+      var Y: Single := Theme.ContentPadding;
+      var PreviousBelow: Single := 0.0;
 
       for var Index := 0 to TotalBlockCount - 1 do
       begin
@@ -345,36 +384,11 @@ begin
         var Info := Default(TLayoutBlockInfo);
         if IsRecomputed then
         begin
-          const Node = Document.Children[Index];
-          const Above = Worker.SpacingAboveOf(Node);
-
-          if Index > 0 then
-            Y := Y + PreviousBelow + Above;
-
-          const FirstItemIndex = Items.Count;
-          const Height = Worker.LayoutBlock(Node, Y);
-
-          Info := TLayoutBlockInfo.Create(FirstItemIndex, Items.Count - FirstItemIndex, Y, Height, Above,
-            Worker.SpacingBelowOf(Node));
+          Info := Worker.RecomputeBlock(Document.Children[Index], Index, Y, PreviousBelow);
           Recomputed[Index - ChangedRange.FirstBlockIndex] := Index;
         end
         else
-        begin
-          var OldIndex := Index;
-          const IsAfterRange = (Index >= ChangedRange.FirstBlockIndex + ChangedRange.NewBlockCount);
-          if IsAfterRange then
-            OldIndex := Index - ChangedRange.NewBlockCount + ChangedRange.OldBlockCount;
-
-          Info := Previous.BlockInfos[OldIndex];
-
-          if Index > 0 then
-            Y := Y + PreviousBelow + Info.SpacingAbove;
-
-          const FirstItemIndex = Items.Count;
-          Worker.AppendPreviousBlock(Previous, Info, Y - Info.Top);
-          Info.FirstItemIndex := FirstItemIndex;
-          Info.Top := Y;
-        end;
+          Info := Worker.ReusePreviousBlock(Previous, ChangedRange, Index, Y, PreviousBelow);
 
         Blocks[Index] := Info;
         Y := Y + Info.Height;
@@ -443,10 +457,12 @@ begin
   FItems := Items;
   FImageSizes := ImageSizes;
   FCommands := TList<TLayoutCommand>.Create;
+  FCollector := TInlineAtomCollector.Create(FMeasurer, FTheme, FImageSizes, ContentRight);
 end;
 
 destructor TLayoutWorker.Destroy;
 begin
+  FCollector.Free;
   FCommands.Free;
 
   inherited Destroy;
@@ -468,6 +484,40 @@ begin
   end;
 
   Result := FCurrentY - Top;
+end;
+
+function TLayoutWorker.RecomputeBlock(const Node: IMarkdownNode; const Index: Integer; var Y: Single;
+  const PreviousBelow: Single): TLayoutBlockInfo;
+begin
+  const Above = SpacingAboveOf(Node);
+
+  if Index > 0 then
+    Y := Y + PreviousBelow + Above;
+
+  const FirstItemIndex = FItems.Count;
+  const Height = LayoutBlock(Node, Y);
+
+  Result := TLayoutBlockInfo.Create(FirstItemIndex, FItems.Count - FirstItemIndex, Y, Height, Above,
+    SpacingBelowOf(Node));
+end;
+
+function TLayoutWorker.ReusePreviousBlock(const Previous: IMarkdownDisplayList; const ChangedRange: TLayoutBlockRange;
+  const Index: Integer; var Y: Single; const PreviousBelow: Single): TLayoutBlockInfo;
+begin
+  var OldIndex := Index;
+  const IsAfterRange = (Index >= ChangedRange.FirstBlockIndex + ChangedRange.NewBlockCount);
+  if IsAfterRange then
+    OldIndex := Index - ChangedRange.NewBlockCount + ChangedRange.OldBlockCount;
+
+  Result := Previous.BlockInfos[OldIndex];
+
+  if Index > 0 then
+    Y := Y + PreviousBelow + Result.SpacingAbove;
+
+  const FirstItemIndex = FItems.Count;
+  AppendPreviousBlock(Previous, Result, Y - Result.Top);
+  Result.FirstItemIndex := FirstItemIndex;
+  Result.Top := Y;
 end;
 
 function TLayoutWorker.SpacingAboveOf(const Node: IMarkdownNode): Single;
@@ -735,6 +785,14 @@ begin
   const Background = TLayoutRectF.Create(Command.X, FCurrentY, ContentRight, FCurrentY + Height);
   FItems.Add(TDisplayRectangle.Create(Background, Command.Node, FTheme.CodeBackgroundColor, 0, 0));
 
+  EmitCodeLines(Command, Code, Lines, LineHeight, Padding);
+
+  FCurrentY := FCurrentY + Height;
+end;
+
+procedure TLayoutWorker.EmitCodeLines(const Command: TLayoutCommand; const Code: IMarkdownCodeBlock;
+  const Lines: TArray<string>; const LineHeight, Padding: Single);
+begin
   var Highlighter: IMarkdownSyntaxHighlighter;
   const Language = CodeLanguageOf(Code);
   const UseHighlighter = (Language <> '') and THighlighterRegistry.TryGet(Language, Highlighter);
@@ -757,8 +815,6 @@ begin
 
     LineStart := LineStart + Length(LineText) + 1;
   end;
-
-  FCurrentY := FCurrentY + Height;
 end;
 
 function TLayoutWorker.EmitHighlightedCodeLine(const Command: TLayoutCommand;
@@ -849,6 +905,29 @@ end;
 
 procedure TLayoutWorker.LayoutTable(const Command: TLayoutCommand);
 begin
+  const Table = TTableLayout.Create(FTheme, FMeasurer, FItems, FCollector);
+  try
+    FCurrentY := Table.Layout(Command, FCurrentY);
+  finally
+    Table.Free;
+  end;
+end;
+
+constructor TTableLayout.Create(const Theme: TMarkdownTheme; const Measurer: ITextMeasurer;
+  const Items: TList<IDisplayItem>; const Collector: TInlineAtomCollector);
+begin
+  inherited Create;
+
+  FTheme := Theme;
+  FMeasurer := Measurer;
+  FItems := Items;
+  FCollector := Collector;
+end;
+
+function TTableLayout.Layout(const Command: TLayoutCommand; const StartY: Single): Single;
+begin
+  FCurrentY := StartY;
+
   const RowCount = Command.Node.ChildCount;
 
   var ColumnCount := 0;
@@ -858,21 +937,23 @@ begin
   end;
 
   const HasCells = (RowCount > 0) and (ColumnCount > 0);
-  if not HasCells then
-    Exit;
+  if HasCells then
+  begin
+    const Cells = TObjectList<TList<TInlineAtom>>.Create(True);
+    try
+      const NaturalWidths = MeasureTableCells(Command, ColumnCount, Cells);
+      const ColumnWidths = ClampColumnWidths(NaturalWidths);
 
-  const Cells = TObjectList<TList<TInlineAtom>>.Create(True);
-  try
-    const NaturalWidths = MeasureTableCells(Command, ColumnCount, Cells);
-    const ColumnWidths = ClampColumnWidths(NaturalWidths);
-
-    PlaceTableRows(Command, ColumnCount, Cells, ColumnWidths);
-  finally
-    Cells.Free;
+      PlaceTableRows(Command, ColumnCount, Cells, ColumnWidths);
+    finally
+      Cells.Free;
+    end;
   end;
+
+  Result := FCurrentY;
 end;
 
-function TLayoutWorker.MeasureTableCells(const Command: TLayoutCommand; const ColumnCount: Integer;
+function TTableLayout.MeasureTableCells(const Command: TLayoutCommand; const ColumnCount: Integer;
   const Cells: TObjectList<TList<TInlineAtom>>): TArray<Single>;
 begin
   Result := nil;
@@ -892,14 +973,14 @@ begin
         Continue;
       end;
 
-      const Atoms = CollectInlineAtoms(Row.Children[ColumnIndex], RowFont, Command.TextColor);
+      const Atoms = FCollector.Collect(Row.Children[ColumnIndex], RowFont, Command.TextColor);
       Cells.Add(Atoms);
       Result[ColumnIndex] := Max(Result[ColumnIndex], NaturalWidthOf(Atoms));
     end;
   end;
 end;
 
-function TLayoutWorker.ClampColumnWidths(const NaturalWidths: TArray<Single>): TArray<Single>;
+function TTableLayout.ClampColumnWidths(const NaturalWidths: TArray<Single>): TArray<Single>;
 begin
   Result := nil;
   SetLength(Result, Length(NaturalWidths));
@@ -911,7 +992,7 @@ begin
   end;
 end;
 
-procedure TLayoutWorker.PlaceTableRows(const Command: TLayoutCommand; const ColumnCount: Integer;
+procedure TTableLayout.PlaceTableRows(const Command: TLayoutCommand; const ColumnCount: Integer;
   const Cells: TObjectList<TList<TInlineAtom>>; const ColumnWidths: TArray<Single>);
 begin
   var TableWidth := 0.0;
@@ -922,39 +1003,45 @@ begin
 
   for var RowIndex := 0 to Command.Node.ChildCount - 1 do
   begin
-    const Row = Command.Node.Children[RowIndex];
-    const RowFont = TableRowFont(Row);
-    const RowTop = FCurrentY;
-    const RowItemIndex = FItems.Count;
-
-    var RowHeight := 0.0;
-    var CellLeft := Command.X;
-
-    for var ColumnIndex := 0 to ColumnCount - 1 do
-    begin
-      const Atoms = Cells[RowIndex * ColumnCount + ColumnIndex];
-      if Atoms <> nil then
-        RowHeight := Max(RowHeight, PlaceTableCell(Row, ColumnIndex, Atoms, CellLeft, RowTop,
-          ColumnWidths[ColumnIndex], RowFont));
-
-      CellLeft := CellLeft + ColumnWidths[ColumnIndex];
-    end;
-
-    if RowHeight = 0 then
-      RowHeight := FMeasurer.LineHeight(RowFont);
-
-    const IsHeader = (Row as IMarkdownTableRow).IsHeader;
-    if IsHeader then
-    begin
-      const HeaderBounds = TLayoutRectF.Create(Command.X, RowTop, Command.X + TableWidth, RowTop + RowHeight);
-      FItems.Insert(RowItemIndex, TDisplayRectangle.Create(HeaderBounds, Row, FTheme.TableHeaderBackgroundColor, 0, 0));
-    end;
-
-    FCurrentY := RowTop + RowHeight;
+    PlaceTableRow(Command, RowIndex, ColumnCount, Cells, ColumnWidths, TableWidth);
   end;
 end;
 
-function TLayoutWorker.PlaceTableCell(const Row: IMarkdownNode; const ColumnIndex: Integer;
+procedure TTableLayout.PlaceTableRow(const Command: TLayoutCommand; const RowIndex, ColumnCount: Integer;
+  const Cells: TObjectList<TList<TInlineAtom>>; const ColumnWidths: TArray<Single>; const TableWidth: Single);
+begin
+  const Row = Command.Node.Children[RowIndex];
+  const RowFont = TableRowFont(Row);
+  const RowTop = FCurrentY;
+  const RowItemIndex = FItems.Count;
+
+  var RowHeight := 0.0;
+  var CellLeft := Command.X;
+
+  for var ColumnIndex := 0 to ColumnCount - 1 do
+  begin
+    const Atoms = Cells[RowIndex * ColumnCount + ColumnIndex];
+    if Atoms <> nil then
+      RowHeight := Max(RowHeight, PlaceTableCell(Row, ColumnIndex, Atoms, CellLeft, RowTop,
+        ColumnWidths[ColumnIndex], RowFont));
+
+    CellLeft := CellLeft + ColumnWidths[ColumnIndex];
+  end;
+
+  if RowHeight = 0 then
+    RowHeight := FMeasurer.LineHeight(RowFont);
+
+  const IsHeader = (Row as IMarkdownTableRow).IsHeader;
+  if IsHeader then
+  begin
+    const HeaderBounds = TLayoutRectF.Create(Command.X, RowTop, Command.X + TableWidth, RowTop + RowHeight);
+    FItems.Insert(RowItemIndex, TDisplayRectangle.Create(HeaderBounds, Row, FTheme.TableHeaderBackgroundColor, 0, 0));
+  end;
+
+  FCurrentY := RowTop + RowHeight;
+end;
+
+function TTableLayout.PlaceTableCell(const Row: IMarkdownNode; const ColumnIndex: Integer;
   const Atoms: TList<TInlineAtom>; const CellLeft, RowTop, ColumnWidth: Single;
   const RowFont: TMarkdownFontStyle): Single;
 begin
@@ -978,7 +1065,7 @@ begin
   AlignCellItems(FirstItemIndex, FItems.Count - 1, Cell.Alignment, CellLeft + ColumnWidth - Padding);
 end;
 
-procedure TLayoutWorker.AlignCellItems(const FirstIndex, LastIndex: Integer;
+procedure TTableLayout.AlignCellItems(const FirstIndex, LastIndex: Integer;
   const Alignment: TMarkdownTableColumnAlignment; const ContentRightEdge: Single);
 begin
   const NeedsShift = Alignment in [TMarkdownTableColumnAlignment.Right, TMarkdownTableColumnAlignment.Center];
@@ -1005,11 +1092,11 @@ begin
     const Delta = Deltas[Index - FirstIndex];
     const ShouldShift = (Delta > LineEpsilon);
     if ShouldShift then
-      FItems[Index] := ShiftedItem(FItems[Index], Delta, 0);
+      FItems[Index] := TLayoutWorker.ShiftedItem(FItems[Index], Delta, 0);
   end;
 end;
 
-function TLayoutWorker.MaxRightOnLine(const FirstIndex, LastIndex: Integer; const Reference: TLayoutRectF): Single;
+function TTableLayout.MaxRightOnLine(const FirstIndex, LastIndex: Integer; const Reference: TLayoutRectF): Single;
 begin
   Result := 0;
 
@@ -1023,7 +1110,7 @@ begin
   end;
 end;
 
-function TLayoutWorker.TableRowFont(const Row: IMarkdownNode): TMarkdownFontStyle;
+function TTableLayout.TableRowFont(const Row: IMarkdownNode): TMarkdownFontStyle;
 begin
   Result := FTheme.BaseFont;
 
@@ -1032,7 +1119,7 @@ begin
     Result.Bold := True;
 end;
 
-class function TLayoutWorker.NaturalWidthOf(const Atoms: TList<TInlineAtom>): Single;
+class function TTableLayout.NaturalWidthOf(const Atoms: TList<TInlineAtom>): Single;
 begin
   Result := 0;
 
@@ -1044,6 +1131,23 @@ begin
 end;
 
 function TLayoutWorker.CollectInlineAtoms(const Container: IMarkdownNode; const BaseFont: TMarkdownFontStyle;
+  const BaseColor: TLayoutColor): TList<TInlineAtom>;
+begin
+  Result := FCollector.Collect(Container, BaseFont, BaseColor);
+end;
+
+constructor TInlineAtomCollector.Create(const Measurer: ITextMeasurer; const Theme: TMarkdownTheme;
+  const ImageSizes: IMarkdownImageSizeProvider; const ContentRight: Single);
+begin
+  inherited Create;
+
+  FMeasurer := Measurer;
+  FTheme := Theme;
+  FImageSizes := ImageSizes;
+  FContentRight := ContentRight;
+end;
+
+function TInlineAtomCollector.Collect(const Container: IMarkdownNode; const BaseFont: TMarkdownFontStyle;
   const BaseColor: TLayoutColor): TList<TInlineAtom>;
 begin
   Result := TList<TInlineAtom>.Create;
@@ -1082,7 +1186,7 @@ begin
   end;
 end;
 
-procedure TLayoutWorker.HandleInlineChild(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
+procedure TInlineAtomCollector.HandleInlineChild(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
   const Child: IMarkdownNode; const Style: TInlineStyle);
 begin
   case Child.Kind of
@@ -1124,7 +1228,7 @@ begin
   end;
 end;
 
-procedure TLayoutWorker.AppendTextAtoms(const Atoms: TList<TInlineAtom>; const Text: string;
+procedure TInlineAtomCollector.AppendTextAtoms(const Atoms: TList<TInlineAtom>; const Text: string;
   const Style: TInlineStyle; const Leaf: IMarkdownNode);
 begin
   var Attribution := Style.Attribution;
@@ -1159,7 +1263,7 @@ begin
   end;
 end;
 
-procedure TLayoutWorker.AppendCodeSpanAtoms(const Atoms: TList<TInlineAtom>; const Child: IMarkdownNode;
+procedure TInlineAtomCollector.AppendCodeSpanAtoms(const Atoms: TList<TInlineAtom>; const Child: IMarkdownNode;
   const Style: TInlineStyle);
 begin
   var CodeStyle := Style;
@@ -1179,7 +1283,7 @@ begin
   end;
 end;
 
-procedure TLayoutWorker.AppendHardBreakAtom(const Atoms: TList<TInlineAtom>);
+procedure TInlineAtomCollector.AppendHardBreakAtom(const Atoms: TList<TInlineAtom>);
 begin
   var Atom := Default(TInlineAtom);
   Atom.Kind := TInlineAtomKind.HardBreakToken;
@@ -1187,7 +1291,7 @@ begin
   Atoms.Add(Atom);
 end;
 
-procedure TLayoutWorker.AppendImageAtom(const Atoms: TList<TInlineAtom>; const Child: IMarkdownNode;
+procedure TInlineAtomCollector.AppendImageAtom(const Atoms: TList<TInlineAtom>; const Child: IMarkdownNode;
   const Style: TInlineStyle);
 begin
   const ImageLink = Child as IMarkdownLink;
@@ -1210,8 +1314,8 @@ begin
   if HasLoadedSize then
   begin
     var Scale: Single := 1.0;
-    if LoadedSize.Width > ContentRight then
-      Scale := ContentRight / LoadedSize.Width;
+    if LoadedSize.Width > FContentRight then
+      Scale := FContentRight / LoadedSize.Width;
 
     Atom.Width := LoadedSize.Width * Scale;
     Atom.Height := LoadedSize.Height * Scale;
@@ -1220,7 +1324,7 @@ begin
   Atoms.Add(Atom);
 end;
 
-procedure TLayoutWorker.AppendCheckboxAtom(const Atoms: TList<TInlineAtom>; const Child: IMarkdownNode;
+procedure TInlineAtomCollector.AppendCheckboxAtom(const Atoms: TList<TInlineAtom>; const Child: IMarkdownNode;
   const Checked: Boolean);
 begin
   var Atom := Default(TInlineAtom);
@@ -1233,7 +1337,7 @@ begin
   Atoms.Add(Atom);
 end;
 
-procedure TLayoutWorker.HandleCustomInline(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
+procedure TInlineAtomCollector.HandleCustomInline(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
   const Child: IMarkdownNode; const Style: TInlineStyle);
 begin
   const Custom = Child as IMarkdownCustomInline;
@@ -1251,7 +1355,7 @@ begin
   PushStyledFrame(Frames, Child, StrikeStyle);
 end;
 
-class procedure TLayoutWorker.PushStyledFrame(const Frames: TList<TInlineFrame>; const Node: IMarkdownNode;
+class procedure TInlineAtomCollector.PushStyledFrame(const Frames: TList<TInlineFrame>; const Node: IMarkdownNode;
   const Style: TInlineStyle);
 begin
   var Frame := Default(TInlineFrame);
@@ -1262,7 +1366,7 @@ begin
   Frames.Add(Frame);
 end;
 
-class function TLayoutWorker.CollectPlainText(const Node: IMarkdownNode): string;
+class function TInlineAtomCollector.CollectPlainText(const Node: IMarkdownNode): string;
 begin
   const Builder = TStringBuilder.Create;
   try

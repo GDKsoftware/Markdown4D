@@ -7,7 +7,8 @@ interface
 uses
   System.SysUtils,
   System.Generics.Collections,
-  Markdown4D.Ast.Interfaces;
+  Markdown4D.Ast.Interfaces,
+  Markdown4D.Parser.HtmlBlocks;
 
 type
   TListData = record
@@ -35,7 +36,7 @@ type
     FFenceChar: Char;
     FFenceLength: Integer;
     FFenceOffset: Integer;
-    FHtmlKind: Integer;
+    FHtmlKind: THtmlBlockKind;
     FListData: TListData;
     FTableAlignments: TArray<TMarkdownTableColumnAlignment>;
     FLastLineBlank: Boolean;
@@ -62,7 +63,7 @@ type
     property FenceChar: Char read FFenceChar write FFenceChar;
     property FenceLength: Integer read FFenceLength write FFenceLength;
     property FenceOffset: Integer read FFenceOffset write FFenceOffset;
-    property HtmlKind: Integer read FHtmlKind write FHtmlKind;
+    property HtmlKind: THtmlBlockKind read FHtmlKind write FHtmlKind;
     property ListData: TListData read FListData write FListData;
     property TableAlignments: TArray<TMarkdownTableColumnAlignment> read FTableAlignments write FTableAlignments;
     property LastLineBlank: Boolean read FLastLineBlank write FLastLineBlank;

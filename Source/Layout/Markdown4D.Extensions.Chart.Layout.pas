@@ -92,13 +92,22 @@ type
     class function IsColorSet(const Color: TLayoutColor): Boolean; static;
     procedure LayoutTitle;
     procedure LayoutLegend;
+    procedure EmitLegendEntry(const Index: Integer; const X, RowY, RowHeight: Single; const Caption: string;
+      const Font: TMarkdownFontStyle);
+    procedure EmitVerticalLegend(const Font: TMarkdownFontStyle; const RowHeight: Single);
+    procedure EmitHorizontalLegend(const Font: TMarkdownFontStyle; const RowHeight: Single);
     procedure LayoutAxes;
     procedure LayoutBars(const PlotLeft, PlotTop, PlotRight, PlotBottom, AxisMin, AxisMax: Single);
+    procedure EmitStackedBars(const LabelIndex: Integer; const SlotLeft, SlotWidth, BaseY, AxisSpan, PlotHeight: Single);
+    procedure EmitGroupedBars(const LabelIndex: Integer; const SlotLeft, SlotWidth, BaseY, AxisMin, AxisSpan,
+      PlotHeight, PlotBottom: Single);
     procedure LayoutLine(const PlotLeft, PlotTop, PlotRight, PlotBottom, AxisMin, AxisMax: Single);
     procedure LayoutPie;
     function NiceNum(const Value: Double; const RoundResult: Boolean): Double;
     function BuildValueAxis(const Range: TChartValueRange): TChartValueAxis;
     function CollectValueRange: TChartValueRange;
+    function CollectStackedRange(var HasValue: Boolean): TChartValueRange;
+    function CollectUnstackedRange(var HasValue: Boolean): TChartValueRange;
 
   public
     constructor Create(const Model: IChartModel; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
@@ -313,36 +322,48 @@ begin
     (FModel.LegendPosition = TChartLegendPosition.Right);
 
   if IsVertical then
+    EmitVerticalLegend(Font, RowHeight)
+  else
+    EmitHorizontalLegend(Font, RowHeight);
+end;
+
+procedure TChartLayoutBuilder.EmitLegendEntry(const Index: Integer; const X, RowY, RowHeight: Single;
+  const Caption: string; const Font: TMarkdownFontStyle);
+begin
+  const SwatchTop = RowY + (RowHeight - SwatchSize) / 2;
+  EmitRectangle(TLayoutRectF.Create(X, SwatchTop, X + SwatchSize, SwatchTop + SwatchSize),
+    EntryColor(Index), 0, 0);
+  EmitText(Caption, X + SwatchSize + SwatchGap, RowY, Font, FTheme.ChartTextColor);
+end;
+
+procedure TChartLayoutBuilder.EmitVerticalLegend(const Font: TMarkdownFontStyle; const RowHeight: Single);
+begin
+  var ColumnWidth := 0.0;
+  for var Index := 0 to EntryCount - 1 do
   begin
-    var ColumnWidth := 0.0;
-    for var Index := 0 to EntryCount - 1 do
-    begin
-      const Width = SwatchSize + SwatchGap + FMeasurer.MeasureText(EntryCaption(Index), Font).Width;
-      ColumnWidth := Max(ColumnWidth, Width);
-    end;
-
-    var ColumnX := FLeft;
-    if FModel.LegendPosition = TChartLegendPosition.Right then
-      ColumnX := FRight - ColumnWidth;
-
-    var RowY := FTop;
-    for var Index := 0 to EntryCount - 1 do
-    begin
-      const SwatchTop = RowY + (RowHeight - SwatchSize) / 2;
-      EmitRectangle(TLayoutRectF.Create(ColumnX, SwatchTop, ColumnX + SwatchSize, SwatchTop + SwatchSize),
-        EntryColor(Index), 0, 0);
-      EmitText(EntryCaption(Index), ColumnX + SwatchSize + SwatchGap, RowY, Font, FTheme.ChartTextColor);
-      RowY := RowY + RowHeight;
-    end;
-
-    if FModel.LegendPosition = TChartLegendPosition.Right then
-      FRight := FRight - ColumnWidth - Padding
-    else
-      FLeft := FLeft + ColumnWidth + Padding;
-
-    Exit;
+    const Width = SwatchSize + SwatchGap + FMeasurer.MeasureText(EntryCaption(Index), Font).Width;
+    ColumnWidth := Max(ColumnWidth, Width);
   end;
 
+  var ColumnX := FLeft;
+  if FModel.LegendPosition = TChartLegendPosition.Right then
+    ColumnX := FRight - ColumnWidth;
+
+  var RowY := FTop;
+  for var Index := 0 to EntryCount - 1 do
+  begin
+    EmitLegendEntry(Index, ColumnX, RowY, RowHeight, EntryCaption(Index), Font);
+    RowY := RowY + RowHeight;
+  end;
+
+  if FModel.LegendPosition = TChartLegendPosition.Right then
+    FRight := FRight - ColumnWidth - Padding
+  else
+    FLeft := FLeft + ColumnWidth + Padding;
+end;
+
+procedure TChartLayoutBuilder.EmitHorizontalLegend(const Font: TMarkdownFontStyle; const RowHeight: Single);
+begin
   var RowY := FTop;
   if FModel.LegendPosition = TChartLegendPosition.Bottom then
     RowY := FBottom - RowHeight;
@@ -352,10 +373,7 @@ begin
   begin
     const Caption = EntryCaption(Index);
     const CaptionWidth = FMeasurer.MeasureText(Caption, Font).Width;
-    const SwatchTop = RowY + (RowHeight - SwatchSize) / 2;
-    EmitRectangle(TLayoutRectF.Create(EntryX, SwatchTop, EntryX + SwatchSize, SwatchTop + SwatchSize),
-      EntryColor(Index), 0, 0);
-    EmitText(Caption, EntryX + SwatchSize + SwatchGap, RowY, Font, FTheme.ChartTextColor);
+    EmitLegendEntry(Index, EntryX, RowY, RowHeight, Caption, Font);
     EntryX := EntryX + SwatchSize + SwatchGap + CaptionWidth + EntryGap;
   end;
 
@@ -367,60 +385,70 @@ end;
 
 function TChartLayoutBuilder.CollectValueRange: TChartValueRange;
 begin
-  Result.Minimum := 0;
-  Result.Maximum := 0;
   var HasValue := False;
 
   if FModel.Stacked then
-  begin
-    for var LabelIndex := 0 to FModel.LabelCount - 1 do
-    begin
-      var PositiveSum := 0.0;
-      var NegativeSum := 0.0;
-      for var DatasetIndex := 0 to FModel.DatasetCount - 1 do
-      begin
-        const Dataset = FModel.Datasets[DatasetIndex];
-        if LabelIndex >= Dataset.ValueCount then
-          Continue;
-        const Value = Dataset.Values[LabelIndex];
-        if Value >= 0 then
-          PositiveSum := PositiveSum + Value
-        else
-          NegativeSum := NegativeSum + Value;
-        HasValue := True;
-      end;
-      Result.Maximum := Max(Result.Maximum, PositiveSum);
-      Result.Minimum := Min(Result.Minimum, NegativeSum);
-    end;
-  end
+    Result := CollectStackedRange(HasValue)
   else
-  begin
-    for var DatasetIndex := 0 to FModel.DatasetCount - 1 do
-    begin
-      const Dataset = FModel.Datasets[DatasetIndex];
-      for var ValueIndex := 0 to Dataset.ValueCount - 1 do
-      begin
-        const Value = Dataset.Values[ValueIndex];
-        if not HasValue then
-        begin
-          Result.Minimum := Value;
-          Result.Maximum := Value;
-          HasValue := True;
-        end
-        else
-        begin
-          Result.Minimum := Min(Result.Minimum, Value);
-          Result.Maximum := Max(Result.Maximum, Value);
-        end;
-      end;
-    end;
-  end;
+    Result := CollectUnstackedRange(HasValue);
 
   if not HasValue then
     Result.Maximum := 1;
 
   if FModel.ChartKind = TChartKind.Bar then
     Result.Minimum := Min(Result.Minimum, 0);
+end;
+
+function TChartLayoutBuilder.CollectStackedRange(var HasValue: Boolean): TChartValueRange;
+begin
+  Result.Minimum := 0;
+  Result.Maximum := 0;
+
+  for var LabelIndex := 0 to FModel.LabelCount - 1 do
+  begin
+    var PositiveSum := 0.0;
+    var NegativeSum := 0.0;
+    for var DatasetIndex := 0 to FModel.DatasetCount - 1 do
+    begin
+      const Dataset = FModel.Datasets[DatasetIndex];
+      if LabelIndex >= Dataset.ValueCount then
+        Continue;
+      const Value = Dataset.Values[LabelIndex];
+      if Value >= 0 then
+        PositiveSum := PositiveSum + Value
+      else
+        NegativeSum := NegativeSum + Value;
+      HasValue := True;
+    end;
+    Result.Maximum := Max(Result.Maximum, PositiveSum);
+    Result.Minimum := Min(Result.Minimum, NegativeSum);
+  end;
+end;
+
+function TChartLayoutBuilder.CollectUnstackedRange(var HasValue: Boolean): TChartValueRange;
+begin
+  Result.Minimum := 0;
+  Result.Maximum := 0;
+
+  for var DatasetIndex := 0 to FModel.DatasetCount - 1 do
+  begin
+    const Dataset = FModel.Datasets[DatasetIndex];
+    for var ValueIndex := 0 to Dataset.ValueCount - 1 do
+    begin
+      const Value = Dataset.Values[ValueIndex];
+      if not HasValue then
+      begin
+        Result.Minimum := Value;
+        Result.Maximum := Value;
+        HasValue := True;
+      end
+      else
+      begin
+        Result.Minimum := Min(Result.Minimum, Value);
+        Result.Maximum := Max(Result.Maximum, Value);
+      end;
+    end;
+  end;
 end;
 
 function TChartLayoutBuilder.NiceNum(const Value: Double; const RoundResult: Boolean): Double;
@@ -572,60 +600,68 @@ begin
     const SlotLeft = PlotLeft + SlotWidth * LabelIndex;
 
     if FModel.Stacked then
+      EmitStackedBars(LabelIndex, SlotLeft, SlotWidth, BaseY, AxisSpan, PlotHeight)
+    else
+      EmitGroupedBars(LabelIndex, SlotLeft, SlotWidth, BaseY, AxisMin, AxisSpan, PlotHeight, PlotBottom);
+  end;
+end;
+
+procedure TChartLayoutBuilder.EmitStackedBars(const LabelIndex: Integer; const SlotLeft, SlotWidth, BaseY,
+  AxisSpan, PlotHeight: Single);
+begin
+  const BarWidth = SlotWidth * 0.6;
+  const BarLeft = SlotLeft + (SlotWidth - BarWidth) / 2;
+  var StackTopY := BaseY;
+  var StackBottomY := BaseY;
+
+  for var DatasetIndex := 0 to FModel.DatasetCount - 1 do
+  begin
+    const Dataset = FModel.Datasets[DatasetIndex];
+    if LabelIndex >= Dataset.ValueCount then
+      Continue;
+
+    const Value = Dataset.Values[LabelIndex];
+    const SegmentHeight = Value / AxisSpan * PlotHeight;
+
+    var SegmentTop: Single;
+    var SegmentBottom: Single;
+    if Value >= 0 then
     begin
-      const BarWidth = SlotWidth * 0.6;
-      const BarLeft = SlotLeft + (SlotWidth - BarWidth) / 2;
-      var StackTopY := BaseY;
-      var StackBottomY := BaseY;
-
-      for var DatasetIndex := 0 to FModel.DatasetCount - 1 do
-      begin
-        const Dataset = FModel.Datasets[DatasetIndex];
-        if LabelIndex >= Dataset.ValueCount then
-          Continue;
-
-        const Value = Dataset.Values[LabelIndex];
-        const SegmentHeight = Value / AxisSpan * PlotHeight;
-
-        var SegmentTop: Single;
-        var SegmentBottom: Single;
-        if Value >= 0 then
-        begin
-          SegmentTop := StackTopY - SegmentHeight;
-          SegmentBottom := StackTopY;
-          StackTopY := SegmentTop;
-        end
-        else
-        begin
-          SegmentTop := StackBottomY;
-          SegmentBottom := StackBottomY - SegmentHeight;
-          StackBottomY := SegmentBottom;
-        end;
-
-        EmitRectangle(TLayoutRectF.Create(BarLeft, Min(SegmentTop, SegmentBottom), BarLeft + BarWidth,
-          Max(SegmentTop, SegmentBottom)), DatasetColor(DatasetIndex), 0, 0);
-      end;
+      SegmentTop := StackTopY - SegmentHeight;
+      SegmentBottom := StackTopY;
+      StackTopY := SegmentTop;
     end
     else
     begin
-      const GroupWidth = SlotWidth * 0.8;
-      const BarWidth = GroupWidth / Max(1, FModel.DatasetCount);
-      const GroupLeft = SlotLeft + (SlotWidth - GroupWidth) / 2;
-
-      for var DatasetIndex := 0 to FModel.DatasetCount - 1 do
-      begin
-        const Dataset = FModel.Datasets[DatasetIndex];
-        if LabelIndex >= Dataset.ValueCount then
-          Continue;
-
-        const Value = Dataset.Values[LabelIndex];
-        const ValueY = PlotBottom - (Value - AxisMin) / AxisSpan * PlotHeight;
-        const BarLeft = GroupLeft + BarWidth * DatasetIndex;
-
-        EmitRectangle(TLayoutRectF.Create(BarLeft, Min(BaseY, ValueY), BarLeft + BarWidth, Max(BaseY, ValueY)),
-          DatasetColor(DatasetIndex), 0, 0);
-      end;
+      SegmentTop := StackBottomY;
+      SegmentBottom := StackBottomY - SegmentHeight;
+      StackBottomY := SegmentBottom;
     end;
+
+    EmitRectangle(TLayoutRectF.Create(BarLeft, Min(SegmentTop, SegmentBottom), BarLeft + BarWidth,
+      Max(SegmentTop, SegmentBottom)), DatasetColor(DatasetIndex), 0, 0);
+  end;
+end;
+
+procedure TChartLayoutBuilder.EmitGroupedBars(const LabelIndex: Integer; const SlotLeft, SlotWidth, BaseY,
+  AxisMin, AxisSpan, PlotHeight, PlotBottom: Single);
+begin
+  const GroupWidth = SlotWidth * 0.8;
+  const BarWidth = GroupWidth / Max(1, FModel.DatasetCount);
+  const GroupLeft = SlotLeft + (SlotWidth - GroupWidth) / 2;
+
+  for var DatasetIndex := 0 to FModel.DatasetCount - 1 do
+  begin
+    const Dataset = FModel.Datasets[DatasetIndex];
+    if LabelIndex >= Dataset.ValueCount then
+      Continue;
+
+    const Value = Dataset.Values[LabelIndex];
+    const ValueY = PlotBottom - (Value - AxisMin) / AxisSpan * PlotHeight;
+    const BarLeft = GroupLeft + BarWidth * DatasetIndex;
+
+    EmitRectangle(TLayoutRectF.Create(BarLeft, Min(BaseY, ValueY), BarLeft + BarWidth, Max(BaseY, ValueY)),
+      DatasetColor(DatasetIndex), 0, 0);
   end;
 end;
 

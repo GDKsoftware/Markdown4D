@@ -10,8 +10,6 @@ uses
 type
   TEmphasisDelimiterChooser = class
   private
-    const
-      ExclamationMark = '!';
     class function HasAsteriskConflict(const Node, Parent: IMarkdownNode; const Index: Integer;
                                        const LastDelimiter: Char; const ParentDelimiterIsAsterisk: Boolean): Boolean;
     class function HasParentOpenerConflict(const Node, Parent: IMarkdownNode;

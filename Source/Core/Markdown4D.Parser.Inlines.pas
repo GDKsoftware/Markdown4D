@@ -89,7 +89,6 @@ type
         CanClose: Boolean;
       end;
     const
-      Bang = '!';
       ImageOpenerText = '![';
       MailtoPrefix = 'mailto:';
       UrlAutolinkSchemes: array[0..2] of string = (HttpSchemePrefix, HttpsSchemePrefix, 'ftp://');
@@ -657,7 +656,7 @@ begin
   const StartsImage = (FIndex < Length(FContent)) and (FContent[FIndex + 1] = OpenBracket);
   if not StartsImage then
   begin
-    FTextBuffer.Append(Bang);
+    FTextBuffer.Append(ExclamationMark);
     Inc(FIndex);
     Exit;
   end;

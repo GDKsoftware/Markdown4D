@@ -8,13 +8,23 @@ uses
   System.RegularExpressions;
 
 type
+  THtmlBlockKind = (
+    RawTextElement,
+    Comment,
+    ProcessingInstruction,
+    Declaration,
+    CData,
+    BlockElement,
+    CompleteTag
+  );
+
   THtmlBlockScanner = class
   private
     const
-      FirstKind = 1;
-      LastKind = 7;
-      LastLineTerminatedKind = 5;
-      InterruptingKindLimit = 7;
+      FirstKind = THtmlBlockKind.RawTextElement;
+      LastKind = THtmlBlockKind.CompleteTag;
+      LastLineTerminatedKind = THtmlBlockKind.CData;
+      InterruptingKindLimit = THtmlBlockKind.CompleteTag;
       BlockTagNames = 'address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|'
         + 'dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[123456]|head|header|hr|'
         + 'html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|'
@@ -33,9 +43,9 @@ type
       OpenTag = '<' + TagName + '(?:' + Attribute + ')*\s*/?>';
       CloseTag = '</' + TagName + '\s*>';
     constructor Create;
-    function TryMatchStart(const LineRest: string; const AllowInterruptingKind: Boolean; out Kind: Integer): Boolean;
-    function EndsOnSameLine(const Kind: Integer; const LineRest: string): Boolean;
-    class function EndsAtBlankLine(const Kind: Integer): Boolean;
+    function TryMatchStart(const LineRest: string; const AllowInterruptingKind: Boolean; out Kind: THtmlBlockKind): Boolean;
+    function EndsOnSameLine(const Kind: THtmlBlockKind; const LineRest: string): Boolean;
+    class function EndsAtBlankLine(const Kind: THtmlBlockKind): Boolean;
   end;
 
 implementation
@@ -44,25 +54,25 @@ constructor THtmlBlockScanner.Create;
 begin
   inherited Create;
 
-  FOpenPatterns[1] := TRegEx.Create('^<(?:script|pre|textarea|style)(?:\s|>|$)', [roIgnoreCase]);
-  FOpenPatterns[2] := TRegEx.Create('^<!--');
-  FOpenPatterns[3] := TRegEx.Create('^<\?');
-  FOpenPatterns[4] := TRegEx.Create('^<![A-Za-z]');
-  FOpenPatterns[5] := TRegEx.Create('^<!\[CDATA\[');
-  FOpenPatterns[6] := TRegEx.Create('^</?(?:' + BlockTagNames + ')(?:\s|/?>|$)', [roIgnoreCase]);
-  FOpenPatterns[7] := TRegEx.Create('^(?:' + OpenTag + '|' + CloseTag + ')\s*$', [roIgnoreCase]);
+  FOpenPatterns[THtmlBlockKind.RawTextElement] := TRegEx.Create('^<(?:script|pre|textarea|style)(?:\s|>|$)', [roIgnoreCase]);
+  FOpenPatterns[THtmlBlockKind.Comment] := TRegEx.Create('^<!--');
+  FOpenPatterns[THtmlBlockKind.ProcessingInstruction] := TRegEx.Create('^<\?');
+  FOpenPatterns[THtmlBlockKind.Declaration] := TRegEx.Create('^<![A-Za-z]');
+  FOpenPatterns[THtmlBlockKind.CData] := TRegEx.Create('^<!\[CDATA\[');
+  FOpenPatterns[THtmlBlockKind.BlockElement] := TRegEx.Create('^</?(?:' + BlockTagNames + ')(?:\s|/?>|$)', [roIgnoreCase]);
+  FOpenPatterns[THtmlBlockKind.CompleteTag] := TRegEx.Create('^(?:' + OpenTag + '|' + CloseTag + ')\s*$', [roIgnoreCase]);
 
-  FClosePatterns[1] := TRegEx.Create('</(?:script|pre|textarea|style)>', [roIgnoreCase]);
-  FClosePatterns[2] := TRegEx.Create('-->');
-  FClosePatterns[3] := TRegEx.Create('\?>');
-  FClosePatterns[4] := TRegEx.Create('>');
-  FClosePatterns[5] := TRegEx.Create('\]\]>');
+  FClosePatterns[THtmlBlockKind.RawTextElement] := TRegEx.Create('</(?:script|pre|textarea|style)>', [roIgnoreCase]);
+  FClosePatterns[THtmlBlockKind.Comment] := TRegEx.Create('-->');
+  FClosePatterns[THtmlBlockKind.ProcessingInstruction] := TRegEx.Create('\?>');
+  FClosePatterns[THtmlBlockKind.Declaration] := TRegEx.Create('>');
+  FClosePatterns[THtmlBlockKind.CData] := TRegEx.Create('\]\]>');
 end;
 
 function THtmlBlockScanner.TryMatchStart(const LineRest: string; const AllowInterruptingKind: Boolean;
-                                         out Kind: Integer): Boolean;
+                                         out Kind: THtmlBlockKind): Boolean;
 begin
-  Kind := 0;
+  Kind := FirstKind;
 
   for var Candidate := FirstKind to LastKind do
   begin
@@ -80,7 +90,7 @@ begin
   Result := False;
 end;
 
-function THtmlBlockScanner.EndsOnSameLine(const Kind: Integer; const LineRest: string): Boolean;
+function THtmlBlockScanner.EndsOnSameLine(const Kind: THtmlBlockKind; const LineRest: string): Boolean;
 begin
   const IsLineTerminated = (Kind >= FirstKind) and (Kind <= LastLineTerminatedKind);
   if not IsLineTerminated then
@@ -89,7 +99,7 @@ begin
   Result := FClosePatterns[Kind].IsMatch(LineRest);
 end;
 
-class function THtmlBlockScanner.EndsAtBlankLine(const Kind: Integer): Boolean;
+class function THtmlBlockScanner.EndsAtBlankLine(const Kind: THtmlBlockKind): Boolean;
 begin
   Result := (Kind > LastLineTerminatedKind);
 end;
