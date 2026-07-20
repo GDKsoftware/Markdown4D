@@ -144,6 +144,31 @@ type
   end;
 
   TChartParser = class
+  private
+    const
+      LabelKey = 'label';
+      BackgroundColorKey = 'backgroundColor';
+      BorderColorKey = 'borderColor';
+      DatasetsKey = 'datasets';
+      LabelsKey = 'labels';
+      OptionsKey = 'options';
+      PluginsKey = 'plugins';
+      TitleKey = 'title';
+      TextKey = 'text';
+      DisplayKey = 'display';
+      LegendKey = 'legend';
+      PositionKey = 'position';
+      ScalesKey = 'scales';
+      YScaleKey = 'y';
+      XScaleKey = 'x';
+      MinKey = 'min';
+      MaxKey = 'max';
+      StackedKey = 'stacked';
+    class function TryParseHexColor(const Text: string; out Color: TLayoutColor): Boolean;
+    class function TryParseFunctionalColor(const Text: string; out Color: TLayoutColor): Boolean;
+    class procedure ReadTitleOptions(const Plugins: TJSONObject; const Model: TChartModel);
+    class procedure ReadLegendOptions(const Plugins: TJSONObject; const Model: TChartModel);
+    class procedure ReadScaleOptions(const Options: TJSONObject; const Model: TChartModel);
   public
     class function TryChartKind(const Value: string; out Kind: TChartKind): Boolean;
     class function TryParseColor(const Value: string; out Color: TLayoutColor): Boolean;
@@ -290,63 +315,62 @@ begin
   Result := True;
 end;
 
-class function TChartParser.TryParseColor(const Value: string; out Color: TLayoutColor): Boolean;
+class function TChartParser.TryParseHexColor(const Text: string; out Color: TLayoutColor): Boolean;
 begin
   Color := 0;
-  const Text = Trim(Value);
-  if Text = '' then
-    Exit(False);
 
-  if Text.StartsWith('#') then
+  const Digits = Text.Substring(1);
+
+  for var Ch in Digits do
   begin
-    const Digits = Text.Substring(1);
-
-    for var Ch in Digits do
-    begin
-      if not CharInSet(Ch, ['0'..'9', 'a'..'f', 'A'..'F']) then
-        Exit(False);
-    end;
-
-    var Red: Integer;
-    var Green: Integer;
-    var Blue: Integer;
-    var Alpha := 255;
-
-    case Length(Digits) of
-      3:
-        begin
-          Red := StrToInt('$' + Digits.Chars[0] + Digits.Chars[0]);
-          Green := StrToInt('$' + Digits.Chars[1] + Digits.Chars[1]);
-          Blue := StrToInt('$' + Digits.Chars[2] + Digits.Chars[2]);
-        end;
-      4:
-        begin
-          Red := StrToInt('$' + Digits.Chars[0] + Digits.Chars[0]);
-          Green := StrToInt('$' + Digits.Chars[1] + Digits.Chars[1]);
-          Blue := StrToInt('$' + Digits.Chars[2] + Digits.Chars[2]);
-          Alpha := StrToInt('$' + Digits.Chars[3] + Digits.Chars[3]);
-        end;
-      6:
-        begin
-          Red := StrToInt('$' + Digits.Substring(0, 2));
-          Green := StrToInt('$' + Digits.Substring(2, 2));
-          Blue := StrToInt('$' + Digits.Substring(4, 2));
-        end;
-      8:
-        begin
-          Red := StrToInt('$' + Digits.Substring(0, 2));
-          Green := StrToInt('$' + Digits.Substring(2, 2));
-          Blue := StrToInt('$' + Digits.Substring(4, 2));
-          Alpha := StrToInt('$' + Digits.Substring(6, 2));
-        end;
-    else
+    if not CharInSet(Ch, ['0'..'9', 'a'..'f', 'A'..'F']) then
       Exit(False);
-    end;
-
-    Color := TLayoutColor((Cardinal(Alpha) shl 24) or (Cardinal(Red) shl 16) or (Cardinal(Green) shl 8) or
-      Cardinal(Blue));
-    Exit(True);
   end;
+
+  var Red: Integer;
+  var Green: Integer;
+  var Blue: Integer;
+  var Alpha := 255;
+
+  case Length(Digits) of
+    3:
+      begin
+        Red := StrToInt('$' + Digits.Chars[0] + Digits.Chars[0]);
+        Green := StrToInt('$' + Digits.Chars[1] + Digits.Chars[1]);
+        Blue := StrToInt('$' + Digits.Chars[2] + Digits.Chars[2]);
+      end;
+    4:
+      begin
+        Red := StrToInt('$' + Digits.Chars[0] + Digits.Chars[0]);
+        Green := StrToInt('$' + Digits.Chars[1] + Digits.Chars[1]);
+        Blue := StrToInt('$' + Digits.Chars[2] + Digits.Chars[2]);
+        Alpha := StrToInt('$' + Digits.Chars[3] + Digits.Chars[3]);
+      end;
+    6:
+      begin
+        Red := StrToInt('$' + Digits.Substring(0, 2));
+        Green := StrToInt('$' + Digits.Substring(2, 2));
+        Blue := StrToInt('$' + Digits.Substring(4, 2));
+      end;
+    8:
+      begin
+        Red := StrToInt('$' + Digits.Substring(0, 2));
+        Green := StrToInt('$' + Digits.Substring(2, 2));
+        Blue := StrToInt('$' + Digits.Substring(4, 2));
+        Alpha := StrToInt('$' + Digits.Substring(6, 2));
+      end;
+  else
+    Exit(False);
+  end;
+
+  Color := TLayoutColor((Cardinal(Alpha) shl 24) or (Cardinal(Red) shl 16) or (Cardinal(Green) shl 8) or
+    Cardinal(Blue));
+  Result := True;
+end;
+
+class function TChartParser.TryParseFunctionalColor(const Text: string; out Color: TLayoutColor): Boolean;
+begin
+  Color := 0;
 
   const IsFunctional = Text.StartsWith('rgb(') or Text.StartsWith('rgba(');
   if not IsFunctional then
@@ -384,6 +408,19 @@ begin
   Color := TLayoutColor((Cardinal(AlphaValue) shl 24) or (Cardinal(Channels[0]) shl 16) or
     (Cardinal(Channels[1]) shl 8) or Cardinal(Channels[2]));
   Result := True;
+end;
+
+class function TChartParser.TryParseColor(const Value: string; out Color: TLayoutColor): Boolean;
+begin
+  Color := 0;
+  const Text = Trim(Value);
+  if Text = '' then
+    Exit(False);
+
+  if Text.StartsWith('#') then
+    Exit(TryParseHexColor(Text, Color));
+
+  Result := TryParseFunctionalColor(Text, Color);
 end;
 
 class function TChartParser.ReadColors(const Value: TJSONValue): TArray<TLayoutColor>;
@@ -436,106 +473,120 @@ end;
 class function TChartParser.ReadDataset(const Value: TJSONObject): IChartDataset;
 begin
   var Caption := '';
-  const LabelValue = Value.GetValue('label');
+  const LabelValue = Value.GetValue(LabelKey);
   if LabelValue is TJSONString then
     Caption := TJSONString(LabelValue).Value;
 
   var Values: TArray<Double> := nil;
-  const DataValue = Value.GetValue('data');
+  const DataValue = Value.GetValue(TChartExtension.ChartDataKey);
   if DataValue is TJSONArray then
     Values := ReadValues(TJSONArray(DataValue));
 
   var BackgroundColors: TArray<TLayoutColor> := nil;
-  const BackgroundValue = Value.GetValue('backgroundColor');
+  const BackgroundValue = Value.GetValue(BackgroundColorKey);
   if BackgroundValue <> nil then
     BackgroundColors := ReadColors(BackgroundValue);
 
   var BorderColors: TArray<TLayoutColor> := nil;
-  const BorderValue = Value.GetValue('borderColor');
+  const BorderValue = Value.GetValue(BorderColorKey);
   if BorderValue <> nil then
     BorderColors := ReadColors(BorderValue);
 
   Result := TChartDataset.Create(Caption, Values, BackgroundColors, BorderColors);
 end;
 
+class procedure TChartParser.ReadTitleOptions(const Plugins: TJSONObject; const Model: TChartModel);
+begin
+  const Title = Plugins.GetValue(TitleKey);
+  if not (Title is TJSONObject) then
+    Exit;
+
+  const DisplayValue = TJSONObject(Title).GetValue(DisplayKey);
+  if DisplayValue is TJSONBool then
+    Model.FTitleVisible := TJSONBool(DisplayValue).AsBoolean;
+
+  const TextValue = TJSONObject(Title).GetValue(TextKey);
+  if TextValue is TJSONString then
+    Model.FTitle := TJSONString(TextValue).Value;
+end;
+
+class procedure TChartParser.ReadLegendOptions(const Plugins: TJSONObject; const Model: TChartModel);
+begin
+  const Legend = Plugins.GetValue(LegendKey);
+  if not (Legend is TJSONObject) then
+    Exit;
+
+  const DisplayValue = TJSONObject(Legend).GetValue(DisplayKey);
+  if DisplayValue is TJSONBool then
+    Model.FLegendVisible := TJSONBool(DisplayValue).AsBoolean;
+
+  const PositionValue = TJSONObject(Legend).GetValue(PositionKey);
+  if PositionValue is TJSONString then
+  begin
+    const Position = LowerCase(Trim(TJSONString(PositionValue).Value));
+    if Position = 'left' then
+      Model.FLegendPosition := TChartLegendPosition.Left
+    else if Position = 'right' then
+      Model.FLegendPosition := TChartLegendPosition.Right
+    else if Position = 'bottom' then
+      Model.FLegendPosition := TChartLegendPosition.Bottom
+    else if Position = 'top' then
+      Model.FLegendPosition := TChartLegendPosition.Top;
+  end;
+end;
+
+class procedure TChartParser.ReadScaleOptions(const Options: TJSONObject; const Model: TChartModel);
+begin
+  const Scales = Options.GetValue(ScalesKey);
+  if not (Scales is TJSONObject) then
+    Exit;
+
+  const YScale = TJSONObject(Scales).GetValue(YScaleKey);
+  if YScale is TJSONObject then
+  begin
+    const MinValue = TJSONObject(YScale).GetValue(MinKey);
+    if MinValue is TJSONNumber then
+    begin
+      Model.FHasScaleMin := True;
+      Model.FScaleMin := TJSONNumber(MinValue).AsDouble;
+    end;
+
+    const MaxValue = TJSONObject(YScale).GetValue(MaxKey);
+    if MaxValue is TJSONNumber then
+    begin
+      Model.FHasScaleMax := True;
+      Model.FScaleMax := TJSONNumber(MaxValue).AsDouble;
+    end;
+
+    const StackedValue = TJSONObject(YScale).GetValue(StackedKey);
+    if (StackedValue is TJSONBool) and TJSONBool(StackedValue).AsBoolean then
+      Model.FStacked := True;
+  end;
+
+  const XScale = TJSONObject(Scales).GetValue(XScaleKey);
+  if XScale is TJSONObject then
+  begin
+    const StackedValue = TJSONObject(XScale).GetValue(StackedKey);
+    if (StackedValue is TJSONBool) and TJSONBool(StackedValue).AsBoolean then
+      Model.FStacked := True;
+  end;
+end;
+
 class procedure TChartParser.ReadOptions(const Options: TJSONObject; const Model: TChartModel);
 begin
-  const Plugins = Options.GetValue('plugins');
+  const Plugins = Options.GetValue(PluginsKey);
   if Plugins is TJSONObject then
   begin
-    const Title = TJSONObject(Plugins).GetValue('title');
-    if Title is TJSONObject then
-    begin
-      const DisplayValue = TJSONObject(Title).GetValue('display');
-      if DisplayValue is TJSONBool then
-        Model.FTitleVisible := TJSONBool(DisplayValue).AsBoolean;
-
-      const TextValue = TJSONObject(Title).GetValue('text');
-      if TextValue is TJSONString then
-        Model.FTitle := TJSONString(TextValue).Value;
-    end;
-
-    const Legend = TJSONObject(Plugins).GetValue('legend');
-    if Legend is TJSONObject then
-    begin
-      const DisplayValue = TJSONObject(Legend).GetValue('display');
-      if DisplayValue is TJSONBool then
-        Model.FLegendVisible := TJSONBool(DisplayValue).AsBoolean;
-
-      const PositionValue = TJSONObject(Legend).GetValue('position');
-      if PositionValue is TJSONString then
-      begin
-        const Position = LowerCase(Trim(TJSONString(PositionValue).Value));
-        if Position = 'left' then
-          Model.FLegendPosition := TChartLegendPosition.Left
-        else if Position = 'right' then
-          Model.FLegendPosition := TChartLegendPosition.Right
-        else if Position = 'bottom' then
-          Model.FLegendPosition := TChartLegendPosition.Bottom
-        else if Position = 'top' then
-          Model.FLegendPosition := TChartLegendPosition.Top;
-      end;
-    end;
+    ReadTitleOptions(TJSONObject(Plugins), Model);
+    ReadLegendOptions(TJSONObject(Plugins), Model);
   end;
 
-  const Scales = Options.GetValue('scales');
-  if Scales is TJSONObject then
-  begin
-    const YScale = TJSONObject(Scales).GetValue('y');
-    if YScale is TJSONObject then
-    begin
-      const MinValue = TJSONObject(YScale).GetValue('min');
-      if MinValue is TJSONNumber then
-      begin
-        Model.FHasScaleMin := True;
-        Model.FScaleMin := TJSONNumber(MinValue).AsDouble;
-      end;
-
-      const MaxValue = TJSONObject(YScale).GetValue('max');
-      if MaxValue is TJSONNumber then
-      begin
-        Model.FHasScaleMax := True;
-        Model.FScaleMax := TJSONNumber(MaxValue).AsDouble;
-      end;
-
-      const StackedValue = TJSONObject(YScale).GetValue('stacked');
-      if (StackedValue is TJSONBool) and TJSONBool(StackedValue).AsBoolean then
-        Model.FStacked := True;
-    end;
-
-    const XScale = TJSONObject(Scales).GetValue('x');
-    if XScale is TJSONObject then
-    begin
-      const StackedValue = TJSONObject(XScale).GetValue('stacked');
-      if (StackedValue is TJSONBool) and TJSONBool(StackedValue).AsBoolean then
-        Model.FStacked := True;
-    end;
-  end;
+  ReadScaleOptions(Options, Model);
 end;
 
 class procedure TChartParser.BuildLabels(const Data: TJSONObject; const Model: TChartModel);
 begin
-  const LabelsValue = Data.GetValue('labels');
+  const LabelsValue = Data.GetValue(LabelsKey);
   if not (LabelsValue is TJSONArray) then
     Exit;
 
@@ -568,12 +619,7 @@ class function TChartParser.TryBuildModel(const Literal: string; out Model: ICha
 begin
   Model := nil;
 
-  var Root: TJSONValue;
-  try
-    Root := TJSONObject.ParseJSONValue(Literal);
-  except
-    Root := nil;
-  end;
+  var Root := TJSONObject.ParseJSONValue(Literal);
 
   if not (Root is TJSONObject) then
   begin
@@ -584,16 +630,16 @@ begin
   try
     const Wrapper = TJSONObject(Root);
 
-    const WrapperType = Wrapper.GetValue('type');
+    const WrapperType = Wrapper.GetValue(TChartExtension.ChartTypeKey);
     if not (WrapperType is TJSONString) or (TJSONString(WrapperType).Value <> TChartExtension.ChartTypeValue) then
       Exit(False);
 
-    const ConfigValue = Wrapper.GetValue('data');
+    const ConfigValue = Wrapper.GetValue(TChartExtension.ChartDataKey);
     if not (ConfigValue is TJSONObject) then
       Exit(False);
     const Config = TJSONObject(ConfigValue);
 
-    const KindValue = Config.GetValue('type');
+    const KindValue = Config.GetValue(TChartExtension.ChartTypeKey);
     if not (KindValue is TJSONString) then
       Exit(False);
 
@@ -601,12 +647,12 @@ begin
     if not TryChartKind(TJSONString(KindValue).Value, Kind) then
       Exit(False);
 
-    const DataValue = Config.GetValue('data');
+    const DataValue = Config.GetValue(TChartExtension.ChartDataKey);
     if not (DataValue is TJSONObject) then
       Exit(False);
     const Data = TJSONObject(DataValue);
 
-    const DatasetsValue = Data.GetValue('datasets');
+    const DatasetsValue = Data.GetValue(DatasetsKey);
     if not (DatasetsValue is TJSONArray) then
       Exit(False);
     const DatasetsArray = TJSONArray(DatasetsValue);
@@ -623,7 +669,7 @@ begin
     BuildLabels(Data, Instance);
     BuildDatasets(DatasetsArray, Instance);
 
-    const OptionsValue = Config.GetValue('options');
+    const OptionsValue = Config.GetValue(OptionsKey);
     if OptionsValue is TJSONObject then
       ReadOptions(TJSONObject(OptionsValue), Instance);
 

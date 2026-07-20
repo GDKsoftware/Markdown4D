@@ -188,11 +188,16 @@ type
     class function ReadSpacings(const Root: TJSONObject; const Name: string): THeadingSpacingArray;
     class function ReadPalette(const Root: TJSONObject): TArray<TLayoutColor>;
     class function ReadTokenColors(const Root: TJSONObject): TTokenColorArray;
-    class function JsonToFont(const Value: TJSONValue): TMarkdownFontStyle;
+    class function JsonToFont(const Value: TJSONValue; const Name: string): TMarkdownFontStyle;
     class function ReadColor(const Root: TJSONObject; const Name: string): TLayoutColor;
     class function ReadSingle(const Root: TJSONObject; const Name: string): Single;
     class function RequireArray(const Root: TJSONObject; const Name: string; const ExpectedCount: Integer): TJSONArray;
     class function RequireValue(const Root: TJSONObject; const Name: string): TJSONValue;
+    class function RequireNumber(const Value: TJSONValue; const Name: string): TJSONNumber;
+    class function RequireString(const Value: TJSONValue; const Name: string): TJSONString;
+    class function RequireBool(const Value: TJSONValue; const Name: string): TJSONBool;
+    class function RequireObject(const Value: TJSONValue; const Name: string): TJSONObject;
+    class function RequireArrayValue(const Value: TJSONValue; const Name: string): TJSONArray;
     function GetHeadingFont(const Level: Integer): TMarkdownFontStyle;
     procedure SetHeadingFont(const Level: Integer; const Value: TMarkdownFontStyle);
     function GetHeadingSpacingAbove(const Level: Integer): Single;
@@ -480,8 +485,8 @@ class function TMarkdownTheme.ReadThemeData(const Root: TJSONObject): TThemeData
 begin
   Result := Default(TThemeData);
 
-  Result.BaseFont := JsonToFont(RequireValue(Root, BaseFontKey));
-  Result.CodeFont := JsonToFont(RequireValue(Root, CodeFontKey));
+  Result.BaseFont := JsonToFont(RequireValue(Root, BaseFontKey), BaseFontKey);
+  Result.CodeFont := JsonToFont(RequireValue(Root, CodeFontKey), CodeFontKey);
   Result.HeadingFonts := ReadHeadingFonts(Root);
   Result.HeadingSpacingsAbove := ReadSpacings(Root, HeadingSpacingsAboveKey);
   Result.HeadingSpacingsBelow := ReadSpacings(Root, HeadingSpacingsBelowKey);
@@ -568,7 +573,7 @@ begin
 
   for var Level := MinHeadingLevel to MaxHeadingLevel do
   begin
-    Result[Level] := JsonToFont(Fonts.Items[Level - MinHeadingLevel]);
+    Result[Level] := JsonToFont(Fonts.Items[Level - MinHeadingLevel], HeadingFontsKey);
   end;
 end;
 
@@ -578,7 +583,7 @@ begin
 
   for var Level := MinHeadingLevel to MaxHeadingLevel do
   begin
-    Result[Level] := Single((Spacings.Items[Level - MinHeadingLevel] as TJSONNumber).AsDouble);
+    Result[Level] := Single(RequireNumber(Spacings.Items[Level - MinHeadingLevel], Name).AsDouble);
   end;
 end;
 
@@ -589,7 +594,7 @@ begin
 
   for var Index := 0 to Colors.Count - 1 do
   begin
-    Result[Index] := TLayoutColor((Colors.Items[Index] as TJSONNumber).AsInt64);
+    Result[Index] := TLayoutColor(RequireNumber(Colors.Items[Index], ChartPaletteKey).AsInt64);
   end;
 end;
 
@@ -599,36 +604,36 @@ begin
 
   for var Kind := Low(TSyntaxTokenKind) to High(TSyntaxTokenKind) do
   begin
-    Result[Kind] := TLayoutColor((Colors.Items[Ord(Kind)] as TJSONNumber).AsInt64);
+    Result[Kind] := TLayoutColor(RequireNumber(Colors.Items[Ord(Kind)], CodeTokenColorsKey).AsInt64);
   end;
 end;
 
-class function TMarkdownTheme.JsonToFont(const Value: TJSONValue): TMarkdownFontStyle;
+class function TMarkdownTheme.JsonToFont(const Value: TJSONValue; const Name: string): TMarkdownFontStyle;
 begin
-  const FontObject = Value as TJSONObject;
+  const FontObject = RequireObject(Value, Name);
 
-  Result.FamilyName := (RequireValue(FontObject, FamilyNameKey) as TJSONString).Value;
-  Result.Size := Single((RequireValue(FontObject, FontSizeKey) as TJSONNumber).AsDouble);
-  Result.Bold := (RequireValue(FontObject, BoldKey) as TJSONBool).AsBoolean;
-  Result.Italic := (RequireValue(FontObject, ItalicKey) as TJSONBool).AsBoolean;
-  Result.Underline := (RequireValue(FontObject, UnderlineKey) as TJSONBool).AsBoolean;
-  Result.Strikeout := (RequireValue(FontObject, StrikeoutKey) as TJSONBool).AsBoolean;
+  Result.FamilyName := RequireString(RequireValue(FontObject, FamilyNameKey), FamilyNameKey).Value;
+  Result.Size := Single(RequireNumber(RequireValue(FontObject, FontSizeKey), FontSizeKey).AsDouble);
+  Result.Bold := RequireBool(RequireValue(FontObject, BoldKey), BoldKey).AsBoolean;
+  Result.Italic := RequireBool(RequireValue(FontObject, ItalicKey), ItalicKey).AsBoolean;
+  Result.Underline := RequireBool(RequireValue(FontObject, UnderlineKey), UnderlineKey).AsBoolean;
+  Result.Strikeout := RequireBool(RequireValue(FontObject, StrikeoutKey), StrikeoutKey).AsBoolean;
 end;
 
 class function TMarkdownTheme.ReadColor(const Root: TJSONObject; const Name: string): TLayoutColor;
 begin
-  Result := TLayoutColor((RequireValue(Root, Name) as TJSONNumber).AsInt64);
+  Result := TLayoutColor(RequireNumber(RequireValue(Root, Name), Name).AsInt64);
 end;
 
 class function TMarkdownTheme.ReadSingle(const Root: TJSONObject; const Name: string): Single;
 begin
-  Result := Single((RequireValue(Root, Name) as TJSONNumber).AsDouble);
+  Result := Single(RequireNumber(RequireValue(Root, Name), Name).AsDouble);
 end;
 
 class function TMarkdownTheme.RequireArray(const Root: TJSONObject; const Name: string;
   const ExpectedCount: Integer): TJSONArray;
 begin
-  Result := RequireValue(Root, Name) as TJSONArray;
+  Result := RequireArrayValue(RequireValue(Root, Name), Name);
 
   const HasExpectedCount = (ExpectedCount < 0) or (Result.Count = ExpectedCount);
   if not HasExpectedCount then
@@ -641,6 +646,51 @@ begin
 
   if Result = nil then
     raise EMarkdownError.CreateFmt('Theme JSON is missing "%s"', [Name]);
+end;
+
+class function TMarkdownTheme.RequireNumber(const Value: TJSONValue; const Name: string): TJSONNumber;
+begin
+  const IsNumber = (Value is TJSONNumber);
+  if not IsNumber then
+    raise EMarkdownError.CreateFmt('Theme JSON value "%s" must be a number', [Name]);
+
+  Result := TJSONNumber(Value);
+end;
+
+class function TMarkdownTheme.RequireString(const Value: TJSONValue; const Name: string): TJSONString;
+begin
+  const IsString = (Value is TJSONString);
+  if not IsString then
+    raise EMarkdownError.CreateFmt('Theme JSON value "%s" must be a string', [Name]);
+
+  Result := TJSONString(Value);
+end;
+
+class function TMarkdownTheme.RequireBool(const Value: TJSONValue; const Name: string): TJSONBool;
+begin
+  const IsBool = (Value is TJSONBool);
+  if not IsBool then
+    raise EMarkdownError.CreateFmt('Theme JSON value "%s" must be a boolean', [Name]);
+
+  Result := TJSONBool(Value);
+end;
+
+class function TMarkdownTheme.RequireObject(const Value: TJSONValue; const Name: string): TJSONObject;
+begin
+  const IsObject = (Value is TJSONObject);
+  if not IsObject then
+    raise EMarkdownError.CreateFmt('Theme JSON value "%s" must be an object', [Name]);
+
+  Result := TJSONObject(Value);
+end;
+
+class function TMarkdownTheme.RequireArrayValue(const Value: TJSONValue; const Name: string): TJSONArray;
+begin
+  const IsArray = (Value is TJSONArray);
+  if not IsArray then
+    raise EMarkdownError.CreateFmt('Theme JSON value "%s" must be an array', [Name]);
+
+  Result := TJSONArray(Value);
 end;
 
 function TMarkdownTheme.GetHeadingFont(const Level: Integer): TMarkdownFontStyle;

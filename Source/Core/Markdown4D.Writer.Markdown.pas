@@ -233,6 +233,7 @@ begin
       EnterTableRow(Task);
     TMarkdownNodeKind.TableCell:
       EnterTableCell(Task);
+  else
   end;
 end;
 
@@ -261,6 +262,7 @@ begin
       LeaveTableRow(Task);
     TMarkdownNodeKind.TableCell:
       WriteRaw(Space + TablePipe);
+  else
   end;
 end;
 

@@ -494,7 +494,7 @@ begin
   if Handled then
     Exit;
 
-  const Notches = WheelDelta / 120;
+  const Notches = WheelDelta / MouseWheelDeltaPerNotch;
   SetScrollPosition(FModel.ScrollOffset - (Notches * WheelLinesPerNotch * LineScrollAmount));
   Handled := True;
 end;

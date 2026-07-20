@@ -43,7 +43,7 @@ begin
 
   var Index := FPosition;
 
-  while (Index <= SourceLength) and (FSource[Index] <> LineFeed) and (FSource[Index] <> #13) do
+  while (Index <= SourceLength) and (FSource[Index] <> LineFeed) and (FSource[Index] <> CarriageReturn) do
   begin
     Inc(Index);
   end;
@@ -52,7 +52,7 @@ begin
   Line.EndOffset := Index;
   Line.Text := Copy(FSource, FPosition, Index - FPosition);
 
-  const HasCarriageReturn = (Index <= SourceLength) and (FSource[Index] = #13);
+  const HasCarriageReturn = (Index <= SourceLength) and (FSource[Index] = CarriageReturn);
   if HasCarriageReturn then
     Inc(Index);
 

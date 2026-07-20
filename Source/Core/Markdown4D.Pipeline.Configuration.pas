@@ -89,6 +89,30 @@ type
 
 implementation
 
+type
+  TRegistrationOrder = record
+    Priority: Integer;
+    Ordinal: Integer;
+  end;
+
+  TRegistrationOrderSelector<T> = reference to function(const Registration: T): TRegistrationOrder;
+
+  TRegistrationComparer = class
+    class function ByPriority<T>(const OrderOf: TRegistrationOrderSelector<T>): IComparer<T>; static;
+  end;
+
+class function TRegistrationComparer.ByPriority<T>(const OrderOf: TRegistrationOrderSelector<T>): IComparer<T>;
+begin
+  Result := TComparer<T>.Construct(
+    function(const Left, Right: T): Integer
+    begin
+      const LeftOrder = OrderOf(Left);
+      const RightOrder = OrderOf(Right);
+      Result := TMarkdownPipelineConfiguration.ComparePriorities(
+        LeftOrder.Priority, LeftOrder.Ordinal, RightOrder.Priority, RightOrder.Ordinal);
+    end);
+end;
+
 class function TMarkdownRendererOptions.SafeDefaults: TMarkdownRendererOptions;
 begin
   Result := Default(TMarkdownRendererOptions);
@@ -138,10 +162,11 @@ procedure TMarkdownPipelineConfiguration.CopyBlockParsers(const Registrations: T
 begin
   FBlockParsers.AddRange(Registrations);
 
-  FBlockParsers.Sort(TComparer<TMarkdownBlockParserRegistration>.Construct(
-    function(const Left, Right: TMarkdownBlockParserRegistration): Integer
+  FBlockParsers.Sort(TRegistrationComparer.ByPriority<TMarkdownBlockParserRegistration>(
+    function(const Registration: TMarkdownBlockParserRegistration): TRegistrationOrder
     begin
-      Result := ComparePriorities(Left.Priority, Left.Ordinal, Right.Priority, Right.Ordinal);
+      Result.Priority := Registration.Priority;
+      Result.Ordinal := Registration.Ordinal;
     end));
 end;
 
@@ -149,10 +174,11 @@ procedure TMarkdownPipelineConfiguration.CopyInlineParsers(const Registrations: 
 begin
   FInlineParsers.AddRange(Registrations);
 
-  FInlineParsers.Sort(TComparer<TMarkdownInlineParserRegistration>.Construct(
-    function(const Left, Right: TMarkdownInlineParserRegistration): Integer
+  FInlineParsers.Sort(TRegistrationComparer.ByPriority<TMarkdownInlineParserRegistration>(
+    function(const Registration: TMarkdownInlineParserRegistration): TRegistrationOrder
     begin
-      Result := ComparePriorities(Left.Priority, Left.Ordinal, Right.Priority, Right.Ordinal);
+      Result.Priority := Registration.Priority;
+      Result.Ordinal := Registration.Ordinal;
     end));
 end;
 
@@ -161,10 +187,11 @@ begin
   const Sorted = TList<TMarkdownDelimiterProcessorRegistration>.Create;
   try
     Sorted.AddRange(Registrations);
-    Sorted.Sort(TComparer<TMarkdownDelimiterProcessorRegistration>.Construct(
-      function(const Left, Right: TMarkdownDelimiterProcessorRegistration): Integer
+    Sorted.Sort(TRegistrationComparer.ByPriority<TMarkdownDelimiterProcessorRegistration>(
+      function(const Registration: TMarkdownDelimiterProcessorRegistration): TRegistrationOrder
       begin
-        Result := ComparePriorities(Left.Priority, Left.Ordinal, Right.Priority, Right.Ordinal);
+        Result.Priority := Registration.Priority;
+        Result.Ordinal := Registration.Ordinal;
       end));
 
     for var Registration in Sorted do
@@ -184,10 +211,11 @@ begin
   const Sorted = TList<TMarkdownRendererHookRegistration>.Create;
   try
     Sorted.AddRange(Registrations);
-    Sorted.Sort(TComparer<TMarkdownRendererHookRegistration>.Construct(
-      function(const Left, Right: TMarkdownRendererHookRegistration): Integer
+    Sorted.Sort(TRegistrationComparer.ByPriority<TMarkdownRendererHookRegistration>(
+      function(const Registration: TMarkdownRendererHookRegistration): TRegistrationOrder
       begin
-        Result := ComparePriorities(Left.Priority, Left.Ordinal, Right.Priority, Right.Ordinal);
+        Result.Priority := Registration.Priority;
+        Result.Ordinal := Registration.Ordinal;
       end));
 
     for var Registration in Sorted do
@@ -207,10 +235,11 @@ begin
   const Sorted = TList<TMarkdownDocumentProcessorRegistration>.Create;
   try
     Sorted.AddRange(Registrations);
-    Sorted.Sort(TComparer<TMarkdownDocumentProcessorRegistration>.Construct(
-      function(const Left, Right: TMarkdownDocumentProcessorRegistration): Integer
+    Sorted.Sort(TRegistrationComparer.ByPriority<TMarkdownDocumentProcessorRegistration>(
+      function(const Registration: TMarkdownDocumentProcessorRegistration): TRegistrationOrder
       begin
-        Result := ComparePriorities(Left.Priority, Left.Ordinal, Right.Priority, Right.Ordinal);
+        Result.Priority := Registration.Priority;
+        Result.Ordinal := Registration.Ordinal;
       end));
 
     for var Registration in Sorted do

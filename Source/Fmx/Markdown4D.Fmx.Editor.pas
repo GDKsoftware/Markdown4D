@@ -64,7 +64,8 @@ type
     procedure HandleCaretTimer(Sender: TObject);
     procedure HandlePreviewTimer(Sender: TObject);
     procedure HandleAutoScrollTimer(Sender: TObject);
-    function NextClickCount(const X, Y: Single; const Shift: TShiftState): Integer;
+    function ClickCountAt(const X, Y: Single; const Shift: TShiftState; const Ticks: Cardinal): Integer;
+    procedure RecordClick(const X, Y: Single; const Ticks: Cardinal);
     procedure UpdateSelectionToPoint(const X, Y: Single);
     procedure UpdateAutoScroll(const X, Y: Single);
     procedure SchedulePreviewUpdate;
@@ -595,14 +596,14 @@ begin
 
   var BestColumn := 0;
   var BestDistance := Abs(TargetX);
-  for var Count := 1 to Length(LineText) do
+  for var ColumnCount := 1 to Length(LineText) do
   begin
-    const Width = FMeasurePainter.MeasureText(Copy(LineText, 1, Count), CodeFont).Width;
+    const Width = FMeasurePainter.MeasureText(Copy(LineText, 1, ColumnCount), CodeFont).Width;
     const Distance = Abs(TargetX - Width);
     if Distance < BestDistance then
     begin
       BestDistance := Distance;
-      BestColumn := Count;
+      BestColumn := ColumnCount;
     end;
   end;
 
@@ -814,7 +815,9 @@ begin
     Exit;
   end;
 
-  FClickCount := NextClickCount(X, Y, Shift);
+  const Ticks = TThread.GetTickCount;
+  FClickCount := ClickCountAt(X, Y, Shift, Ticks);
+  RecordClick(X, Y, Ticks);
 
   case FClickCount of
     2:
@@ -862,9 +865,8 @@ begin
     FAutoScrollTimer.Enabled := False;
 end;
 
-function TMarkdownEditor.NextClickCount(const X, Y: Single; const Shift: TShiftState): Integer;
+function TMarkdownEditor.ClickCountAt(const X, Y: Single; const Shift: TShiftState; const Ticks: Cardinal): Integer;
 begin
-  const Ticks = TThread.GetTickCount;
   const WithinTime = (Ticks - FLastClickTicks) <= DoubleClickWindowMilliseconds;
   const WithinDistance = (Abs(X - FLastClickX) <= DoubleClickSlopDips) and
     (Abs(Y - FLastClickY) <= DoubleClickSlopDips);
@@ -875,7 +877,10 @@ begin
     Result := FClickCount + 1
   else
     Result := 1;
+end;
 
+procedure TMarkdownEditor.RecordClick(const X, Y: Single; const Ticks: Cardinal);
+begin
   FLastClickTicks := Ticks;
   FLastClickX := X;
   FLastClickY := Y;
@@ -930,7 +935,7 @@ begin
   if Handled then
     Exit;
 
-  const Notches = WheelDelta / 120;
+  const Notches = WheelDelta / MouseWheelDeltaPerNotch;
   SetScrollOffset(FScrollOffset - (Notches * WheelLinesPerNotch * LineHeightPx));
   Handled := True;
 end;

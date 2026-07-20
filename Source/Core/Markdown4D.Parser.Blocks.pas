@@ -106,8 +106,8 @@ type
     function TryStartThematicBreak: TMarkdownBlockStart;
     function IsThematicBreakLine: Boolean;
     function TryStartListItem(const Container: TStagingBlock): TMarkdownBlockStart;
-    function TryParseListMarker(const Container: TStagingBlock; out Data: TListData): Boolean;
-    function TryMatchListMarker(const Container: TStagingBlock; out Data: TListData;
+    function TryParseListMarker(const Container: TStagingBlock; out MarkerData: TListData): Boolean;
+    function TryMatchListMarker(const Container: TStagingBlock; out MarkerData: TListData;
                                 out MarkerLength: Integer): Boolean;
     function TryScanOrderedMarker(out Number, DigitCount, DelimiterIndex: Integer): Boolean;
     class function IsBulletChar(const Value: Char): Boolean;
@@ -301,7 +301,8 @@ begin
     Result.Container := Child;
     FBlank := FScanner.IsBlank;
 
-    case ContinueBlock(Result.Container) of
+    const ContinuationResult = ContinueBlock(Result.Container);
+    case ContinuationResult of
       TContinueResult.Continued:
         ;
       TContinueResult.Rejected:
@@ -314,6 +315,8 @@ begin
           Result.LineConsumed := True;
           Exit;
         end;
+    else
+      raise EMarkdownError.CreateFmt('Unhandled continuation result: %d', [Ord(ContinuationResult)]);
     end;
 
     Child := Result.Container.LastChild;
@@ -542,7 +545,8 @@ begin
   begin
     FBlank := FScanner.IsBlank;
 
-    case TryStartBlock(Result) of
+    const BlockStart = TryStartBlock(Result);
+    case BlockStart of
       TMarkdownBlockStart.NoMatch:
         begin
           FScanner.AdvanceNextNonSpace;
@@ -555,6 +559,8 @@ begin
           Result := FTip;
           MatchedLeaf := True;
         end;
+    else
+      raise EMarkdownError.CreateFmt('Unhandled block start: %d', [Ord(BlockStart)]);
     end;
   end;
 end;
@@ -902,7 +908,9 @@ begin
       if (Current = BackslashChar) and (Index < Length(Trimmed)) then
       begin
         if Trimmed[Index + 1] = PipeChar then
-          Cell.Append(PipeChar)
+        begin
+          Cell.Append(PipeChar);
+        end
         else
         begin
           Cell.Append(Current);
@@ -982,34 +990,34 @@ begin
   if not MayStart then
     Exit(TMarkdownBlockStart.NoMatch);
 
-  var Data: TListData;
-  if not TryParseListMarker(Container, Data) then
+  var MarkerData: TListData;
+  if not TryParseListMarker(Container, MarkerData) then
     Exit(TMarkdownBlockStart.NoMatch);
 
   CloseUnmatchedBlocks;
 
-  const NeedsNewList = (FTip.Kind <> TMarkdownNodeKind.List) or (not Container.ListData.MatchesKind(Data));
+  const NeedsNewList = (FTip.Kind <> TMarkdownNodeKind.List) or (not Container.ListData.MatchesKind(MarkerData));
   if NeedsNewList then
   begin
     const List = AddChild(TMarkdownNodeKind.List);
-    List.ListData := Data;
+    List.ListData := MarkerData;
   end;
 
   const Item = AddChild(TMarkdownNodeKind.ListItem);
-  Item.ListData := Data;
+  Item.ListData := MarkerData;
 
   Result := TMarkdownBlockStart.Container;
 end;
 
-function TBlockParser.TryParseListMarker(const Container: TStagingBlock; out Data: TListData): Boolean;
+function TBlockParser.TryParseListMarker(const Container: TStagingBlock; out MarkerData: TListData): Boolean;
 begin
-  Data := Default(TListData);
+  MarkerData := Default(TListData);
 
   if FScanner.Indent >= CodeIndent then
     Exit(False);
 
   var MarkerLength: Integer;
-  if not TryMatchListMarker(Container, Data, MarkerLength) then
+  if not TryMatchListMarker(Container, MarkerData, MarkerLength) then
     Exit(False);
 
   const AfterMarker = FScanner.CharAt(FScanner.NextNonSpaceIndex + MarkerLength);
@@ -1026,23 +1034,23 @@ begin
   FScanner.AdvanceNextNonSpace;
   FScanner.AdvanceOffset(MarkerLength, True);
 
-  Data.Padding := ComputeMarkerPadding(MarkerLength);
+  MarkerData.Padding := ComputeMarkerPadding(MarkerLength);
   Result := True;
 end;
 
-function TBlockParser.TryMatchListMarker(const Container: TStagingBlock; out Data: TListData;
+function TBlockParser.TryMatchListMarker(const Container: TStagingBlock; out MarkerData: TListData;
                                          out MarkerLength: Integer): Boolean;
 begin
-  Data := Default(TListData);
-  Data.IsTight := True;
-  Data.StartNumber := 1;
-  Data.MarkerOffset := FScanner.Indent;
+  MarkerData := Default(TListData);
+  MarkerData.IsTight := True;
+  MarkerData.StartNumber := 1;
+  MarkerData.MarkerOffset := FScanner.Indent;
   MarkerLength := 0;
 
   const Marker = FScanner.NextChar;
   if IsBulletChar(Marker) then
   begin
-    Data.BulletChar := Marker;
+    MarkerData.BulletChar := Marker;
     MarkerLength := 1;
 
     Exit(True);
@@ -1058,9 +1066,9 @@ begin
   if not CanInterrupt then
     Exit(False);
 
-  Data.IsOrdered := True;
-  Data.StartNumber := Number;
-  Data.Delimiter := FScanner.Line[DelimiterIndex];
+  MarkerData.IsOrdered := True;
+  MarkerData.StartNumber := Number;
+  MarkerData.Delimiter := FScanner.Line[DelimiterIndex];
   MarkerLength := DigitCount + 1;
   Result := True;
 end;
@@ -1277,6 +1285,8 @@ begin
       FinalizeHtmlBlock(Block);
     TMarkdownNodeKind.List:
       FinalizeList(Block);
+  else
+    ;
   end;
 
   FTip := Parent;

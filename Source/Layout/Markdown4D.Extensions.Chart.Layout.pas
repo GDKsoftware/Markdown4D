@@ -32,6 +32,7 @@ uses
   System.Math,
   System.SysUtils,
   System.Generics.Collections,
+  Markdown4D.Defines,
   Markdown4D.Layout.ExtensionCanvas;
 
 type
@@ -176,6 +177,8 @@ begin
         LayoutAxes;
       TChartKind.Pie, TChartKind.Doughnut:
         LayoutPie;
+    else
+      raise EMarkdownError.CreateFmt('Unhandled chart kind: %d', [Ord(FModel.ChartKind)]);
     end;
   end;
 end;

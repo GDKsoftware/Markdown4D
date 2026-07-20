@@ -57,13 +57,18 @@ implementation
 
 uses
   System.Classes,
+  System.SyncObjs,
   System.Threading,
   System.Net.HttpClient;
 
 type
   TMarkdownDownloaderLifetime = class(TInterfacedObject, IMarkdownDownloaderLifetime)
   private
-    FShutdownRequested: Boolean;
+    const
+      StateAlive = 0;
+      StateShutdown = 1;
+    var
+      FShutdownState: Int64;
 
   public
     function IsAlive: Boolean;
@@ -72,12 +77,12 @@ type
 
 function TMarkdownDownloaderLifetime.IsAlive: Boolean;
 begin
-  Result := not FShutdownRequested;
+  Result := TInterlocked.Read(FShutdownState) = StateAlive;
 end;
 
 procedure TMarkdownDownloaderLifetime.Shutdown;
 begin
-  FShutdownRequested := True;
+  TInterlocked.Exchange(FShutdownState, StateShutdown);
 end;
 
 constructor TMarkdownImageDownloader.Create(const OnCompleted: TMarkdownImageDownloadCompleted;

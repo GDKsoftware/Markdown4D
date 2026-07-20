@@ -309,7 +309,7 @@ begin
   while (Scan <= System.Length(FLine)) and CharInSet(FLine[Scan], ['0'..'9']) do
     Inc(Scan);
 
-  const HasDigits = Scan > FPosition;
+  const HasDigits = (Scan > FPosition);
   const HasDelimiter = (Scan <= System.Length(FLine)) and ((FLine[Scan] = '.') or (FLine[Scan] = ')'));
   const HasTrailingSpace = (Scan + 1 <= System.Length(FLine)) and (FLine[Scan + 1] = ' ');
   if HasDigits and HasDelimiter and HasTrailingSpace then

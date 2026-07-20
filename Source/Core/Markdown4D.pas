@@ -16,11 +16,14 @@ type
     class var
       FDefaultPipeline: IMarkdownPipeline;
       FGfmPipeline: IMarkdownPipeline;
+      FLock: TObject;
     class function PipelineFor(const Dialect: TMarkdownDialect): IMarkdownPipeline;
     class function DefaultPipeline: IMarkdownPipeline;
     class function GfmPipeline: IMarkdownPipeline;
 
   public
+    class constructor Create;
+    class destructor Destroy;
     class function Version: string;
     class function ToHtml(const Source: string; const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): string;
     class function Parse(const Source: string; const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): IMarkdownDocument;
@@ -35,6 +38,16 @@ uses
   Markdown4D.Pipeline,
   Markdown4D.Parser.Incremental,
   Markdown4D.Writer.Markdown;
+
+class constructor TMarkdown.Create;
+begin
+  FLock := TObject.Create;
+end;
+
+class destructor TMarkdown.Destroy;
+begin
+  FLock.Free;
+end;
 
 class function TMarkdown.Version: string;
 begin
@@ -63,7 +76,15 @@ end;
 class function TMarkdown.DefaultPipeline: IMarkdownPipeline;
 begin
   if FDefaultPipeline = nil then
-    FDefaultPipeline := TMarkdownPipeline.Create.UseCommonMark.UnsafeHtml.Build;
+  begin
+    TMonitor.Enter(FLock);
+    try
+      if FDefaultPipeline = nil then
+        FDefaultPipeline := TMarkdownPipeline.Create.UseCommonMark.UnsafeHtml.Build;
+    finally
+      TMonitor.Exit(FLock);
+    end;
+  end;
 
   Result := FDefaultPipeline;
 end;
@@ -71,7 +92,15 @@ end;
 class function TMarkdown.GfmPipeline: IMarkdownPipeline;
 begin
   if FGfmPipeline = nil then
-    FGfmPipeline := TMarkdownPipeline.Create.UseGfm.UnsafeHtml.Build;
+  begin
+    TMonitor.Enter(FLock);
+    try
+      if FGfmPipeline = nil then
+        FGfmPipeline := TMarkdownPipeline.Create.UseGfm.UnsafeHtml.Build;
+    finally
+      TMonitor.Exit(FLock);
+    end;
+  end;
 
   Result := FGfmPipeline;
 end;

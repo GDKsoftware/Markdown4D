@@ -30,6 +30,7 @@ uses
   System.SysUtils,
   System.Generics.Collections,
   System.Generics.Defaults,
+  Markdown4D.Defines,
   Markdown4D.Layout.ExtensionCanvas;
 
 type
@@ -92,6 +93,7 @@ type
       ArrowHalfWidth = 5.0;
       DiamondWidthFactor = 1.5;
       DiamondHeightFactor = 1.9;
+      RoundedCornerPadding = 6.0;
       OrderingSweeps = 2;
       EdgeLabelPadding = 3.0;
     var
@@ -384,11 +386,13 @@ begin
   var Position := 0.0;
   while Position < Distance do
   begin
-    const SegmentEnd = Min(Position + DashLength, Distance);
-    const A = TLayoutPointF.Create(StartPoint.X + DirectionX * Position, StartPoint.Y + DirectionY * Position);
-    const B = TLayoutPointF.Create(StartPoint.X + DirectionX * SegmentEnd, StartPoint.Y + DirectionY * SegmentEnd);
-    EmitLine(A, B, Color, StrokeWidth);
-    Position := SegmentEnd + DashGap;
+    const SegmentEndDistance = Min(Position + DashLength, Distance);
+    const SegmentStart = TLayoutPointF.Create(StartPoint.X + DirectionX * Position,
+      StartPoint.Y + DirectionY * Position);
+    const SegmentEnd = TLayoutPointF.Create(StartPoint.X + DirectionX * SegmentEndDistance,
+      StartPoint.Y + DirectionY * SegmentEndDistance);
+    EmitLine(SegmentStart, SegmentEnd, Color, StrokeWidth);
+    Position := SegmentEndDistance + DashGap;
   end;
 end;
 
@@ -557,6 +561,14 @@ begin
           Width := Max(MinNodeHeight, Diameter);
           Height := Width;
         end;
+      TMermaidNodeShape.Stadium:
+        Width := Max(MinNodeWidth, TextWidth + 2 * NodePaddingX + Height);
+      TMermaidNodeShape.Rounded:
+        Width := Max(MinNodeWidth, TextWidth + 2 * NodePaddingX + 2 * RoundedCornerPadding);
+      TMermaidNodeShape.Rectangle:
+        ;
+    else
+      raise EMarkdownError.CreateFmt('Unhandled node shape: %d', [Ord(MermaidNode.Shape)]);
     end;
 
     FBoxes[Index].Width := Width;
@@ -1438,6 +1450,8 @@ begin
         EmitLine(TLayoutPointF.Create(TipX - CrossHalf, TipY + CrossHalf),
           TLayoutPointF.Create(TipX + CrossHalf, TipY - CrossHalf), MessageColor, MessageStrokeWidth);
       end;
+  else
+    raise EMarkdownError.CreateFmt('Unhandled message head: %d', [Ord(Head)]);
   end;
 end;
 
@@ -1465,7 +1479,7 @@ begin
   const Bottom = Top + FNoteHeight[Index];
 
   var BoxWidth := TextWidth + 2 * NotePaddingX;
-  var Left := 0.0;
+  var Left: Single;
 
   case Note.Placement of
     TMermaidNotePlacement.LeftOf:
@@ -1480,6 +1494,8 @@ begin
         BoxWidth := Max(BoxWidth, Span + 2 * NotePaddingX);
         Left := (CenterFrom + CenterTo) / 2 - BoxWidth / 2;
       end;
+  else
+    raise EMarkdownError.CreateFmt('Unhandled note placement: %d', [Ord(Note.Placement)]);
   end;
 
   const Right = Left + BoxWidth;

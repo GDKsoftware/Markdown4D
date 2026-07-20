@@ -101,7 +101,8 @@ implementation
 uses
   System.SysUtils,
   System.Math,
-  System.Character;
+  System.Character,
+  Markdown4D.Defines;
 
 class function TEditorReplaceRange.Create(const Start, Length: Integer;
   const Replacement: string): TEditorReplaceRange;
@@ -363,6 +364,8 @@ begin
       InsertLink;
     TEditorCommand.CodeBlock:
       WrapCodeBlock;
+  else
+    raise EMarkdownError.CreateFmt('Unhandled command: %d', [Ord(Command)]);
   end;
 
   BreakUndoCoalescing;
@@ -558,13 +561,15 @@ begin
   const Start = SelectionStart;
   const Len = SelectionLength;
   const Selected = SelectedText;
-  const LinkMarkup = '[' + Selected + '](url)';
+  const UrlPlaceholder = 'url';
+  const LinkPrefix = OpenBracket + Selected + CloseBracket + OpenParen;
+  const LinkMarkup = LinkPrefix + UrlPlaceholder + CloseParen;
 
   ApplyReplace(Start, Len, LinkMarkup, False);
 
-  const UrlStart = Start + System.Length(Selected) + 3;
+  const UrlStart = Start + System.Length(LinkPrefix);
   FAnchor := UrlStart;
-  FCaret := UrlStart + 3;
+  FCaret := UrlStart + System.Length(UrlPlaceholder);
 end;
 
 procedure TMarkdownEditorModel.WrapCodeBlock;
@@ -572,7 +577,8 @@ begin
   const Start = SelectionStart;
   const Len = SelectionLength;
   const Selected = SelectedText;
-  const Block = '```'#10 + Selected + #10'```';
+  const FenceMarker = StringOfChar(Backtick, MinFenceLength);
+  const Block = FenceMarker + LineFeed + Selected + LineFeed + FenceMarker;
 
   ApplyReplace(Start, Len, Block, False);
 end;

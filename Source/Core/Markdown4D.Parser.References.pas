@@ -267,7 +267,8 @@ begin
   if LabelIsEmpty then
     Exit(False);
 
-  Reference.Destination := TMarkdownUnescape.NormalizeUri(TMarkdownUnescape.Unescape(Destination));
+  const UnescapedDestination = TMarkdownUnescape.Unescape(Destination);
+  Reference.Destination := TMarkdownUnescape.NormalizeUri(UnescapedDestination);
   Reference.Title := TMarkdownUnescape.Unescape(Title);
   Consumed := FScanner.Position - 1;
   Result := True;

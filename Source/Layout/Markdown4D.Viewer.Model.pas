@@ -118,6 +118,7 @@ implementation
 uses
   System.SysUtils,
   System.Math,
+  System.Character,
   Markdown4D,
   Markdown4D.Defines,
   Markdown4D.Layout.BlockOverride,
@@ -198,7 +199,7 @@ begin
   if not FDirty then
     Exit(False);
 
-  const IsTooEarly = (NowMilliseconds - FDirtySince) < FFlushIntervalMilliseconds;
+  const IsTooEarly = ((NowMilliseconds - FDirtySince) < FFlushIntervalMilliseconds);
   if IsTooEarly then
     Exit(False);
 
@@ -374,6 +375,30 @@ begin
     Size := Slot.Size;
 end;
 
+function CaseInsensitiveIndexOf(const Needle, Haystack: string; const StartIndex: Integer): Integer;
+begin
+  const NeedleLength = Length(Needle);
+  const LastStart = Length(Haystack) - NeedleLength + 1;
+
+  for var Start := StartIndex to LastStart do
+  begin
+    var Matches := True;
+    for var Offset := 0 to NeedleLength - 1 do
+    begin
+      if Haystack[Start + Offset].ToUpper <> Needle[Offset + 1].ToUpper then
+      begin
+        Matches := False;
+        Break;
+      end;
+    end;
+
+    if Matches then
+      Exit(Start);
+  end;
+
+  Result := 0;
+end;
+
 function TMarkdownViewerModel.FindText(const Needle: string): TArray<TMarkdownFoundRange>;
 begin
   Result := [];
@@ -382,7 +407,7 @@ begin
   if not IsSearchable then
     Exit;
 
-  const UpperNeedle = AnsiUpperCase(Needle);
+  const NeedleLength = Length(Needle);
 
   for var Index := 0 to FDisplayList.ItemCount - 1 do
   begin
@@ -390,15 +415,15 @@ begin
     if not Supports(FDisplayList.Items[Index], IDisplayTextRun, Run) then
       Continue;
 
-    const UpperText = AnsiUpperCase(Run.Text);
+    const RunText = Run.Text;
     var Offset := 1;
-    var Found := Pos(UpperNeedle, UpperText, Offset);
+    var Found := CaseInsensitiveIndexOf(Needle, RunText, Offset);
 
     while Found > 0 do
     begin
-      Result := Result + [TMarkdownFoundRange.Create(Index, Found, Length(Needle))];
-      Offset := Found + Length(UpperNeedle);
-      Found := Pos(UpperNeedle, UpperText, Offset);
+      Result := Result + [TMarkdownFoundRange.Create(Index, Found, NeedleLength)];
+      Offset := Found + NeedleLength;
+      Found := CaseInsensitiveIndexOf(Needle, RunText, Offset);
     end;
   end;
 end;
