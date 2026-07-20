@@ -229,7 +229,7 @@ end;
 
 destructor TMarkdownViewer.Destroy;
 begin
-  FLifetime.Kill;
+  FLifetime.Shutdown;
   FImageDownloader.Free;
   FRequestedImageSources.Free;
   FModel.Free;

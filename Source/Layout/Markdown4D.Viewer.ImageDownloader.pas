@@ -6,18 +6,13 @@ interface
 
 uses
   System.SysUtils,
-  System.Generics.Collections;
+  System.Generics.Collections,
+  Markdown4D.Viewer.Lifetime;
 
 type
   TMarkdownImageDownloadCompleted = reference to procedure(const Source: string; const Data: TBytes);
 
   TMarkdownImageDownloadFailed = reference to procedure(const Source: string);
-
-  IMarkdownDownloaderLifetime = interface
-    ['{5C8E2A17-4B96-4D30-8F2A-D1637E94C0B5}']
-    function IsAlive: Boolean;
-    procedure Shutdown;
-  end;
 
   TMarkdownImageDownloader = class
   private
@@ -32,7 +27,7 @@ type
         Url: string;
       end;
     var
-      FLifetime: IMarkdownDownloaderLifetime;
+      FLifetime: IMarkdownViewerLifetime;
       FGeneration: Integer;
       FActiveCount: Integer;
       FQueue: TQueue<TPendingDownload>;
@@ -40,7 +35,7 @@ type
       FOnFailed: TMarkdownImageDownloadFailed;
     procedure PumpQueue;
     procedure BeginDownload(const Pending: TPendingDownload);
-    class function TryFetch(const Url: string; const Lifetime: IMarkdownDownloaderLifetime;
+    class function TryFetch(const Url: string; const Lifetime: IMarkdownViewerLifetime;
       out Data: TBytes): Boolean;
     procedure HandleDownloadResult(const Generation: Integer; const Source: string; const Data: TBytes;
       const Succeeded: Boolean);
@@ -57,40 +52,15 @@ implementation
 
 uses
   System.Classes,
-  System.SyncObjs,
   System.Threading,
   System.Net.HttpClient;
-
-type
-  TMarkdownDownloaderLifetime = class(TInterfacedObject, IMarkdownDownloaderLifetime)
-  private
-    const
-      StateAlive = 0;
-      StateShutdown = 1;
-    var
-      FShutdownState: Int64;
-
-  public
-    function IsAlive: Boolean;
-    procedure Shutdown;
-  end;
-
-function TMarkdownDownloaderLifetime.IsAlive: Boolean;
-begin
-  Result := TInterlocked.Read(FShutdownState) = StateAlive;
-end;
-
-procedure TMarkdownDownloaderLifetime.Shutdown;
-begin
-  TInterlocked.Exchange(FShutdownState, StateShutdown);
-end;
 
 constructor TMarkdownImageDownloader.Create(const OnCompleted: TMarkdownImageDownloadCompleted;
   const OnFailed: TMarkdownImageDownloadFailed);
 begin
   inherited Create;
 
-  FLifetime := TMarkdownDownloaderLifetime.Create;
+  FLifetime := TMarkdownViewerLifetime.Create;
   FQueue := TQueue<TPendingDownload>.Create;
   FOnCompleted := OnCompleted;
   FOnFailed := OnFailed;
@@ -152,7 +122,7 @@ begin
 end;
 
 class function TMarkdownImageDownloader.TryFetch(const Url: string;
-  const Lifetime: IMarkdownDownloaderLifetime; out Data: TBytes): Boolean;
+  const Lifetime: IMarkdownViewerLifetime; out Data: TBytes): Boolean;
 begin
   Data := nil;
   try

@@ -209,7 +209,7 @@ end;
 
 destructor TMarkdownEditor.Destroy;
 begin
-  FLifetime.Kill;
+  FLifetime.Shutdown;
   FPreview := nil;
   if FPreviewTimer <> nil then
     FPreviewTimer.Enabled := False;
