@@ -38,7 +38,6 @@ type
     procedure ApplyFont(const Font: TMarkdownFontStyle);
     function FontKey(const Font: TMarkdownFontStyle): string;
     function FontPixelHeight(const Font: TMarkdownFontStyle): Integer;
-    class function FontStylesOf(const Font: TMarkdownFontStyle): TFontStyles;
     function ResolveFamilyName(const FamilyName: string): string;
     class function LookupFamilyName(const FamilyName: string): string;
     class function IsFamilyInstalled(const FamilyName: string): Boolean;
@@ -56,7 +55,6 @@ type
       const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single): TArray<TPoint>;
     class function PremultipliedPixel(const Color: TLayoutColor): Cardinal;
     class function ToVclColor(const Color: TLayoutColor): TColor;
-    class function AlphaOf(const Color: TLayoutColor): Byte;
     class function ToDeviceRect(const Bounds: TLayoutRectF): TRect;
     class function OpaqueBlendFunction: TBlendFunction;
 
@@ -89,7 +87,8 @@ implementation
 uses
   System.Math,
   Vcl.Forms,
-  Markdown4D.Defines;
+  Markdown4D.Defines,
+  Markdown4D.Viewer.Shared;
 
 constructor TMarkdownVclPainter.Create(const Canvas: TCanvas; const PixelsPerInch: Integer);
 begin
@@ -149,7 +148,7 @@ end;
 
 procedure TMarkdownVclPainter.FillRect(const Bounds: TLayoutRectF; const Color: TLayoutColor);
 begin
-  const Alpha = AlphaOf(Color);
+  const Alpha = TMarkdownViewerShared.AlphaOf(Color);
   if Alpha = 0 then
     Exit;
 
@@ -185,7 +184,7 @@ end;
 procedure TMarkdownVclPainter.DrawRect(const Bounds: TLayoutRectF; const Color: TLayoutColor;
   const StrokeWidth: Single);
 begin
-  const IsInvisible = (AlphaOf(Color) = 0) or (StrokeWidth <= 0);
+  const IsInvisible = (TMarkdownViewerShared.AlphaOf(Color) = 0) or (StrokeWidth <= 0);
   if IsInvisible then
     Exit;
 
@@ -203,7 +202,7 @@ end;
 procedure TMarkdownVclPainter.DrawLine(const StartPoint, EndPoint: TLayoutPointF; const Color: TLayoutColor;
   const StrokeWidth: Single);
 begin
-  if AlphaOf(Color) = 0 then
+  if TMarkdownViewerShared.AlphaOf(Color) = 0 then
     Exit;
 
   FCanvas.Pen.Style := psSolid;
@@ -296,7 +295,7 @@ end;
 procedure TMarkdownVclPainter.FillWedge(const Center: TLayoutPointF;
   const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single; const Color: TLayoutColor);
 begin
-  const Alpha = AlphaOf(Color);
+  const Alpha = TMarkdownViewerShared.AlphaOf(Color);
   if (Alpha = 0) or (OuterRadius <= 0) or (SweepAngle = 0) then
     Exit;
 
@@ -316,7 +315,7 @@ end;
 
 procedure TMarkdownVclPainter.FillPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor);
 begin
-  const Alpha = AlphaOf(Color);
+  const Alpha = TMarkdownViewerShared.AlphaOf(Color);
   if (Alpha = 0) or (Length(Points) < 3) then
     Exit;
 
@@ -439,7 +438,7 @@ begin
 
   FCanvas.Font.Name := ResolveFamilyName(Font.FamilyName);
   FCanvas.Font.Height := FontPixelHeight(Font);
-  FCanvas.Font.Style := FontStylesOf(Font);
+  FCanvas.Font.Style := TMarkdownViewerShared.FontStylesOf(Font);
 
   FAppliedFontKey := Key;
   FHasAppliedFont := True;
@@ -450,23 +449,10 @@ begin
   Result := -Round(Font.Size * FPixelsPerInch / ReferencePixelsPerInch);
 end;
 
-class function TMarkdownVclPainter.FontStylesOf(const Font: TMarkdownFontStyle): TFontStyles;
-begin
-  Result := [];
-  if Font.Bold then
-    Include(Result, fsBold);
-  if Font.Italic then
-    Include(Result, fsItalic);
-  if Font.Underline then
-    Include(Result, fsUnderline);
-  if Font.Strikeout then
-    Include(Result, fsStrikeOut);
-end;
-
 function TMarkdownVclPainter.FontKey(const Font: TMarkdownFontStyle): string;
 begin
   Result := Format('%s|%d|%d', [ResolveFamilyName(Font.FamilyName), FontPixelHeight(Font),
-    Byte(FontStylesOf(Font))]);
+    Byte(TMarkdownViewerShared.FontStylesOf(Font))]);
 end;
 
 function TMarkdownVclPainter.ResolveFamilyName(const FamilyName: string): string;
@@ -480,14 +466,8 @@ end;
 
 class function TMarkdownVclPainter.LookupFamilyName(const FamilyName: string): string;
 begin
-  if SameText(FamilyName, MonospaceFamilyName) then
-    Exit(MonospaceFallbackFamilyName);
-
-  if SameText(FamilyName, SansSerifFamilyName) then
-    Exit(DefaultFallbackFamilyName);
-
-  if SameText(FamilyName, SerifFamilyName) then
-    Exit(SerifFallbackFamilyName);
+  if TMarkdownViewerShared.TryResolveGenericFamily(FamilyName, Result) then
+    Exit;
 
   if IsFamilyInstalled(FamilyName) then
     Exit(FamilyName);
@@ -514,7 +494,7 @@ end;
 
 class function TMarkdownVclPainter.PremultipliedPixel(const Color: TLayoutColor): Cardinal;
 begin
-  const Alpha = AlphaOf(Color);
+  const Alpha = TMarkdownViewerShared.AlphaOf(Color);
   const Red = ((Color shr 16) and $FF) * Alpha div ColorChannelMax;
   const Green = ((Color shr 8) and $FF) * Alpha div ColorChannelMax;
   const Blue = (Color and $FF) * Alpha div ColorChannelMax;
@@ -527,11 +507,6 @@ begin
   const Green = (Color shr 8) and $FF;
   const Blue = Color and $FF;
   Result := TColor(RGB(Red, Green, Blue));
-end;
-
-class function TMarkdownVclPainter.AlphaOf(const Color: TLayoutColor): Byte;
-begin
-  Result := Color shr 24;
 end;
 
 class function TMarkdownVclPainter.ToDeviceRect(const Bounds: TLayoutRectF): TRect;
