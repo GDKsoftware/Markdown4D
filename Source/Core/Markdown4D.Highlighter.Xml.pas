@@ -35,6 +35,10 @@ type
       NameStartCharacters = ['A'..'Z', 'a'..'z', '_', ':'];
       NameCharacters = ['A'..'Z', 'a'..'z', '0'..'9', '_', ':', '-', '.'];
       EntityCharacters = ['A'..'Z', 'a'..'z', '0'..'9', '#'];
+      TagOpenCharacter = '<';
+      TagCloseCharacter = '>';
+      EntityStartCharacter = '&';
+      QuoteCharacters = ['"', ''''];
     var
       FLine: string;
       FState: Integer;
@@ -146,7 +150,7 @@ procedure TXmlLineScanner.ScanText;
 begin
   const Current = FLine[FPosition];
 
-  if Current = '<' then
+  if Current = TagOpenCharacter then
   begin
     if StartsAt(CommentOpen) then
       ScanComment
@@ -157,7 +161,7 @@ begin
     Exit;
   end;
 
-  if Current = '&' then
+  if Current = EntityStartCharacter then
   begin
     ScanEntity;
     Exit;
@@ -230,14 +234,14 @@ procedure TXmlLineScanner.ScanInsideTag;
 begin
   const Current = FLine[FPosition];
 
-  if Current = '>' then
+  if Current = TagCloseCharacter then
   begin
     AddPlainCharacter;
     FInsideTag := False;
     Exit;
   end;
 
-  if CharInSet(Current, ['"', '''']) then
+  if CharInSet(Current, QuoteCharacters) then
   begin
     ScanAttributeValue;
     Exit;

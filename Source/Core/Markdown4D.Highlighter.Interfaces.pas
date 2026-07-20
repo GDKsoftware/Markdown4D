@@ -34,11 +34,20 @@ type
     function TokenizeLine(const Line: string; const State: Integer): TSyntaxLine;
   end;
 
+  TRegisteredHighlighter = record
+    Language: string;
+    Highlighter: IMarkdownSyntaxHighlighter;
+    class function Create(const Language: string;
+      const Highlighter: IMarkdownSyntaxHighlighter): TRegisteredHighlighter; static;
+  end;
+
   THighlighterRegistry = class
   private
     class var
-      FLanguages: TArray<string>;
-      FHighlighters: TArray<IMarkdownSyntaxHighlighter>;
+      FEntries: TArray<TRegisteredHighlighter>;
+      FLock: TObject;
+    class constructor Create;
+    class destructor Destroy;
     class function IndexOf(const Language: string): Integer;
 
   public
@@ -68,37 +77,67 @@ begin
   Result.NextState := NextState;
 end;
 
+class function TRegisteredHighlighter.Create(const Language: string;
+  const Highlighter: IMarkdownSyntaxHighlighter): TRegisteredHighlighter;
+begin
+  Result.Language := Language;
+  Result.Highlighter := Highlighter;
+end;
+
+class constructor THighlighterRegistry.Create;
+begin
+  FLock := TObject.Create;
+end;
+
+class destructor THighlighterRegistry.Destroy;
+begin
+  FLock.Free;
+end;
+
 class procedure THighlighterRegistry.Register(const Language: string; const Highlighter: IMarkdownSyntaxHighlighter);
 begin
-  const ExistingIndex = IndexOf(Language);
-  if ExistingIndex >= 0 then
-  begin
-    FHighlighters[ExistingIndex] := Highlighter;
-    Exit;
-  end;
+  TMonitor.Enter(FLock);
+  try
+    const ExistingIndex = IndexOf(Language);
+    if ExistingIndex >= 0 then
+    begin
+      FEntries[ExistingIndex].Highlighter := Highlighter;
+      Exit;
+    end;
 
-  FLanguages := FLanguages + [Language];
-  FHighlighters := FHighlighters + [Highlighter];
+    FEntries := FEntries + [TRegisteredHighlighter.Create(Language, Highlighter)];
+  finally
+    TMonitor.Exit(FLock);
+  end;
 end;
 
 class function THighlighterRegistry.TryGet(const Language: string;
   out Highlighter: IMarkdownSyntaxHighlighter): Boolean;
 begin
-  const FoundIndex = IndexOf(Language);
-  if FoundIndex < 0 then
-  begin
-    Highlighter := nil;
-    Exit(False);
-  end;
+  TMonitor.Enter(FLock);
+  try
+    const FoundIndex = IndexOf(Language);
+    if FoundIndex < 0 then
+    begin
+      Highlighter := nil;
+      Exit(False);
+    end;
 
-  Highlighter := FHighlighters[FoundIndex];
-  Result := True;
+    Highlighter := FEntries[FoundIndex].Highlighter;
+    Result := True;
+  finally
+    TMonitor.Exit(FLock);
+  end;
 end;
 
 class procedure THighlighterRegistry.Clear;
 begin
-  FLanguages := nil;
-  FHighlighters := nil;
+  TMonitor.Enter(FLock);
+  try
+    FEntries := nil;
+  finally
+    TMonitor.Exit(FLock);
+  end;
 end;
 
 class function THighlighterRegistry.TokenizeLine(const Language, Line: string; const State: Integer): TSyntaxLine;
@@ -115,9 +154,9 @@ end;
 
 class function THighlighterRegistry.IndexOf(const Language: string): Integer;
 begin
-  for var Index := 0 to High(FLanguages) do
+  for var Index := 0 to High(FEntries) do
   begin
-    if SameText(FLanguages[Index], Language) then
+    if SameText(FEntries[Index].Language, Language) then
       Exit(Index);
   end;
 

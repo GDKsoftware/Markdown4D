@@ -36,6 +36,11 @@ type
       HexDigits = ['0'..'9', 'A'..'F', 'a'..'f'];
       IdentifierStartCharacters = ['A'..'Z', 'a'..'z', '_'];
       IdentifierCharacters = ['A'..'Z', 'a'..'z', '_', '0'..'9'];
+      BraceOpenCharacter = '{';
+      ParenCharacter = '(';
+      StarCharacter = '*';
+      SlashCharacter = '/';
+      DecimalPoint = '.';
     var
       FLine: string;
       FState: Integer;
@@ -142,11 +147,11 @@ procedure TPascalLineScanner.ScanNext;
 begin
   const Current = FLine[FPosition];
 
-  if Current = '{' then
+  if Current = BraceOpenCharacter then
     ScanBraceBlock
-  else if (Current = '(') and (CharAt(FPosition + 1) = '*') then
+  else if (Current = ParenCharacter) and (CharAt(FPosition + 1) = StarCharacter) then
     ScanStarComment
-  else if (Current = '/') and (CharAt(FPosition + 1) = '/') then
+  else if (Current = SlashCharacter) and (CharAt(FPosition + 1) = SlashCharacter) then
     ScanLineComment
   else if Current = QuoteCharacter then
     ScanStringLiteral
@@ -254,7 +259,7 @@ begin
     Inc(FPosition);
   end;
 
-  const HasFraction = (CharAt(FPosition) = '.') and CharInSet(CharAt(FPosition + 1), Digits);
+  const HasFraction = (CharAt(FPosition) = DecimalPoint) and CharInSet(CharAt(FPosition + 1), Digits);
   if HasFraction then
   begin
     Inc(FPosition);
