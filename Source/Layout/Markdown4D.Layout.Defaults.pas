@@ -9,6 +9,7 @@ const
   // implementations must stay in lockstep on these values.
   ReferencePixelsPerInch = 96;
   WheelLinesPerNotch = 3;
+  MouseWheelDeltaPerNotch = 120;
   ScrollLineDips = 40;
   TextLeftPaddingDips = 6;
   GutterPaddingDips = 8;

@@ -18,11 +18,13 @@ type
     const
       DiagramWidth = 480.0;
       DiagramHeight = 360.0;
+      ShapedCaption = 'Stage One Two Three';
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
       FCorpus: TMermaidCorpus;
     function ModelItems(const CaseName: string): TArray<IDisplayItem>;
+    function ItemsForDiagram(const Diagram: string): TArray<IDisplayItem>;
 
   public
     [SetupFixture]
@@ -44,6 +46,9 @@ type
     procedure Flowchart_Cycle_ProducesItemsWithoutHanging;
 
     [Test]
+    procedure Flowchart_RoundedAndStadiumNodes_AreWiderThanRectangle;
+
+    [Test]
     procedure Sequence_EmitsVerticalLifelines;
 
     [Test]
@@ -62,6 +67,7 @@ uses
   System.SysUtils,
   System.Math,
   Markdown4D,
+  Markdown4D.Defines,
   Markdown4D.Ast.Interfaces,
   Markdown4D.Extensions.Interfaces,
   Markdown4D.Pipeline,
@@ -107,6 +113,17 @@ begin
   Result := (A.Left < B.Right) and (B.Left < A.Right) and (A.Top < B.Bottom) and (B.Top < A.Bottom);
 end;
 
+function FirstRectangleWidth(const Items: TArray<IDisplayItem>): Single;
+begin
+  for var Item in Items do
+  begin
+    if Item.Kind = TDisplayItemKind.Rectangle then
+      Exit(Item.Bounds.Width);
+  end;
+
+  Result := 0;
+end;
+
 procedure TMermaidLayoutTests.SetupFixture;
 begin
   FTheme := TMarkdownTheme.CreateLight;
@@ -131,6 +148,21 @@ begin
 
   var Model: IMermaidModel;
   Assert.IsTrue(TMermaidExtension.TryParse(Code, Model), Format('Case "%s" must parse into a mermaid model', [CaseName]));
+
+  const Bounds = TLayoutRectF.Create(0, 0, DiagramWidth, DiagramHeight);
+  Result := TMermaidLayouter.BuildDisplayItems(Model, Bounds, FTheme, FMeasurer, Code);
+end;
+
+function TMermaidLayoutTests.ItemsForDiagram(const Diagram: string): TArray<IDisplayItem>;
+begin
+  const Markdown = '```mermaid' + LineFeed + Diagram + LineFeed + '```' + LineFeed;
+  const Document = MermaidPipeline.Parse(Markdown);
+
+  var Code: IMarkdownCodeBlock;
+  Assert.IsTrue(FindFirstCodeBlock(Document, Code), 'Diagram must expose a code block');
+
+  var Model: IMermaidModel;
+  Assert.IsTrue(TMermaidExtension.TryParse(Code, Model), 'Diagram must parse into a mermaid model');
 
   const Bounds = TLayoutRectF.Create(0, 0, DiagramWidth, DiagramHeight);
   Result := TMermaidLayouter.BuildDisplayItems(Model, Bounds, FTheme, FMeasurer, Code);
@@ -186,6 +218,19 @@ procedure TMermaidLayoutTests.Flowchart_Cycle_ProducesItemsWithoutHanging;
 begin
   const Items = ModelItems('flowchart-cycle');
   Assert.IsTrue(Length(Items) > 0, 'A cyclic flowchart must fall back to a grid layout and still emit items');
+end;
+
+procedure TMermaidLayoutTests.Flowchart_RoundedAndStadiumNodes_AreWiderThanRectangle;
+begin
+  const RectangleWidth = FirstRectangleWidth(ItemsForDiagram('flowchart TD' + LineFeed + '  A[' + ShapedCaption + ']'));
+  const RoundedWidth = FirstRectangleWidth(ItemsForDiagram('flowchart TD' + LineFeed + '  A(' + ShapedCaption + ')'));
+  const StadiumWidth = FirstRectangleWidth(ItemsForDiagram('flowchart TD' + LineFeed + '  A([' + ShapedCaption + '])'));
+
+  Assert.IsTrue(RectangleWidth > 0, 'A rectangle node must emit a rectangle primitive');
+  Assert.IsTrue(RoundedWidth > RectangleWidth,
+    'A rounded node must be sized wider than a plain rectangle with the same caption');
+  Assert.IsTrue(StadiumWidth > RectangleWidth,
+    'A stadium node must be sized wider than a plain rectangle to fit its rounded end caps');
 end;
 
 procedure TMermaidLayoutTests.Sequence_EmitsVerticalLifelines;

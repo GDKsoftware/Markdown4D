@@ -542,9 +542,9 @@ end;
 class function TMarkdownVclPainter.OpaqueBlendFunction: TBlendFunction;
 begin
   Result := Default(TBlendFunction);
-  Result.BlendOp := AC_SRC_OVER;
+  Result.BlendOp             := AC_SRC_OVER;
   Result.SourceConstantAlpha := ColorChannelMax;
-  Result.AlphaFormat := AC_SRC_ALPHA;
+  Result.AlphaFormat         := AC_SRC_ALPHA;
 end;
 
 end.

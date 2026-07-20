@@ -43,7 +43,8 @@ implementation
 
 uses
   System.SysUtils,
-  System.Character;
+  System.Character,
+  Markdown4D.Defines;
 
 type
   TMarkdownTocEntry = class(TInterfacedObject, IMarkdownTocEntry)
@@ -106,7 +107,7 @@ type
 class function TMarkdownToc.FromDocument(const Document: IMarkdownDocument): IMarkdownToc;
 begin
   if Document = nil then
-    raise EArgumentNilException.Create('Document must not be nil');
+    raise EMarkdownError.Create('Document must not be nil');
 
   const Builder = TMarkdownTocBuilder.Create;
   try

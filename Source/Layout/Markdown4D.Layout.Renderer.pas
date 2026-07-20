@@ -22,6 +22,7 @@ type
       CheckboxMarkMiddleYFactor = 0.74;
       CheckboxMarkEndXFactor = 0.78;
       CheckboxMarkEndYFactor = 0.3;
+      UnhandledItemKindMessage = 'Unhandled display item kind: %d';
     class function AlphaOf(const Color: TLayoutColor): Byte;
     class function IsVisible(const Bounds, Viewport: TLayoutRectF): Boolean;
     class procedure RenderItem(const Item: IDisplayItem; const Painter: IPainter);
@@ -31,6 +32,7 @@ type
     class procedure RenderImage(const Image: IDisplayImage; const Painter: IPainter);
     class procedure RenderCheckbox(const Checkbox: IDisplayCheckbox; const Painter: IPainter);
     class procedure RenderWedge(const Wedge: IDisplayWedge; const Painter: IPainter);
+    class procedure RenderPolygon(const Polygon: IDisplayPolygon; const Painter: IPainter);
 
   public
     class procedure Render(const DisplayList: IMarkdownDisplayList; const Painter: IPainter;
@@ -38,6 +40,9 @@ type
   end;
 
 implementation
+
+uses
+  Markdown4D.Defines;
 
 class procedure TMarkdownDisplayListRenderer.Render(const DisplayList: IMarkdownDisplayList; const Painter: IPainter;
   const Viewport: TLayoutRectF; const BackgroundColor: TLayoutColor);
@@ -88,6 +93,10 @@ begin
       RenderCheckbox(Item as IDisplayCheckbox, Painter);
     TDisplayItemKind.Wedge:
       RenderWedge(Item as IDisplayWedge, Painter);
+    TDisplayItemKind.Polygon:
+      RenderPolygon(Item as IDisplayPolygon, Painter);
+  else
+    raise EMarkdownError.CreateFmt(UnhandledItemKindMessage, [Ord(Item.Kind)]);
   end;
 end;
 
@@ -152,6 +161,22 @@ begin
 
   Painter.FillWedge(Wedge.Center, Wedge.OuterRadius, Wedge.InnerRadius, Wedge.StartAngle, Wedge.SweepAngle,
     Wedge.FillColor);
+end;
+
+class procedure TMarkdownDisplayListRenderer.RenderPolygon(const Polygon: IDisplayPolygon; const Painter: IPainter);
+begin
+  if AlphaOf(Polygon.FillColor) = 0 then
+    Exit;
+
+  const PointCount = Polygon.PointCount;
+  var Points: TArray<TLayoutPointF>;
+  SetLength(Points, PointCount);
+  for var Index := 0 to PointCount - 1 do
+  begin
+    Points[Index] := Polygon.Points[Index];
+  end;
+
+  Painter.FillPolygon(Points, Polygon.FillColor);
 end;
 
 end.

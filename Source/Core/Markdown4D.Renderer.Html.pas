@@ -33,9 +33,15 @@ type
       AnchorCloseTag = '</a>';
       TagCloseBracket = '>';
       OmittedHtmlComment = '<!-- raw HTML omitted -->';
+      EscapedAmpersand = '&amp;';
       EscapedLessThan = '&lt;';
+      EscapedGreaterThan = '&gt;';
+      EscapedQuote = '&quot;';
+      EscapedApostrophe = '&#39;';
       TableHeadOpenTag = '<thead>';
+      TableHeadCloseTag = '</thead>';
       TableBodyOpenTag = '<tbody>';
+      TableBodyCloseTag = '</tbody>';
       TableCellOpenFormat = '<%s';
       TableCellCloseFormat = '</%s>';
       TableAlignAttributeFormat = ' align="%s"';
@@ -90,8 +96,9 @@ type
     procedure LeaveTableRow(const Node: IMarkdownTableRow);
     procedure LeaveTableCell;
     procedure ScheduleLeaveAndChildren(const Node: IMarkdownNode; const WasTightList: Boolean);
-    procedure Cr;
+    procedure AppendLineBreak;
     class function FirstInfoWord(const InfoString: string): string;
+    class function EscapeCore(const Value: string; const EscapeApostrophe: Boolean): string;
     class function EscapeHtml(const Value: string): string;
 
   public
@@ -223,6 +230,7 @@ begin
       EnterTableRow(Node as IMarkdownTableRow);
     TMarkdownNodeKind.TableCell:
       EnterTableCell(Node as IMarkdownTableCell);
+  else
   end;
 end;
 
@@ -253,6 +261,7 @@ begin
       LeaveTableRow(Task.Node as IMarkdownTableRow);
     TMarkdownNodeKind.TableCell:
       LeaveTableCell;
+  else
   end;
 end;
 
@@ -260,7 +269,7 @@ procedure TMarkdownHtmlRenderer.EnterParagraph(const Node: IMarkdownNode);
 begin
   if not FTightList then
   begin
-    Cr;
+    AppendLineBreak;
     FOutput.Append('<p>');
   end;
 
@@ -269,7 +278,7 @@ end;
 
 procedure TMarkdownHtmlRenderer.EnterHeading(const Node: IMarkdownHeading);
 begin
-  Cr;
+  AppendLineBreak;
   FOutput.Append(Format(HeadingOpenFormat, [Node.Level]));
 
   ScheduleLeaveAndChildren(Node, FTightList);
@@ -277,14 +286,14 @@ end;
 
 procedure TMarkdownHtmlRenderer.WriteThematicBreak;
 begin
-  Cr;
+  AppendLineBreak;
   FOutput.Append('<hr />');
-  Cr;
+  AppendLineBreak;
 end;
 
 procedure TMarkdownHtmlRenderer.WriteCodeBlock(const Node: IMarkdownCodeBlock);
 begin
-  Cr;
+  AppendLineBreak;
   FOutput.Append('<pre><code');
 
   const Language = FirstInfoWord(Node.InfoString);
@@ -295,7 +304,7 @@ begin
   FOutput.Append(TagCloseBracket);
   FOutput.Append(EscapeHtml(Node.Literal));
   FOutput.Append('</code></pre>');
-  Cr;
+  AppendLineBreak;
 end;
 
 procedure TMarkdownHtmlRenderer.EnterBlockQuote(const Node: IMarkdownNode);
@@ -303,9 +312,9 @@ begin
   ScheduleLeaveAndChildren(Node, FTightList);
   FTightList := False;
 
-  Cr;
+  AppendLineBreak;
   FOutput.Append('<blockquote>');
-  Cr;
+  AppendLineBreak;
 end;
 
 procedure TMarkdownHtmlRenderer.EnterList(const Node: IMarkdownList);
@@ -324,9 +333,9 @@ begin
       OpenTag := Format(OrderedListStartFormat, [Node.StartNumber]);
   end;
 
-  Cr;
+  AppendLineBreak;
   FOutput.Append(OpenTag);
-  Cr;
+  AppendLineBreak;
 end;
 
 procedure TMarkdownHtmlRenderer.EnterListItem(const Node: IMarkdownNode);
@@ -338,18 +347,18 @@ end;
 
 procedure TMarkdownHtmlRenderer.EnterHtmlBlock(const Node: IMarkdownText);
 begin
-  Cr;
+  AppendLineBreak;
   FOutput.Append(RawHtmlOutput(Node.Literal));
-  Cr;
+  AppendLineBreak;
 end;
 
 procedure TMarkdownHtmlRenderer.EnterTable(const Node: IMarkdownNode);
 begin
   FTableInBody := False;
 
-  Cr;
+  AppendLineBreak;
   FOutput.Append('<table>');
-  Cr;
+  AppendLineBreak;
 
   ScheduleLeaveAndChildren(Node, FTightList);
 end;
@@ -361,17 +370,17 @@ begin
   if FTableInHeader then
   begin
     FOutput.Append(TableHeadOpenTag);
-    Cr;
+    AppendLineBreak;
   end
   else if not FTableInBody then
   begin
     FOutput.Append(TableBodyOpenTag);
-    Cr;
+    AppendLineBreak;
     FTableInBody := True;
   end;
 
   FOutput.Append('<tr>');
-  Cr;
+  AppendLineBreak;
 
   ScheduleLeaveAndChildren(Node, FTightList);
 end;
@@ -524,20 +533,20 @@ begin
     Exit;
 
   FOutput.Append('</p>');
-  Cr;
+  AppendLineBreak;
 end;
 
 procedure TMarkdownHtmlRenderer.LeaveHeading(const Node: IMarkdownHeading);
 begin
   FOutput.Append(Format(HeadingCloseFormat, [Node.Level]));
-  Cr;
+  AppendLineBreak;
 end;
 
 procedure TMarkdownHtmlRenderer.LeaveBlockQuote(const WasTightList: Boolean);
 begin
-  Cr;
+  AppendLineBreak;
   FOutput.Append('</blockquote>');
-  Cr;
+  AppendLineBreak;
 
   FTightList := WasTightList;
 end;
@@ -548,9 +557,9 @@ begin
   if Node.IsOrdered then
     CloseTag := '</ol>';
 
-  Cr;
+  AppendLineBreak;
   FOutput.Append(CloseTag);
-  Cr;
+  AppendLineBreak;
 
   FTightList := WasTightList;
 end;
@@ -558,38 +567,38 @@ end;
 procedure TMarkdownHtmlRenderer.LeaveListItem;
 begin
   FOutput.Append('</li>');
-  Cr;
+  AppendLineBreak;
 end;
 
 procedure TMarkdownHtmlRenderer.LeaveTable;
 begin
   if FTableInBody then
   begin
-    FOutput.Append('</tbody>');
-    Cr;
+    FOutput.Append(TableBodyCloseTag);
+    AppendLineBreak;
     FTableInBody := False;
   end;
 
   FOutput.Append('</table>');
-  Cr;
+  AppendLineBreak;
 end;
 
 procedure TMarkdownHtmlRenderer.LeaveTableRow(const Node: IMarkdownTableRow);
 begin
   FOutput.Append('</tr>');
-  Cr;
+  AppendLineBreak;
 
   if Node.IsHeader then
   begin
-    FOutput.Append('</thead>');
-    Cr;
+    FOutput.Append(TableHeadCloseTag);
+    AppendLineBreak;
   end;
 end;
 
 procedure TMarkdownHtmlRenderer.LeaveTableCell;
 begin
   FOutput.Append(Format(TableCellCloseFormat, [CurrentTableCellTag]));
-  Cr;
+  AppendLineBreak;
 end;
 
 procedure TMarkdownHtmlRenderer.ScheduleLeaveAndChildren(const Node: IMarkdownNode; const WasTightList: Boolean);
@@ -611,7 +620,7 @@ begin
   end;
 end;
 
-procedure TMarkdownHtmlRenderer.Cr;
+procedure TMarkdownHtmlRenderer.AppendLineBreak;
 begin
   const IsAtLineStart = (FOutput.Length = 0) or (FOutput.Chars[FOutput.Length - 1] = LineFeed);
   if not IsAtLineStart then
@@ -628,13 +637,21 @@ begin
   Result := Parts[0];
 end;
 
+class function TMarkdownHtmlRenderer.EscapeCore(const Value: string; const EscapeApostrophe: Boolean): string;
+begin
+  const WithAmpersands = StringReplace(Value, '&', EscapedAmpersand, [rfReplaceAll]);
+  const WithLessThan = StringReplace(WithAmpersands, '<', EscapedLessThan, [rfReplaceAll]);
+  const WithGreaterThan = StringReplace(WithLessThan, '>', EscapedGreaterThan, [rfReplaceAll]);
+
+  Result := StringReplace(WithGreaterThan, '"', EscapedQuote, [rfReplaceAll]);
+
+  if EscapeApostrophe then
+    Result := StringReplace(Result, '''', EscapedApostrophe, [rfReplaceAll]);
+end;
+
 class function TMarkdownHtmlRenderer.EscapeHtml(const Value: string): string;
 begin
-  const WithAmpersands = StringReplace(Value, '&', '&amp;', [rfReplaceAll]);
-  const WithLessThan = StringReplace(WithAmpersands, '<', EscapedLessThan, [rfReplaceAll]);
-  const WithGreaterThan = StringReplace(WithLessThan, '>', '&gt;', [rfReplaceAll]);
-
-  Result := StringReplace(WithGreaterThan, '"', '&quot;', [rfReplaceAll]);
+  Result := EscapeCore(Value, False);
 end;
 
 constructor TRendererHtmlWriter.Create(const Output: TStringBuilder);
@@ -656,12 +673,7 @@ end;
 
 function TRendererHtmlWriter.EscapeAttribute(const Value: string): string;
 begin
-  const WithAmpersands = StringReplace(Value, '&', '&amp;', [rfReplaceAll]);
-  const WithLessThan = StringReplace(WithAmpersands, '<', '&lt;', [rfReplaceAll]);
-  const WithGreaterThan = StringReplace(WithLessThan, '>', '&gt;', [rfReplaceAll]);
-  const WithQuotes = StringReplace(WithGreaterThan, '"', '&quot;', [rfReplaceAll]);
-
-  Result := StringReplace(WithQuotes, '''', '&#39;', [rfReplaceAll]);
+  Result := TMarkdownHtmlRenderer.EscapeCore(Value, True);
 end;
 
 procedure TRendererHtmlWriter.WriteAttribute(const Name, Value: string);

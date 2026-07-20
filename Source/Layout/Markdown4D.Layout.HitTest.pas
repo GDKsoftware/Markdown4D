@@ -85,15 +85,17 @@ begin
   Result := 0;
   var BestDistance := Abs(LocalX);
 
-  for var Count := 1 to Length(Run.Text) do
+  for var CharCount := 1 to Length(Run.Text) do
   begin
-    const BoundaryX = Measurer.MeasureText(Copy(Run.Text, 1, Count), Run.Font).Width;
+    const Prefix = Copy(Run.Text, 1, CharCount);
+    const PrefixSize = Measurer.MeasureText(Prefix, Run.Font);
+    const BoundaryX = PrefixSize.Width;
     const Distance = Abs(LocalX - BoundaryX);
 
     if Distance < BestDistance then
     begin
       BestDistance := Distance;
-      Result := Count;
+      Result := CharCount;
     end;
   end;
 end;

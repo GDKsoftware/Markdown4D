@@ -111,6 +111,9 @@ type
 
     [Test]
     procedure FindText_EmptyNeedle_ReturnsEmpty;
+
+    [Test]
+    procedure FindText_NonAsciiNeedle_KeepsSourceOffsets;
   end;
 
 implementation
@@ -433,6 +436,27 @@ begin
   FModel.Text := 'alpha beta';
 
   Assert.AreEqual(0, Length(FModel.FindText('')));
+end;
+
+procedure TMarkdownViewerModelTests.FindText_NonAsciiNeedle_KeepsSourceOffsets;
+begin
+  const Sharp = #$00DF;
+  const AccentLower = #$00E9;
+  const AccentUpper = #$00C9;
+  const LowerWord = 'caf' + AccentLower;
+
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'gro' + Sharp + ' ' + LowerWord;
+
+  const Ranges = FModel.FindText('CAF' + AccentUpper);
+
+  Assert.AreEqual(1, Length(Ranges));
+  Assert.AreEqual(6, Ranges[0].StartCharacter);
+  Assert.AreEqual(4, Ranges[0].CharacterCount);
+
+  var Run: IDisplayTextRun;
+  Assert.IsTrue(Supports(FModel.DisplayList.Items[Ranges[0].ItemIndex], IDisplayTextRun, Run));
+  Assert.AreEqual(LowerWord, Copy(Run.Text, Ranges[0].StartCharacter, Ranges[0].CharacterCount));
 end;
 
 class function TMarkdownViewerModelTests.BuildTallMarkdown: string;

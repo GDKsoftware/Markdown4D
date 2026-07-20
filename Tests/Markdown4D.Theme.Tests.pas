@@ -24,6 +24,8 @@ type
       DefaultContentPaddingValue = 16.0;
       OverrideContentPadding = 42.0;
       OverrideCodeSpanBackground = $FF7788AA;
+      WrongTypeKey = 'linkColor';
+      WrongTypeValue = 'not-a-color';
 
   public
     [Test]
@@ -49,11 +51,16 @@ type
 
     [Test]
     procedure CodeSpanBackground_SurvivesJsonRoundTrip;
+
+    [Test]
+    procedure LoadFromJson_WronglyTypedValue_RaisesMarkdownError;
   end;
 
 implementation
 
 uses
+  System.JSON,
+  Markdown4D.Defines,
   Markdown4D.Layout.Interfaces;
 
 procedure TMarkdownThemeTests.CreateLightAndCreateDark_CoreColorsDiffer;
@@ -209,6 +216,36 @@ begin
       Assert.IsTrue(RoundTrips);
     finally
       Loaded.Free;
+    end;
+  finally
+    Source.Free;
+  end;
+end;
+
+procedure TMarkdownThemeTests.LoadFromJson_WronglyTypedValue_RaisesMarkdownError;
+begin
+  const Source = TMarkdownTheme.CreateLight;
+  try
+    const ValidJson = Source.SaveToJson;
+
+    const Root = TJSONObject.ParseJSONValue(ValidJson) as TJSONObject;
+    try
+      Root.RemovePair(WrongTypeKey).Free;
+      Root.AddPair(WrongTypeKey, TJSONString.Create(WrongTypeValue));
+      const InvalidJson = Root.ToJSON;
+
+      const Target = TMarkdownTheme.CreateLight;
+      try
+        Assert.WillRaise(
+          procedure
+          begin
+            Target.LoadFromJson(InvalidJson);
+          end, EMarkdownError);
+      finally
+        Target.Free;
+      end;
+    finally
+      Root.Free;
     end;
   finally
     Source.Free;

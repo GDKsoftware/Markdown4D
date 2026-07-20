@@ -30,7 +30,6 @@ type
     class function FirstContentChar(const Node: IMarkdownNode): Char;
     class function LastContentChar(const Node: IMarkdownNode): Char;
     class function TextEdgeChar(const Literal: string; const FromStart: Boolean): Char;
-    class function IsEmphasisKind(const Kind: TMarkdownNodeKind): Boolean;
     class function IsWhitespaceChar(const Value: Char): Boolean;
     class function IsPunctuationChar(const Value: Char): Boolean;
 
@@ -46,6 +45,16 @@ uses
   System.SysUtils,
   System.Character,
   Markdown4D.Defines;
+
+type
+  TMarkdownNodeKindHelper = record helper for TMarkdownNodeKind
+    function IsEmphasis: Boolean;
+  end;
+
+function TMarkdownNodeKindHelper.IsEmphasis: Boolean;
+begin
+  Result := (Self = TMarkdownNodeKind.Emphasis) or (Self = TMarkdownNodeKind.Strong);
+end;
 
 class function TEmphasisDelimiterChooser.Choose(const Node, Parent: IMarkdownNode; const Index: Integer;
                                                 const PreviousChar, LastDelimiter: Char;
@@ -80,7 +89,7 @@ end;
 class function TEmphasisDelimiterChooser.HasParentOpenerConflict(const Node, Parent: IMarkdownNode;
                                                                  const ParentDelimiterIsAsterisk: Boolean): Boolean;
 begin
-  const IsOnlyChildOfEmphasis = (Parent <> nil) and IsEmphasisKind(Parent.Kind) and (Parent.ChildCount = 1);
+  const IsOnlyChildOfEmphasis = (Parent <> nil) and Parent.Kind.IsEmphasis and (Parent.ChildCount = 1);
   if not IsOnlyChildOfEmphasis then
     Exit(False);
 
@@ -91,7 +100,7 @@ class function TEmphasisDelimiterChooser.HasParentCloserConflict(const Node, Par
                                                                  const Index: Integer;
                                                                  const ParentDelimiterIsAsterisk: Boolean): Boolean;
 begin
-  const HasEmphasisParent = (Parent <> nil) and IsEmphasisKind(Parent.Kind);
+  const HasEmphasisParent = (Parent <> nil) and Parent.Kind.IsEmphasis;
   if not HasEmphasisParent then
     Exit(False);
 
@@ -277,11 +286,6 @@ begin
     Exit(Ampersand);
 
   Result := EdgeChar;
-end;
-
-class function TEmphasisDelimiterChooser.IsEmphasisKind(const Kind: TMarkdownNodeKind): Boolean;
-begin
-  Result := (Kind = TMarkdownNodeKind.Emphasis) or (Kind = TMarkdownNodeKind.Strong);
 end;
 
 class function TEmphasisDelimiterChooser.IsWhitespaceChar(const Value: Char): Boolean;

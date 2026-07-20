@@ -9,16 +9,6 @@ uses
 
 type
   THtmlBlockScanner = class
-  public
-    const
-      TagName = '[A-Za-z][A-Za-z0-9-]*';
-      AttributeName = '[a-zA-Z_:][a-zA-Z0-9:._-]*';
-      AttributeValue = '(?:[^"''=<>`\x00-\x20]+|''[^'']*''|"[^"]*")';
-      AttributeValueSpec = '\s*=\s*' + AttributeValue;
-      Attribute = '\s+' + AttributeName + '(?:' + AttributeValueSpec + ')?';
-      OpenTag = '<' + TagName + '(?:' + Attribute + ')*\s*/?>';
-      CloseTag = '</' + TagName + '\s*>';
-
   private
     const
       FirstKind = 1;
@@ -34,6 +24,14 @@ type
       FClosePatterns: array[FirstKind..LastLineTerminatedKind] of TRegEx;
 
   public
+    const
+      TagName = '[A-Za-z][A-Za-z0-9-]*';
+      AttributeName = '[a-zA-Z_:][a-zA-Z0-9:._-]*';
+      AttributeValue = '(?:[^"''=<>`\x00-\x20]+|''[^'']*''|"[^"]*")';
+      AttributeValueSpec = '\s*=\s*' + AttributeValue;
+      Attribute = '\s+' + AttributeName + '(?:' + AttributeValueSpec + ')?';
+      OpenTag = '<' + TagName + '(?:' + Attribute + ')*\s*/?>';
+      CloseTag = '</' + TagName + '\s*>';
     constructor Create;
     function TryMatchStart(const LineRest: string; const AllowInterruptingKind: Boolean; out Kind: Integer): Boolean;
     function EndsOnSameLine(const Kind: Integer; const LineRest: string): Boolean;

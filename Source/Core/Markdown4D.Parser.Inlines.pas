@@ -759,7 +759,8 @@ begin
   FLinkScanner.Advance(1);
   FIndex := FLinkScanner.Position;
 
-  Destination := TMarkdownUnescape.NormalizeUri(TMarkdownUnescape.Unescape(RawDestination));
+  const UnescapedDestination = TMarkdownUnescape.Unescape(RawDestination);
+  Destination := TMarkdownUnescape.NormalizeUri(UnescapedDestination);
   Title := TMarkdownUnescape.Unescape(RawTitle);
   Result := True;
 end;
@@ -1524,6 +1525,8 @@ begin
       Engine.HandleBang;
     TCommonMarkInlineKind.LinkCloser:
       Engine.HandleCloseBracket;
+  else
+    raise EMarkdownError.CreateFmt('Unhandled inline kind: %d', [Ord(FKind)]);
   end;
 
   Result := True;

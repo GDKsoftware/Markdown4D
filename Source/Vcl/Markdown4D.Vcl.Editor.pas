@@ -56,11 +56,11 @@ type
     procedure HandleModelChange(const Sender: TObject; const Range: TEditorReplaceRange);
     procedure HandlePreviewTimer(Sender: TObject);
     procedure HandleAutoScrollTimer(Sender: TObject);
-    function NextClickCount(const X, Y: Integer): Integer;
+    function RegisterClick(const X, Y: Integer): Integer;
     procedure UpdateSelectionToPoint(const X, Y: Integer);
     procedure UpdateAutoScroll(const X, Y: Integer);
     procedure SchedulePreviewUpdate;
-    procedure RenderContent(const Canvas: TCanvas; const TargetWidth, TargetHeight, PixelsPerInch,
+    procedure RenderContent(const TargetCanvas: TCanvas; const TargetWidth, TargetHeight, PixelsPerInch,
       ScrollY: Integer);
     procedure DrawLineTokens(const Painter: IPainter; const LineText: string;
       const Tokens: TArray<TMarkdownSourceToken>; const TextLeft, Top: Integer);
@@ -168,6 +168,7 @@ uses
   System.Math,
   System.UITypes,
   Vcl.Clipbrd,
+  Markdown4D.Defines,
   Markdown4D.Layout.Defaults;
 
 constructor TMarkdownEditor.Create(Owner: TComponent);
@@ -376,10 +377,10 @@ begin
   UpdateScrollBar;
 end;
 
-procedure TMarkdownEditor.RenderContent(const Canvas: TCanvas; const TargetWidth, TargetHeight, PixelsPerInch,
+procedure TMarkdownEditor.RenderContent(const TargetCanvas: TCanvas; const TargetWidth, TargetHeight, PixelsPerInch,
   ScrollY: Integer);
 begin
-  const Painter = TMarkdownVclPainter.Create(Canvas, PixelsPerInch);
+  const Painter = TMarkdownVclPainter.Create(TargetCanvas, PixelsPerInch);
   const PainterLifetime: IPainter = Painter;
 
   Painter.FillRect(TLayoutRectF.Create(0, 0, TargetWidth, TargetHeight), FTheme.BackgroundColor);
@@ -407,7 +408,7 @@ begin
     const LineText = LineTextAt(LineIndex);
     const Tokenized = FHighlighter.TokenizeLine(LineText, State);
 
-    const IsVisible = (Top + LineHeight) > 0;
+    const IsVisible = ((Top + LineHeight) > 0);
     if IsVisible then
     begin
       if FShowLineNumbers then
@@ -470,7 +471,8 @@ begin
   if not FShowLineNumbers then
     Exit(0);
 
-  const Digits = Length(IntToStr(Max(1, FModel.LineCount)));
+  const LineCount = Max(1, FModel.LineCount);
+  const Digits = Length(IntToStr(LineCount));
   const Sample = StringOfChar('0', Digits);
   const Padding = MulDiv(GutterPaddingDips, PixelsPerInch, ReferencePixelsPerInch);
   Result := Round(Painter.MeasureText(Sample, CodeFont).Width) + 2 * Padding;
@@ -534,14 +536,14 @@ begin
 
   var BestColumn := 0;
   var BestDistance := Abs(TargetX);
-  for var Count := 1 to Length(LineText) do
+  for var PrefixLength := 1 to Length(LineText) do
   begin
-    const Width = Round(FMeasurePainter.MeasureText(Copy(LineText, 1, Count), CodeFont).Width);
+    const Width = Round(FMeasurePainter.MeasureText(Copy(LineText, 1, PrefixLength), CodeFont).Width);
     const Distance = Abs(TargetX - Width);
     if Distance < BestDistance then
     begin
       BestDistance := Distance;
-      BestColumn := Count;
+      BestColumn := PrefixLength;
     end;
   end;
 
@@ -708,8 +710,8 @@ begin
   if Pasted = '' then
     Exit;
 
-  var Normalized := StringReplace(Pasted, #13#10, #10, [rfReplaceAll]);
-  Normalized := StringReplace(Normalized, #13, #10, [rfReplaceAll]);
+  var Normalized := StringReplace(Pasted, CarriageReturn + LineFeed, LineFeed, [rfReplaceAll]);
+  Normalized := StringReplace(Normalized, CarriageReturn, LineFeed, [rfReplaceAll]);
   FModel.BreakUndoCoalescing;
   FModel.Insert(Normalized);
 end;
@@ -791,7 +793,7 @@ begin
     Exit;
   end;
 
-  FClickCount := NextClickCount(X, Y);
+  FClickCount := RegisterClick(X, Y);
 
   case FClickCount of
     2:
@@ -839,10 +841,10 @@ begin
     FAutoScrollTimer.Enabled := False;
 end;
 
-function TMarkdownEditor.NextClickCount(const X, Y: Integer): Integer;
+function TMarkdownEditor.RegisterClick(const X, Y: Integer): Integer;
 begin
   const Ticks = GetTickCount;
-  const WithinTime = (Ticks - FLastClickTicks) <= GetDoubleClickTime;
+  const WithinTime = ((Ticks - FLastClickTicks) <= GetDoubleClickTime);
   const WithinDistance = (Abs(X - FLastClickPos.X) <= GetSystemMetrics(SM_CXDOUBLECLK)) and
     (Abs(Y - FLastClickPos.Y) <= GetSystemMetrics(SM_CYDOUBLECLK));
 
@@ -1008,7 +1010,7 @@ begin
     VK_DELETE:
       FModel.DeleteForward;
     VK_RETURN:
-      FModel.Insert(#10);
+      FModel.Insert(LineFeed);
   else
     Exit;
   end;

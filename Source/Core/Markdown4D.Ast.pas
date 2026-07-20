@@ -126,6 +126,9 @@ type
 
 implementation
 
+uses
+  Markdown4D.Defines;
+
 constructor TMarkdownAstNode.Create(const Kind: TMarkdownNodeKind);
 begin
   inherited Create;
@@ -243,6 +246,8 @@ begin
       Visitor.VisitTableRow(Self as IMarkdownTableRow);
     TMarkdownNodeKind.TableCell:
       Visitor.VisitTableCell(Self as IMarkdownTableCell);
+  else
+    raise EMarkdownError.CreateFmt('Unhandled node kind: %d', [Ord(FKind)]);
   end;
 end;
 

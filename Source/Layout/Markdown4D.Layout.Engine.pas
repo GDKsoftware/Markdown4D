@@ -49,6 +49,10 @@ uses
   Markdown4D.Layout.Primitives;
 
 type
+  TMarkdownFontStyleHelper = record helper for TMarkdownFontStyle
+    function Equals(const Other: TMarkdownFontStyle): Boolean;
+  end;
+
   TInlineAtomKind = (WordToken, SpaceToken, HardBreakToken, ImageToken, CheckboxToken);
 
   TInlineAtom = record
@@ -121,7 +125,6 @@ type
     procedure CloseGroup;
     procedure EmitCodeSpanChip(const RunBounds: TLayoutRectF);
     function SameRunStyle(const Atom: TInlineAtom): Boolean;
-    class function FontsEqual(const Left, Right: TMarkdownFontStyle): Boolean;
     procedure EmitImageItem(const Atom: TInlineAtom);
     procedure EmitCheckboxItem(const Atom: TInlineAtom; const Advance: Single);
 
@@ -526,6 +529,8 @@ begin
       EmitQuoteBar(Command);
     TLayoutCommandKind.ListItem:
       ProcessListItem(Command);
+  else
+    raise EMarkdownError.CreateFmt('Unhandled layout command kind: %d', [Ord(Command.Kind)]);
   end;
 end;
 
@@ -556,6 +561,7 @@ begin
       PushList(Command);
     TMarkdownNodeKind.Table:
       LayoutTable(Command);
+  else
   end;
 end;
 
@@ -1448,23 +1454,21 @@ function TInlineWrapper.MaxCharsFitting(const Text: string; const Font: TMarkdow
 begin
   Result := 1;
 
-  for var Count := 2 to Length(Text) do
+  for var CharCount := 2 to Length(Text) do
   begin
-    const PrefixWidth = FMeasurer.MeasureText(Copy(Text, 1, Count), Font).Width;
-    const PrefixFits = (PrefixWidth <= FAvailableWidth + FitEpsilon);
+    const Prefix = Copy(Text, 1, CharCount);
+    const PrefixSize = FMeasurer.MeasureText(Prefix, Font);
+    const PrefixFits = (PrefixSize.Width <= FAvailableWidth + FitEpsilon);
     if not PrefixFits then
       Exit;
 
-    Result := Count;
+    Result := CharCount;
   end;
 end;
 
 procedure TInlineWrapper.CommitPending;
 begin
-  for var Index := 0 to FPending.Count - 1 do
-  begin
-    FCommitted.Add(FPending[Index]);
-  end;
+  FCommitted.AddRange(FPending);
 
   FLineWidth := FLineWidth + FPendingWidth;
   FPending.Clear;
@@ -1501,6 +1505,8 @@ begin
         Result := Max(Result, FMeasurer.LineHeight(Atom.Font));
       TInlineAtomKind.ImageToken, TInlineAtomKind.CheckboxToken:
         Result := Max(Result, Atom.Height);
+    else
+      raise EMarkdownError.CreateFmt('Unhandled inline atom kind: %d', [Ord(Atom.Kind)]);
     end;
   end;
 
@@ -1529,9 +1535,9 @@ begin
   FGroupOpen := False;
   FLineBaseline := LineBaseline;
 
-  for var Index := 0 to FCommitted.Count - 1 do
+  for var Atom in FCommitted do
   begin
-    EmitLineAtom(FCommitted[Index], Advance);
+    EmitLineAtom(Atom, Advance);
   end;
 
   CloseGroup;
@@ -1547,7 +1553,9 @@ begin
       begin
         const Joins = FGroupOpen and SameRunStyle(Atom);
         if Joins then
-          AppendToGroup(Atom)
+        begin
+          AppendToGroup(Atom);
+        end
         else
         begin
           CloseGroup;
@@ -1564,6 +1572,8 @@ begin
         CloseGroup;
         EmitCheckboxItem(Atom, Advance);
       end;
+  else
+    raise EMarkdownError.CreateFmt('Unhandled inline atom kind: %d', [Ord(Atom.Kind)]);
   end;
 end;
 
@@ -1615,14 +1625,14 @@ end;
 
 function TInlineWrapper.SameRunStyle(const Atom: TInlineAtom): Boolean;
 begin
-  Result := FontsEqual(FGroupFont, Atom.Font) and (FGroupColor = Atom.Color) and (FGroupNode = Atom.Node) and
+  Result := FGroupFont.Equals(Atom.Font) and (FGroupColor = Atom.Color) and (FGroupNode = Atom.Node) and
     (FGroupCodeSpan = Atom.CodeSpan);
 end;
 
-class function TInlineWrapper.FontsEqual(const Left, Right: TMarkdownFontStyle): Boolean;
+function TMarkdownFontStyleHelper.Equals(const Other: TMarkdownFontStyle): Boolean;
 begin
-  Result := (Left.FamilyName = Right.FamilyName) and (Left.Size = Right.Size) and (Left.Bold = Right.Bold) and
-    (Left.Italic = Right.Italic) and (Left.Underline = Right.Underline) and (Left.Strikeout = Right.Strikeout);
+  Result := (Self.FamilyName = Other.FamilyName) and (Self.Size = Other.Size) and (Self.Bold = Other.Bold) and
+    (Self.Italic = Other.Italic) and (Self.Underline = Other.Underline) and (Self.Strikeout = Other.Strikeout);
 end;
 
 procedure TInlineWrapper.EmitImageItem(const Atom: TInlineAtom);
