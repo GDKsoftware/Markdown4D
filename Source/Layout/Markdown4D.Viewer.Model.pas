@@ -6,6 +6,7 @@ interface
 
 uses
   System.Generics.Collections,
+  Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.DisplayList,
   Markdown4D.Theme;
@@ -18,6 +19,12 @@ type
     StartCharacter: Integer;
     CharacterCount: Integer;
     class function Create(const ItemIndex, StartCharacter, CharacterCount: Integer): TMarkdownFoundRange; static;
+  end;
+
+  TMarkdownCodeBlockRegion = record
+    Rect: TLayoutRectF;
+    Text: string;
+    class function Create(const Rect: TLayoutRectF; const Text: string): TMarkdownCodeBlockRegion; static;
   end;
 
   TMarkdownViewerModel = class(TNoRefCountObject, IMarkdownImageSizeProvider)
@@ -68,6 +75,7 @@ type
       const StartPosition, EndPosition: TTextPosition; out CharFrom, CharTo: Integer): Boolean;
     function BlockIndexOfItem(const ItemIndex: Integer): Integer;
     function PrefixWidth(const Run: IDisplayTextRun; const CharacterCount: Integer): Single;
+    class function CodeTextOf(const Code: IMarkdownCodeBlock): string; static;
     function GetText: string;
     procedure SetText(const Value: string);
     function GetPendingText: string;
@@ -102,6 +110,8 @@ type
     function ImageSlotState(const Source: string): TMarkdownImageSlotState;
     function TryGetImageSize(const Source: string; out Size: TLayoutSizeF): Boolean;
     function FindText(const Needle: string): TArray<TMarkdownFoundRange>;
+    function CodeBlockRegions: TArray<TMarkdownCodeBlockRegion>;
+    function TryGetCodeBlockAt(const Point: TLayoutPointF; out Region: TMarkdownCodeBlockRegion): Boolean;
     property Text: string read GetText write SetText;
     property PendingText: string read GetPendingText;
     property FullText: string read GetFullText;
@@ -132,6 +142,13 @@ begin
   Result.CharacterCount := CharacterCount;
 end;
 
+class function TMarkdownCodeBlockRegion.Create(const Rect: TLayoutRectF;
+  const Text: string): TMarkdownCodeBlockRegion;
+begin
+  Result.Rect := Rect;
+  Result.Text := Text;
+end;
+
 constructor TMarkdownViewerModel.Create(const Theme: TMarkdownTheme; const Measurer: ITextMeasurer);
 begin
   inherited Create;
@@ -157,7 +174,8 @@ begin
   FViewportWidth := Width;
   FViewportHeight := Height;
 
-  const NeedsRelayout = WidthChanged and (FDisplayList <> nil);
+  const HasPendingContent = (FText <> '') or (FPendingMarkdown <> '');
+  const NeedsRelayout = WidthChanged and (Width > 0) and ((FDisplayList <> nil) or HasPendingContent);
   if NeedsRelayout then
     Relayout;
 end;
@@ -426,6 +444,49 @@ begin
       Found := CaseInsensitiveIndexOf(Needle, RunText, Offset);
     end;
   end;
+end;
+
+function TMarkdownViewerModel.TryGetCodeBlockAt(const Point: TLayoutPointF;
+  out Region: TMarkdownCodeBlockRegion): Boolean;
+begin
+  for var Candidate in CodeBlockRegions do
+  begin
+    if Candidate.Rect.Contains(Point) then
+    begin
+      Region := Candidate;
+      Exit(True);
+    end;
+  end;
+
+  Region := Default(TMarkdownCodeBlockRegion);
+  Result := False;
+end;
+
+function TMarkdownViewerModel.CodeBlockRegions: TArray<TMarkdownCodeBlockRegion>;
+begin
+  Result := [];
+  if FDisplayList = nil then
+    Exit;
+
+  for var Index := 0 to FDisplayList.ItemCount - 1 do
+  begin
+    const Item = FDisplayList.Items[Index];
+    if Item.Kind <> TDisplayItemKind.Rectangle then
+      Continue;
+
+    var Code: IMarkdownCodeBlock;
+    if (Item.Node = nil) or not Supports(Item.Node, IMarkdownCodeBlock, Code) then
+      Continue;
+
+    Result := Result + [TMarkdownCodeBlockRegion.Create(Item.Bounds, CodeTextOf(Code))];
+  end;
+end;
+
+class function TMarkdownViewerModel.CodeTextOf(const Code: IMarkdownCodeBlock): string;
+begin
+  Result := Code.Literal;
+  if Result.EndsWith(LineFeed) then
+    SetLength(Result, Length(Result) - 1);
 end;
 
 procedure TMarkdownViewerModel.Relayout;

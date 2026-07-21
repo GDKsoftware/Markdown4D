@@ -5,7 +5,8 @@ unit Markdown4D.Editor.Model;
 interface
 
 type
-  TEditorCommand = (Bold, Italic, Link, CodeBlock);
+  TEditorCommand = (Bold, Italic, Link, CodeBlock, Heading1, Heading2, Heading3, BulletList, NumberedList, Quote,
+    Strikethrough, Table);
 
   TEditorReplaceRange = record
     Start: Integer;
@@ -17,25 +18,30 @@ type
 
   TEditorChangeEvent = procedure(const Sender: TObject; const Range: TEditorReplaceRange) of object;
 
+  TMarkdownUndoEntry = record
+    Start: Integer;
+    RemovedText: string;
+    InsertedText: string;
+    CaretBefore: Integer;
+    AnchorBefore: Integer;
+    CaretAfter: Integer;
+  end;
+
+  IMarkdownEditorState = interface
+    ['{8F2D4A31-6B7C-4E19-9A03-2C5D8E1F4B60}']
+  end;
+
   TMarkdownEditorModel = class
   strict private
     type
-      TUndoEntry = record
-        Start: Integer;
-        RemovedText: string;
-        InsertedText: string;
-        CaretBefore: Integer;
-        AnchorBefore: Integer;
-        CaretAfter: Integer;
-      end;
       TCharCategory = (Word, Space, Other);
     var
       FText: string;
       FLineStarts: TArray<Integer>;
       FCaret: Integer;
       FAnchor: Integer;
-      FUndoStack: TArray<TUndoEntry>;
-      FRedoStack: TArray<TUndoEntry>;
+      FUndoStack: TArray<TMarkdownUndoEntry>;
+      FRedoStack: TArray<TMarkdownUndoEntry>;
       FCoalesceBroken: Boolean;
       FOnChange: TEditorChangeEvent;
     procedure NormalizeAndLoad(const Value: string);
@@ -49,11 +55,21 @@ type
     function PrevCaret(const Offset: Integer): Integer;
     function ClampOffset(const Offset: Integer): Integer;
     function SnapOffset(const Offset: Integer): Integer;
+    function IndexOfNeedle(const Needle: string; const FromOffset: Integer): Integer;
     function IsWordChar(const Ch: Char): Boolean;
     function CategoryOfChar(const Ch: Char): TCharCategory;
     procedure WrapOrToggle(const Marker: string);
     procedure InsertLink;
     procedure WrapCodeBlock;
+    procedure ToggleHeading(const Level: Integer);
+    procedure ToggleLinePrefix(const Marker: string);
+    procedure ToggleNumberedList;
+    procedure InsertTable;
+    procedure SelectedLineRegion(out RegionStart, RegionLen: Integer; out Lines: TArray<string>;
+      out SingleLine: Boolean);
+    procedure ReplaceRegionAndSelect(const RegionStart, RegionLen: Integer; const NewBlock: string);
+    class function HeadingPrefixLen(const Line: string): Integer; static;
+    class function OrderedPrefixLen(const Line: string): Integer; static;
     function GetText: string;
     procedure SetText(const Value: string);
     function GetCaretPosition: Integer;
@@ -67,6 +83,8 @@ type
   public
     constructor Create;
     procedure LoadText(const Value: string);
+    function CaptureState: IMarkdownEditorState;
+    procedure RestoreState(const State: IMarkdownEditorState);
     function LineCount: Integer;
     function LineIndexOfOffset(const Offset: Integer): Integer;
     function OffsetOfLineStart(const LineIndex: Integer): Integer;
@@ -82,6 +100,8 @@ type
     procedure SelectWordAt(const Offset: Integer);
     procedure SelectLineAt(const Offset: Integer);
     function HasSelection: Boolean;
+    function FindText(const Needle: string): Integer;
+    function FindNext(const Needle: string; const StartAfter: Integer): Integer;
     procedure Undo;
     procedure Redo;
     function CanUndo: Boolean;
@@ -103,6 +123,29 @@ uses
   System.Math,
   System.Character,
   Markdown4D.Defines;
+
+type
+  TMarkdownEditorStateObject = class(TInterfacedObject, IMarkdownEditorState)
+  public
+    Text: string;
+    Caret: Integer;
+    Anchor: Integer;
+    UndoStack: TArray<TMarkdownUndoEntry>;
+    RedoStack: TArray<TMarkdownUndoEntry>;
+    CoalesceBroken: Boolean;
+  end;
+
+const
+  HeadingMarkerChar = '#';
+  SpaceStr = ' ';
+  DotStr = '.';
+  BulletMarker = '- ';
+  QuoteMarker = '> ';
+  OrderedMarkerFormat = '%d. ';
+  StrikeMarker = '~~';
+  TableHeaderLine = '| Header 1 | Header 2 | Header 3 |';
+  TableDelimiterLine = '| --- | --- | --- |';
+  TableBodyLine = '| Cell | Cell | Cell |';
 
 class function TEditorReplaceRange.Create(const Start, Length: Integer;
   const Replacement: string): TEditorReplaceRange;
@@ -127,6 +170,34 @@ end;
 procedure TMarkdownEditorModel.LoadText(const Value: string);
 begin
   NormalizeAndLoad(Value);
+end;
+
+function TMarkdownEditorModel.CaptureState: IMarkdownEditorState;
+begin
+  const Snapshot = TMarkdownEditorStateObject.Create;
+
+  Snapshot.Text := FText;
+  Snapshot.Caret := FCaret;
+  Snapshot.Anchor := FAnchor;
+  Snapshot.UndoStack := FUndoStack;
+  Snapshot.RedoStack := FRedoStack;
+  Snapshot.CoalesceBroken := FCoalesceBroken;
+
+  Result := Snapshot;
+end;
+
+procedure TMarkdownEditorModel.RestoreState(const State: IMarkdownEditorState);
+begin
+  const Snapshot = State as TMarkdownEditorStateObject;
+
+  FText := Snapshot.Text;
+  RebuildLineStarts;
+
+  FCaret := Snapshot.Caret;
+  FAnchor := Snapshot.Anchor;
+  FUndoStack := Snapshot.UndoStack;
+  FRedoStack := Snapshot.RedoStack;
+  FCoalesceBroken := Snapshot.CoalesceBroken;
 end;
 
 function TMarkdownEditorModel.LineCount: Integer;
@@ -306,6 +377,43 @@ begin
   Result := FCaret <> FAnchor;
 end;
 
+function TMarkdownEditorModel.FindText(const Needle: string): Integer;
+begin
+  if Needle = '' then
+    Exit(0);
+
+  if System.Length(Needle) > System.Length(FText) then
+    Exit(0);
+
+  var Count := 0;
+  var Cursor := 0;
+
+  var Hit := IndexOfNeedle(Needle, Cursor);
+  while Hit >= 0 do
+  begin
+    Inc(Count);
+    Cursor := Hit + System.Length(Needle);
+    Hit := IndexOfNeedle(Needle, Cursor);
+  end;
+
+  Result := Count;
+end;
+
+function TMarkdownEditorModel.FindNext(const Needle: string; const StartAfter: Integer): Integer;
+begin
+  if Needle = '' then
+    Exit(-1);
+
+  if System.Length(Needle) > System.Length(FText) then
+    Exit(-1);
+
+  const Primary = IndexOfNeedle(Needle, StartAfter + 1);
+  if Primary >= 0 then
+    Exit(Primary);
+
+  Result := IndexOfNeedle(Needle, 0);
+end;
+
 procedure TMarkdownEditorModel.Undo;
 begin
   if System.Length(FUndoStack) = 0 then
@@ -364,6 +472,22 @@ begin
       InsertLink;
     TEditorCommand.CodeBlock:
       WrapCodeBlock;
+    TEditorCommand.Heading1:
+      ToggleHeading(1);
+    TEditorCommand.Heading2:
+      ToggleHeading(2);
+    TEditorCommand.Heading3:
+      ToggleHeading(3);
+    TEditorCommand.BulletList:
+      ToggleLinePrefix(BulletMarker);
+    TEditorCommand.NumberedList:
+      ToggleNumberedList;
+    TEditorCommand.Quote:
+      ToggleLinePrefix(QuoteMarker);
+    TEditorCommand.Strikethrough:
+      WrapOrToggle(StrikeMarker);
+    TEditorCommand.Table:
+      InsertTable;
   else
     raise EMarkdownError.CreateFmt('Unhandled command: %d', [Ord(Command)]);
   end;
@@ -459,7 +583,7 @@ begin
     end;
   end;
 
-  var Entry := Default(TUndoEntry);
+  var Entry := Default(TMarkdownUndoEntry);
   Entry.Start := Start;
   Entry.RemovedText := Removed;
   Entry.InsertedText := Inserted;
@@ -515,6 +639,34 @@ begin
     FText[Result + 1].IsLowSurrogate;
   if IsMidPair then
     Inc(Result);
+end;
+
+function TMarkdownEditorModel.IndexOfNeedle(const Needle: string; const FromOffset: Integer): Integer;
+begin
+  const NeedleLen = System.Length(Needle);
+  const TextLen = System.Length(FText);
+  const LastStart = TextLen - NeedleLen;
+
+  const Start = EnsureRange(FromOffset, 0, TextLen);
+
+  for var CandidateStart := Start to LastStart do
+  begin
+    var Matches := True;
+
+    for var Index := 1 to NeedleLen do
+    begin
+      if FText[CandidateStart + Index].ToLower <> Needle[Index].ToLower then
+      begin
+        Matches := False;
+        Break;
+      end;
+    end;
+
+    if Matches then
+      Exit(CandidateStart);
+  end;
+
+  Result := -1;
 end;
 
 function TMarkdownEditorModel.IsWordChar(const Ch: Char): Boolean;
@@ -581,6 +733,240 @@ begin
   const Block = FenceMarker + LineFeed + Selected + LineFeed + FenceMarker;
 
   ApplyReplace(Start, Len, Block, False);
+end;
+
+procedure TMarkdownEditorModel.ToggleHeading(const Level: Integer);
+begin
+  var RegionStart, RegionLen: Integer;
+  var Lines: TArray<string>;
+  var SingleLine: Boolean;
+  SelectedLineRegion(RegionStart, RegionLen, Lines, SingleLine);
+
+  const Prefix = StringOfChar(HeadingMarkerChar, Level) + SpaceStr;
+
+  var AllApplied := True;
+  var HasEligible := False;
+  for var Index := 0 to High(Lines) do
+  begin
+    const Line = Lines[Index];
+    const IsEligible = SingleLine or (Line <> '');
+    if not IsEligible then
+      Continue;
+
+    HasEligible := True;
+    if HeadingPrefixLen(Line) <> System.Length(Prefix) then
+    begin
+      AllApplied := False;
+      Break;
+    end;
+  end;
+
+  const Remove = HasEligible and AllApplied;
+
+  for var Index := 0 to High(Lines) do
+  begin
+    var Line := Lines[Index];
+    const IsEligible = SingleLine or (Line <> '');
+    if not IsEligible then
+      Continue;
+
+    const Existing = HeadingPrefixLen(Line);
+    if Existing > 0 then
+      Line := Copy(Line, Existing + 1, System.Length(Line) - Existing);
+
+    if not Remove then
+      Line := Prefix + Line;
+
+    Lines[Index] := Line;
+  end;
+
+  const NewBlock = string.Join(LineFeed, Lines);
+  ReplaceRegionAndSelect(RegionStart, RegionLen, NewBlock);
+end;
+
+procedure TMarkdownEditorModel.ToggleLinePrefix(const Marker: string);
+begin
+  var RegionStart, RegionLen: Integer;
+  var Lines: TArray<string>;
+  var SingleLine: Boolean;
+  SelectedLineRegion(RegionStart, RegionLen, Lines, SingleLine);
+
+  const MarkerLen = System.Length(Marker);
+
+  var AllApplied := True;
+  var HasEligible := False;
+  for var Index := 0 to High(Lines) do
+  begin
+    const Line = Lines[Index];
+    const IsEligible = SingleLine or (Line <> '');
+    if not IsEligible then
+      Continue;
+
+    HasEligible := True;
+    if not Line.StartsWith(Marker) then
+    begin
+      AllApplied := False;
+      Break;
+    end;
+  end;
+
+  const Remove = HasEligible and AllApplied;
+
+  for var Index := 0 to High(Lines) do
+  begin
+    var Line := Lines[Index];
+    const IsEligible = SingleLine or (Line <> '');
+    if not IsEligible then
+      Continue;
+
+    if Remove then
+    begin
+      if Line.StartsWith(Marker) then
+        Line := Copy(Line, MarkerLen + 1, System.Length(Line) - MarkerLen);
+    end
+    else
+      Line := Marker + Line;
+
+    Lines[Index] := Line;
+  end;
+
+  const NewBlock = string.Join(LineFeed, Lines);
+  ReplaceRegionAndSelect(RegionStart, RegionLen, NewBlock);
+end;
+
+procedure TMarkdownEditorModel.ToggleNumberedList;
+begin
+  var RegionStart, RegionLen: Integer;
+  var Lines: TArray<string>;
+  var SingleLine: Boolean;
+  SelectedLineRegion(RegionStart, RegionLen, Lines, SingleLine);
+
+  var AllApplied := True;
+  var HasEligible := False;
+  for var Index := 0 to High(Lines) do
+  begin
+    const Line = Lines[Index];
+    const IsEligible = SingleLine or (Line <> '');
+    if not IsEligible then
+      Continue;
+
+    HasEligible := True;
+    if OrderedPrefixLen(Line) = 0 then
+    begin
+      AllApplied := False;
+      Break;
+    end;
+  end;
+
+  const Remove = HasEligible and AllApplied;
+
+  var Counter := 0;
+  for var Index := 0 to High(Lines) do
+  begin
+    var Line := Lines[Index];
+    const IsEligible = SingleLine or (Line <> '');
+    if not IsEligible then
+      Continue;
+
+    const Existing = OrderedPrefixLen(Line);
+    if Existing > 0 then
+      Line := Copy(Line, Existing + 1, System.Length(Line) - Existing);
+
+    if not Remove then
+    begin
+      Inc(Counter);
+      Line := Format(OrderedMarkerFormat, [Counter]) + Line;
+    end;
+
+    Lines[Index] := Line;
+  end;
+
+  const NewBlock = string.Join(LineFeed, Lines);
+  ReplaceRegionAndSelect(RegionStart, RegionLen, NewBlock);
+end;
+
+procedure TMarkdownEditorModel.InsertTable;
+begin
+  const Start = SelectionStart;
+  const Len = SelectionLength;
+
+  const Skeleton = TableHeaderLine + LineFeed + TableDelimiterLine + LineFeed + TableBodyLine + LineFeed +
+    TableBodyLine + LineFeed + TableBodyLine;
+
+  var Lead := '';
+  if Start > 0 then
+  begin
+    if FText[Start] <> LineFeed then
+      Lead := LineFeed + LineFeed
+    else if (Start < 2) or (FText[Start - 1] <> LineFeed) then
+      Lead := LineFeed;
+  end;
+
+  const Insertion = Lead + Skeleton + LineFeed;
+  ApplyReplace(Start, Len, Insertion, False);
+end;
+
+procedure TMarkdownEditorModel.SelectedLineRegion(out RegionStart, RegionLen: Integer; out Lines: TArray<string>;
+  out SingleLine: Boolean);
+begin
+  const FirstLine = LineIndexOfOffset(SelectionStart);
+
+  var EndOffset := SelectionStart + SelectionLength;
+  if SelectionLength > 0 then
+    Dec(EndOffset);
+
+  const LastLine = LineIndexOfOffset(EndOffset);
+
+  RegionStart := OffsetOfLineStart(FirstLine);
+
+  var RegionEnd: Integer;
+  if LastLine < LineCount - 1 then
+    RegionEnd := OffsetOfLineStart(LastLine + 1) - 1
+  else
+    RegionEnd := System.Length(FText);
+
+  RegionLen := RegionEnd - RegionStart;
+
+  Lines := Copy(FText, RegionStart + 1, RegionLen).Split([LineFeed]);
+  if System.Length(Lines) = 0 then
+    Lines := [''];
+
+  SingleLine := (FirstLine = LastLine);
+end;
+
+procedure TMarkdownEditorModel.ReplaceRegionAndSelect(const RegionStart, RegionLen: Integer; const NewBlock: string);
+begin
+  ApplyReplace(RegionStart, RegionLen, NewBlock, False);
+  FAnchor := RegionStart;
+  FCaret := RegionStart + System.Length(NewBlock);
+end;
+
+class function TMarkdownEditorModel.HeadingPrefixLen(const Line: string): Integer;
+begin
+  var HashCount := 0;
+  while (HashCount < System.Length(Line)) and (Line[HashCount + 1] = HeadingMarkerChar) do
+    Inc(HashCount);
+
+  const IsHeading = (HashCount >= 1) and (HashCount <= MaxHeadingLevel) and
+    (System.Length(Line) > HashCount) and (Line[HashCount + 1] = SpaceStr);
+  if IsHeading then
+    Result := HashCount + 1
+  else
+    Result := 0;
+end;
+
+class function TMarkdownEditorModel.OrderedPrefixLen(const Line: string): Integer;
+begin
+  var DigitCount := 0;
+  while (DigitCount < System.Length(Line)) and Line[DigitCount + 1].IsDigit do
+    Inc(DigitCount);
+
+  const IsOrdered = (DigitCount >= 1) and (System.Length(Line) >= DigitCount + 2) and
+    (Line[DigitCount + 1] = DotStr) and (Line[DigitCount + 2] = SpaceStr);
+  if IsOrdered then
+    Result := DigitCount + 2
+  else
+    Result := 0;
 end;
 
 function TMarkdownEditorModel.GetText: string;

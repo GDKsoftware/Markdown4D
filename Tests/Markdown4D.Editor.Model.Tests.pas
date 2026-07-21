@@ -16,6 +16,12 @@ type
       SampleText = 'Hello world';
       MultiLineText = 'first line'#10'second line'#10'third line';
       SurrogateText = 'ab'#$D83D#$DE00'cd';
+      TableSkeleton =
+        '| Header 1 | Header 2 | Header 3 |'#10 +
+        '| --- | --- | --- |'#10 +
+        '| Cell | Cell | Cell |'#10 +
+        '| Cell | Cell | Cell |'#10 +
+        '| Cell | Cell | Cell |';
     var
       FModel: TMarkdownEditorModel;
       FMirror: string;
@@ -106,6 +112,99 @@ type
 
     [Test]
     procedure SelectLineAt_MiddleLine_SelectsLineWithoutNewline;
+
+    [Test]
+    procedure FindText_EmptyNeedle_ReturnsZero;
+
+    [Test]
+    procedure FindText_NeedleLongerThanText_ReturnsZero;
+
+    [Test]
+    procedure FindText_CountsCaseInsensitive;
+
+    [Test]
+    procedure FindText_NonOverlapping;
+
+    [Test]
+    procedure FindNext_EmptyNeedle_ReturnsMinusOne;
+
+    [Test]
+    procedure FindNext_FromBeforeStart_ReturnsFirstMatch;
+
+    [Test]
+    procedure FindNext_AdvancesPastStartAfter;
+
+    [Test]
+    procedure FindNext_WrapsAround;
+
+    [Test]
+    procedure FindNext_NoMatch_ReturnsMinusOne;
+
+    [Test]
+    procedure FindNext_SingleMatchAtStartAfter_WrapsToItself;
+
+    [Test]
+    procedure FindNext_CaseInsensitive;
+
+    [Test]
+    procedure ExecuteHeading1_AddsPrefix;
+
+    [Test]
+    procedure ExecuteHeading1_OnHeading1_Removes;
+
+    [Test]
+    procedure ExecuteHeading2_OnHeading1_ReplacesLevel;
+
+    [Test]
+    procedure ExecuteHeading1_MultiLine_AddsToEachNonBlank;
+
+    [Test]
+    procedure ExecuteHeading1_OnEmptyLine_AddsPrefix;
+
+    [Test]
+    procedure ExecuteBullet_AddsDash;
+
+    [Test]
+    procedure ExecuteBullet_OnBulleted_Removes;
+
+    [Test]
+    procedure ExecuteBullet_MultiLine_SkipsBlankLines;
+
+    [Test]
+    procedure ExecuteNumbered_NumbersSequentially;
+
+    [Test]
+    procedure ExecuteNumbered_OnNumbered_Removes;
+
+    [Test]
+    procedure ExecuteNumbered_MultiLine_BlankLineNotNumbered;
+
+    [Test]
+    procedure ExecuteQuote_AddsMarker;
+
+    [Test]
+    procedure ExecuteQuote_OnQuoted_Removes;
+
+    [Test]
+    procedure ExecuteStrikethrough_WrapsSelection;
+
+    [Test]
+    procedure ExecuteStrikethrough_OnStruck_Unwraps;
+
+    [Test]
+    procedure ExecuteTable_InsertsSkeletonOnNewLine;
+
+    [Test]
+    procedure ExecuteTable_AtDocumentStart_NoLeadingBlank;
+
+    [Test]
+    procedure ExecuteHeading1_Undo_RestoresOriginal;
+
+    [Test]
+    procedure ExecuteTable_Undo_RestoresOriginal;
+
+    [Test]
+    procedure ExecuteHeading1_SelectsModifiedRegion;
   end;
 
 implementation
@@ -337,6 +436,235 @@ begin
   FModel.LoadText(MultiLineText);
   FModel.SelectLineAt(FModel.OffsetOfLineStart(1) + 2);
   Assert.AreEqual('second line', FModel.SelectedText);
+end;
+
+procedure TMarkdownEditorModelTests.FindText_EmptyNeedle_ReturnsZero;
+begin
+  FModel.LoadText(SampleText);
+  Assert.AreEqual(0, FModel.FindText(''));
+end;
+
+procedure TMarkdownEditorModelTests.FindText_NeedleLongerThanText_ReturnsZero;
+begin
+  FModel.LoadText('ab');
+  Assert.AreEqual(0, FModel.FindText('abcdef'));
+end;
+
+procedure TMarkdownEditorModelTests.FindText_CountsCaseInsensitive;
+begin
+  FModel.LoadText('One one ONE');
+  Assert.AreEqual(3, FModel.FindText('one'));
+end;
+
+procedure TMarkdownEditorModelTests.FindText_NonOverlapping;
+begin
+  FModel.LoadText('aaaa');
+  Assert.AreEqual(2, FModel.FindText('aa'));
+end;
+
+procedure TMarkdownEditorModelTests.FindNext_EmptyNeedle_ReturnsMinusOne;
+begin
+  FModel.LoadText(SampleText);
+  Assert.AreEqual(-1, FModel.FindNext('', -1));
+end;
+
+procedure TMarkdownEditorModelTests.FindNext_FromBeforeStart_ReturnsFirstMatch;
+begin
+  FModel.LoadText('ab ab ab');
+  Assert.AreEqual(0, FModel.FindNext('ab', -1));
+end;
+
+procedure TMarkdownEditorModelTests.FindNext_AdvancesPastStartAfter;
+begin
+  FModel.LoadText('ab ab ab');
+  Assert.AreEqual(3, FModel.FindNext('ab', 0));
+end;
+
+procedure TMarkdownEditorModelTests.FindNext_WrapsAround;
+begin
+  FModel.LoadText('ab ab ab');
+  Assert.AreEqual(0, FModel.FindNext('ab', 6));
+end;
+
+procedure TMarkdownEditorModelTests.FindNext_NoMatch_ReturnsMinusOne;
+begin
+  FModel.LoadText('ab ab ab');
+  Assert.AreEqual(-1, FModel.FindNext('zz', -1));
+end;
+
+procedure TMarkdownEditorModelTests.FindNext_SingleMatchAtStartAfter_WrapsToItself;
+begin
+  FModel.LoadText('xxabxx');
+  const M = FModel.FindNext('ab', -1);
+  Assert.AreEqual(2, M);
+  Assert.AreEqual(2, FModel.FindNext('ab', M));
+end;
+
+procedure TMarkdownEditorModelTests.FindNext_CaseInsensitive;
+begin
+  FModel.LoadText('Hello');
+  Assert.AreEqual(0, FModel.FindNext('HELLO', -1));
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteHeading1_AddsPrefix;
+begin
+  FModel.LoadText('Hello');
+  FModel.CaretPosition := 0;
+  FModel.ExecuteCommand(TEditorCommand.Heading1);
+  Assert.AreEqual('# Hello', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteHeading1_OnHeading1_Removes;
+begin
+  FModel.LoadText('# Hello');
+  FModel.CaretPosition := 0;
+  FModel.ExecuteCommand(TEditorCommand.Heading1);
+  Assert.AreEqual('Hello', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteHeading2_OnHeading1_ReplacesLevel;
+begin
+  FModel.LoadText('# Hello');
+  FModel.CaretPosition := 0;
+  FModel.ExecuteCommand(TEditorCommand.Heading2);
+  Assert.AreEqual('## Hello', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteHeading1_MultiLine_AddsToEachNonBlank;
+begin
+  FModel.LoadText('a'#10'b');
+  FModel.SelectAll;
+  FModel.ExecuteCommand(TEditorCommand.Heading1);
+  Assert.AreEqual('# a'#10'# b', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteHeading1_OnEmptyLine_AddsPrefix;
+begin
+  FModel.LoadText('');
+  FModel.ExecuteCommand(TEditorCommand.Heading1);
+  Assert.AreEqual('# ', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteBullet_AddsDash;
+begin
+  FModel.LoadText('Hello');
+  FModel.CaretPosition := 0;
+  FModel.ExecuteCommand(TEditorCommand.BulletList);
+  Assert.AreEqual('- Hello', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteBullet_OnBulleted_Removes;
+begin
+  FModel.LoadText('- Hello');
+  FModel.CaretPosition := 0;
+  FModel.ExecuteCommand(TEditorCommand.BulletList);
+  Assert.AreEqual('Hello', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteBullet_MultiLine_SkipsBlankLines;
+begin
+  FModel.LoadText('a'#10#10'b');
+  FModel.SelectAll;
+  FModel.ExecuteCommand(TEditorCommand.BulletList);
+  Assert.AreEqual('- a'#10#10'- b', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteNumbered_NumbersSequentially;
+begin
+  FModel.LoadText('a'#10'b'#10'c');
+  FModel.SelectAll;
+  FModel.ExecuteCommand(TEditorCommand.NumberedList);
+  Assert.AreEqual('1. a'#10'2. b'#10'3. c', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteNumbered_OnNumbered_Removes;
+begin
+  FModel.LoadText('1. a'#10'2. b');
+  FModel.SelectAll;
+  FModel.ExecuteCommand(TEditorCommand.NumberedList);
+  Assert.AreEqual('a'#10'b', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteNumbered_MultiLine_BlankLineNotNumbered;
+begin
+  FModel.LoadText('a'#10#10'b');
+  FModel.SelectAll;
+  FModel.ExecuteCommand(TEditorCommand.NumberedList);
+  Assert.AreEqual('1. a'#10#10'2. b', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteQuote_AddsMarker;
+begin
+  FModel.LoadText('Hello');
+  FModel.CaretPosition := 0;
+  FModel.ExecuteCommand(TEditorCommand.Quote);
+  Assert.AreEqual('> Hello', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteQuote_OnQuoted_Removes;
+begin
+  FModel.LoadText('> Hello');
+  FModel.CaretPosition := 0;
+  FModel.ExecuteCommand(TEditorCommand.Quote);
+  Assert.AreEqual('Hello', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteStrikethrough_WrapsSelection;
+begin
+  FModel.LoadText('Hello');
+  FModel.SetSelection(0, 5);
+  FModel.ExecuteCommand(TEditorCommand.Strikethrough);
+  Assert.AreEqual('~~Hello~~', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteStrikethrough_OnStruck_Unwraps;
+begin
+  FModel.LoadText('~~Hello~~');
+  FModel.SetSelection(0, 9);
+  FModel.ExecuteCommand(TEditorCommand.Strikethrough);
+  Assert.AreEqual('Hello', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteTable_InsertsSkeletonOnNewLine;
+begin
+  FModel.LoadText('Para');
+  FModel.CaretPosition := 4;
+  FModel.ExecuteCommand(TEditorCommand.Table);
+  Assert.AreEqual('Para'#10#10 + TableSkeleton + #10, FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteTable_AtDocumentStart_NoLeadingBlank;
+begin
+  FModel.LoadText('');
+  FModel.ExecuteCommand(TEditorCommand.Table);
+  Assert.AreEqual(TableSkeleton + #10, FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteHeading1_Undo_RestoresOriginal;
+begin
+  FModel.LoadText('Hello');
+  FModel.CaretPosition := 0;
+  FModel.ExecuteCommand(TEditorCommand.Heading1);
+  FModel.Undo;
+  Assert.AreEqual('Hello', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteTable_Undo_RestoresOriginal;
+begin
+  FModel.LoadText('Para');
+  FModel.CaretPosition := 4;
+  FModel.ExecuteCommand(TEditorCommand.Table);
+  FModel.Undo;
+  Assert.AreEqual('Para', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteHeading1_SelectsModifiedRegion;
+begin
+  FModel.LoadText('Hello');
+  FModel.CaretPosition := 0;
+  FModel.ExecuteCommand(TEditorCommand.Heading1);
+  Assert.AreEqual(0, FModel.SelectionStart);
+  Assert.AreEqual('# Hello', FModel.SelectedText);
 end;
 
 end.

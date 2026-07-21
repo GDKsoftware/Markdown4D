@@ -138,6 +138,11 @@ type
     procedure PaintTo(const Bitmap: TBitmap);
     function FirstVisibleSourceLine: Integer;
     function SourceLineStartOffset(const LineIndex: Integer): Integer;
+    procedure ScrollToSourceLine(const LineIndex: Integer);
+    function SaveEditState: IMarkdownEditorState;
+    procedure LoadEditState(const State: IMarkdownEditorState);
+    function FindMatchCount(const Needle: string): Integer;
+    function FindNext(const Needle: string): Boolean;
     property CaretPosition: Integer read GetCaretPosition write SetCaretPosition;
     property SelectedText: string read GetSelectedText;
     property Theme: TMarkdownTheme read FTheme write SetTheme;
@@ -319,6 +324,53 @@ end;
 function TMarkdownEditor.SourceLineStartOffset(const LineIndex: Integer): Integer;
 begin
   Result := FModel.OffsetOfLineStart(LineIndex);
+end;
+
+procedure TMarkdownEditor.ScrollToSourceLine(const LineIndex: Integer);
+begin
+  SetScrollOffset(LineIndex * LineHeightPx);
+end;
+
+function TMarkdownEditor.SaveEditState: IMarkdownEditorState;
+begin
+  Result := FModel.CaptureState;
+end;
+
+procedure TMarkdownEditor.LoadEditState(const State: IMarkdownEditorState);
+begin
+  FDesignSampleActive := False;
+  FModel.RestoreState(State);
+
+  FScrollOffset := 0;
+  UpdateScrollBar;
+  ScrollCaretIntoView;
+  UpdateCaret;
+  Invalidate;
+  SchedulePreviewUpdate;
+end;
+
+function TMarkdownEditor.FindMatchCount(const Needle: string): Integer;
+begin
+  Result := FModel.FindText(Needle);
+end;
+
+function TMarkdownEditor.FindNext(const Needle: string): Boolean;
+begin
+  if Needle = '' then
+    Exit(False);
+
+  const StartAfter = FModel.SelectionStart + FModel.SelectionLength - 1;
+  const Offset = FModel.FindNext(Needle, StartAfter);
+  if Offset < 0 then
+    Exit(False);
+
+  FModel.SetSelection(Offset, System.Length(Needle));
+
+  ScrollCaretIntoView;
+  UpdateCaret;
+  Invalidate;
+
+  Result := True;
 end;
 
 procedure TMarkdownEditor.HandleModelChange(const Sender: TObject; const Range: TEditorReplaceRange);
