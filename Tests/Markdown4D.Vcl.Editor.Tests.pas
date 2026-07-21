@@ -51,6 +51,7 @@ type
       FHostForm: TForm;
     function NewHostedEditor(const ControlHeight: Integer): TTestableVclEditor;
     class function ManyLines(const Count: Integer): string; static;
+    class function OneWrappedLine: string; static;
     class function ClipboardIsAccessible: Boolean; static;
 
   public
@@ -188,6 +189,12 @@ type
 
     [Test]
     procedure FocusMessages_ShowAndHideCaretWithoutError;
+
+    [Test]
+    procedure WordWrap_VerticalArrowsTraverseVisualRows;
+
+    [Test]
+    procedure WordWrap_Home_GoesToVisualRowStart;
   end;
 
 implementation
@@ -889,6 +896,46 @@ begin
 
   Editor.SimulateKillFocus;
   Assert.Contains(Editor.Text, 'focus body');
+end;
+
+class function TMarkdownVclEditorTests.OneWrappedLine: string;
+begin
+  var Builder := '';
+  for var Index := 0 to 199 do
+    Builder := Builder + 'word ';
+
+  Result := Builder;
+end;
+
+procedure TMarkdownVclEditorTests.WordWrap_VerticalArrowsTraverseVisualRows;
+begin
+  const Editor = NewHostedEditor(ShortHostHeight);
+  Editor.Text := OneWrappedLine;
+  Editor.CaretPosition := 0;
+
+  Editor.SimulateKeyDown(vkDown, []);
+  const AfterDown = Editor.CaretPosition;
+  Assert.IsTrue(AfterDown > 0,
+    Format('Expected wrapping to place a second visual row but the caret stayed at %d', [AfterDown]));
+  Assert.IsTrue(AfterDown < Length(Editor.Text), 'Expected the caret to stay within the single wrapped line');
+
+  Editor.SimulateKeyDown(vkUp, []);
+  Assert.AreEqual(0, Editor.CaretPosition);
+end;
+
+procedure TMarkdownVclEditorTests.WordWrap_Home_GoesToVisualRowStart;
+begin
+  const Editor = NewHostedEditor(ShortHostHeight);
+  Editor.Text := OneWrappedLine;
+  Editor.CaretPosition := 0;
+
+  Editor.SimulateKeyDown(vkDown, []);
+  const SecondRowStart = Editor.CaretPosition;
+  Assert.IsTrue(SecondRowStart > 0, 'Expected a wrapped second visual row');
+
+  Editor.CaretPosition := SecondRowStart + 2;
+  Editor.SimulateKeyDown(vkHome, []);
+  Assert.AreEqual(SecondRowStart, Editor.CaretPosition);
 end;
 
 end.
