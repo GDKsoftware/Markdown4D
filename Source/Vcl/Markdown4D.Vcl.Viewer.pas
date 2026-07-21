@@ -20,6 +20,7 @@ uses
   Markdown4D.Viewer.Model,
   Markdown4D.Viewer.ImageDownloader,
   Markdown4D.Viewer.Lifetime,
+  Markdown4D.Image.Svg,
   Markdown4D.Vcl.Painter;
 
 type
@@ -95,6 +96,7 @@ type
     procedure LoadLocalImage(const Source, FilePath: string);
     procedure HandleImageDataArrived(const Source: string; const Data: TBytes);
     procedure HandleImageDownloadFailed(const Source: string);
+    function TryLoadSvg(const Source: string; const Data: TBytes): Boolean;
     procedure ApplyLoadedPicture(const Source: string; const Picture: TPicture);
     procedure ApplyFailedImage(const Source: string);
     procedure StoreLoadedImage(const Source: string; const Graphic: TGraphic);
@@ -859,6 +861,17 @@ begin
     Exit;
   end;
 
+  if TMarkdownSvgSupport.IsAvailable then
+  begin
+    const FileData = TFile.ReadAllBytes(FilePath);
+    if TMarkdownSvgSupport.LooksLikeSvg(FileData) then
+    begin
+      if not TryLoadSvg(Source, FileData) then
+        ApplyFailedImage(Source);
+      Exit;
+    end;
+  end;
+
   const Picture = TPicture.Create;
   try
     try
@@ -880,6 +893,13 @@ end;
 procedure TMarkdownViewer.HandleImageDataArrived(const Source: string; const Data: TBytes);
 begin
   FRequestedImageSources.Remove(Source);
+
+  if TMarkdownSvgSupport.IsAvailable and TMarkdownSvgSupport.LooksLikeSvg(Data) then
+  begin
+    if not TryLoadSvg(Source, Data) then
+      ApplyFailedImage(Source);
+    Exit;
+  end;
 
   const Picture = TPicture.Create;
   try
@@ -908,6 +928,40 @@ procedure TMarkdownViewer.HandleImageDownloadFailed(const Source: string);
 begin
   FRequestedImageSources.Remove(Source);
   ApplyFailedImage(Source);
+end;
+
+function TMarkdownViewer.TryLoadSvg(const Source: string; const Data: TBytes): Boolean;
+begin
+  var Raster: TMarkdownSvgRaster;
+  if not TMarkdownSvgSupport.TryRasterize(Data, 0, 0, Raster) then
+    Exit(False);
+
+  const Picture = TPicture.Create;
+  try
+    const Bitmap = TBitmap.Create;
+    try
+      Bitmap.PixelFormat := pf32bit;
+      Bitmap.SetSize(Raster.Width, Raster.Height);
+      Bitmap.AlphaFormat := afPremultiplied;
+
+      const RowBytes = Raster.Width * 4;
+      for var Y := 0 to Raster.Height - 1 do
+      begin
+        const DestRow: PByte = Bitmap.ScanLine[Y];
+        System.Move(Raster.Pixels[Y * RowBytes], DestRow^, RowBytes);
+      end;
+
+      Picture.Bitmap.Assign(Bitmap);
+    finally
+      Bitmap.Free;
+    end;
+
+    ApplyLoadedPicture(Source, Picture);
+  finally
+    Picture.Free;
+  end;
+
+  Result := True;
 end;
 
 procedure TMarkdownViewer.ApplyLoadedPicture(const Source: string; const Picture: TPicture);
