@@ -34,11 +34,16 @@ type
       ImageFileName = 'red.png';
       MarkdownFileName = 'doc.md';
       ImageMarkdown = '![red](red.png)';
+      SvgFileName = 'badge.svg';
+      SvgMarkdown = '![badge](badge.svg)';
+      SvgPixelSize = 24;
     var
       FTempFolder: string;
       FForm: TForm;
       FViewer: TMarkdownViewer;
     procedure WriteRedPng;
+    procedure WriteRedSvgFile;
+    procedure RegisterRedSvgRasterizer;
     function PaintViewer: TBitmap;
     function MeasureMatchingPixels(const Predicate: TPixelPredicate): TPixelMeasurement;
     class function IsRed(const Pixel: TColor): Boolean; static;
@@ -61,6 +66,9 @@ type
 
     [Test]
     procedure ResolveImageEvent_SubstitutesPicture;
+
+    [Test]
+    procedure SvgImage_ViaRegisteredRasterizer_DrawsRasterizedPixels;
   end;
 
 implementation
@@ -71,6 +79,7 @@ uses
   System.Math,
   System.IOUtils,
   Vcl.Imaging.pngimage,
+  Markdown4D.Image.Svg,
   Markdown4D.Highlighter.Interfaces;
 
 procedure TMarkdownVclImageTests.Setup;
@@ -94,6 +103,7 @@ begin
   FForm.Free;
   FForm := nil;
 
+  TMarkdownSvgSupport.RegisterRasterizer(nil);
   THighlighterRegistry.Clear;
   TDirectory.Delete(FTempFolder, True);
 end;
@@ -135,6 +145,48 @@ begin
 
   Assert.IsTrue(Measurement.MatchCount >= MinimumSubstitutePixels,
     Format('Expected at least %d blue pixels but found %d', [MinimumSubstitutePixels, Measurement.MatchCount]));
+end;
+
+procedure TMarkdownVclImageTests.SvgImage_ViaRegisteredRasterizer_DrawsRasterizedPixels;
+begin
+  RegisterRedSvgRasterizer;
+  WriteRedSvgFile;
+  FViewer.Images.BaseUrl := FTempFolder;
+  FViewer.Text := SvgMarkdown;
+
+  const Measurement = MeasureMatchingPixels(IsRed);
+
+  Assert.IsTrue(Measurement.MatchCount >= MinimumImagePixels,
+    Format('Expected at least %d rasterized SVG pixels but found %d', [MinimumImagePixels, Measurement.MatchCount]));
+end;
+
+procedure TMarkdownVclImageTests.WriteRedSvgFile;
+begin
+  const Svg = Format('<svg xmlns="http://www.w3.org/2000/svg" width="%0:d" height="%0:d"></svg>', [SvgPixelSize]);
+  TFile.WriteAllText(TPath.Combine(FTempFolder, SvgFileName), Svg, TEncoding.UTF8);
+end;
+
+procedure TMarkdownVclImageTests.RegisterRedSvgRasterizer;
+begin
+  TMarkdownSvgSupport.RegisterRasterizer(
+    function(const Svg: TBytes; const MaxWidth, MaxHeight: Single; out Raster: TMarkdownSvgRaster): Boolean
+    begin
+      Raster.Width := SvgPixelSize;
+      Raster.Height := SvgPixelSize;
+      SetLength(Raster.Pixels, SvgPixelSize * SvgPixelSize * 4);
+
+      var Index := 0;
+      while Index < SvgPixelSize * SvgPixelSize do
+      begin
+        Raster.Pixels[Index * 4 + 0] := 0;
+        Raster.Pixels[Index * 4 + 1] := 0;
+        Raster.Pixels[Index * 4 + 2] := 255;
+        Raster.Pixels[Index * 4 + 3] := 255;
+        Inc(Index);
+      end;
+
+      Result := True;
+    end);
 end;
 
 procedure TMarkdownVclImageTests.WriteRedPng;

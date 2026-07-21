@@ -86,6 +86,7 @@ contains
   Markdown4D.Layout.Interfaces in '..\Source\Layout\Markdown4D.Layout.Interfaces.pas',
   Markdown4D.Layout.Primitives in '..\Source\Layout\Markdown4D.Layout.Primitives.pas',
   Markdown4D.Layout.Renderer in '..\Source\Layout\Markdown4D.Layout.Renderer.pas',
+  Markdown4D.Image.Svg in '..\Source\Layout\Markdown4D.Image.Svg.pas',
   Markdown4D.Theme in '..\Source\Layout\Markdown4D.Theme.pas',
   Markdown4D.Viewer.ImageDownloader in '..\Source\Layout\Markdown4D.Viewer.ImageDownloader.pas',
   Markdown4D.Viewer.Lifetime in '..\Source\Layout\Markdown4D.Viewer.Lifetime.pas',
