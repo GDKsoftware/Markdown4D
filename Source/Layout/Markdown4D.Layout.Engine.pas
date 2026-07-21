@@ -210,7 +210,8 @@ type
       FCurrentY: Single;
     function MeasureTableCells(const Command: TLayoutCommand; const ColumnCount: Integer;
       const Cells: TObjectList<TList<TInlineAtom>>): TArray<Single>;
-    function ClampColumnWidths(const NaturalWidths: TArray<Single>): TArray<Single>;
+    function ComputeColumnWidths(const NaturalWidths: TArray<Single>;
+      const AvailableWidth: Single): TArray<Single>;
     procedure PlaceTableRows(const Command: TLayoutCommand; const ColumnCount: Integer;
       const Cells: TObjectList<TList<TInlineAtom>>; const ColumnWidths: TArray<Single>);
     procedure PlaceTableRow(const Command: TLayoutCommand; const RowIndex, ColumnCount: Integer;
@@ -226,7 +227,7 @@ type
   public
     constructor Create(const Theme: TMarkdownTheme; const Measurer: ITextMeasurer;
       const Items: TList<IDisplayItem>; const Collector: TInlineAtomCollector);
-    function Layout(const Command: TLayoutCommand; const StartY: Single): Single;
+    function Layout(const Command: TLayoutCommand; const StartY, AvailableWidth: Single): Single;
   end;
 
   TLayoutWorker = class
@@ -907,7 +908,7 @@ procedure TLayoutWorker.LayoutTable(const Command: TLayoutCommand);
 begin
   const Table = TTableLayout.Create(FTheme, FMeasurer, FItems, FCollector);
   try
-    FCurrentY := Table.Layout(Command, FCurrentY);
+    FCurrentY := Table.Layout(Command, FCurrentY, ContentRight - Command.X);
   finally
     Table.Free;
   end;
@@ -924,7 +925,7 @@ begin
   FCollector := Collector;
 end;
 
-function TTableLayout.Layout(const Command: TLayoutCommand; const StartY: Single): Single;
+function TTableLayout.Layout(const Command: TLayoutCommand; const StartY, AvailableWidth: Single): Single;
 begin
   FCurrentY := StartY;
 
@@ -942,7 +943,7 @@ begin
     const Cells = TObjectList<TList<TInlineAtom>>.Create(True);
     try
       const NaturalWidths = MeasureTableCells(Command, ColumnCount, Cells);
-      const ColumnWidths = ClampColumnWidths(NaturalWidths);
+      const ColumnWidths = ComputeColumnWidths(NaturalWidths, AvailableWidth);
 
       PlaceTableRows(Command, ColumnCount, Cells, ColumnWidths);
     finally
@@ -980,15 +981,47 @@ begin
   end;
 end;
 
-function TTableLayout.ClampColumnWidths(const NaturalWidths: TArray<Single>): TArray<Single>;
+function TTableLayout.ComputeColumnWidths(const NaturalWidths: TArray<Single>;
+  const AvailableWidth: Single): TArray<Single>;
 begin
-  Result := nil;
-  SetLength(Result, Length(NaturalWidths));
+  const ColumnCount = Length(NaturalWidths);
+  const HasMaxCap = FTheme.TableMaxColumnWidth > 0;
 
-  for var Index := 0 to Length(NaturalWidths) - 1 do
+  Result := nil;
+  SetLength(Result, ColumnCount);
+
+  var Total := 0.0;
+  for var Index := 0 to ColumnCount - 1 do
   begin
-    Result[Index] := EnsureRange(NaturalWidths[Index] + 2 * FTheme.TableCellPadding, FTheme.TableMinColumnWidth,
-      FTheme.TableMaxColumnWidth);
+    var Desired := NaturalWidths[Index] + 2 * FTheme.TableCellPadding;
+    if HasMaxCap then
+      Desired := Min(Desired, FTheme.TableMaxColumnWidth);
+    Desired := Max(Desired, FTheme.TableMinColumnWidth);
+
+    Result[Index] := Desired;
+    Total := Total + Desired;
+  end;
+
+  const Overflow = Total - AvailableWidth;
+  const ContentFitsAvailableWidth = Overflow <= 0;
+  if ContentFitsAvailableWidth then
+    Exit;
+
+  var SlackTotal := 0.0;
+  for var Index := 0 to ColumnCount - 1 do
+  begin
+    SlackTotal := SlackTotal + (Result[Index] - FTheme.TableMinColumnWidth);
+  end;
+
+  const ColumnsAlreadyAtMinimum = SlackTotal <= 0;
+  if ColumnsAlreadyAtMinimum then
+    Exit;
+
+  const ShrinkRatio = Min(1, Overflow / SlackTotal);
+  for var Index := 0 to ColumnCount - 1 do
+  begin
+    const Slack = Result[Index] - FTheme.TableMinColumnWidth;
+    Result[Index] := Result[Index] - Slack * ShrinkRatio;
   end;
 end;
 

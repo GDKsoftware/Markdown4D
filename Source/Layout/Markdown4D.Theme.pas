@@ -74,7 +74,8 @@ type
       DefaultCodePadding = 8.0;
       DefaultTableCellPadding = 6.0;
       DefaultTableMinColumnWidth = 40.0;
-      DefaultTableMaxColumnWidth = 400.0;
+      // Zero disables the per-column cap; the table is bounded by the available width.
+      DefaultTableMaxColumnWidth = 0.0;
       DefaultImagePlaceholderWidth = 120.0;
       DefaultImagePlaceholderHeight = 90.0;
       DefaultCheckboxSize = 16.0;

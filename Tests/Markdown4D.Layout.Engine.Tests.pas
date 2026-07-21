@@ -61,6 +61,7 @@ type
       PerformanceParagraphCount = 1500;
     class function CreateTestTheme: TMarkdownTheme;
     class function LayoutMarkdown(const Source: string; const AvailableWidth: Single): IMarkdownDisplayList;
+    class function LayoutMarkdownUncapped(const Source: string; const AvailableWidth: Single): IMarkdownDisplayList;
     class function LayoutMarkdownWithPadding(const Source: string;
       const AvailableWidth, Padding: Single): IMarkdownDisplayList;
     class function TextRunsOf(const DisplayList: IMarkdownDisplayList): TArray<IDisplayTextRun>;
@@ -121,6 +122,12 @@ type
 
     [Test]
     procedure Layout_Table_ClampsColumnToMaxWidthAndWrapsCell;
+
+    [Test]
+    procedure Layout_Table_UncappedColumn_SizesToContentWithoutWrapping;
+
+    [Test]
+    procedure Layout_Table_UncappedColumns_ShrinkToAvailableWidth;
 
     [Test]
     procedure Layout_Image_EmitsPlaceholderWithSourceUrl;
@@ -417,6 +424,34 @@ begin
   AssertSingle(2 * BaseLineHeight, Runs[2].Bounds.Top);
 end;
 
+procedure TMarkdownLayoutEngineTests.Layout_Table_UncappedColumn_SizesToContentWithoutWrapping;
+begin
+  const Source = '| ' + StringOfChar('b', 30) + ' |'#10'|---|'#10'| x |';
+  const DisplayList = LayoutMarkdownUncapped(Source, 500);
+
+  const Header = FirstRectangleWithFill(DisplayList, TableHeaderBackgroundColorValue);
+  Assert.IsNotNull(Header);
+  AssertSingle(30 * BoldCharWidth + 2 * TableCellPaddingValue, Header.Bounds.Width);
+  AssertSingle(BaseLineHeight, Header.Bounds.Height);
+
+  const Runs = TextRunsOf(DisplayList);
+  const HeaderRun = FindRunByPrefix(Runs, 'b');
+  Assert.IsNotNull(HeaderRun);
+  Assert.AreEqual(StringOfChar('b', 30), HeaderRun.Text);
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_Table_UncappedColumns_ShrinkToAvailableWidth;
+begin
+  const Cell = StringOfChar('b', 30);
+  const Source = '| ' + Cell + ' | ' + Cell + ' |'#10'|---|---|'#10'| x | y |';
+  const AvailableWidth = 400.0;
+  const DisplayList = LayoutMarkdownUncapped(Source, AvailableWidth);
+
+  const Header = FirstRectangleWithFill(DisplayList, TableHeaderBackgroundColorValue);
+  Assert.IsNotNull(Header);
+  AssertSingle(AvailableWidth, Header.Bounds.Width);
+end;
+
 procedure TMarkdownLayoutEngineTests.Layout_Image_EmitsPlaceholderWithSourceUrl;
 begin
   const ImageUrl = 'http://example.com/pic.png';
@@ -663,6 +698,22 @@ class function TMarkdownLayoutEngineTests.LayoutMarkdown(const Source: string;
 begin
   const Theme = CreateTestTheme;
   try
+    const Document = TMarkdown.Parse(Source, TMarkdownDialect.Gfm);
+    const Measurer: ITextMeasurer = TFakeTextMeasurer.Create;
+
+    Result := TMarkdownLayoutEngine.LayoutDocument(Document, AvailableWidth, Theme, Measurer);
+  finally
+    Theme.Free;
+  end;
+end;
+
+class function TMarkdownLayoutEngineTests.LayoutMarkdownUncapped(const Source: string;
+  const AvailableWidth: Single): IMarkdownDisplayList;
+begin
+  const Theme = CreateTestTheme;
+  try
+    Theme.TableMaxColumnWidth := 0;
+
     const Document = TMarkdown.Parse(Source, TMarkdownDialect.Gfm);
     const Measurer: ITextMeasurer = TFakeTextMeasurer.Create;
 
