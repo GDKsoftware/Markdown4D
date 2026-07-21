@@ -41,6 +41,7 @@ type
     var
       FEditor: TMarkdownEditor;
     class function ManyLines(const Count: Integer): string; static;
+    class function OneWrappedLine: string; static;
     class function ClipboardIsAvailable: Boolean; static;
 
   public
@@ -169,6 +170,12 @@ type
 
     [Test]
     procedure FocusEnterExit_TogglesCaretWithoutError;
+
+    [Test]
+    procedure WordWrap_VerticalArrowsTraverseVisualRows;
+
+    [Test]
+    procedure WordWrap_Home_GoesToVisualRowStart;
   end;
 
 implementation
@@ -814,6 +821,56 @@ begin
     Editor.SimulateEnter;
     Editor.SimulateExit;
     Assert.AreEqual('focus body', Editor.Text);
+  finally
+    Editor.Free;
+  end;
+end;
+
+class function TMarkdownFmxEditorTests.OneWrappedLine: string;
+begin
+  var Builder := '';
+  for var Index := 0 to 199 do
+    Builder := Builder + 'word ';
+
+  Result := Builder;
+end;
+
+procedure TMarkdownFmxEditorTests.WordWrap_VerticalArrowsTraverseVisualRows;
+begin
+  const Editor = TTestableFmxEditor.Create(nil);
+  try
+    Editor.Height := ShortHeight;
+    Editor.Text := OneWrappedLine;
+    Editor.CaretPosition := 0;
+
+    Editor.SimulateKeyDown(vkDown, #0, []);
+    const AfterDown = Editor.CaretPosition;
+    Assert.IsTrue(AfterDown > 0,
+      Format('Expected wrapping to place a second visual row but the caret stayed at %d', [AfterDown]));
+    Assert.IsTrue(AfterDown < Length(Editor.Text), 'Expected the caret to stay within the single wrapped line');
+
+    Editor.SimulateKeyDown(vkUp, #0, []);
+    Assert.AreEqual(0, Editor.CaretPosition);
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.WordWrap_Home_GoesToVisualRowStart;
+begin
+  const Editor = TTestableFmxEditor.Create(nil);
+  try
+    Editor.Height := ShortHeight;
+    Editor.Text := OneWrappedLine;
+    Editor.CaretPosition := 0;
+
+    Editor.SimulateKeyDown(vkDown, #0, []);
+    const SecondRowStart = Editor.CaretPosition;
+    Assert.IsTrue(SecondRowStart > 0, 'Expected a wrapped second visual row');
+
+    Editor.CaretPosition := SecondRowStart + 2;
+    Editor.SimulateKeyDown(vkHome, #0, []);
+    Assert.AreEqual(SecondRowStart, Editor.CaretPosition);
   finally
     Editor.Free;
   end;

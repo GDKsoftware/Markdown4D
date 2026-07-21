@@ -7,6 +7,7 @@ interface
 uses
   System.Classes,
   System.UITypes,
+  System.Generics.Collections,
   FMX.Types,
   FMX.Controls,
   FMX.Graphics,
@@ -24,9 +25,20 @@ type
     const
       DefaultControlWidth = 400;
       DefaultControlHeight = 300;
+      SelectionFillColor = TLayoutColor($402F81F7);
       CaretBlinkIntervalMilliseconds = 500;
       DoubleClickWindowMilliseconds = 500;
       DoubleClickSlopDips = 4;
+      MinimumWrapWidthDips = 48;
+    type
+      // One on-screen line from soft-wrapping a source line. Offsets are absolute
+      // into the model text and the range excludes the trailing line break.
+      TVisualRow = record
+        LineIndex: Integer;
+        StartOffset: Integer;
+        EndOffset: Integer;
+        IsFirst: Boolean;
+      end;
     var
       FLifetime: IMarkdownViewerLifetime;
       FModel: TMarkdownEditorModel;
@@ -55,6 +67,8 @@ type
       FPreviewTimer: TTimer;
       FPreviewDirty: Boolean;
       FUpdatingPreview: Boolean;
+      FRows: TArray<TVisualRow>;
+      FWrapWidth: Single;
       FOnChange: TNotifyEvent;
       FOnScroll: TNotifyEvent;
     procedure CreateCaretTimer;
@@ -71,7 +85,19 @@ type
     procedure SchedulePreviewUpdate;
     procedure RenderContent(const Target: TCanvas; const TargetWidth, TargetHeight, ScrollY: Single;
       const DrawCaret: Boolean);
-    procedure DrawLineTokens(const Painter: IPainter; const LineText: string;
+    procedure RebuildRows;
+    procedure AppendWrappedRows(const Rows: TList<TVisualRow>; const LineIndex: Integer);
+    function MakeRow(const LineIndex, StartOffset, EndOffset: Integer; const IsFirst: Boolean): TVisualRow;
+    function NextWrapLength(const LineText: string; const StartCol: Integer): Integer;
+    function LastSpaceWithin(const LineText: string; const StartCol, MaxLength: Integer): Integer;
+    function WrapWidthPx: Single;
+    function RowCount: Integer;
+    function RowIndexOfOffset(const Offset: Integer): Integer;
+    function OffsetAtRowX(const RowIndex: Integer; const TargetX: Single): Integer;
+    function RowText(const Row: TVisualRow): string;
+    procedure DrawRowSelection(const Painter: IPainter; const Row: TVisualRow;
+      const TextLeft, Top, TargetWidth: Single);
+    procedure DrawRowTokens(const Painter: IPainter; const Row: TVisualRow; const LineText: string;
       const Tokens: TArray<TMarkdownSourceToken>; const TextLeft, Top: Single);
     procedure DrawGutterNumber(const Painter: IPainter; const LineIndex: Integer; const GutterWidth, Top: Single);
     function TokenColor(const Kind: TMarkdownSourceTokenKind): TLayoutColor;
@@ -83,8 +109,6 @@ type
     function CaretWidthPx: Single;
     function LineTextAt(const LineIndex: Integer): string;
     function LineStartOffset(const LineIndex: Integer): Integer;
-    function LineEndOffset(const LineIndex: Integer): Integer;
-    function OffsetAtLineX(const LineIndex: Integer; const TargetX: Single): Integer;
     function OffsetFromPoint(const X, Y: Single): Integer;
     function CurrentAnchor: Integer;
     function CaretPixelPos(const ScrollY: Single): TLayoutPointF;
@@ -95,7 +119,7 @@ type
     procedure RedrawContent;
     procedure RefreshAfterEdit;
     procedure RestartCaretBlink;
-    procedure MoveVertical(const LineDelta: Integer; const Extend: Boolean);
+    procedure MoveVertical(const RowDelta: Integer; const Extend: Boolean);
     procedure SetCaretTo(const Offset: Integer; const Extend: Boolean);
     function CopyToClipboard: Boolean;
     procedure CutToClipboard;
@@ -211,6 +235,8 @@ begin
   CreateCaretTimer;
   CreatePreviewTimer;
   CreateAutoScrollTimer;
+
+  RebuildRows;
 end;
 
 destructor TMarkdownEditor.Destroy;
@@ -364,7 +390,11 @@ end;
 
 function TMarkdownEditor.FirstVisibleSourceLine: Integer;
 begin
-  Result := Trunc(FScrollOffset / LineHeightPx);
+  if Length(FRows) = 0 then
+    Exit(0);
+
+  const RowIndex = EnsureRange(Trunc(FScrollOffset / LineHeightPx), 0, High(FRows));
+  Result := FRows[RowIndex].LineIndex;
 end;
 
 function TMarkdownEditor.SourceLineStartOffset(const LineIndex: Integer): Integer;
@@ -374,7 +404,15 @@ end;
 
 procedure TMarkdownEditor.ScrollToSourceLine(const LineIndex: Integer);
 begin
-  SetScrollOffset(LineIndex * LineHeightPx);
+  for var Index := 0 to High(FRows) do
+  begin
+    const IsTargetLine = FRows[Index].LineIndex = LineIndex;
+    if IsTargetLine then
+    begin
+      SetScrollOffset(Index * LineHeightPx);
+      Exit;
+    end;
+  end;
 end;
 
 function TMarkdownEditor.SaveEditState: IMarkdownEditorState;
@@ -388,6 +426,7 @@ begin
   FModel.RestoreState(State);
 
   FScrollOffset := 0;
+  RebuildRows;
   ScrollCaretIntoView;
   RedrawContent;
   SchedulePreviewUpdate;
@@ -420,6 +459,7 @@ end;
 procedure TMarkdownEditor.HandleModelChange(const Sender: TObject; const Range: TEditorReplaceRange);
 begin
   FCaretVisible := True;
+  RebuildRows;
   ScrollCaretIntoView;
   RedrawContent;
   SchedulePreviewUpdate;
@@ -484,6 +524,7 @@ begin
 
   FDesignSampleActive := True;
   FModel.LoadText(TMarkdownDesignSample.Markdown);
+  RebuildRows;
 end;
 
 procedure TMarkdownEditor.RenderContent(const Target: TCanvas; const TargetWidth, TargetHeight, ScrollY: Single;
@@ -498,28 +539,43 @@ begin
   const GutterWidth = GutterWidthPx(PainterLifetime);
   const TextLeft = GutterWidth + TextLeftPaddingDips;
 
-  const CaretLine = FModel.LineIndexOfOffset(FModel.CaretPosition);
-  const ActiveTop = CaretLine * LineHeight - ScrollY;
+  const CaretRow = RowIndexOfOffset(FModel.CaretPosition);
+  const ActiveTop = CaretRow * LineHeight - ScrollY;
   Painter.FillRect(TLayoutRectF.Create(0, ActiveTop, TargetWidth, ActiveTop + LineHeight),
     FTheme.CodeBackgroundColor);
 
   var State := FHighlighter.InitialState;
+  var RowIndex := 0;
+  var BelowViewport := False;
   const LineCount = FModel.LineCount;
   for var LineIndex := 0 to LineCount - 1 do
   begin
-    const Top = LineIndex * LineHeight - ScrollY;
-    if Top > TargetHeight then
+    if BelowViewport then
       Break;
 
     const LineText = LineTextAt(LineIndex);
     const Tokenized = FHighlighter.TokenizeLine(LineText, State);
 
-    const IsVisible = (Top + LineHeight) > 0;
-    if IsVisible then
+    while (RowIndex <= High(FRows)) and (FRows[RowIndex].LineIndex = LineIndex) do
     begin
-      if FShowLineNumbers then
-        DrawGutterNumber(PainterLifetime, LineIndex, GutterWidth, Top);
-      DrawLineTokens(PainterLifetime, LineText, Tokenized.Tokens, TextLeft, Top);
+      const Row = FRows[RowIndex];
+      const Top = RowIndex * LineHeight - ScrollY;
+      if Top > TargetHeight then
+      begin
+        BelowViewport := True;
+        Break;
+      end;
+
+      const IsVisible = (Top + LineHeight) > 0;
+      if IsVisible then
+      begin
+        DrawRowSelection(PainterLifetime, Row, TextLeft, Top, TargetWidth);
+        if FShowLineNumbers and Row.IsFirst then
+          DrawGutterNumber(PainterLifetime, LineIndex, GutterWidth, Top);
+        DrawRowTokens(PainterLifetime, Row, LineText, Tokenized.Tokens, TextLeft, Top);
+      end;
+
+      Inc(RowIndex);
     end;
 
     State := Tokenized.NextState;
@@ -533,19 +589,225 @@ begin
   end;
 end;
 
-procedure TMarkdownEditor.DrawLineTokens(const Painter: IPainter; const LineText: string;
+procedure TMarkdownEditor.DrawRowSelection(const Painter: IPainter; const Row: TVisualRow;
+  const TextLeft, Top, TargetWidth: Single);
+begin
+  if not FModel.HasSelection then
+    Exit;
+
+  const SelStart = FModel.SelectionStart;
+  const SelEnd = SelStart + FModel.SelectionLength;
+
+  const OutsideSelection = (SelEnd <= Row.StartOffset) or (SelStart > Row.EndOffset);
+  if OutsideSelection then
+    Exit;
+
+  const RowStr = RowText(Row);
+  const SegStart = Max(SelStart, Row.StartOffset) - Row.StartOffset;
+  const SegEnd = Min(SelEnd, Row.EndOffset) - Row.StartOffset;
+
+  const LeftX = TextLeft + FMeasurePainter.MeasureText(Copy(RowStr, 1, SegStart), CodeFont).Width;
+
+  const SelectionSpansLineBreak = SelEnd > Row.EndOffset;
+  var RightX: Single;
+  if SelectionSpansLineBreak then
+    RightX := TargetWidth
+  else
+    RightX := TextLeft + FMeasurePainter.MeasureText(Copy(RowStr, 1, SegEnd), CodeFont).Width;
+
+  Painter.FillRect(TLayoutRectF.Create(LeftX, Top, Max(LeftX, RightX), Top + LineHeightPx), SelectionFillColor);
+end;
+
+procedure TMarkdownEditor.DrawRowTokens(const Painter: IPainter; const Row: TVisualRow; const LineText: string;
   const Tokens: TArray<TMarkdownSourceToken>; const TextLeft, Top: Single);
 begin
+  const LineStart = LineStartOffset(Row.LineIndex);
+  const RowStartCol = Row.StartOffset - LineStart;
+  const RowEndCol = Row.EndOffset - LineStart;
+
   for var Token in Tokens do
   begin
-    const Segment = Copy(LineText, Token.Start, Token.Length);
-    if Segment = '' then
+    const TokenStartCol = Token.Start - 1;
+    const TokenEndCol = TokenStartCol + Token.Length;
+    const SegStartCol = Max(TokenStartCol, RowStartCol);
+    const SegEndCol = Min(TokenEndCol, RowEndCol);
+
+    const HasVisibleSegment = SegEndCol > SegStartCol;
+    if not HasVisibleSegment then
       Continue;
 
-    const Prefix = Copy(LineText, 1, Token.Start - 1);
-    const OffsetX = Painter.MeasureText(Prefix, CodeFont).Width;
+    const Segment = Copy(LineText, SegStartCol + 1, SegEndCol - SegStartCol);
+    const PrefixWithinRow = Copy(LineText, RowStartCol + 1, SegStartCol - RowStartCol);
+    const OffsetX = Painter.MeasureText(PrefixWithinRow, CodeFont).Width;
     Painter.DrawTextRun(TLayoutPointF.Create(TextLeft + OffsetX, Top), Segment, CodeFont, TokenColor(Token.Kind));
   end;
+end;
+
+procedure TMarkdownEditor.RebuildRows;
+begin
+  const NotReady = (FModel = nil) or (FMeasurePainter = nil);
+  if NotReady then
+    Exit;
+
+  FWrapWidth := WrapWidthPx;
+
+  const Rows = TList<TVisualRow>.Create;
+  try
+    const LineCount = FModel.LineCount;
+    for var LineIndex := 0 to LineCount - 1 do
+    begin
+      AppendWrappedRows(Rows, LineIndex);
+    end;
+
+    FRows := Rows.ToArray;
+  finally
+    Rows.Free;
+  end;
+end;
+
+procedure TMarkdownEditor.AppendWrappedRows(const Rows: TList<TVisualRow>; const LineIndex: Integer);
+begin
+  const LineText = LineTextAt(LineIndex);
+  const LineStart = LineStartOffset(LineIndex);
+  const Len = Length(LineText);
+
+  const LineIsEmpty = Len = 0;
+  if LineIsEmpty then
+  begin
+    Rows.Add(MakeRow(LineIndex, LineStart, LineStart, True));
+    Exit;
+  end;
+
+  var Consumed := 0;
+  var IsFirst := True;
+  while Consumed < Len do
+  begin
+    const Take = NextWrapLength(LineText, Consumed);
+    Rows.Add(MakeRow(LineIndex, LineStart + Consumed, LineStart + Consumed + Take, IsFirst));
+
+    Consumed := Consumed + Take;
+    IsFirst := False;
+  end;
+end;
+
+function TMarkdownEditor.MakeRow(const LineIndex, StartOffset, EndOffset: Integer;
+  const IsFirst: Boolean): TVisualRow;
+begin
+  Result.LineIndex := LineIndex;
+  Result.StartOffset := StartOffset;
+  Result.EndOffset := EndOffset;
+  Result.IsFirst := IsFirst;
+end;
+
+function TMarkdownEditor.NextWrapLength(const LineText: string; const StartCol: Integer): Integer;
+begin
+  const Remaining = Length(LineText) - StartCol;
+
+  const RemainderWidth = FMeasurePainter.MeasureText(Copy(LineText, StartCol + 1, Remaining), CodeFont).Width;
+  const FitsWholeRemainder = RemainderWidth <= FWrapWidth;
+  if FitsWholeRemainder then
+    Exit(Remaining);
+
+  var LowerBound := 1;
+  var UpperBound := Remaining;
+  var BestFit := 1;
+  while LowerBound <= UpperBound do
+  begin
+    const Candidate = (LowerBound + UpperBound) div 2;
+    const CandidateWidth = FMeasurePainter.MeasureText(Copy(LineText, StartCol + 1, Candidate), CodeFont).Width;
+    const CandidateFits = CandidateWidth <= FWrapWidth;
+    if CandidateFits then
+    begin
+      BestFit := Candidate;
+      LowerBound := Candidate + 1;
+    end
+    else
+    begin
+      UpperBound := Candidate - 1;
+    end;
+  end;
+
+  const WordBreak = LastSpaceWithin(LineText, StartCol, BestFit);
+  const CanBreakAtWord = WordBreak > 0;
+  if CanBreakAtWord then
+    Result := WordBreak
+  else
+    Result := BestFit;
+end;
+
+function TMarkdownEditor.LastSpaceWithin(const LineText: string; const StartCol, MaxLength: Integer): Integer;
+begin
+  for var Offset := MaxLength downto 1 do
+  begin
+    const IsSpace = LineText[StartCol + Offset] = ' ';
+    if IsSpace then
+      Exit(Offset);
+  end;
+
+  Result := 0;
+end;
+
+function TMarkdownEditor.WrapWidthPx: Single;
+begin
+  const Available = Width - TextLeftPx - CaretWidthPx;
+  const MinimumWidth: Single = MinimumWrapWidthDips;
+  Result := Max(Available, MinimumWidth);
+end;
+
+function TMarkdownEditor.RowCount: Integer;
+begin
+  Result := Length(FRows);
+end;
+
+function TMarkdownEditor.RowText(const Row: TVisualRow): string;
+begin
+  Result := Copy(FModel.Text, Row.StartOffset + 1, Row.EndOffset - Row.StartOffset);
+end;
+
+function TMarkdownEditor.RowIndexOfOffset(const Offset: Integer): Integer;
+begin
+  if Length(FRows) = 0 then
+    Exit(0);
+
+  for var Index := 0 to High(FRows) do
+  begin
+    const Row = FRows[Index];
+    if Offset <= Row.EndOffset then
+    begin
+      const AtWrapBoundary = (Offset = Row.EndOffset) and (Index < High(FRows)) and
+        (FRows[Index + 1].LineIndex = Row.LineIndex);
+      if AtWrapBoundary then
+        Exit(Index + 1);
+
+      Exit(Index);
+    end;
+  end;
+
+  Result := High(FRows);
+end;
+
+function TMarkdownEditor.OffsetAtRowX(const RowIndex: Integer; const TargetX: Single): Integer;
+begin
+  if Length(FRows) = 0 then
+    Exit(0);
+
+  const Row = FRows[EnsureRange(RowIndex, 0, High(FRows))];
+  const RowStr = RowText(Row);
+
+  var BestColumn := 0;
+  var BestDistance := Abs(TargetX);
+  for var PrefixLength := 1 to Length(RowStr) do
+  begin
+    const Width = FMeasurePainter.MeasureText(Copy(RowStr, 1, PrefixLength), CodeFont).Width;
+    const Distance = Abs(TargetX - Width);
+    if Distance < BestDistance then
+    begin
+      BestDistance := Distance;
+      BestColumn := PrefixLength;
+    end;
+  end;
+
+  Result := Row.StartOffset + BestColumn;
 end;
 
 procedure TMarkdownEditor.DrawGutterNumber(const Painter: IPainter; const LineIndex: Integer;
@@ -634,37 +896,14 @@ begin
   Result := FModel.OffsetOfLineStart(LineIndex);
 end;
 
-function TMarkdownEditor.LineEndOffset(const LineIndex: Integer): Integer;
-begin
-  Result := LineStartOffset(LineIndex) + Length(LineTextAt(LineIndex));
-end;
-
-function TMarkdownEditor.OffsetAtLineX(const LineIndex: Integer; const TargetX: Single): Integer;
-begin
-  const LineText = LineTextAt(LineIndex);
-  const Start = LineStartOffset(LineIndex);
-
-  var BestColumn := 0;
-  var BestDistance := Abs(TargetX);
-  for var ColumnCount := 1 to Length(LineText) do
-  begin
-    const Width = FMeasurePainter.MeasureText(Copy(LineText, 1, ColumnCount), CodeFont).Width;
-    const Distance = Abs(TargetX - Width);
-    if Distance < BestDistance then
-    begin
-      BestDistance := Distance;
-      BestColumn := ColumnCount;
-    end;
-  end;
-
-  Result := Start + BestColumn;
-end;
-
 function TMarkdownEditor.OffsetFromPoint(const X, Y: Single): Integer;
 begin
-  const Line = EnsureRange(Trunc((Y + FScrollOffset) / LineHeightPx), 0, FModel.LineCount - 1);
+  if Length(FRows) = 0 then
+    Exit(0);
+
+  const RowIndex = EnsureRange(Trunc((Y + FScrollOffset) / LineHeightPx), 0, High(FRows));
   const LocalX = X - TextLeftPx;
-  Result := OffsetAtLineX(Line, Max(0, LocalX));
+  Result := OffsetAtRowX(RowIndex, Max(0, LocalX));
 end;
 
 function TMarkdownEditor.CurrentAnchor: Integer;
@@ -678,15 +917,19 @@ end;
 function TMarkdownEditor.CaretPixelPos(const ScrollY: Single): TLayoutPointF;
 begin
   const Caret = FModel.CaretPosition;
-  const Line = FModel.LineIndexOfOffset(Caret);
-  const Prefix = Copy(FModel.Text, LineStartOffset(Line) + 1, Caret - LineStartOffset(Line));
+  if Length(FRows) = 0 then
+    Exit(TLayoutPointF.Create(TextLeftPx, -ScrollY));
+
+  const RowIndex = RowIndexOfOffset(Caret);
+  const Row = FRows[RowIndex];
+  const Prefix = Copy(FModel.Text, Row.StartOffset + 1, Caret - Row.StartOffset);
   const OffsetX = FMeasurePainter.MeasureText(Prefix, CodeFont).Width;
-  Result := TLayoutPointF.Create(TextLeftPx + OffsetX, Line * LineHeightPx - ScrollY);
+  Result := TLayoutPointF.Create(TextLeftPx + OffsetX, RowIndex * LineHeightPx - ScrollY);
 end;
 
 function TMarkdownEditor.ContentHeightPx: Single;
 begin
-  Result := FModel.LineCount * LineHeightPx;
+  Result := RowCount * LineHeightPx;
 end;
 
 function TMarkdownEditor.MaxScrollOffset: Single;
@@ -709,8 +952,8 @@ end;
 
 procedure TMarkdownEditor.ScrollCaretIntoView;
 begin
-  const Line = FModel.LineIndexOfOffset(FModel.CaretPosition);
-  const Top = Line * LineHeightPx;
+  const RowIndex = RowIndexOfOffset(FModel.CaretPosition);
+  const Top = RowIndex * LineHeightPx;
   const Bottom = Top + LineHeightPx;
 
   var NewOffset := FScrollOffset;
@@ -745,14 +988,18 @@ begin
   end;
 end;
 
-procedure TMarkdownEditor.MoveVertical(const LineDelta: Integer; const Extend: Boolean);
+procedure TMarkdownEditor.MoveVertical(const RowDelta: Integer; const Extend: Boolean);
 begin
+  if Length(FRows) = 0 then
+    Exit;
+
   const Caret = FModel.CaretPosition;
-  const Line = FModel.LineIndexOfOffset(Caret);
-  const Prefix = Copy(FModel.Text, LineStartOffset(Line) + 1, Caret - LineStartOffset(Line));
+  const RowIndex = RowIndexOfOffset(Caret);
+  const Row = FRows[RowIndex];
+  const Prefix = Copy(FModel.Text, Row.StartOffset + 1, Caret - Row.StartOffset);
   const TargetX = FMeasurePainter.MeasureText(Prefix, CodeFont).Width;
-  const TargetLine = EnsureRange(Line + LineDelta, 0, FModel.LineCount - 1);
-  SetCaretTo(OffsetAtLineX(TargetLine, TargetX), Extend);
+  const TargetRow = EnsureRange(RowIndex + RowDelta, 0, High(FRows));
+  SetCaretTo(OffsetAtRowX(TargetRow, TargetX), Extend);
 end;
 
 procedure TMarkdownEditor.SetCaretTo(const Offset: Integer; const Extend: Boolean);
@@ -814,6 +1061,7 @@ procedure TMarkdownEditor.Resize;
 begin
   inherited Resize;
 
+  RebuildRows;
   RedrawContent;
 end;
 
@@ -1072,7 +1320,6 @@ function TMarkdownEditor.HandleNavigationKey(const Key: Word; const Shift: TShif
 begin
   const Extend = ssShift in Shift;
   const Caret = FModel.CaretPosition;
-  const Line = FModel.LineIndexOfOffset(Caret);
   Result := True;
   case Key of
     vkLeft:
@@ -1098,12 +1345,12 @@ begin
     vkHome:
       begin
         FModel.BreakUndoCoalescing;
-        SetCaretTo(LineStartOffset(Line), Extend);
+        SetCaretTo(FRows[RowIndexOfOffset(Caret)].StartOffset, Extend);
       end;
     vkEnd:
       begin
         FModel.BreakUndoCoalescing;
-        SetCaretTo(LineEndOffset(Line), Extend);
+        SetCaretTo(FRows[RowIndexOfOffset(Caret)].EndOffset, Extend);
       end;
     vkPrior:
       begin
@@ -1136,6 +1383,7 @@ begin
   FDesignSampleActive := False;
   FModel.LoadText(Value);
   FScrollOffset := 0;
+  RebuildRows;
   ScrollCaretIntoView;
   RedrawContent;
   SchedulePreviewUpdate;
@@ -1155,6 +1403,7 @@ begin
 
   FTheme := TMarkdownTheme.CreatePreset(Value);
   FOwnsTheme := True;
+  RebuildRows;
   RedrawContent;
 end;
 
@@ -1187,6 +1436,7 @@ begin
 
   FTheme := Value;
   FOwnsTheme := False;
+  RebuildRows;
   RedrawContent;
 end;
 
@@ -1196,6 +1446,7 @@ begin
     Exit;
 
   FShowLineNumbers := Value;
+  RebuildRows;
   RedrawContent;
 end;
 
