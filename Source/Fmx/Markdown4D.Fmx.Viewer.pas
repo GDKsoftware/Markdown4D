@@ -46,6 +46,14 @@ type
       DefaultControlWidth = 300;
       DefaultControlHeight = 200;
       SelectionFillColor = TLayoutColor($402F81F7);
+      CopyButtonWidth = 54;
+      CopyButtonHeight = 22;
+      CopyButtonMargin = 6;
+      CopyButtonFontSize = 12;
+      CopyButtonStrokeWidth = 1.0;
+      CopyLabel = 'Copy';
+      CopiedLabel = 'Copied';
+      CopyFeedbackMilliseconds = 1200;
     var
       FLifetime: IMarkdownViewerLifetime;
       FImages: TMarkdownViewerImageSettings;
@@ -62,7 +70,15 @@ type
       FMeasurePainterLifetime: IPainter;
       FLoadedImages: TObjectDictionary<string, TBitmap>;
       FFlushTimer: TTimer;
+      FCopyFeedbackTimer: TTimer;
       FSelecting: Boolean;
+      FLastMousePoint: TPointF;
+      FHasLastMousePoint: Boolean;
+      FCodeHoverActive: Boolean;
+      FCodeHoverRect: TLayoutRectF;
+      FCodeHoverText: string;
+      FCopyButtonRect: TLayoutRectF;
+      FCopyFeedback: Boolean;
       FPressedLinkUrl: string;
       FHoveredLinkUrl: string;
       FOnLinkClick: TMarkdownLinkClickEvent;
@@ -70,6 +86,7 @@ type
       FOnResolveImage: TMarkdownResolveImageEvent;
       FOnScroll: TNotifyEvent;
     procedure CreateFlushTimer;
+    procedure CreateCopyFeedbackTimer;
     function InvokeOnMainThread(const Action: TThreadProcedure): Boolean;
     procedure HandleFlushTimer(Sender: TObject);
     procedure FlushImmediately;
@@ -82,6 +99,13 @@ type
     procedure UpdateHoverCursor(const Point: TLayoutPointF);
     procedure SetHoveredLinkUrl(const Value: string);
     function TryFindLinkUrl(const Point: TLayoutPointF; out Url: string): Boolean;
+    procedure UpdateCodeHover(const Point: TLayoutPointF);
+    procedure RefreshCodeHover;
+    function PointOnCopyButton(const Point: TLayoutPointF): Boolean;
+    procedure ClearCodeHover;
+    procedure CopyCodeToClipboard(const Text: string);
+    procedure HandleCopyFeedbackTimer(Sender: TObject);
+    procedure DrawCopyButton(const Painter: IPainter);
     procedure ResolvePendingImages;
     procedure ResolvePendingImage(const Source: string);
     function TryResolveImageThroughEvent(const Source, Url: string): Boolean;
@@ -202,6 +226,7 @@ begin
   FModel := TMarkdownViewerModel.Create(FTheme, FMeasurePainterLifetime);
 
   CreateFlushTimer;
+  CreateCopyFeedbackTimer;
 
   TMarkdownViewerShared.RegisterDefaultHighlighters;
   ApplyViewport;
@@ -217,6 +242,18 @@ begin
   FFlushTimer.Enabled := False;
   FFlushTimer.Interval := FlushTimerIntervalMilliseconds;
   FFlushTimer.OnTimer := HandleFlushTimer;
+end;
+
+procedure TMarkdownViewer.CreateCopyFeedbackTimer;
+begin
+  var TimerService: IFMXTimerService;
+  if not TPlatformServices.Current.SupportsPlatformService(IFMXTimerService, TimerService) then
+    Exit;
+
+  FCopyFeedbackTimer := TTimer.Create(Self);
+  FCopyFeedbackTimer.Enabled := False;
+  FCopyFeedbackTimer.Interval := CopyFeedbackMilliseconds;
+  FCopyFeedbackTimer.OnTimer := HandleCopyFeedbackTimer;
 end;
 
 destructor TMarkdownViewer.Destroy;
@@ -297,6 +334,7 @@ begin
     if FModel.ShouldAutoFollow then
       ScrollToBottom;
     ResolvePendingImages;
+    RefreshCodeHover;
     RedrawContent;
   end;
 
@@ -313,6 +351,7 @@ begin
   if FModel.ShouldAutoFollow then
     ScrollToBottom;
   ResolvePendingImages;
+  RefreshCodeHover;
   RedrawContent;
 end;
 
@@ -334,8 +373,15 @@ begin
     Exit;
 
   var Clipboard: IFMXClipboardService;
-  if TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Clipboard) then
+  if not TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Clipboard) then
+    Exit;
+
+  try
     Clipboard.SetClipboard(Selected);
+  except
+    on Exception do
+      Exit;
+  end;
 end;
 
 procedure TMarkdownViewer.Paint;
@@ -360,6 +406,9 @@ begin
     begin
       PainterLifetime.FillRect(SelectionRect, SelectionFillColor);
     end;
+
+    if FCodeHoverActive then
+      DrawCopyButton(PainterLifetime);
   finally
     Canvas.SetMatrix(SavedMatrix);
   end;
@@ -414,6 +463,19 @@ begin
     SetFocus;
 
   const Point = ContentPointOf(X, Y);
+  if PointOnCopyButton(Point) then
+  begin
+    CopyCodeToClipboard(FCodeHoverText);
+    FCopyFeedback := True;
+    if Assigned(FCopyFeedbackTimer) then
+    begin
+      FCopyFeedbackTimer.Enabled := False;
+      FCopyFeedbackTimer.Enabled := True;
+    end;
+    RedrawContent;
+    Exit;
+  end;
+
   if TryFindLinkUrl(Point, FPressedLinkUrl) then
     Exit;
 
@@ -427,15 +489,33 @@ procedure TMarkdownViewer.MouseMove(Shift: TShiftState; X, Y: Single);
 begin
   inherited MouseMove(Shift, X, Y);
 
-  const Point = ContentPointOf(X, Y);
+  FLastMousePoint := TPointF.Create(X, Y);
+  FHasLastMousePoint := True;
+
+  const ContentPoint = ContentPointOf(X, Y);
   if FSelecting then
   begin
-    FModel.SetSelectionExtent(Point);
+    FModel.SetSelectionExtent(ContentPoint);
     RedrawContent;
     Exit;
   end;
 
-  UpdateHoverCursor(Point);
+  UpdateCodeHover(ContentPoint);
+  if PointOnCopyButton(ContentPoint) then
+  begin
+    Cursor := crHandPoint;
+    Exit;
+  end;
+
+  UpdateHoverCursor(ContentPoint);
+end;
+
+procedure TMarkdownViewer.RefreshCodeHover;
+begin
+  if not FHasLastMousePoint then
+    Exit;
+
+  UpdateCodeHover(ContentPointOf(FLastMousePoint.X, FLastMousePoint.Y));
 end;
 
 procedure TMarkdownViewer.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Single);
@@ -480,6 +560,8 @@ begin
 
   Cursor := crDefault;
   SetHoveredLinkUrl('');
+  FHasLastMousePoint := False;
+  ClearCodeHover;
 end;
 
 procedure TMarkdownViewer.ScrollToBottom;
@@ -540,6 +622,104 @@ begin
   Result := TMarkdownHitTester.TryFindLink(FModel.DisplayList, Point, Link);
   if Result then
     Url := Link.Destination;
+end;
+
+procedure TMarkdownViewer.UpdateCodeHover(const Point: TLayoutPointF);
+begin
+  var Region: TMarkdownCodeBlockRegion;
+  const OverCode = FModel.TryGetCodeBlockAt(Point, Region);
+  const Fits = OverCode and (Region.Rect.Width >= CopyButtonWidth + 2 * CopyButtonMargin) and
+    (Region.Rect.Height >= CopyButtonHeight + CopyButtonMargin);
+
+  if not Fits then
+  begin
+    if FCodeHoverActive then
+    begin
+      FCodeHoverActive := False;
+      FCopyFeedback := False;
+      RedrawContent;
+    end;
+    Exit;
+  end;
+
+  const Right = Region.Rect.Right - CopyButtonMargin;
+  const Top = Region.Rect.Top + CopyButtonMargin;
+  const ButtonRect = TLayoutRectF.Create(Right - CopyButtonWidth, Top, Right, Top + CopyButtonHeight);
+
+  const Unchanged = FCodeHoverActive and SameValue(FCodeHoverRect.Top, Region.Rect.Top) and
+    SameValue(FCodeHoverRect.Left, Region.Rect.Left) and (FCodeHoverText = Region.Text);
+  if Unchanged then
+    Exit;
+
+  FCodeHoverActive := True;
+  FCodeHoverRect := Region.Rect;
+  FCodeHoverText := Region.Text;
+  FCopyButtonRect := ButtonRect;
+  FCopyFeedback := False;
+  RedrawContent;
+end;
+
+function TMarkdownViewer.PointOnCopyButton(const Point: TLayoutPointF): Boolean;
+begin
+  Result := FCodeHoverActive and FCopyButtonRect.Contains(Point);
+end;
+
+procedure TMarkdownViewer.ClearCodeHover;
+begin
+  if FCodeHoverActive or FCopyFeedback then
+  begin
+    FCodeHoverActive := False;
+    FCopyFeedback := False;
+    FCodeHoverText := '';
+    RedrawContent;
+  end;
+end;
+
+procedure TMarkdownViewer.CopyCodeToClipboard(const Text: string);
+begin
+  if Text = '' then
+    Exit;
+
+  var Clip: IFMXClipboardService;
+  if not TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Clip) then
+    Exit;
+
+  try
+    Clip.SetClipboard(Text);
+  except
+    on Exception do
+      Exit;
+  end;
+end;
+
+procedure TMarkdownViewer.HandleCopyFeedbackTimer(Sender: TObject);
+begin
+  FCopyFeedback := False;
+  if Assigned(FCopyFeedbackTimer) then
+    FCopyFeedbackTimer.Enabled := False;
+  RedrawContent;
+end;
+
+procedure TMarkdownViewer.DrawCopyButton(const Painter: IPainter);
+begin
+  var Caption := CopyLabel;
+  if FCopyFeedback then
+    Caption := CopiedLabel;
+
+  const Font = TMarkdownFontStyle.Create(FTheme.BaseFont.FamilyName, CopyButtonFontSize);
+
+  Painter.FillRect(FCopyButtonRect, FTheme.BackgroundColor);
+  Painter.DrawRect(FCopyButtonRect, FTheme.TableBorderColor, CopyButtonStrokeWidth);
+
+  const Size = Painter.MeasureText(Caption, Font);
+  const Tx = FCopyButtonRect.Left + (CopyButtonWidth - Size.Width) / 2;
+  const Ty = FCopyButtonRect.Top + (CopyButtonHeight - Painter.LineHeight(Font)) / 2;
+
+  var LabelColor := FTheme.BlockQuoteTextColor;
+  if FCopyFeedback then
+    LabelColor := FTheme.LinkColor;
+
+  Painter.DrawTextRun(TLayoutPointF.Create(Tx, Ty), Caption, Font, LabelColor);
 end;
 
 procedure TMarkdownViewer.ResolvePendingImages;
@@ -731,6 +911,7 @@ begin
   FDesignSampleActive := False;
   FImageDownloader.CancelPending;
   FRequestedImageSources.Clear;
+  ClearCodeHover;
   FModel.Text := Value;
   FModel.ScrollOffset := 0;
   ResolvePendingImages;
@@ -756,6 +937,7 @@ begin
 
   FTheme := TMarkdownTheme.CreatePreset(Value);
   FOwnsTheme := True;
+  ClearCodeHover;
   FModel.ApplyTheme(FTheme);
   RedrawContent;
 end;
@@ -771,6 +953,7 @@ begin
 
   FTheme := Value;
   FOwnsTheme := False;
+  ClearCodeHover;
   FModel.ApplyTheme(FTheme);
   RedrawContent;
 end;

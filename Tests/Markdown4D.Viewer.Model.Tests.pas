@@ -30,6 +30,7 @@ type
       ImageSource = 'img.png';
       LoadedImageWidth = 200.0;
       LoadedImageHeight = 100.0;
+      Fence = '```';
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
@@ -114,6 +115,24 @@ type
 
     [Test]
     procedure FindText_NonAsciiNeedle_KeepsSourceOffsets;
+
+    [Test]
+    procedure CodeBlockRegions_Empty_WhenNoCode;
+
+    [Test]
+    procedure TryGetCodeBlockAt_InsideCodeBlock_ReturnsTextAndRect;
+
+    [Test]
+    procedure TryGetCodeBlockAt_MultiLineCode_KeepsInternalNewlines;
+
+    [Test]
+    procedure TryGetCodeBlockAt_OverParagraph_ReturnsFalse;
+
+    [Test]
+    procedure TryGetCodeBlockAt_OverHeading_ReturnsFalse;
+
+    [Test]
+    procedure CodeBlockRegions_TwoBlocks_ReturnsTwo;
   end;
 
 implementation
@@ -457,6 +476,82 @@ begin
   var Run: IDisplayTextRun;
   Assert.IsTrue(Supports(FModel.DisplayList.Items[Ranges[0].ItemIndex], IDisplayTextRun, Run));
   Assert.AreEqual(LowerWord, Copy(Run.Text, Ranges[0].StartCharacter, Ranges[0].CharacterCount));
+end;
+
+procedure TMarkdownViewerModelTests.CodeBlockRegions_Empty_WhenNoCode;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'plain paragraph';
+
+  Assert.AreEqual(0, Length(FModel.CodeBlockRegions));
+end;
+
+procedure TMarkdownViewerModelTests.TryGetCodeBlockAt_InsideCodeBlock_ReturnsTextAndRect;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := Fence + #10 + 'alpha' + #10 + Fence;
+
+  const Regions = FModel.CodeBlockRegions;
+  Assert.AreEqual(1, Length(Regions));
+  const R = Regions[0];
+
+  var Region: TMarkdownCodeBlockRegion;
+  const Center = TLayoutPointF.Create((R.Rect.Left + R.Rect.Right) / 2, (R.Rect.Top + R.Rect.Bottom) / 2);
+  Assert.IsTrue(FModel.TryGetCodeBlockAt(Center, Region));
+  Assert.AreEqual('alpha', Region.Text);
+  AssertSingle(R.Rect.Left, Region.Rect.Left);
+  AssertSingle(R.Rect.Top, Region.Rect.Top);
+  AssertSingle(R.Rect.Right, Region.Rect.Right);
+  AssertSingle(R.Rect.Bottom, Region.Rect.Bottom);
+end;
+
+procedure TMarkdownViewerModelTests.TryGetCodeBlockAt_MultiLineCode_KeepsInternalNewlines;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := Fence + #10 + 'alpha'#10'beta' + #10 + Fence;
+
+  const Regions = FModel.CodeBlockRegions;
+  Assert.AreEqual(1, Length(Regions));
+  const R = Regions[0];
+
+  var Region: TMarkdownCodeBlockRegion;
+  const Center = TLayoutPointF.Create((R.Rect.Left + R.Rect.Right) / 2, (R.Rect.Top + R.Rect.Bottom) / 2);
+  Assert.IsTrue(FModel.TryGetCodeBlockAt(Center, Region));
+  Assert.AreEqual('alpha'#10'beta', Region.Text);
+end;
+
+procedure TMarkdownViewerModelTests.TryGetCodeBlockAt_OverParagraph_ReturnsFalse;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'para'#10#10 + Fence + #10 + 'code' + #10 + Fence;
+
+  var Region: TMarkdownCodeBlockRegion;
+  Assert.IsFalse(FModel.TryGetCodeBlockAt(TLayoutPointF.Create(1, 0.5), Region));
+
+  const Regions = FModel.CodeBlockRegions;
+  Assert.AreEqual(1, Length(Regions));
+  const R = Regions[0];
+  const Center = TLayoutPointF.Create((R.Rect.Left + R.Rect.Right) / 2, (R.Rect.Top + R.Rect.Bottom) / 2);
+  Assert.IsTrue(FModel.TryGetCodeBlockAt(Center, Region));
+end;
+
+procedure TMarkdownViewerModelTests.TryGetCodeBlockAt_OverHeading_ReturnsFalse;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '# Heading'#10#10 + Fence + #10 + 'code' + #10 + Fence;
+
+  var Region: TMarkdownCodeBlockRegion;
+  Assert.IsFalse(FModel.TryGetCodeBlockAt(TLayoutPointF.Create(1, 0.5), Region));
+end;
+
+procedure TMarkdownViewerModelTests.CodeBlockRegions_TwoBlocks_ReturnsTwo;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := Fence + #10 + 'a' + #10 + Fence + #10#10 + 'mid' + #10#10 + Fence + #10 + 'b' + #10 + Fence;
+
+  const Regions = FModel.CodeBlockRegions;
+  Assert.AreEqual(2, Length(Regions));
+  Assert.IsTrue(Regions[0].Rect.Top < Regions[1].Rect.Top);
 end;
 
 class function TMarkdownViewerModelTests.BuildTallMarkdown: string;
