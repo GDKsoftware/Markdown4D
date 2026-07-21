@@ -27,7 +27,7 @@
         <SanitizedProjectName>FmxMarkdownPad</SanitizedProjectName>
         <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
         <DCC_ExeOutput>.\$(Platform)\$(Config)</DCC_ExeOutput>
-        <DCC_UnitSearchPath>..\..\Source\Core;..\..\Source\Layout;..\..\Source\Fmx;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\..\Source\Core;..\..\Source\Layout;..\..\Source\Fmx;..\Shared;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;System.Win;Winapi;Xml;Data;Datasnap;Web;Soap;Fmx;$(DCC_Namespace)</DCC_Namespace>
         <DCC_E>false</DCC_E>
         <DCC_N>false</DCC_N>
@@ -53,6 +53,12 @@
         <DelphiCompile Include="$(MainSource)">
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
+        <DCCReference Include="..\Shared\MarkdownPad.Workspace.Interfaces.pas"/>
+        <DCCReference Include="..\Shared\MarkdownPad.Workspace.pas"/>
+        <DCCReference Include="..\Shared\MarkdownPad.Session.pas"/>
+        <DCCReference Include="..\Shared\MarkdownPad.Commands.pas"/>
+        <DCCReference Include="..\Shared\MarkdownPad.FileWatcher.pas"/>
+        <DCCReference Include="..\Shared\MarkdownPad.HtmlExport.pas"/>
         <DCCReference Include="FmxMarkdownPad.Main.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
