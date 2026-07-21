@@ -1,5 +1,6 @@
-# Never commit the internal project plan
+# Never commit the internal project plans
 PLAN.md
+PLAN-MarkdownPad.md
 
 # Delphi build output
 __history/
