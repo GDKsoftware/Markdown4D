@@ -48,7 +48,18 @@ uses
   Markdown4D.Editor.Highlighter.Tests in 'Markdown4D.Editor.Highlighter.Tests.pas',
   Markdown4D.Editor.Sync.Tests in 'Markdown4D.Editor.Sync.Tests.pas',
   Markdown4D.Vcl.Editor.Tests in 'Markdown4D.Vcl.Editor.Tests.pas',
-  Markdown4D.Vcl.Design.Tests in 'Markdown4D.Vcl.Design.Tests.pas';
+  Markdown4D.Vcl.Design.Tests in 'Markdown4D.Vcl.Design.Tests.pas',
+  MarkdownPad.Workspace.Interfaces in '..\Examples\Shared\MarkdownPad.Workspace.Interfaces.pas',
+  MarkdownPad.Workspace in '..\Examples\Shared\MarkdownPad.Workspace.pas',
+  MarkdownPad.Session in '..\Examples\Shared\MarkdownPad.Session.pas',
+  MarkdownPad.Commands in '..\Examples\Shared\MarkdownPad.Commands.pas',
+  MarkdownPad.FileWatcher in '..\Examples\Shared\MarkdownPad.FileWatcher.pas',
+  MarkdownPad.HtmlExport in '..\Examples\Shared\MarkdownPad.HtmlExport.pas',
+  MarkdownPad.Workspace.Tests in 'MarkdownPad.Workspace.Tests.pas',
+  MarkdownPad.Session.Tests in 'MarkdownPad.Session.Tests.pas',
+  MarkdownPad.Commands.Tests in 'MarkdownPad.Commands.Tests.pas',
+  MarkdownPad.FileWatcher.Tests in 'MarkdownPad.FileWatcher.Tests.pas',
+  MarkdownPad.HtmlExport.Tests in 'MarkdownPad.HtmlExport.Tests.pas';
 
 const
   TestsFolderName = 'Tests';
