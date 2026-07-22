@@ -33,7 +33,7 @@
         <SanitizedProjectName>Markdown4D_Fmx_Tests</SanitizedProjectName>
         <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
         <DCC_ExeOutput>.\$(Platform)\$(Config)</DCC_ExeOutput>
-        <DCC_UnitSearchPath>..\Source\Core;..\Source\Layout;..\Source\Fmx;$(BDS)\source\DunitX;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\Source\Core;..\Source\Layout;..\Source\Fmx;..\ThirdParty\Image32\source;..\ThirdParty\Image32\source\Clipper2;$(BDS)\source\DunitX;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;System.Win;Winapi;Xml;Data;Datasnap;Web;Soap;Fmx;$(DCC_Namespace)</DCC_Namespace>
         <DCC_ConsoleTarget>true</DCC_ConsoleTarget>
         <DCC_E>false</DCC_E>

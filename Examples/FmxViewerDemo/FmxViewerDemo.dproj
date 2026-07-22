@@ -27,7 +27,7 @@
         <SanitizedProjectName>FmxViewerDemo</SanitizedProjectName>
         <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
         <DCC_ExeOutput>.\$(Platform)\$(Config)</DCC_ExeOutput>
-        <DCC_UnitSearchPath>..\..\Source\Core;..\..\Source\Layout;..\..\Source\Fmx;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\..\Source\Core;..\..\Source\Layout;..\..\Source\Fmx;..\..\ThirdParty\Image32\source;..\..\ThirdParty\Image32\source\Clipper2;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;System.Win;Winapi;Xml;Data;Datasnap;Web;Soap;Fmx;$(DCC_Namespace)</DCC_Namespace>
         <DCC_E>false</DCC_E>
         <DCC_N>false</DCC_N>
