@@ -742,9 +742,11 @@ begin
 
     if Sweep >= MinLabelSweepDegrees then
     begin
+      // Place the label with the same polar convention the wedge uses (0deg at
+      // 3 o'clock, sweeping clockwise) so each percentage sits on its own slice.
       const MidAngle = (StartAngle + Sweep / 2) * Pi / 180;
-      const LabelX = CenterX + LabelRadius * Sin(MidAngle);
-      const LabelY = CenterY - LabelRadius * Cos(MidAngle);
+      const LabelX = CenterX + LabelRadius * Cos(MidAngle);
+      const LabelY = CenterY + LabelRadius * Sin(MidAngle);
       const Percent = Format('%.0f%%', [Value / Total * 100]);
       EmitCenteredText(Percent, LabelX, LabelY - FMeasurer.LineHeight(Font) / 2, Font, FTheme.ChartTextColor);
     end;
