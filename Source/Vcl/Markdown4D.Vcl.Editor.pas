@@ -397,7 +397,7 @@ begin
     Exit;
 
   const Document = TMarkdown.Parse(FModel.Text, TMarkdownDialect.Gfm);
-  FSync.Update(Document, FPreview.DisplayList);
+  FSync.Update(Document, FPreview.DisplayList, FModel.Text);
 end;
 
 procedure TMarkdownEditor.HandleInternalPreviewScroll(Sender: TObject);

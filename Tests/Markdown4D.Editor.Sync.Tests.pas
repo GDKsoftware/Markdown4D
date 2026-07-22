@@ -55,6 +55,9 @@ type
 
     [Test]
     procedure MappedLineCount_MatchesSourceLines;
+
+    [Test]
+    procedure ParagraphLine_MapsBetweenSurroundingBlocks;
   end;
 
 implementation
@@ -84,7 +87,7 @@ procedure TMarkdownEditorSyncTests.BuildLayout(const Markdown: string);
 begin
   FDocument := TMarkdown.Parse(Markdown, TMarkdownDialect.Gfm);
   FDisplayList := TMarkdownLayoutEngine.LayoutDocument(FDocument, LayoutWidth, FTheme, FMeasurer);
-  FSync.Update(FDocument, FDisplayList);
+  FSync.Update(FDocument, FDisplayList, Markdown);
 end;
 
 procedure TMarkdownEditorSyncTests.SourceLineToPreviewOffset_ReturnsBlockTop;
@@ -124,6 +127,21 @@ procedure TMarkdownEditorSyncTests.MappedLineCount_MatchesSourceLines;
 begin
   BuildLayout(SampleMarkdown);
   Assert.IsTrue(FSync.MappedLineCount > 0);
+end;
+
+procedure TMarkdownEditorSyncTests.ParagraphLine_MapsBetweenSurroundingBlocks;
+begin
+  BuildLayout(SampleMarkdown);
+
+  // The first paragraph starts on line 2 (0-based). With per-block mapping its
+  // offset must fall strictly between the heading above (line 0) and the
+  // subheading below (line 4); heading-only mapping would snap it to the heading.
+  const HeadingOffset = FSync.SourceLineToPreviewOffset(0);
+  const ParagraphOffset = FSync.SourceLineToPreviewOffset(2);
+  const SubheadingOffset = FSync.SourceLineToPreviewOffset(4);
+
+  Assert.IsTrue(ParagraphOffset > HeadingOffset, 'paragraph should map below its heading');
+  Assert.IsTrue(ParagraphOffset < SubheadingOffset, 'paragraph should map above the next heading');
 end;
 
 end.
