@@ -8,7 +8,7 @@ uses
   MarkdownPad.Commands in '..\Shared\MarkdownPad.Commands.pas',
   MarkdownPad.FileWatcher in '..\Shared\MarkdownPad.FileWatcher.pas',
   MarkdownPad.HtmlExport in '..\Shared\MarkdownPad.HtmlExport.pas',
-  MarkdownPad.Main in 'MarkdownPad.Main.pas';
+  MarkdownPad.Main in 'MarkdownPad.Main.pas' {MarkdownPadForm};
 
 {$R *.res}
 
