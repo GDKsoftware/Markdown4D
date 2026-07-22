@@ -226,7 +226,6 @@ type
       FFindEdit: TEdit;
       FIconButtons: TArray<TSpeedButton>;
       FSeparators: TArray<TPanel>;
-      FSync: TMarkdownEditorSync;
       FTocEntries: TArray<IMarkdownTocEntry>;
       FLightTheme: TMarkdownTheme;
       FDarkTheme: TMarkdownTheme;
@@ -240,7 +239,6 @@ type
       FSession: TPadSession;
       FWatcher: TPadFileWatcher;
       FMapDirty: Boolean;
-      FSyncing: Boolean;
       FSwapping: Boolean;
       FLastCaret: Integer;
       FViewMode: TPadViewMode;
@@ -294,8 +292,7 @@ type
     procedure HandleTabAdd(Sender: TObject);
     procedure HandleTabReorder(Sender: TObject; const FromIndex, ToIndex: Integer);
     procedure HandleEditorChange(Sender: TObject);
-    procedure HandleEditorScroll(Sender: TObject);
-    procedure HandlePreviewScroll(Sender: TObject);
+    procedure HandleSyncScroll(Sender: TObject; const SourceLine: Integer);
     procedure HandlePreviewLinkClick(const Sender: TObject; const Url: string);
     procedure HandleTocListClick(Sender: TObject);
     procedure HandleTick(Sender: TObject);
@@ -387,7 +384,6 @@ begin
 
   FLightTheme := TMarkdownTheme.CreateLight;
   FDarkTheme := TMarkdownTheme.CreateDark;
-  FSync := TMarkdownEditorSync.Create;
 
   dlgOpen.Filter := MarkdownFilter;
   dlgSave.Filter := MarkdownFilter;
@@ -407,6 +403,7 @@ begin
   BuildCommandRegistry;
 
   mdEditor.AttachPreview(mdPreview);
+  mdEditor.OnSyncScroll := HandleSyncScroll;
 
   FSplitEditorWidth := (InitialClientWidth - TocPanelWidth) div 2;
   FViewMode := TPadViewMode.Split;
@@ -436,7 +433,6 @@ begin
   FCommands.Free;
   FWatcher.Free;
   FSession.Free;
-  FSync.Free;
   FDarkTheme.Free;
   FLightTheme.Free;
 end;
@@ -450,9 +446,7 @@ begin
 
   mdEditor.ShowLineNumbers := True;
   mdEditor.OnChange := HandleEditorChange;
-  mdEditor.OnScroll := HandleEditorScroll;
 
-  mdPreview.OnScroll := HandlePreviewScroll;
   mdPreview.OnLinkClick := HandlePreviewLinkClick;
 
   lblPos.AlignWithMargins := True;
@@ -1196,29 +1190,11 @@ begin
   UpdateTitle;
 end;
 
-procedure TMarkdownPadForm.HandleEditorScroll(Sender: TObject);
+procedure TMarkdownPadForm.HandleSyncScroll(Sender: TObject; const SourceLine: Integer);
 begin
-  if FSyncing then
-    Exit;
-
-  const SourceLine = mdEditor.FirstVisibleSourceLine;
-
-  FSyncing := True;
-  try
-    mdPreview.ScrollOffset := FSync.SourceLineToPreviewOffset(SourceLine);
-  finally
-    FSyncing := False;
-  end;
-
+  // The editor keeps the two panes in step itself; we only reflect the position
+  // in the contents outline.
   UpdateActiveTocEntry(SourceLine);
-end;
-
-procedure TMarkdownPadForm.HandlePreviewScroll(Sender: TObject);
-begin
-  if FSyncing then
-    Exit;
-
-  UpdateActiveTocEntry(FSync.PreviewOffsetToSourceLine(mdPreview.ScrollOffset));
 end;
 
 procedure TMarkdownPadForm.HandlePreviewLinkClick(const Sender: TObject; const Url: string);
@@ -1240,14 +1216,9 @@ begin
 
   const SourceLine = FTocEntries[Index].SourceLine - 1;
 
-  FSyncing := True;
-  try
-    mdEditor.CaretPosition := mdEditor.SourceLineStartOffset(SourceLine);
-    mdEditor.ScrollToSourceLine(SourceLine);
-    mdPreview.ScrollOffset := FSync.SourceLineToPreviewOffset(SourceLine);
-  finally
-    FSyncing := False;
-  end;
+  // Scrolling the editor drives the preview through the linked SyncScroll.
+  mdEditor.CaretPosition := mdEditor.SourceLineStartOffset(SourceLine);
+  mdEditor.ScrollToSourceLine(SourceLine);
 
   lstToc.ItemIndex := Index;
   mdEditor.SetFocus;
@@ -1613,7 +1584,6 @@ begin
   FMapDirty := False;
 
   const Document = TMarkdown.Parse(mdEditor.Text, TMarkdownDialect.Gfm);
-  FSync.Update(Document, mdPreview.DisplayList);
 
   const Toc = TMarkdownToc.FromDocument(Document);
 
