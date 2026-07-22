@@ -17,11 +17,16 @@ uses
   Markdown4D.Theme,
   Markdown4D.Editor.Model,
   Markdown4D.Editor.Highlighter,
+  Markdown4D.Editor.Sync,
   Markdown4D.Viewer.Lifetime,
   Markdown4D.Vcl.Painter,
   Markdown4D.Vcl.Viewer;
 
 type
+  // Fired whenever either pane scrolls while a preview is linked, reporting the
+  // source line now at the top. Hosts use it to keep an outline/ToC in sync.
+  TMarkdownSyncScrollEvent = procedure(Sender: TObject; const SourceLine: Integer) of object;
+
   TMarkdownEditor = class(TCustomControl)
   private
     const
@@ -63,10 +68,14 @@ type
       FPreviewTimer: TTimer;
       FPreviewDirty: Boolean;
       FUpdatingPreview: Boolean;
+      FSync: TMarkdownEditorSync;
+      FSyncScroll: Boolean;
+      FSyncing: Boolean;
       FRows: TArray<TVisualRow>;
       FWrapWidth: Integer;
       FOnChange: TNotifyEvent;
       FOnScroll: TNotifyEvent;
+      FOnSyncScroll: TMarkdownSyncScrollEvent;
     procedure HandleModelChange(const Sender: TObject; const Range: TEditorReplaceRange);
     procedure HandlePreviewTimer(Sender: TObject);
     procedure HandleAutoScrollTimer(Sender: TObject);
@@ -74,6 +83,12 @@ type
     procedure UpdateSelectionToPoint(const X, Y: Integer);
     procedure UpdateAutoScroll(const X, Y: Integer);
     procedure SchedulePreviewUpdate;
+    procedure SetPreview(const Value: TMarkdownViewer);
+    procedure UnhookPreviewScroll;
+    procedure HandleInternalPreviewScroll(Sender: TObject);
+    procedure SyncPreviewToEditor;
+    procedure UpdateSync;
+    procedure DoSyncScroll(const SourceLine: Integer);
     procedure RenderContent(const TargetCanvas: TCanvas; const TargetWidth, TargetHeight, PixelsPerInch,
       ScrollY: Integer);
     procedure RebuildRows;
@@ -176,6 +191,10 @@ type
     property ThemePreset: TMarkdownThemePreset read FThemePreset write SetThemePreset
       default TMarkdownThemePreset.Light;
     property ShowLineNumbers: Boolean read FShowLineNumbers write SetShowLineNumbers default False;
+    // Link an editor to a viewer at design time to get a live preview and, when
+    // SyncScroll is on, two-way scroll synchronisation between the panes.
+    property Preview: TMarkdownViewer read FPreview write SetPreview;
+    property SyncScroll: Boolean read FSyncScroll write FSyncScroll default True;
     property Align;
     property Anchors;
     property Constraints;
@@ -187,6 +206,7 @@ type
     property Visible;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
     property OnScroll: TNotifyEvent read FOnScroll write FOnScroll;
+    property OnSyncScroll: TMarkdownSyncScrollEvent read FOnSyncScroll write FOnSyncScroll;
   end;
 
 implementation
@@ -197,6 +217,7 @@ uses
   System.Math,
   System.UITypes,
   Vcl.Clipbrd,
+  Markdown4D,
   Markdown4D.Defines,
   Markdown4D.Layout.Defaults;
 
@@ -217,6 +238,8 @@ begin
   FModel := TMarkdownEditorModel.Create;
   FModel.OnChange := HandleModelChange;
   FHighlighter := TMarkdownSourceHighlighter.Create;
+  FSync := TMarkdownEditorSync.Create;
+  FSyncScroll := True;
 
   FMeasureBitmap := TBitmap.Create;
   FMeasureBitmap.SetSize(1, 1);
@@ -249,6 +272,7 @@ begin
 
   FHighlighter.Free;
   FModel.Free;
+  FSync.Free;
   FMeasurePainter := nil;
   FMeasurePainterLifetime := nil;
   FMeasureBitmap.Free;
@@ -287,14 +311,39 @@ begin
   Result := FModel.CanRedo;
 end;
 
+procedure TMarkdownEditor.SetPreview(const Value: TMarkdownViewer);
+begin
+  if Value = FPreview then
+    Exit;
+
+  AttachPreview(Value);
+end;
+
+procedure TMarkdownEditor.UnhookPreviewScroll;
+begin
+  if FPreview = nil then
+    Exit;
+
+  var Ours: TNotifyEvent := HandleInternalPreviewScroll;
+  if (TMethod(FPreview.OnScroll).Code = TMethod(Ours).Code) and
+     (TMethod(FPreview.OnScroll).Data = TMethod(Ours).Data) then
+    FPreview.OnScroll := nil;
+end;
+
 procedure TMarkdownEditor.AttachPreview(const Viewer: TMarkdownViewer);
 begin
   if FPreview <> nil then
+  begin
     FPreview.RemoveFreeNotification(Self);
+    UnhookPreviewScroll;
+  end;
 
   FPreview := Viewer;
   if FPreview <> nil then
+  begin
     FPreview.FreeNotification(Self);
+    FPreview.OnScroll := HandleInternalPreviewScroll;
+  end;
 
   FPreviewDirty := True;
   FlushPreview;
@@ -303,7 +352,10 @@ end;
 procedure TMarkdownEditor.DetachPreview;
 begin
   if FPreview <> nil then
+  begin
     FPreview.RemoveFreeNotification(Self);
+    UnhookPreviewScroll;
+  end;
 
   FPreview := nil;
   FPreviewDirty := False;
@@ -335,6 +387,53 @@ begin
   finally
     FUpdatingPreview := False;
   end;
+
+  UpdateSync;
+end;
+
+procedure TMarkdownEditor.UpdateSync;
+begin
+  if FPreview = nil then
+    Exit;
+
+  const Document = TMarkdown.Parse(FModel.Text, TMarkdownDialect.Gfm);
+  FSync.Update(Document, FPreview.DisplayList);
+end;
+
+procedure TMarkdownEditor.HandleInternalPreviewScroll(Sender: TObject);
+begin
+  if (not FSyncScroll) or FSyncing or (FPreview = nil) then
+    Exit;
+
+  FSyncing := True;
+  try
+    const SourceLine = FSync.PreviewOffsetToSourceLine(FPreview.ScrollOffset);
+    ScrollToSourceLine(SourceLine);
+    DoSyncScroll(SourceLine);
+  finally
+    FSyncing := False;
+  end;
+end;
+
+procedure TMarkdownEditor.SyncPreviewToEditor;
+begin
+  if (not FSyncScroll) or FSyncing or (FPreview = nil) then
+    Exit;
+
+  FSyncing := True;
+  try
+    const SourceLine = FirstVisibleSourceLine;
+    FPreview.ScrollOffset := FSync.SourceLineToPreviewOffset(SourceLine);
+    DoSyncScroll(SourceLine);
+  finally
+    FSyncing := False;
+  end;
+end;
+
+procedure TMarkdownEditor.DoSyncScroll(const SourceLine: Integer);
+begin
+  if Assigned(FOnSyncScroll) then
+    FOnSyncScroll(Self, SourceLine);
 end;
 
 procedure TMarkdownEditor.PaintTo(const Bitmap: TBitmap);
@@ -879,6 +978,8 @@ begin
 
   if Assigned(FOnScroll) then
     FOnScroll(Self);
+
+  SyncPreviewToEditor;
 end;
 
 procedure TMarkdownEditor.ScrollCaretIntoView;

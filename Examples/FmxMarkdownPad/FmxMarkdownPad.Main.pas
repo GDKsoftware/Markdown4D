@@ -257,7 +257,6 @@ type
       FSaveDialog: TSaveDialog;
       FHtmlSaveDialog: TSaveDialog;
       FTickTimer: TTimer;
-      FSync: TMarkdownEditorSync;
       FTocEntries: TArray<IMarkdownTocEntry>;
       FLightTheme: TMarkdownTheme;
       FDarkTheme: TMarkdownTheme;
@@ -267,7 +266,6 @@ type
       FWatcher: TPadFileWatcher;
       FActiveDoc: IPadDocument;
       FMapDirty: Boolean;
-      FSyncing: Boolean;
       FSwapping: Boolean;
       FTocFollowing: Boolean;
       FLastCaret: Integer;
@@ -368,8 +366,7 @@ type
     procedure HandleFindClick(Sender: TObject);
     procedure HandleFindEditKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar; Shift: TShiftState);
     procedure HandleEditorChange(Sender: TObject);
-    procedure HandleEditorScroll(Sender: TObject);
-    procedure HandlePreviewScroll(Sender: TObject);
+    procedure HandleSyncScroll(Sender: TObject; const SourceLine: Integer);
     procedure HandlePreviewLinkClick(const Sender: TObject; const Url: string);
     procedure HandleTocChange(Sender: TObject);
     procedure HandleTick(Sender: TObject);
@@ -442,7 +439,6 @@ begin
 
   FLightTheme := TMarkdownTheme.CreateLight;
   FDarkTheme := TMarkdownTheme.CreateDark;
-  FSync := TMarkdownEditorSync.Create;
 
   FWorkspace := TPadWorkspace.Create;
   FWatcher := TPadFileWatcher.Create(FWorkspace, HandleFileChanged);
@@ -470,6 +466,7 @@ begin
   BuildCommandRegistry;
 
   FEditor.AttachPreview(FPreview);
+  FEditor.OnSyncScroll := HandleSyncScroll;
 
   FViewMode := TPadViewMode.Split;
   FSplitEditorWidth := (InitialClientWidth - TocPanelWidth) / 2;
@@ -491,7 +488,6 @@ begin
   FWatcher.Free;
   FCommands.Free;
   FSession.Free;
-  FSync.Free;
   FDarkTheme.Free;
   FLightTheme.Free;
 end;
@@ -854,7 +850,6 @@ begin
   FEditor.Width := (InitialClientWidth - TocPanelWidth) / 2;
   FEditor.ShowLineNumbers := True;
   FEditor.OnChange := HandleEditorChange;
-  FEditor.OnScroll := HandleEditorScroll;
 
   FMainSplitter := TSplitter.Create(Self);
   FMainSplitter.Parent := Self;
@@ -864,7 +859,6 @@ begin
   FPreview := TMarkdownViewer.Create(Self);
   FPreview.Parent := Self;
   FPreview.Align := TAlignLayout.Client;
-  FPreview.OnScroll := HandlePreviewScroll;
   FPreview.OnLinkClick := HandlePreviewLinkClick;
 end;
 
@@ -2025,29 +2019,14 @@ begin
   UpdateTitle;
 end;
 
-procedure TFmxMarkdownPadForm.HandleEditorScroll(Sender: TObject);
+procedure TFmxMarkdownPadForm.HandleSyncScroll(Sender: TObject; const SourceLine: Integer);
 begin
-  if FSyncing then
+  // The editor keeps the two panes in step itself; we only reflect the position
+  // in the contents outline. Suppressed while the outline drives the scroll.
+  if FTocFollowing then
     Exit;
-
-  const SourceLine = FEditor.FirstVisibleSourceLine;
-
-  FSyncing := True;
-  try
-    FPreview.ScrollOffset := FSync.SourceLineToPreviewOffset(SourceLine);
-  finally
-    FSyncing := False;
-  end;
 
   UpdateActiveTocEntry(SourceLine);
-end;
-
-procedure TFmxMarkdownPadForm.HandlePreviewScroll(Sender: TObject);
-begin
-  if FSyncing then
-    Exit;
-
-  UpdateActiveTocEntry(FSync.PreviewOffsetToSourceLine(FPreview.ScrollOffset));
 end;
 
 procedure TFmxMarkdownPadForm.HandlePreviewLinkClick(const Sender: TObject; const Url: string);
@@ -2072,17 +2051,12 @@ begin
 
   const SourceLine = FTocEntries[Index].SourceLine - 1;
 
-  FSyncing := True;
+  // Scrolling the editor drives the preview through the linked SyncScroll; guard
+  // the outline so the resulting sync callback does not fight the selection.
+  FTocFollowing := True;
   try
     FEditor.CaretPosition := FEditor.SourceLineStartOffset(SourceLine);
     FEditor.ScrollToSourceLine(SourceLine);
-    FPreview.ScrollOffset := FSync.SourceLineToPreviewOffset(SourceLine);
-  finally
-    FSyncing := False;
-  end;
-
-  FTocFollowing := True;
-  try
     FTocList.ItemIndex := Index;
   finally
     FTocFollowing := False;
@@ -2211,7 +2185,6 @@ begin
   FMapDirty := False;
 
   const Document = TMarkdown.Parse(FEditor.Text, TMarkdownDialect.Gfm);
-  FSync.Update(Document, FPreview.DisplayList);
 
   const Toc = TMarkdownToc.FromDocument(Document);
 
