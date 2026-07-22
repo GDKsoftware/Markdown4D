@@ -286,6 +286,7 @@ type
     procedure BuildTitleBar;
     procedure LayoutTitleBar;
     procedure ApplyCaptionColor;
+    procedure ApplyTitleBarColors(const ToolbarColor, IconColor, SeparatorColor: TColor);
     procedure HandleTitleBarPaint(Sender: TObject; Canvas: TCanvas; var ARect: TRect);
     procedure HandleTabSelect(Sender: TObject; const Index: Integer);
     procedure HandleTabClose(Sender: TObject; const Index: Integer);
@@ -1131,6 +1132,30 @@ begin
   DwmSetWindowAttribute(Handle, DwmCaptionColorAttribute, @CaptionColor, SizeOf(CaptionColor));
 end;
 
+procedure TMarkdownPadForm.ApplyTitleBarColors(const ToolbarColor, IconColor, SeparatorColor: TColor);
+begin
+  if not FUseCustomTitleBar then
+    Exit;
+
+  FTitleBarColor := ToolbarColor;
+  CustomTitleBar.BackgroundColor := ToolbarColor;
+  CustomTitleBar.InactiveBackgroundColor := ToolbarColor;
+  CustomTitleBar.ForegroundColor := IconColor;
+  CustomTitleBar.ButtonForegroundColor := IconColor;
+  CustomTitleBar.ButtonBackgroundColor := ToolbarColor;
+  CustomTitleBar.ButtonHoverForegroundColor := IconColor;
+  CustomTitleBar.ButtonHoverBackgroundColor := SeparatorColor;
+  CustomTitleBar.ButtonPressedForegroundColor := IconColor;
+  CustomTitleBar.ButtonPressedBackgroundColor := SeparatorColor;
+  CustomTitleBar.ButtonInactiveForegroundColor := IconColor;
+  CustomTitleBar.ButtonInactiveBackgroundColor := ToolbarColor;
+
+  if FTitleBar <> nil then
+    FTitleBar.Invalidate;
+
+  ApplyCaptionColor;
+end;
+
 procedure TMarkdownPadForm.HandleTabSelect(Sender: TObject; const Index: Integer);
 begin
   SwitchToDocument(Index);
@@ -1561,26 +1586,7 @@ begin
   FTabStrip.GlyphColor := IconColor;
   FTabStrip.Invalidate;
 
-  if FUseCustomTitleBar then
-  begin
-    FTitleBarColor := ToolbarColor;
-    CustomTitleBar.BackgroundColor := ToolbarColor;
-    CustomTitleBar.InactiveBackgroundColor := ToolbarColor;
-    CustomTitleBar.ForegroundColor := IconColor;
-    CustomTitleBar.ButtonForegroundColor := IconColor;
-    CustomTitleBar.ButtonBackgroundColor := ToolbarColor;
-    CustomTitleBar.ButtonHoverForegroundColor := IconColor;
-    CustomTitleBar.ButtonHoverBackgroundColor := SeparatorColor;
-    CustomTitleBar.ButtonPressedForegroundColor := IconColor;
-    CustomTitleBar.ButtonPressedBackgroundColor := SeparatorColor;
-    CustomTitleBar.ButtonInactiveForegroundColor := IconColor;
-    CustomTitleBar.ButtonInactiveBackgroundColor := ToolbarColor;
-
-    if FTitleBar <> nil then
-      FTitleBar.Invalidate;
-
-    ApplyCaptionColor;
-  end;
+  ApplyTitleBarColors(ToolbarColor, IconColor, SeparatorColor);
 
   pnlToc.Color := ToolbarColor;
   pnlToc.Font.Color := IconColor;

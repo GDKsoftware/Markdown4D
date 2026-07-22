@@ -16,7 +16,7 @@ type
   /// </summary>
   TFmxWinFrame = class
   public
-    class function Install(const AForm: TCommonCustomForm): Boolean; static;
+    class function Install(const Form: TCommonCustomForm): Boolean; static;
     class procedure BeginDrag; static;
   end;
 
@@ -42,9 +42,12 @@ function FrameProc(Wnd: HWND; Msg: UINT; WParam: WPARAM; LParam: LPARAM): LRESUL
 begin
   case Msg of
     WM_NCACTIVATE:
-      // Passing -1 keeps DefWindowProc from repainting the (removed) non-client
-      // frame when the window activates, which otherwise flashes a grey line.
-      Exit(CallWindowProc(GOldProc, Wnd, Msg, WParam, -1));
+      begin
+        // Passing -1 keeps DefWindowProc from repainting the (removed) non-client
+        // frame when the window activates, which otherwise flashes a grey line.
+        Result := CallWindowProc(GOldProc, Wnd, Msg, WParam, -1);
+        Exit;
+      end;
 
     WM_NCPAINT:
       Exit(0);
@@ -96,9 +99,9 @@ begin
   Result := CallWindowProc(GOldProc, Wnd, Msg, WParam, LParam);
 end;
 
-class function TFmxWinFrame.Install(const AForm: TCommonCustomForm): Boolean;
+class function TFmxWinFrame.Install(const Form: TCommonCustomForm): Boolean;
 begin
-  GHandle := FormToHWND(AForm);
+  GHandle := FormToHWND(Form);
   if GHandle = 0 then
     Exit(False);
 
