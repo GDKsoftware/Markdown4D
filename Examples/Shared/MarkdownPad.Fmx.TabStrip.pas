@@ -67,7 +67,7 @@ type
     function HitAtX(const X: Single): TPadTabHit;
     procedure UpdateHot(const X: Single);
     procedure DrawTab(const Index: Integer; const TabLeft: Single);
-    procedure DrawPill(const R: TRectF; const AColor: TAlphaColor);
+    procedure DrawPill(const Bounds: TRectF; const PillColor: TAlphaColor);
     procedure DrawCloseGlyph(const CenterX, CenterY: Single; const Highlight: Boolean);
     procedure DrawPlusGlyph(const CenterX, CenterY: Single; const Highlight: Boolean);
     procedure DrawGlyphText(const CenterX, CenterY: Single; const Glyph: string; const GlyphSize: Single);
@@ -84,7 +84,7 @@ type
     procedure DoMouseLeave; override;
 
   public
-    constructor Create(AOwner: TComponent); override;
+    constructor Create(Owner: TComponent); override;
     procedure SetTabs(const Captions: TArray<string>; const Modified: TArray<Boolean>;
       const ActiveIndex: Integer);
     function TabCount: Integer;
@@ -110,9 +110,9 @@ implementation
 uses
   System.Math;
 
-constructor TPadFmxTabStrip.Create(AOwner: TComponent);
+constructor TPadFmxTabStrip.Create(Owner: TComponent);
 begin
-  inherited Create(AOwner);
+  inherited Create(Owner);
 
   HitTest := True;
   AutoCapture := True;
@@ -187,11 +187,11 @@ begin
   Repaint;
 end;
 
-procedure TPadFmxTabStrip.DrawPill(const R: TRectF; const AColor: TAlphaColor);
+procedure TPadFmxTabStrip.DrawPill(const Bounds: TRectF; const PillColor: TAlphaColor);
 begin
   Canvas.Fill.Kind := TBrushKind.Solid;
-  Canvas.Fill.Color := AColor;
-  Canvas.FillRect(R, CornerRadius, CornerRadius, AllCorners, 1);
+  Canvas.Fill.Color := PillColor;
+  Canvas.FillRect(Bounds, CornerRadius, CornerRadius, AllCorners, 1);
 end;
 
 procedure TPadFmxTabStrip.Paint;
@@ -390,6 +390,8 @@ begin
     TPadTabHitKind.Plus:
       if (Hit.Kind = TPadTabHitKind.Plus) and Assigned(FOnAddTab) then
         FOnAddTab(Self);
+  else
+    // A press that started on a tab body or empty area needs no action on release.
   end;
 end;
 

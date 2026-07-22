@@ -78,7 +78,7 @@ type
     procedure DrawPlusGlyph(const PlusRect: TRect; const Highlight: Boolean);
     procedure DrawModifiedMarker(const CenterRect: TRect);
     procedure DrawGlyphText(const R: TRect; const Glyph: string; const PointSize: Integer);
-    procedure FillPill(const R: TRect; const AColor: TColor);
+    procedure FillPill(const Bounds: TRect; const PillColor: TColor);
     procedure SetAvailableWidth(const Value: Integer);
 
   strict protected
@@ -91,7 +91,7 @@ type
     procedure CMMouseLeave(var Message: TMessage); message CM_MOUSELEAVE;
 
   public
-    constructor Create(AOwner: TComponent); override;
+    constructor Create(Owner: TComponent); override;
     procedure SetTabs(const Captions: TArray<string>; const Modified: TArray<Boolean>;
       const ActiveIndex: Integer);
     function TabCount: Integer;
@@ -124,9 +124,9 @@ uses
   Winapi.Windows,
   System.UITypes;
 
-constructor TPadTabStrip.Create(AOwner: TComponent);
+constructor TPadTabStrip.Create(Owner: TComponent);
 begin
-  inherited Create(AOwner);
+  inherited Create(Owner);
 
   ControlStyle := ControlStyle + [csOpaque, csCaptureMouse];
   DoubleBuffered := True;
@@ -216,13 +216,13 @@ begin
   Invalidate;
 end;
 
-procedure TPadTabStrip.FillPill(const R: TRect; const AColor: TColor);
+procedure TPadTabStrip.FillPill(const Bounds: TRect; const PillColor: TColor);
 begin
   Canvas.Brush.Style := bsSolid;
-  Canvas.Brush.Color := AColor;
+  Canvas.Brush.Color := PillColor;
   Canvas.Pen.Style := psSolid;
-  Canvas.Pen.Color := AColor;
-  Canvas.RoundRect(R.Left, R.Top, R.Right, R.Bottom, CornerRadius * 2, CornerRadius * 2);
+  Canvas.Pen.Color := PillColor;
+  Canvas.RoundRect(Bounds.Left, Bounds.Top, Bounds.Right, Bounds.Bottom, CornerRadius * 2, CornerRadius * 2);
 end;
 
 procedure TPadTabStrip.Paint;
@@ -437,6 +437,8 @@ begin
     TPadTabHitKind.Plus:
       if (Hit.Kind = TPadTabHitKind.Plus) and Assigned(FOnAddTab) then
         FOnAddTab(Self);
+  else
+    // A press that started on a tab body or empty area needs no action on release.
   end;
 end;
 
