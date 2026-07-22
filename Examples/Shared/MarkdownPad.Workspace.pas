@@ -26,6 +26,7 @@ type
     function NewDocument: IPadDocument;
     function OpenFile(const FileName: string): IPadDocument;
     procedure CloseDocument(const Index: Integer);
+    procedure Move(const FromIndex, ToIndex: Integer);
     procedure Activate(const Index: Integer);
     procedure ActivateNext;
     procedure ActivatePrevious;
@@ -162,6 +163,25 @@ begin
     Dec(FActiveIndex)
   else if (Index = FActiveIndex) and (FActiveIndex > FDocuments.Count - 1) then
     FActiveIndex := FDocuments.Count - 1;
+end;
+
+procedure TPadWorkspace.Move(const FromIndex, ToIndex: Integer);
+begin
+  if (FromIndex < 0) or (FromIndex >= FDocuments.Count) then
+    Exit;
+
+  if (ToIndex < 0) or (ToIndex >= FDocuments.Count) then
+    Exit;
+
+  if FromIndex = ToIndex then
+    Exit;
+
+  const ActiveDocument = GetActiveDocument;
+
+  FDocuments.Move(FromIndex, ToIndex);
+
+  if ActiveDocument <> nil then
+    FActiveIndex := FDocuments.IndexOf(ActiveDocument);
 end;
 
 procedure TPadWorkspace.Activate(const Index: Integer);

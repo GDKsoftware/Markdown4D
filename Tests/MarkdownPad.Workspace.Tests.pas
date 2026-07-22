@@ -66,6 +66,18 @@ type
     procedure CloseDocument_OutOfRange_Ignored;
 
     [Test]
+    procedure Move_ForwardsDocument_ReordersList;
+
+    [Test]
+    procedure Move_KeepsActiveDocumentStable;
+
+    [Test]
+    procedure Move_SameIndex_LeavesOrderUnchanged;
+
+    [Test]
+    procedure Move_OutOfRange_Ignored;
+
+    [Test]
     procedure Activate_OutOfRange_Ignored;
 
     [Test]
@@ -239,6 +251,54 @@ begin
 
   Assert.AreEqual(1, FWorkspace.Count);
   Assert.AreEqual(0, FWorkspace.ActiveIndex);
+end;
+
+procedure TPadWorkspaceTests.Move_ForwardsDocument_ReordersList;
+begin
+  const DocA = FWorkspace.NewDocument;
+  const DocB = FWorkspace.NewDocument;
+  const DocC = FWorkspace.NewDocument;
+
+  FWorkspace.Move(0, 2);
+
+  Assert.IsTrue(FWorkspace.Documents[0] = DocB);
+  Assert.IsTrue(FWorkspace.Documents[1] = DocC);
+  Assert.IsTrue(FWorkspace.Documents[2] = DocA);
+end;
+
+procedure TPadWorkspaceTests.Move_KeepsActiveDocumentStable;
+begin
+  const DocA = FWorkspace.NewDocument;
+  FWorkspace.NewDocument;
+  FWorkspace.NewDocument;
+  FWorkspace.Activate(0);
+
+  FWorkspace.Move(2, 0);
+
+  Assert.IsTrue(FWorkspace.ActiveDocument = DocA);
+  Assert.AreEqual(1, FWorkspace.ActiveIndex);
+end;
+
+procedure TPadWorkspaceTests.Move_SameIndex_LeavesOrderUnchanged;
+begin
+  const DocA = FWorkspace.NewDocument;
+  const DocB = FWorkspace.NewDocument;
+
+  FWorkspace.Move(1, 1);
+
+  Assert.IsTrue(FWorkspace.Documents[0] = DocA);
+  Assert.IsTrue(FWorkspace.Documents[1] = DocB);
+end;
+
+procedure TPadWorkspaceTests.Move_OutOfRange_Ignored;
+begin
+  const DocA = FWorkspace.NewDocument;
+  const DocB = FWorkspace.NewDocument;
+
+  FWorkspace.Move(5, 0);
+
+  Assert.IsTrue(FWorkspace.Documents[0] = DocA);
+  Assert.IsTrue(FWorkspace.Documents[1] = DocB);
 end;
 
 procedure TPadWorkspaceTests.Activate_OutOfRange_Ignored;

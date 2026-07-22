@@ -13,11 +13,11 @@ uses
   Vcl.Controls,
   Vcl.StdCtrls,
   Vcl.ExtCtrls,
-  Vcl.ComCtrls,
   Vcl.Buttons,
   Vcl.Graphics,
   Vcl.Menus,
   Vcl.Dialogs,
+  Vcl.TitleBarCtrls,
   Markdown4D.Ast.Interfaces,
   Markdown4D.Toc,
   Markdown4D.Editor.Model,
@@ -28,12 +28,12 @@ uses
   MarkdownPad.Workspace.Interfaces,
   MarkdownPad.Session,
   MarkdownPad.Commands,
+  MarkdownPad.TabStrip,
   MarkdownPad.FileWatcher;
 
 type
   TMarkdownPadForm = class(TForm)
     pnlToolbar: TPanel;
-    tabsDocs: TTabControl;
     pnlFind: TPanel;
     pnlStatus: TPanel;
     pnlToc: TPanel;
@@ -57,7 +57,11 @@ type
       InitialClientWidth = 1200;
       InitialClientHeight = 760;
       ToolbarHeight = 36;
-      TabsHeight = 28;
+      TabsHeight = 30;
+      TitleBarHeight = 40;
+      TitleBarLeftInset = 8;
+      CaptionButtonsReserve = 160;
+      DwmCaptionColorAttribute = 35;
       StatusBarHeight = 22;
       StatusLabelWidth = 160;
       StatusLabelLeftMargin = 8;
@@ -107,6 +111,9 @@ type
       SeparatorLightColor = TColor($00D0D0D0);
       SeparatorDarkColor = TColor($00505050);
       TabAccentColor = TColor($00C0742C);
+      TabActiveDarkColor = TColor($003F3F3F);
+      TabHoverLightColor = TColor($00EAEAEA);
+      TabHoverDarkColor = TColor($00383838);
       MarkdownFilter = 'Markdown files (*.md)|*.md|All files (*.*)|*.*';
       DefaultExtension = 'md';
       ModifiedMarker = ' *';
@@ -223,9 +230,10 @@ type
       FLightTheme: TMarkdownTheme;
       FDarkTheme: TMarkdownTheme;
       FDarkThemeActive: Boolean;
-      FTabActiveColor: TColor;
-      FTabInactiveColor: TColor;
-      FTabTextColor: TColor;
+      FTitleBar: TTitleBarPanel;
+      FTabStrip: TPadTabStrip;
+      FUseCustomTitleBar: Boolean;
+      FTitleBarColor: TColor;
       FWorkspace: IPadWorkspace;
       FActiveDoc: IPadDocument;
       FSession: TPadSession;
@@ -275,8 +283,14 @@ type
     procedure HandleTocClick(Sender: TObject);
     procedure HandleFindClick(Sender: TObject);
     procedure HandleFindEditKeyPress(Sender: TObject; var Key: Char);
-    procedure HandleTabChange(Sender: TObject);
-    procedure HandleDrawTab(Control: TCustomTabControl; TabIndex: Integer; const Rect: TRect; Active: Boolean);
+    procedure BuildTitleBar;
+    procedure LayoutTitleBar;
+    procedure ApplyCaptionColor;
+    procedure HandleTitleBarPaint(Sender: TObject; Canvas: TCanvas; var ARect: TRect);
+    procedure HandleTabSelect(Sender: TObject; const Index: Integer);
+    procedure HandleTabClose(Sender: TObject; const Index: Integer);
+    procedure HandleTabAdd(Sender: TObject);
+    procedure HandleTabReorder(Sender: TObject; const FromIndex, ToIndex: Integer);
     procedure HandleEditorChange(Sender: TObject);
     procedure HandleEditorScroll(Sender: TObject);
     procedure HandlePreviewScroll(Sender: TObject);
@@ -287,6 +301,7 @@ type
     procedure OpenPath(const FileName: string);
     procedure SwitchToDocument(const Index: Integer);
     procedure CloseActiveDocument;
+    procedure CloseDocumentAt(const Index: Integer);
     function SaveActiveDocument: Boolean;
     procedure SaveToFile(const FileName: string);
     procedure RestoreSession;
@@ -347,6 +362,7 @@ uses
   System.IOUtils,
   System.UITypes,
   Winapi.ShellAPI,
+  Winapi.DwmApi,
   Markdown4D,
   Markdown4D.Defines,
   Markdown4D.Extensions.Chart.BlockOverride,
@@ -384,6 +400,7 @@ begin
 
   ConfigureControls;
   BuildToolbar;
+  BuildTitleBar;
   BuildPalette;
   BuildCommandRegistry;
 
@@ -396,6 +413,13 @@ begin
   ApplyTheme;
 
   RestoreSession;
+
+  if FUseCustomTitleBar then
+    TThread.ForceQueue(nil,
+      procedure
+      begin
+        LayoutTitleBar;
+      end);
 end;
 
 destructor TMarkdownPadForm.Destroy;
@@ -417,11 +441,6 @@ end;
 
 procedure TMarkdownPadForm.ConfigureControls;
 begin
-  tabsDocs.Style := tsFlatButtons;
-  tabsDocs.OwnerDraw := True;
-  tabsDocs.OnChange := HandleTabChange;
-  tabsDocs.OnDrawTab := HandleDrawTab;
-
   lstToc.AlignWithMargins := True;
   lstToc.Margins.SetBounds(4, 20, 4, 4);
   lstToc.BorderStyle := bsNone;
@@ -1036,38 +1055,101 @@ begin
   ExecuteFind;
 end;
 
-procedure TMarkdownPadForm.HandleTabChange(Sender: TObject);
+procedure TMarkdownPadForm.BuildTitleBar;
 begin
-  SwitchToDocument(tabsDocs.TabIndex);
+  FUseCustomTitleBar := TTitleBar.Supported;
+
+  FTabStrip := TPadTabStrip.Create(Self);
+  FTabStrip.GlyphFontName := FIconFontName;
+  FTabStrip.OnSelectTab := HandleTabSelect;
+  FTabStrip.OnCloseTab := HandleTabClose;
+  FTabStrip.OnAddTab := HandleTabAdd;
+  FTabStrip.OnReorderTab := HandleTabReorder;
+
+  if FUseCustomTitleBar then
+  begin
+    FTitleBar := TTitleBarPanel.Create(Self);
+    FTitleBar.Parent := Self;
+    FTitleBar.OnPaint := HandleTitleBarPaint;
+
+    CustomTitleBar.Enabled := True;
+    CustomTitleBar.SystemHeight := False;
+    CustomTitleBar.Height := TitleBarHeight;
+    CustomTitleBar.ShowCaption := False;
+    CustomTitleBar.ShowIcon := False;
+    CustomTitleBar.SystemColors := False;
+    CustomTitleBar.SystemButtons := False;
+    CustomTitleBar.Control := FTitleBar;
+
+    FTabStrip.Parent := FTitleBar;
+    FTabStrip.Align := alNone;
+    FTabStrip.SetBounds(TitleBarLeftInset, 0, TitleBarHeight * 4, TitleBarHeight);
+
+    LayoutTitleBar;
+  end
+  else
+  begin
+    FTabStrip.Parent := Self;
+    FTabStrip.Align := alTop;
+    FTabStrip.Height := TabsHeight;
+    FTabStrip.Top := 0;
+  end;
 end;
 
-procedure TMarkdownPadForm.HandleDrawTab(Control: TCustomTabControl; TabIndex: Integer;
-  const Rect: TRect; Active: Boolean);
+procedure TMarkdownPadForm.LayoutTitleBar;
 begin
-  const Canvas = tabsDocs.Canvas;
+  if not FUseCustomTitleBar or (FTitleBar = nil) or (FTabStrip = nil) then
+    Exit;
 
-  if Active then
-    Canvas.Brush.Color := FTabActiveColor
-  else
-    Canvas.Brush.Color := FTabInactiveColor;
-  Canvas.FillRect(Rect);
+  var Available := ClientWidth - TitleBarLeftInset - CaptionButtonsReserve;
+  if Available < TPadTabStrip.MinTabWidth then
+    Available := TPadTabStrip.MinTabWidth;
 
-  if Active then
-  begin
-    Canvas.Brush.Color := TabAccentColor;
-    Canvas.FillRect(TRect.Create(Rect.Left, Rect.Top, Rect.Right, Rect.Top + 2));
-  end;
+  var BarHeight := FTitleBar.ClientHeight;
+  if BarHeight <= 0 then
+    BarHeight := TitleBarHeight;
 
-  const Caption = tabsDocs.Tabs[TabIndex];
+  FTabStrip.SetBounds(TitleBarLeftInset, 0, Available, BarHeight);
+  FTabStrip.AvailableWidth := Available;
 
-  Canvas.Font.Color := FTabTextColor;
-  Canvas.Brush.Style := bsClear;
+  ApplyCaptionColor;
+end;
 
-  var TextRect := Rect;
-  DrawText(Canvas.Handle, PChar(Caption), System.Length(Caption), TextRect,
-    DT_SINGLELINE or DT_VCENTER or DT_CENTER or DT_END_ELLIPSIS);
-
+procedure TMarkdownPadForm.HandleTitleBarPaint(Sender: TObject; Canvas: TCanvas; var ARect: TRect);
+begin
   Canvas.Brush.Style := bsSolid;
+  Canvas.Brush.Color := FTitleBarColor;
+  Canvas.FillRect(ARect);
+end;
+
+procedure TMarkdownPadForm.ApplyCaptionColor;
+begin
+  if not FUseCustomTitleBar or not HandleAllocated then
+    Exit;
+
+  var CaptionColor: DWORD := ColorToRGB(FTitleBarColor);
+  DwmSetWindowAttribute(Handle, DwmCaptionColorAttribute, @CaptionColor, SizeOf(CaptionColor));
+end;
+
+procedure TMarkdownPadForm.HandleTabSelect(Sender: TObject; const Index: Integer);
+begin
+  SwitchToDocument(Index);
+end;
+
+procedure TMarkdownPadForm.HandleTabClose(Sender: TObject; const Index: Integer);
+begin
+  CloseDocumentAt(Index);
+end;
+
+procedure TMarkdownPadForm.HandleTabAdd(Sender: TObject);
+begin
+  HandleNewClick(nil);
+end;
+
+procedure TMarkdownPadForm.HandleTabReorder(Sender: TObject; const FromIndex, ToIndex: Integer);
+begin
+  FWorkspace.Move(FromIndex, ToIndex);
+  RebuildTabs;
 end;
 
 procedure TMarkdownPadForm.HandleEditorChange(Sender: TObject);
@@ -1262,6 +1344,17 @@ end;
 
 procedure TMarkdownPadForm.CloseActiveDocument;
 begin
+  CloseDocumentAt(FWorkspace.ActiveIndex);
+end;
+
+procedure TMarkdownPadForm.CloseDocumentAt(const Index: Integer);
+begin
+  if (Index < 0) or (Index >= FWorkspace.Count) then
+    Exit;
+
+  if Index <> FWorkspace.ActiveIndex then
+    SwitchToDocument(Index);
+
   if FActiveDoc = nil then
     Exit;
 
@@ -1280,8 +1373,8 @@ begin
 
   if FWorkspace.Count = 0 then
   begin
-    const Document = FWorkspace.NewDocument;
-    Document.Text := BuildSampleMarkdown;
+    Close;
+    Exit;
   end;
 
   RebuildTabs;
@@ -1400,31 +1493,17 @@ end;
 
 procedure TMarkdownPadForm.RebuildTabs;
 begin
-  tabsDocs.OnChange := nil;
-  try
-    tabsDocs.Tabs.BeginUpdate;
-    try
-      tabsDocs.Tabs.Clear;
+  var Captions: TArray<string> := [];
+  var Modified: TArray<Boolean> := [];
 
-      for var Index := 0 to FWorkspace.Count - 1 do
-      begin
-        const Document = FWorkspace.Documents[Index];
-
-        var Caption := Document.DisplayName;
-        if Document.Modified then
-          Caption := Caption + ModifiedMarker;
-
-        tabsDocs.Tabs.Add(Caption);
-      end;
-    finally
-      tabsDocs.Tabs.EndUpdate;
-    end;
-
-    if FWorkspace.ActiveIndex >= 0 then
-      tabsDocs.TabIndex := FWorkspace.ActiveIndex;
-  finally
-    tabsDocs.OnChange := HandleTabChange;
+  for var Index := 0 to FWorkspace.Count - 1 do
+  begin
+    const Document = FWorkspace.Documents[Index];
+    Captions := Captions + [Document.DisplayName];
+    Modified := Modified + [Document.Modified];
   end;
+
+  FTabStrip.SetTabs(Captions, Modified, FWorkspace.ActiveIndex);
 end;
 
 procedure TMarkdownPadForm.ApplyTheme;
@@ -1432,30 +1511,35 @@ begin
   var ToolbarColor := ToolbarLightColor;
   var IconColor := IconLightColor;
   var SeparatorColor := SeparatorLightColor;
+  var ActiveTabColor := clWhite;
+  var HoverTabColor := TabHoverLightColor;
 
   if FDarkThemeActive then
   begin
     mdEditor.Theme := FDarkTheme;
     mdPreview.Theme := FDarkTheme;
-    Color := clBlack;
 
     ToolbarColor := ToolbarDarkColor;
     IconColor := IconDarkColor;
     SeparatorColor := SeparatorDarkColor;
 
-    FTabActiveColor := clBlack;
+    ActiveTabColor := TabActiveDarkColor;
+    HoverTabColor := TabHoverDarkColor;
   end
   else
   begin
     mdEditor.Theme := FLightTheme;
     mdPreview.Theme := FLightTheme;
-    Color := clWhite;
-
-    FTabActiveColor := clWhite;
   end;
 
-  FTabInactiveColor := ToolbarColor;
-  FTabTextColor := IconColor;
+  // The custom title bar area behind the system caption buttons shows the form
+  // background, so tint it with the chrome colour; content panes cover the rest.
+  if FUseCustomTitleBar then
+    Color := ToolbarColor
+  else if FDarkThemeActive then
+    Color := clBlack
+  else
+    Color := clWhite;
 
   pnlToolbar.Color := ToolbarColor;
 
@@ -1469,7 +1553,34 @@ begin
     Separator.Color := SeparatorColor;
   end;
 
-  tabsDocs.Font.Color := IconColor;
+  FTabStrip.ActiveColor := ActiveTabColor;
+  FTabStrip.InactiveColor := ToolbarColor;
+  FTabStrip.HoverColor := HoverTabColor;
+  FTabStrip.TextColor := IconColor;
+  FTabStrip.AccentColor := TabAccentColor;
+  FTabStrip.GlyphColor := IconColor;
+  FTabStrip.Invalidate;
+
+  if FUseCustomTitleBar then
+  begin
+    FTitleBarColor := ToolbarColor;
+    CustomTitleBar.BackgroundColor := ToolbarColor;
+    CustomTitleBar.InactiveBackgroundColor := ToolbarColor;
+    CustomTitleBar.ForegroundColor := IconColor;
+    CustomTitleBar.ButtonForegroundColor := IconColor;
+    CustomTitleBar.ButtonBackgroundColor := ToolbarColor;
+    CustomTitleBar.ButtonHoverForegroundColor := IconColor;
+    CustomTitleBar.ButtonHoverBackgroundColor := SeparatorColor;
+    CustomTitleBar.ButtonPressedForegroundColor := IconColor;
+    CustomTitleBar.ButtonPressedBackgroundColor := SeparatorColor;
+    CustomTitleBar.ButtonInactiveForegroundColor := IconColor;
+    CustomTitleBar.ButtonInactiveBackgroundColor := ToolbarColor;
+
+    if FTitleBar <> nil then
+      FTitleBar.Invalidate;
+
+    ApplyCaptionColor;
+  end;
 
   pnlToc.Color := ToolbarColor;
   pnlToc.Font.Color := IconColor;
@@ -1485,7 +1596,6 @@ begin
   pnlFind.Color := ToolbarColor;
   lblFindCount.Font.Color := IconColor;
 
-  tabsDocs.Invalidate;
   pnlToc.Invalidate;
   lstToc.Invalidate;
   pnlStatus.Invalidate;
@@ -1838,9 +1948,18 @@ procedure TMarkdownPadForm.EnforceTopBarOrder;
 begin
   DisableAlign;
   try
-    pnlToolbar.Top := 0;
-    tabsDocs.Top := pnlToolbar.Height;
-    pnlFind.Top := pnlToolbar.Height + tabsDocs.Height;
+    var Y := 0;
+
+    if (not FUseCustomTitleBar) and (FTabStrip <> nil) and FTabStrip.Visible then
+    begin
+      FTabStrip.Top := Y;
+      Inc(Y, FTabStrip.Height);
+    end;
+
+    pnlToolbar.Top := Y;
+    Inc(Y, pnlToolbar.Height);
+
+    pnlFind.Top := Y;
   finally
     EnableAlign;
   end;
@@ -2084,7 +2203,7 @@ begin
     FSplitEditorWidth := mdEditor.Width;
 
   pnlToolbar.Visible := False;
-  tabsDocs.Visible := False;
+  FTabStrip.Visible := False;
   pnlToc.Visible := False;
   splToc.Visible := False;
   pnlStatus.Visible := False;
@@ -2121,7 +2240,7 @@ begin
   FreeAndNil(FZenRightPad);
 
   pnlToolbar.Visible := True;
-  tabsDocs.Visible := True;
+  FTabStrip.Visible := True;
   pnlStatus.Visible := True;
   pnlToc.Visible := FZenTocWasVisible;
   splToc.Visible := FZenTocWasVisible;
@@ -2148,6 +2267,8 @@ end;
 
 procedure TMarkdownPadForm.HandleResize(Sender: TObject);
 begin
+  LayoutTitleBar;
+
   if FZenActive then
     UpdateZenPadding;
 
