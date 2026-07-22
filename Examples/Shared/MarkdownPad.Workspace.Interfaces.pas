@@ -48,6 +48,7 @@ type
     function NewDocument: IPadDocument;
     function OpenFile(const FileName: string): IPadDocument;
     procedure CloseDocument(const Index: Integer);
+    procedure Move(const FromIndex, ToIndex: Integer);
     procedure Activate(const Index: Integer);
     procedure ActivateNext;
     procedure ActivatePrevious;

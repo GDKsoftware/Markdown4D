@@ -15,7 +15,6 @@ uses
   FMX.StdCtrls,
   FMX.Layouts,
   FMX.ListBox,
-  FMX.TabControl,
   FMX.Menus,
   FMX.Edit,
   FMX.Objects,
@@ -28,6 +27,8 @@ uses
   MarkdownPad.Workspace.Interfaces,
   MarkdownPad.Session,
   MarkdownPad.Commands,
+  MarkdownPad.TabStrip.Layout,
+  MarkdownPad.Fmx.TabStrip,
   MarkdownPad.FileWatcher;
 
 type
@@ -39,6 +40,9 @@ type
       InitialClientHeight = 760;
       ToolbarHeight = 38;
       TabControlHeight = 32;
+      TitleBarHeight = 40;
+      TitleBarLeftInset = 8;
+      CaptionButtonWidth = 46;
       StatusBarHeight = 26;
       ControlMargin = 6;
       IconButtonSize = 32;
@@ -68,6 +72,10 @@ type
       GlyphTheme = Char($E793);
       GlyphToc = Char($E8FD);
       GlyphFind = Char($E721);
+      GlyphMinimize = Char($E921);
+      GlyphMaximize = Char($E922);
+      GlyphRestore = Char($E923);
+      GlyphClose = Char($E8BB);
       HintNew = 'New (Ctrl+N)';
       HintOpen = 'Open (Ctrl+O)';
       HintSave = 'Save (Ctrl+S)';
@@ -90,6 +98,11 @@ type
       SeparatorDarkColor = TAlphaColor($FF505050);
       HoverLightColor = TAlphaColor($FFE0E0E0);
       HoverDarkColor = TAlphaColor($FF3E3E3E);
+      TabActiveLightColor = TAlphaColor($FFFFFFFF);
+      TabActiveDarkColor = TAlphaColor($FF3F3F3F);
+      TabHoverLightColor = TAlphaColor($FFEAEAEA);
+      TabHoverDarkColor = TAlphaColor($FF383838);
+      CaptionCloseHoverColor = TAlphaColor($FFE81123);
       MarkdownFilter = 'Markdown files (*.md)|*.md|All files (*.*)|*.*';
       DefaultExtension = 'md';
       MarkdownExtension = '.md';
@@ -188,7 +201,14 @@ type
       CatRecent = 'Recent';
     var
       FToolbar: TRectangle;
-      FTabs: TTabControl;
+      FTitleBar: TRectangle;
+      FTabStrip: TPadFmxTabStrip;
+      FMinButton: TRectangle;
+      FMaxButton: TRectangle;
+      FCloseButton: TRectangle;
+      FMaxGlyph: TText;
+      FCaptionGlyphs: TArray<TText>;
+      FFrameInstalled: Boolean;
       FStatusBar: TRectangle;
       FStatusPositionLabel: TLabel;
       FStatusWordsLabel: TLabel;
@@ -240,7 +260,6 @@ type
       FMapDirty: Boolean;
       FSyncing: Boolean;
       FSwapping: Boolean;
-      FSyncingTabs: Boolean;
       FTocFollowing: Boolean;
       FLastCaret: Integer;
       FFindBar: TRectangle;
@@ -265,7 +284,22 @@ type
     procedure AddSeparator;
     procedure HandleIconMouseEnter(Sender: TObject);
     procedure HandleIconMouseLeave(Sender: TObject);
-    procedure BuildTabs;
+    procedure BuildTitleBar;
+    function AddCaptionButton(const Glyph: string; const Handler: TNotifyEvent): TRectangle;
+    procedure LayoutTitleBar;
+    procedure UpdateMaxRestoreGlyph;
+    procedure HandleTitleBarMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState;
+      X, Y: Single);
+    procedure HandleTitleBarDblClick(Sender: TObject);
+    procedure HandleMinimizeClick(Sender: TObject);
+    procedure HandleMaximizeClick(Sender: TObject);
+    procedure HandleCloseButtonClick(Sender: TObject);
+    procedure HandleCaptionMouseEnter(Sender: TObject);
+    procedure HandleCloseMouseEnter(Sender: TObject);
+    procedure HandleTabSelect(Sender: TObject; const Index: Integer);
+    procedure HandleTabCloseRequest(Sender: TObject; const Index: Integer);
+    procedure HandleTabAdd(Sender: TObject);
+    procedure HandleTabReorder(Sender: TObject; const FromIndex, ToIndex: Integer);
     procedure BuildStatusBar;
     procedure BuildTocPanel;
     procedure BuildEditorAndPreview;
@@ -305,6 +339,7 @@ type
     function TrySaveActive: Boolean;
     procedure SaveToFile(const FileName: string);
     procedure CloseActiveDocument;
+    procedure CloseDocumentAt(const Index: Integer);
     procedure HandleExportClick(Sender: TObject);
     procedure DoExportHtml;
     procedure HandleCopyHtmlClick(Sender: TObject);
@@ -317,7 +352,6 @@ type
     procedure HandleTocClick(Sender: TObject);
     procedure HandleFindClick(Sender: TObject);
     procedure HandleFindEditKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar; Shift: TShiftState);
-    procedure HandleTabChange(Sender: TObject);
     procedure HandleEditorChange(Sender: TObject);
     procedure HandleEditorScroll(Sender: TObject);
     procedure HandlePreviewScroll(Sender: TObject);
@@ -337,7 +371,6 @@ type
     procedure ApplyChromeColors;
     procedure ApplyTocItemColors;
     procedure HandleTocListApplyStyle(Sender: TObject);
-    procedure HandleChromeApplyStyle(Sender: TObject);
     procedure SaveSession;
     class function BuildSampleMarkdown: string;
     class procedure ComputeLineColumn(const Text: string; const Offset: Integer; out Line, Column: Integer);
@@ -368,6 +401,7 @@ uses
   Winapi.ShellAPI,
   FMX.DialogService.Sync,
   FMX.Platform,
+  MarkdownPad.Fmx.WinFrame,
   Markdown4D,
   Markdown4D.Defines,
   Markdown4D.Ast.Interfaces,
@@ -388,6 +422,7 @@ begin
   ClientWidth := InitialClientWidth;
   ClientHeight := InitialClientHeight;
   Position := TFormPosition.ScreenCenter;
+  BorderStyle := TFmxFormBorderStyle.None;
 
   FLightTheme := TMarkdownTheme.CreateLight;
   FDarkTheme := TMarkdownTheme.CreateDark;
@@ -405,8 +440,10 @@ begin
   FHtmlSaveDialog.Filter := HtmlFilter;
   FHtmlSaveDialog.DefaultExt := HtmlExtension;
 
+  FIconFontName := ResolveIconFontName;
+
+  BuildTitleBar;
   BuildToolbar;
-  BuildTabs;
   BuildFindBar;
   BuildStatusBar;
   BuildTocPanel;
@@ -444,8 +481,6 @@ end;
 
 procedure TFmxMarkdownPadForm.BuildToolbar;
 begin
-  FIconFontName := ResolveIconFontName;
-
   FToolbar := TRectangle.Create(Self);
   FToolbar.Parent := Self;
   FToolbar.Align := TAlignLayout.Top;
@@ -586,15 +621,154 @@ begin
   Button.Fill.Color := FToolbarFill;
 end;
 
-procedure TFmxMarkdownPadForm.BuildTabs;
+procedure TFmxMarkdownPadForm.BuildTitleBar;
 begin
-  FTabs := TTabControl.Create(Self);
-  FTabs.Parent := Self;
-  FTabs.Align := TAlignLayout.Top;
-  FTabs.Height := TabControlHeight;
-  FTabs.TabPosition := TTabPosition.Top;
-  FTabs.OnChange := HandleTabChange;
-  FTabs.OnApplyStyleLookup := HandleChromeApplyStyle;
+  FTitleBar := TRectangle.Create(Self);
+  FTitleBar.Parent := Self;
+  FTitleBar.Align := TAlignLayout.Top;
+  FTitleBar.Height := TitleBarHeight;
+  FTitleBar.Stroke.Kind := TBrushKind.None;
+  FTitleBar.Fill.Kind := TBrushKind.Solid;
+  FTitleBar.HitTest := True;
+  FTitleBar.OnMouseDown := HandleTitleBarMouseDown;
+  FTitleBar.OnDblClick := HandleTitleBarDblClick;
+
+  // Caption buttons are right-aligned; create close first so it sits furthest right.
+  FCloseButton := AddCaptionButton(GlyphClose, HandleCloseButtonClick);
+  FCloseButton.OnMouseEnter := HandleCloseMouseEnter;
+
+  FMaxButton := AddCaptionButton(GlyphMaximize, HandleMaximizeClick);
+  FMaxGlyph := FCaptionGlyphs[High(FCaptionGlyphs)];
+
+  FMinButton := AddCaptionButton(GlyphMinimize, HandleMinimizeClick);
+
+  FTabStrip := TPadFmxTabStrip.Create(Self);
+  FTabStrip.Parent := FTitleBar;
+  FTabStrip.Align := TAlignLayout.Left;
+  FTabStrip.Margins.Left := TitleBarLeftInset;
+  FTabStrip.GlyphFontName := FIconFontName;
+  FTabStrip.OnSelectTab := HandleTabSelect;
+  FTabStrip.OnCloseTab := HandleTabCloseRequest;
+  FTabStrip.OnAddTab := HandleTabAdd;
+  FTabStrip.OnReorderTab := HandleTabReorder;
+end;
+
+function TFmxMarkdownPadForm.AddCaptionButton(const Glyph: string;
+  const Handler: TNotifyEvent): TRectangle;
+begin
+  Result := TRectangle.Create(Self);
+  Result.Parent := FTitleBar;
+  Result.Align := TAlignLayout.Right;
+  Result.Width := CaptionButtonWidth;
+  Result.Stroke.Kind := TBrushKind.None;
+  Result.Fill.Kind := TBrushKind.Solid;
+  Result.HitTest := True;
+  Result.OnClick := Handler;
+  Result.OnMouseEnter := HandleCaptionMouseEnter;
+  Result.OnMouseLeave := HandleIconMouseLeave;
+
+  const GlyphText = TText.Create(Result);
+  GlyphText.Parent := Result;
+  GlyphText.Align := TAlignLayout.Client;
+  GlyphText.HitTest := False;
+  GlyphText.Font.Family := FIconFontName;
+  GlyphText.Font.Size := 10;
+  GlyphText.HorzTextAlign := TTextAlign.Center;
+  GlyphText.VertTextAlign := TTextAlign.Center;
+  GlyphText.Text := Glyph;
+
+  FCaptionGlyphs := FCaptionGlyphs + [GlyphText];
+end;
+
+procedure TFmxMarkdownPadForm.LayoutTitleBar;
+begin
+  if (FTitleBar = nil) or (FTabStrip = nil) then
+    Exit;
+
+  const CaptionButtonsWidth = 3 * CaptionButtonWidth;
+  var Available := Round(FTitleBar.Width) - TitleBarLeftInset - CaptionButtonsWidth;
+  if Available < TPadTabLayout.MinTabWidth then
+    Available := TPadTabLayout.MinTabWidth;
+
+  FTabStrip.AvailableWidth := Available;
+
+  UpdateMaxRestoreGlyph;
+end;
+
+procedure TFmxMarkdownPadForm.UpdateMaxRestoreGlyph;
+begin
+  if FMaxGlyph = nil then
+    Exit;
+
+  if WindowState = TWindowState.wsMaximized then
+    FMaxGlyph.Text := GlyphRestore
+  else
+    FMaxGlyph.Text := GlyphMaximize;
+end;
+
+procedure TFmxMarkdownPadForm.HandleTitleBarMouseDown(Sender: TObject; Button: TMouseButton;
+  Shift: TShiftState; X, Y: Single);
+begin
+  if Button = TMouseButton.mbLeft then
+    TFmxWinFrame.BeginDrag;
+end;
+
+procedure TFmxMarkdownPadForm.HandleTitleBarDblClick(Sender: TObject);
+begin
+  HandleMaximizeClick(Sender);
+end;
+
+procedure TFmxMarkdownPadForm.HandleMinimizeClick(Sender: TObject);
+begin
+  WindowState := TWindowState.wsMinimized;
+end;
+
+procedure TFmxMarkdownPadForm.HandleMaximizeClick(Sender: TObject);
+begin
+  if WindowState = TWindowState.wsMaximized then
+    WindowState := TWindowState.wsNormal
+  else
+    WindowState := TWindowState.wsMaximized;
+
+  UpdateMaxRestoreGlyph;
+end;
+
+procedure TFmxMarkdownPadForm.HandleCloseButtonClick(Sender: TObject);
+begin
+  Close;
+end;
+
+procedure TFmxMarkdownPadForm.HandleCaptionMouseEnter(Sender: TObject);
+begin
+  const Button = Sender as TRectangle;
+  Button.Fill.Color := FHoverColor;
+end;
+
+procedure TFmxMarkdownPadForm.HandleCloseMouseEnter(Sender: TObject);
+begin
+  const Button = Sender as TRectangle;
+  Button.Fill.Color := CaptionCloseHoverColor;
+end;
+
+procedure TFmxMarkdownPadForm.HandleTabSelect(Sender: TObject; const Index: Integer);
+begin
+  SwitchToDocument(Index);
+end;
+
+procedure TFmxMarkdownPadForm.HandleTabCloseRequest(Sender: TObject; const Index: Integer);
+begin
+  CloseDocumentAt(Index);
+end;
+
+procedure TFmxMarkdownPadForm.HandleTabAdd(Sender: TObject);
+begin
+  HandleNewClick(nil);
+end;
+
+procedure TFmxMarkdownPadForm.HandleTabReorder(Sender: TObject; const FromIndex, ToIndex: Integer);
+begin
+  FWorkspace.Move(FromIndex, ToIndex);
+  RebuildTabs;
 end;
 
 procedure TFmxMarkdownPadForm.BuildStatusBar;
@@ -1120,7 +1294,11 @@ procedure TFmxMarkdownPadForm.DoShow;
 begin
   inherited DoShow;
 
+  if not FFrameInstalled then
+    FFrameInstalled := TFmxWinFrame.Install(Self);
+
   ApplyTheme;
+  LayoutTitleBar;
 end;
 
 function TFmxMarkdownPadForm.CloseQuery: Boolean;
@@ -1155,6 +1333,8 @@ end;
 procedure TFmxMarkdownPadForm.Resize;
 begin
   inherited Resize;
+
+  LayoutTitleBar;
 
   if FZenActive then
     UpdateZenPadding;
@@ -1411,7 +1591,7 @@ begin
     FSplitEditorWidth := FEditor.Width;
 
   FToolbar.Visible := False;
-  FTabs.Visible := False;
+  FTabStrip.Visible := False;
   FTocPanel.Visible := False;
   FTocSplitter.Visible := False;
   FStatusBar.Visible := False;
@@ -1440,7 +1620,7 @@ begin
   FreeAndNil(FZenRightPad);
 
   FToolbar.Visible := True;
-  FTabs.Visible := True;
+  FTabStrip.Visible := True;
   FStatusBar.Visible := True;
   FTocPanel.Visible := FZenTocWasVisible;
   FTocSplitter.Visible := FZenTocWasVisible;
@@ -1607,6 +1787,17 @@ end;
 
 procedure TFmxMarkdownPadForm.CloseActiveDocument;
 begin
+  CloseDocumentAt(FWorkspace.ActiveIndex);
+end;
+
+procedure TFmxMarkdownPadForm.CloseDocumentAt(const Index: Integer);
+begin
+  if (Index < 0) or (Index >= FWorkspace.Count) then
+    Exit;
+
+  if Index <> FWorkspace.ActiveIndex then
+    SwitchToDocument(Index);
+
   if FActiveDoc = nil then
     Exit;
 
@@ -1628,8 +1819,8 @@ begin
 
   if FWorkspace.Count = 0 then
   begin
-    const Document = FWorkspace.NewDocument;
-    Document.Text := BuildSampleMarkdown;
+    Close;
+    Exit;
   end;
 
   RebuildTabs;
@@ -1725,17 +1916,6 @@ begin
   Key := 0;
   KeyChar := #0;
   ExecuteFind;
-end;
-
-procedure TFmxMarkdownPadForm.HandleTabChange(Sender: TObject);
-begin
-  if FSyncingTabs then
-    Exit;
-
-  if FTabs.TabIndex < 0 then
-    Exit;
-
-  SwitchToDocument(FTabs.TabIndex);
 end;
 
 procedure TFmxMarkdownPadForm.HandleEditorChange(Sender: TObject);
@@ -1924,34 +2104,17 @@ end;
 
 procedure TFmxMarkdownPadForm.RebuildTabs;
 begin
-  FSyncingTabs := True;
-  try
-    while FTabs.TabCount > FWorkspace.Count do
-    begin
-      FTabs.Tabs[FTabs.TabCount - 1].Free;
-    end;
+  var Captions: TArray<string> := [];
+  var Modified: TArray<Boolean> := [];
 
-    while FTabs.TabCount < FWorkspace.Count do
-    begin
-      FTabs.Add;
-    end;
-
-    for var Index := 0 to FWorkspace.Count - 1 do
-    begin
-      const Document = FWorkspace.Documents[Index];
-
-      var Title := Document.DisplayName;
-      if Document.Modified then
-        Title := Title + ModifiedMarker;
-
-      FTabs.Tabs[Index].Text := Title;
-    end;
-
-    if FWorkspace.ActiveIndex >= 0 then
-      FTabs.TabIndex := FWorkspace.ActiveIndex;
-  finally
-    FSyncingTabs := False;
+  for var Index := 0 to FWorkspace.Count - 1 do
+  begin
+    const Document = FWorkspace.Documents[Index];
+    Captions := Captions + [Document.DisplayName];
+    Modified := Modified + [Document.Modified];
   end;
+
+  FTabStrip.SetTabs(Captions, Modified, FWorkspace.ActiveIndex);
 end;
 
 procedure TFmxMarkdownPadForm.RebuildSyncAndToc;
@@ -2112,7 +2275,29 @@ begin
   FStatusBar.Fill.Color := FToolbarFill;
   FFindBar.Fill.Color := FToolbarFill;
 
-  FTabs.NeedStyleLookup;
+  FTitleBar.Fill.Color := FToolbarFill;
+  FMinButton.Fill.Color := FToolbarFill;
+  FMaxButton.Fill.Color := FToolbarFill;
+  FCloseButton.Fill.Color := FToolbarFill;
+
+  for var GlyphText in FCaptionGlyphs do
+    GlyphText.Color := FChromeTextColor;
+
+  if FDarkThemeActive then
+  begin
+    FTabStrip.ActiveColor := TabActiveDarkColor;
+    FTabStrip.HoverColor := TabHoverDarkColor;
+  end
+  else
+  begin
+    FTabStrip.ActiveColor := TabActiveLightColor;
+    FTabStrip.HoverColor := TabHoverLightColor;
+  end;
+
+  FTabStrip.InactiveColor := FToolbarFill;
+  FTabStrip.TextColor := FChromeTextColor;
+  FTabStrip.GlyphColor := FChromeTextColor;
+  FTabStrip.Repaint;
 
   const Labels: TArray<TLabel> = [FStatusPositionLabel, FStatusWordsLabel, FEditorFindCount];
 
@@ -2140,22 +2325,6 @@ begin
   begin
     TRectangle(Background).Fill.Kind := TBrushKind.Solid;
     TRectangle(Background).Fill.Color := FTocFill;
-    TRectangle(Background).Stroke.Kind := TBrushKind.None;
-  end;
-end;
-
-procedure TFmxMarkdownPadForm.HandleChromeApplyStyle(Sender: TObject);
-const
-  BackgroundResourceName = 'background';
-begin
-  if not (Sender is TStyledControl) then
-    Exit;
-
-  const Background = TStyledControl(Sender).FindStyleResource(BackgroundResourceName);
-  if Background is TRectangle then
-  begin
-    TRectangle(Background).Fill.Kind := TBrushKind.Solid;
-    TRectangle(Background).Fill.Color := FToolbarFill;
     TRectangle(Background).Stroke.Kind := TBrushKind.None;
   end;
 end;

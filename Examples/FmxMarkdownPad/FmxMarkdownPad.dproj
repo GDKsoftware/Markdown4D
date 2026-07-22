@@ -35,6 +35,9 @@
         <DCC_F>false</DCC_F>
         <DCC_K>false</DCC_K>
         <VerInfo_Locale>1033</VerInfo_Locale>
+        <VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
+        <VerInfo_Keys>CompanyName=;FileDescription=$(MSBuildProjectName);FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProgramID=com.embarcadero.$(MSBuildProjectName);ProductName=$(MSBuildProjectName);ProductVersion=1.0.0.0;Comments=</VerInfo_Keys>
+        <Icon_MainIcon>FmxMarkdownPad.ico</Icon_MainIcon>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_1)'!=''">
         <DCC_Define>DEBUG;$(DCC_Define)</DCC_Define>
@@ -57,6 +60,9 @@
         <DCCReference Include="..\Shared\MarkdownPad.Workspace.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.Session.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.Commands.pas"/>
+        <DCCReference Include="..\Shared\MarkdownPad.TabStrip.Layout.pas"/>
+        <DCCReference Include="..\Shared\MarkdownPad.Fmx.TabStrip.pas"/>
+        <DCCReference Include="..\Shared\MarkdownPad.Fmx.WinFrame.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.FileWatcher.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.HtmlExport.pas"/>
         <DCCReference Include="FmxMarkdownPad.Main.pas"/>

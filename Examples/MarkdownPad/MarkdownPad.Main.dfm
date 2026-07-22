@@ -38,15 +38,6 @@ object MarkdownPadForm: TMarkdownPadForm
     TabOrder = 0
     ExplicitWidth = 1198
   end
-  object tabsDocs: TTabControl
-    Left = 0
-    Top = 36
-    Width = 1200
-    Height = 28
-    Align = alTop
-    TabOrder = 1
-    ExplicitWidth = 1198
-  end
   object pnlFind: TPanel
     Left = 0
     Top = 64
