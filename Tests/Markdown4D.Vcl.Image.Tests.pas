@@ -43,6 +43,7 @@ type
       FViewer: TMarkdownViewer;
     procedure WriteRedPng;
     procedure WriteRedSvgFile;
+    procedure WriteFilledRedSvgFile;
     procedure RegisterRedSvgRasterizer;
     function PaintViewer: TBitmap;
     function MeasureMatchingPixels(const Predicate: TPixelPredicate): TPixelMeasurement;
@@ -69,6 +70,9 @@ type
 
     [Test]
     procedure SvgImage_ViaRegisteredRasterizer_DrawsRasterizedPixels;
+
+    [Test]
+    procedure SvgImage_ViaImage32Rasterizer_RendersRealSvg;
   end;
 
 implementation
@@ -80,6 +84,7 @@ uses
   System.IOUtils,
   Vcl.Imaging.pngimage,
   Markdown4D.Image.Svg,
+  Markdown4D.Image.Svg.Image32,
   Markdown4D.Highlighter.Interfaces;
 
 procedure TMarkdownVclImageTests.Setup;
@@ -160,9 +165,30 @@ begin
     Format('Expected at least %d rasterized SVG pixels but found %d', [MinimumImagePixels, Measurement.MatchCount]));
 end;
 
+procedure TMarkdownVclImageTests.SvgImage_ViaImage32Rasterizer_RendersRealSvg;
+begin
+  RegisterImage32SvgRasterizer;
+  WriteFilledRedSvgFile;
+  FViewer.Images.BaseUrl := FTempFolder;
+  FViewer.Text := SvgMarkdown;
+
+  const Measurement = MeasureMatchingPixels(IsRed);
+
+  Assert.IsTrue(Measurement.MatchCount >= MinimumImagePixels,
+    Format('Expected at least %d Image32-rendered SVG pixels but found %d', [MinimumImagePixels, Measurement.MatchCount]));
+end;
+
 procedure TMarkdownVclImageTests.WriteRedSvgFile;
 begin
   const Svg = Format('<svg xmlns="http://www.w3.org/2000/svg" width="%0:d" height="%0:d"></svg>', [SvgPixelSize]);
+  TFile.WriteAllText(TPath.Combine(FTempFolder, SvgFileName), Svg, TEncoding.UTF8);
+end;
+
+procedure TMarkdownVclImageTests.WriteFilledRedSvgFile;
+begin
+  const Svg = Format(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="%0:d" height="%0:d">' +
+    '<rect x="0" y="0" width="%0:d" height="%0:d" fill="rgb(255,0,0)"/></svg>', [SvgPixelSize]);
   TFile.WriteAllText(TPath.Combine(FTempFolder, SvgFileName), Svg, TEncoding.UTF8);
 end;
 
