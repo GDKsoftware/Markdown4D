@@ -2,7 +2,7 @@ program FmxMarkdownPad;
 
 uses
   FMX.Forms,
-  FMX.Types,
+  FMX.Skia,
   MarkdownPad.Workspace.Interfaces in '..\Shared\MarkdownPad.Workspace.Interfaces.pas',
   MarkdownPad.Workspace in '..\Shared\MarkdownPad.Workspace.pas',
   MarkdownPad.Session in '..\Shared\MarkdownPad.Session.pas',
@@ -18,10 +18,9 @@ uses
 {$R *.res}
 
 begin
-  // Use the GDI+ canvas (with ClearType) instead of Direct2D so the editor's source
-  // text renders as crisply as the VCL version; Direct2D falls back to softer greyscale.
-  GlobalUseDirect2D := False;
-  GlobalUseGDIPlusClearType := True;
+  // Render through Skia so the editor's source text is crisp on Windows; unlike the
+  // GDI+ canvas, Skia keeps accurate text metrics (gutter, caret, selection).
+  GlobalUseSkia := True;
 
   Application.Initialize;
   Application.CreateForm(TFmxMarkdownPadForm, FmxMarkdownPadForm);

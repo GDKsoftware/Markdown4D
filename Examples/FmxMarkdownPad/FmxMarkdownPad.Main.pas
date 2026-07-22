@@ -76,6 +76,9 @@ type
       GlyphMaximize = Char($E922);
       GlyphRestore = Char($E923);
       GlyphClose = Char($E8BB);
+      HintMinimize = 'Minimize';
+      HintMaximize = 'Maximize';
+      HintCloseWindow = 'Close';
       HintNew = 'New (Ctrl+N)';
       HintOpen = 'Open (Ctrl+O)';
       HintSave = 'Save (Ctrl+S)';
@@ -285,7 +288,8 @@ type
     procedure HandleIconMouseEnter(Sender: TObject);
     procedure HandleIconMouseLeave(Sender: TObject);
     procedure BuildTitleBar;
-    function AddCaptionButton(const Glyph: string; const Handler: TNotifyEvent): TRectangle;
+    function AddCaptionButton(const Glyph: string; const Hint: string;
+      const Handler: TNotifyEvent): TRectangle;
     procedure LayoutTitleBar;
     procedure UpdateMaxRestoreGlyph;
     procedure HandleTitleBarMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState;
@@ -571,6 +575,8 @@ begin
   Result.HitTest := True;
   Result.Cursor := crHandPoint;
   Result.Hint := Hint;
+  // An FMX control ignores its own ShowHint while ParentShowHint is still True.
+  Result.ParentShowHint := False;
   Result.ShowHint := True;
   Result.OnClick := Handler;
   Result.OnMouseEnter := HandleIconMouseEnter;
@@ -634,13 +640,13 @@ begin
   FTitleBar.OnDblClick := HandleTitleBarDblClick;
 
   // Caption buttons are right-aligned; create close first so it sits furthest right.
-  FCloseButton := AddCaptionButton(GlyphClose, HandleCloseButtonClick);
+  FCloseButton := AddCaptionButton(GlyphClose, HintCloseWindow, HandleCloseButtonClick);
   FCloseButton.OnMouseEnter := HandleCloseMouseEnter;
 
-  FMaxButton := AddCaptionButton(GlyphMaximize, HandleMaximizeClick);
+  FMaxButton := AddCaptionButton(GlyphMaximize, HintMaximize, HandleMaximizeClick);
   FMaxGlyph := FCaptionGlyphs[High(FCaptionGlyphs)];
 
-  FMinButton := AddCaptionButton(GlyphMinimize, HandleMinimizeClick);
+  FMinButton := AddCaptionButton(GlyphMinimize, HintMinimize, HandleMinimizeClick);
 
   FTabStrip := TPadFmxTabStrip.Create(Self);
   FTabStrip.Parent := FTitleBar;
@@ -653,7 +659,7 @@ begin
   FTabStrip.OnReorderTab := HandleTabReorder;
 end;
 
-function TFmxMarkdownPadForm.AddCaptionButton(const Glyph: string;
+function TFmxMarkdownPadForm.AddCaptionButton(const Glyph: string; const Hint: string;
   const Handler: TNotifyEvent): TRectangle;
 begin
   Result := TRectangle.Create(Self);
@@ -663,6 +669,9 @@ begin
   Result.Stroke.Kind := TBrushKind.None;
   Result.Fill.Kind := TBrushKind.Solid;
   Result.HitTest := True;
+  Result.Hint := Hint;
+  Result.ParentShowHint := False;
+  Result.ShowHint := True;
   Result.OnClick := Handler;
   Result.OnMouseEnter := HandleCaptionMouseEnter;
   Result.OnMouseLeave := HandleIconMouseLeave;
