@@ -5,6 +5,8 @@ unit MarkdownPad.Main;
 interface
 
 uses
+  Winapi.Windows,
+  Winapi.Messages,
   System.Classes,
   System.Types,
   Vcl.Forms,
@@ -16,7 +18,6 @@ uses
   Vcl.Graphics,
   Vcl.Menus,
   Vcl.Dialogs,
-  Winapi.Messages,
   Markdown4D.Ast.Interfaces,
   Markdown4D.Toc,
   Markdown4D.Editor.Model,
@@ -31,6 +32,25 @@ uses
 
 type
   TMarkdownPadForm = class(TForm)
+    pnlToolbar: TPanel;
+    tabsDocs: TTabControl;
+    pnlFind: TPanel;
+    pnlStatus: TPanel;
+    pnlToc: TPanel;
+    splToc: TSplitter;
+    splMain: TSplitter;
+    lstToc: TListBox;
+    dlgOpen: TOpenDialog;
+    dlgSave: TSaveDialog;
+    dlgSaveHtml: TSaveDialog;
+    tmrTick: TTimer;
+    popRecent: TPopupMenu;
+    mdEditor: TMarkdownEditor;
+    mdPreview: TMarkdownViewer;
+    lblPos: TLabel;
+    lblWords: TLabel;
+    edtEditorFind: TEdit;
+    lblFindCount: TLabel;
   private
     const
       WindowCaption = 'Markdown4D Pad';
@@ -86,6 +106,7 @@ type
       IconDarkColor = TColor($00D6D6D6);
       SeparatorLightColor = TColor($00D0D0D0);
       SeparatorDarkColor = TColor($00505050);
+      TabAccentColor = TColor($00C0742C);
       MarkdownFilter = 'Markdown files (*.md)|*.md|All files (*.*)|*.*';
       DefaultExtension = 'md';
       ModifiedMarker = ' *';
@@ -179,18 +200,7 @@ type
       CatRecent = 'Recent';
       RecentShortcut = '';
     var
-      FToolbar: TPanel;
-      FTabs: TTabControl;
-      FTocPanel: TPanel;
-      FTocSplitter: TSplitter;
-      FTocList: TListBox;
-      FEditor: TMarkdownEditor;
-      FMainSplitter: TSplitter;
-      FPreview: TMarkdownViewer;
-      FStatusBar: TPanel;
-      FStatusPositionLabel: TLabel;
-      FStatusWordsLabel: TLabel;
-      FFindEdit: TEdit;
+      FIconFontName: string;
       FNewButton: TSpeedButton;
       FOpenButton: TSpeedButton;
       FSaveButton: TSpeedButton;
@@ -205,19 +215,17 @@ type
       FThemeButton: TSpeedButton;
       FTocButton: TSpeedButton;
       FFindButton: TSpeedButton;
-      FIconFontName: string;
+      FFindEdit: TEdit;
       FIconButtons: TArray<TSpeedButton>;
       FSeparators: TArray<TPanel>;
-      FRecentMenu: TPopupMenu;
-      FOpenDialog: TOpenDialog;
-      FSaveDialog: TSaveDialog;
-      FHtmlSaveDialog: TSaveDialog;
-      FTickTimer: TTimer;
       FSync: TMarkdownEditorSync;
       FTocEntries: TArray<IMarkdownTocEntry>;
       FLightTheme: TMarkdownTheme;
       FDarkTheme: TMarkdownTheme;
       FDarkThemeActive: Boolean;
+      FTabActiveColor: TColor;
+      FTabInactiveColor: TColor;
+      FTabTextColor: TColor;
       FWorkspace: IPadWorkspace;
       FActiveDoc: IPadDocument;
       FSession: TPadSession;
@@ -228,9 +236,6 @@ type
       FLastCaret: Integer;
       FViewMode: TPadViewMode;
       FSplitEditorWidth: Integer;
-      FFindBar: TPanel;
-      FEditorFindEdit: TEdit;
-      FEditorFindCount: TLabel;
       FPalette: TPanel;
       FPaletteEdit: TEdit;
       FPaletteList: TListBox;
@@ -242,15 +247,11 @@ type
       FZenRightPad: TPanel;
       FZenTocWasVisible: Boolean;
       FZenFindWasVisible: Boolean;
+    procedure ConfigureControls;
     procedure BuildToolbar;
     function ResolveIconFontName: string;
     function AddIconButton(const Glyph: string; const Hint: string; const Handler: TNotifyEvent): TSpeedButton;
     procedure AddSeparator;
-    procedure BuildTabs;
-    procedure BuildTocPanel;
-    procedure BuildEditorAndPreview;
-    procedure BuildStatusBar;
-    procedure BuildTimer;
     procedure WMDropFiles(var Message: TMessage); message WM_DROPFILES;
     procedure HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure HandleCloseQuery(Sender: TObject; var CanClose: Boolean);
@@ -275,6 +276,7 @@ type
     procedure HandleFindClick(Sender: TObject);
     procedure HandleFindEditKeyPress(Sender: TObject; var Key: Char);
     procedure HandleTabChange(Sender: TObject);
+    procedure HandleDrawTab(Control: TCustomTabControl; TabIndex: Integer; const Rect: TRect; Active: Boolean);
     procedure HandleEditorChange(Sender: TObject);
     procedure HandleEditorScroll(Sender: TObject);
     procedure HandlePreviewScroll(Sender: TObject);
@@ -296,13 +298,13 @@ type
     procedure UpdateStatusBar;
     procedure UpdateTitle;
     procedure ExecuteFind;
-    procedure BuildFindBar;
     procedure BuildPalette;
     procedure BuildCommandRegistry;
     procedure RegisterStaticCommands;
     procedure SetViewMode(const Mode: TPadViewMode);
     procedure ApplyViewMode;
     procedure EnforceTopBarOrder;
+    procedure EnforceLeftPaneOrder;
     procedure ShowFindBar;
     procedure CloseFindBar;
     procedure FindInEditor;
@@ -344,7 +346,6 @@ uses
   System.Character,
   System.IOUtils,
   System.UITypes,
-  Winapi.Windows,
   Winapi.ShellAPI,
   Markdown4D,
   Markdown4D.Defines,
@@ -353,57 +354,46 @@ uses
   MarkdownPad.Workspace,
   MarkdownPad.HtmlExport;
 
+{$R *.dfm}
+
 constructor TMarkdownPadForm.Create(Owner: TComponent);
 begin
-  inherited CreateNew(Owner);
+  inherited Create(Owner);
 
   TChartBlockOverride.RegisterOverride;
   TMermaidBlockOverride.RegisterOverride;
 
-  ClientWidth := InitialClientWidth;
-  ClientHeight := InitialClientHeight;
-  Position := TPosition.poScreenCenter;
-  KeyPreview := True;
   OnKeyDown := HandleFormKeyDown;
   OnCloseQuery := HandleCloseQuery;
+  OnResize := HandleResize;
 
   FLightTheme := TMarkdownTheme.CreateLight;
   FDarkTheme := TMarkdownTheme.CreateDark;
   FSync := TMarkdownEditorSync.Create;
 
-  FOpenDialog := TOpenDialog.Create(Self);
-  FOpenDialog.Filter := MarkdownFilter;
-  FSaveDialog := TSaveDialog.Create(Self);
-  FSaveDialog.Filter := MarkdownFilter;
-  FSaveDialog.DefaultExt := DefaultExtension;
-  FHtmlSaveDialog := TSaveDialog.Create(Self);
-  FHtmlSaveDialog.Filter := HtmlFilter;
-  FHtmlSaveDialog.DefaultExt := HtmlExtension;
+  dlgOpen.Filter := MarkdownFilter;
+  dlgSave.Filter := MarkdownFilter;
+  dlgSave.DefaultExt := DefaultExtension;
+  dlgSaveHtml.Filter := HtmlFilter;
+  dlgSaveHtml.DefaultExt := HtmlExtension;
 
   FWorkspace := TPadWorkspace.Create;
   FSession := TPadSession.Create(TPadSession.ResolvePath(SessionFileName));
   FSession.Load;
   FWatcher := TPadFileWatcher.Create(FWorkspace, HandleFileChanged);
 
-  BuildStatusBar;
+  ConfigureControls;
   BuildToolbar;
-  BuildTabs;
-  BuildFindBar;
-  BuildTocPanel;
-  BuildEditorAndPreview;
   BuildPalette;
   BuildCommandRegistry;
-  BuildTimer;
 
-  FEditor.AttachPreview(FPreview);
+  mdEditor.AttachPreview(mdPreview);
 
   FSplitEditorWidth := (InitialClientWidth - TocPanelWidth) div 2;
   FViewMode := TPadViewMode.Split;
 
   FDarkThemeActive := FSession.DarkTheme;
   ApplyTheme;
-
-  OnResize := HandleResize;
 
   RestoreSession;
 end;
@@ -412,8 +402,8 @@ destructor TMarkdownPadForm.Destroy;
 begin
   SaveSession;
 
-  if FEditor <> nil then
-    FEditor.DetachPreview;
+  if mdEditor <> nil then
+    mdEditor.DetachPreview;
 
   inherited Destroy;
 
@@ -425,17 +415,55 @@ begin
   FLightTheme.Free;
 end;
 
+procedure TMarkdownPadForm.ConfigureControls;
+begin
+  tabsDocs.Style := tsFlatButtons;
+  tabsDocs.OwnerDraw := True;
+  tabsDocs.OnChange := HandleTabChange;
+  tabsDocs.OnDrawTab := HandleDrawTab;
+
+  lstToc.AlignWithMargins := True;
+  lstToc.Margins.SetBounds(4, 20, 4, 4);
+  lstToc.BorderStyle := bsNone;
+  lstToc.OnClick := HandleTocListClick;
+
+  mdEditor.ShowLineNumbers := True;
+  mdEditor.OnChange := HandleEditorChange;
+  mdEditor.OnScroll := HandleEditorScroll;
+
+  mdPreview.OnScroll := HandlePreviewScroll;
+  mdPreview.OnLinkClick := HandlePreviewLinkClick;
+
+  lblPos.AlignWithMargins := True;
+  lblPos.Margins.SetBounds(StatusLabelLeftMargin, 0, 0, 0);
+  lblPos.Layout := tlCenter;
+  lblPos.AutoSize := False;
+  lblPos.Width := StatusLabelWidth;
+  lblPos.Transparent := True;
+
+  lblWords.AlignWithMargins := True;
+  lblWords.Margins.SetBounds(StatusLabelLeftMargin, 0, 0, 0);
+  lblWords.Layout := tlCenter;
+  lblWords.AutoSize := False;
+  lblWords.Width := StatusLabelWidth;
+  lblWords.Transparent := True;
+
+  edtEditorFind.TextHint := FindHintCaption;
+  edtEditorFind.OnChange := HandleEditorFindChange;
+
+  lblFindCount.Layout := tlCenter;
+  lblFindCount.Caption := EmptyFindCaption;
+
+  popRecent.AutoHotkeys := maManual;
+
+  tmrTick.Interval := TickIntervalMilliseconds;
+  tmrTick.OnTimer := HandleTick;
+  tmrTick.Enabled := True;
+end;
+
 procedure TMarkdownPadForm.BuildToolbar;
 begin
   FIconFontName := ResolveIconFontName;
-
-  FToolbar := TPanel.Create(Self);
-  FToolbar.Parent := Self;
-  FToolbar.Align := alTop;
-  FToolbar.Height := ToolbarHeight;
-  FToolbar.BevelOuter := bvNone;
-  FToolbar.ShowCaption := False;
-  FToolbar.ParentBackground := False;
 
   FNewButton := AddIconButton(GlyphNew, HintNew, HandleNewClick);
   FOpenButton := AddIconButton(GlyphOpen, HintOpen, HandleOpenClick);
@@ -461,7 +489,7 @@ begin
   FTocButton := AddIconButton(GlyphToc, HintToc, HandleTocClick);
 
   FFindEdit := TEdit.Create(Self);
-  FFindEdit.Parent := FToolbar;
+  FFindEdit.Parent := pnlToolbar;
   FFindEdit.Align := alRight;
   FFindEdit.AlignWithMargins := True;
   FFindEdit.Margins.SetBounds(ButtonSpacing, ButtonSpacing, ButtonSpacing, ButtonSpacing);
@@ -471,9 +499,6 @@ begin
 
   FFindButton := AddIconButton(GlyphFind, HintFind, HandleFindClick);
   FFindButton.Align := alRight;
-
-  FRecentMenu := TPopupMenu.Create(Self);
-  FRecentMenu.AutoHotkeys := maManual;
 end;
 
 function TMarkdownPadForm.ResolveIconFontName: string;
@@ -490,7 +515,7 @@ begin
   const VerticalMargin = (ToolbarHeight - IconButtonSize) div 2;
 
   Result := TSpeedButton.Create(Self);
-  Result.Parent := FToolbar;
+  Result.Parent := pnlToolbar;
   Result.Align := alLeft;
   Result.AlignWithMargins := True;
   Result.Margins.SetBounds(2, VerticalMargin, 0, VerticalMargin);
@@ -511,7 +536,7 @@ begin
   const VerticalMargin = ButtonSpacing + 2;
 
   const Separator = TPanel.Create(Self);
-  Separator.Parent := FToolbar;
+  Separator.Parent := pnlToolbar;
   Separator.Align := alLeft;
   Separator.AlignWithMargins := True;
   Separator.Margins.SetBounds(ButtonSpacing, VerticalMargin, ButtonSpacing, VerticalMargin);
@@ -521,103 +546,6 @@ begin
   Separator.ParentBackground := False;
 
   FSeparators := FSeparators + [Separator];
-end;
-
-procedure TMarkdownPadForm.BuildTabs;
-begin
-  FTabs := TTabControl.Create(Self);
-  FTabs.Parent := Self;
-  FTabs.Align := alTop;
-  FTabs.Height := TabsHeight;
-  FTabs.OnChange := HandleTabChange;
-end;
-
-procedure TMarkdownPadForm.BuildTocPanel;
-begin
-  FTocPanel := TPanel.Create(Self);
-  FTocPanel.Parent := Self;
-  FTocPanel.Align := alLeft;
-  FTocPanel.Width := TocPanelWidth;
-  FTocPanel.BevelOuter := bvNone;
-  FTocPanel.ParentBackground := False;
-  FTocPanel.Caption := TocHeaderCaption;
-  FTocPanel.ShowCaption := True;
-  FTocPanel.Alignment := taLeftJustify;
-  FTocPanel.VerticalAlignment := taAlignTop;
-
-  FTocList := TListBox.Create(Self);
-  FTocList.Parent := FTocPanel;
-  FTocList.Align := alClient;
-  FTocList.AlignWithMargins := True;
-  FTocList.Margins.SetBounds(4, 20, 4, 4);
-  FTocList.BorderStyle := bsNone;
-  FTocList.OnClick := HandleTocListClick;
-
-  FTocSplitter := TSplitter.Create(Self);
-  FTocSplitter.Parent := Self;
-  FTocSplitter.Align := alLeft;
-  FTocSplitter.Width := ButtonSpacing;
-end;
-
-procedure TMarkdownPadForm.BuildEditorAndPreview;
-begin
-  FEditor := TMarkdownEditor.Create(Self);
-  FEditor.Parent := Self;
-  FEditor.Align := alLeft;
-  FEditor.Width := (InitialClientWidth - TocPanelWidth) div 2;
-  FEditor.ShowLineNumbers := True;
-  FEditor.OnChange := HandleEditorChange;
-  FEditor.OnScroll := HandleEditorScroll;
-
-  FMainSplitter := TSplitter.Create(Self);
-  FMainSplitter.Parent := Self;
-  FMainSplitter.Align := alLeft;
-  FMainSplitter.Width := ButtonSpacing;
-
-  FPreview := TMarkdownViewer.Create(Self);
-  FPreview.Parent := Self;
-  FPreview.Align := alClient;
-  FPreview.OnScroll := HandlePreviewScroll;
-  FPreview.OnLinkClick := HandlePreviewLinkClick;
-end;
-
-procedure TMarkdownPadForm.BuildStatusBar;
-begin
-  FStatusBar := TPanel.Create(Self);
-  FStatusBar.Parent := Self;
-  FStatusBar.Align := alBottom;
-  FStatusBar.Height := StatusBarHeight;
-  FStatusBar.BevelOuter := bvNone;
-  FStatusBar.ShowCaption := False;
-  FStatusBar.ParentBackground := False;
-
-  FStatusPositionLabel := TLabel.Create(Self);
-  FStatusPositionLabel.Parent := FStatusBar;
-  FStatusPositionLabel.Align := alLeft;
-  FStatusPositionLabel.AlignWithMargins := True;
-  FStatusPositionLabel.Margins.SetBounds(StatusLabelLeftMargin, 0, 0, 0);
-  FStatusPositionLabel.Layout := tlCenter;
-  FStatusPositionLabel.AutoSize := False;
-  FStatusPositionLabel.Width := StatusLabelWidth;
-  FStatusPositionLabel.Transparent := True;
-
-  FStatusWordsLabel := TLabel.Create(Self);
-  FStatusWordsLabel.Parent := FStatusBar;
-  FStatusWordsLabel.Align := alLeft;
-  FStatusWordsLabel.AlignWithMargins := True;
-  FStatusWordsLabel.Margins.SetBounds(StatusLabelLeftMargin, 0, 0, 0);
-  FStatusWordsLabel.Layout := tlCenter;
-  FStatusWordsLabel.AutoSize := False;
-  FStatusWordsLabel.Width := StatusLabelWidth;
-  FStatusWordsLabel.Transparent := True;
-end;
-
-procedure TMarkdownPadForm.BuildTimer;
-begin
-  FTickTimer := TTimer.Create(Self);
-  FTickTimer.Interval := TickIntervalMilliseconds;
-  FTickTimer.OnTimer := HandleTick;
-  FTickTimer.Enabled := True;
 end;
 
 procedure TMarkdownPadForm.CreateWnd;
@@ -684,7 +612,7 @@ begin
     Exit;
   end;
 
-  if FFindBar.Visible and (Key = VK_RETURN) and FEditorFindEdit.Focused then
+  if pnlFind.Visible and (Key = VK_RETURN) and edtEditorFind.Focused then
   begin
     FindInEditor;
     Key := 0;
@@ -700,7 +628,7 @@ begin
       end;
     VK_F3:
       begin
-        if FFindBar.Visible then
+        if pnlFind.Visible then
         begin
           FindInEditor;
           Key := 0;
@@ -710,7 +638,7 @@ begin
       end;
     VK_ESCAPE:
       begin
-        if FFindBar.Visible then
+        if pnlFind.Visible then
         begin
           CloseFindBar;
           Key := 0;
@@ -906,8 +834,8 @@ end;
 
 procedure TMarkdownPadForm.HandleOpenClick(Sender: TObject);
 begin
-  if FOpenDialog.Execute then
-    OpenPath(FOpenDialog.FileName);
+  if dlgOpen.Execute then
+    OpenPath(dlgOpen.FileName);
 end;
 
 procedure TMarkdownPadForm.HandleSaveClick(Sender: TObject);
@@ -927,36 +855,36 @@ begin
     Exit;
 
   if not FActiveDoc.IsUntitled then
-    FSaveDialog.FileName := FActiveDoc.FileName;
+    dlgSave.FileName := FActiveDoc.FileName;
 
-  if FSaveDialog.Execute then
-    SaveToFile(FSaveDialog.FileName);
+  if dlgSave.Execute then
+    SaveToFile(dlgSave.FileName);
 end;
 
 procedure TMarkdownPadForm.HandleRecentClick(Sender: TObject);
 begin
-  FRecentMenu.Items.Clear;
+  popRecent.Items.Clear;
 
   if System.Length(FSession.RecentFiles) = 0 then
   begin
-    var Empty := TMenuItem.Create(FRecentMenu);
+    var Empty := TMenuItem.Create(popRecent);
     Empty.Caption := RecentNoneCaption;
     Empty.Enabled := False;
-    FRecentMenu.Items.Add(Empty);
+    popRecent.Items.Add(Empty);
   end
   else
   begin
     for var Path in FSession.RecentFiles do
     begin
-      var Item := TMenuItem.Create(FRecentMenu);
+      var Item := TMenuItem.Create(popRecent);
       Item.Caption := Path;
       Item.OnClick := HandleRecentItemClick;
-      FRecentMenu.Items.Add(Item);
+      popRecent.Items.Add(Item);
     end;
   end;
 
   const Origin = FRecentButton.ClientToScreen(Point(0, FRecentButton.Height));
-  FRecentMenu.Popup(Origin.X, Origin.Y);
+  popRecent.Popup(Origin.X, Origin.Y);
 end;
 
 procedure TMarkdownPadForm.HandleRecentItemClick(Sender: TObject);
@@ -967,26 +895,26 @@ end;
 
 procedure TMarkdownPadForm.HandleBoldClick(Sender: TObject);
 begin
-  FEditor.ExecuteCommand(TEditorCommand.Bold);
-  FEditor.SetFocus;
+  mdEditor.ExecuteCommand(TEditorCommand.Bold);
+  mdEditor.SetFocus;
 end;
 
 procedure TMarkdownPadForm.HandleItalicClick(Sender: TObject);
 begin
-  FEditor.ExecuteCommand(TEditorCommand.Italic);
-  FEditor.SetFocus;
+  mdEditor.ExecuteCommand(TEditorCommand.Italic);
+  mdEditor.SetFocus;
 end;
 
 procedure TMarkdownPadForm.HandleLinkClick(Sender: TObject);
 begin
-  FEditor.ExecuteCommand(TEditorCommand.Link);
-  FEditor.SetFocus;
+  mdEditor.ExecuteCommand(TEditorCommand.Link);
+  mdEditor.SetFocus;
 end;
 
 procedure TMarkdownPadForm.HandleCodeClick(Sender: TObject);
 begin
-  FEditor.ExecuteCommand(TEditorCommand.CodeBlock);
-  FEditor.SetFocus;
+  mdEditor.ExecuteCommand(TEditorCommand.CodeBlock);
+  mdEditor.SetFocus;
 end;
 
 procedure TMarkdownPadForm.HandleExportClick(Sender: TObject);
@@ -1001,31 +929,31 @@ end;
 
 procedure TMarkdownPadForm.ExecuteFormatCommand(const Command: TEditorCommand);
 begin
-  FEditor.ExecuteCommand(Command);
-  FEditor.SetFocus;
+  mdEditor.ExecuteCommand(Command);
+  mdEditor.SetFocus;
 end;
 
 procedure TMarkdownPadForm.DoExportHtml;
 begin
   if FActiveDoc <> nil then
-    FActiveDoc.Text := FEditor.Text;
+    FActiveDoc.Text := mdEditor.Text;
 
   var Title := UntitledName;
   if FActiveDoc <> nil then
     Title := FActiveDoc.DisplayName;
 
-  FHtmlSaveDialog.FileName := TPath.ChangeExtension(Title, '.' + HtmlExtension);
+  dlgSaveHtml.FileName := TPath.ChangeExtension(Title, '.' + HtmlExtension);
 
-  if not FHtmlSaveDialog.Execute then
+  if not dlgSaveHtml.Execute then
     Exit;
 
-  const Html = TMarkdownHtmlExport.BuildDocument(FEditor.Text, Title, FDarkThemeActive);
-  TFile.WriteAllText(FHtmlSaveDialog.FileName, Html, TEncoding.UTF8);
+  const Html = TMarkdownHtmlExport.BuildDocument(mdEditor.Text, Title, FDarkThemeActive);
+  TFile.WriteAllText(dlgSaveHtml.FileName, Html, TEncoding.UTF8);
 end;
 
 procedure TMarkdownPadForm.DoCopyHtml;
 begin
-  const Fragment = TMarkdown.ToHtml(FEditor.Text, TMarkdownDialect.Gfm);
+  const Fragment = TMarkdown.ToHtml(mdEditor.Text, TMarkdownDialect.Gfm);
   CopyHtmlToClipboard(Fragment);
 end;
 
@@ -1087,9 +1015,11 @@ end;
 
 procedure TMarkdownPadForm.HandleTocClick(Sender: TObject);
 begin
-  const ShowToc = not FTocPanel.Visible;
-  FTocPanel.Visible := ShowToc;
-  FTocSplitter.Visible := ShowToc;
+  const ShowToc = not pnlToc.Visible;
+  pnlToc.Visible := ShowToc;
+  splToc.Visible := ShowToc;
+
+  EnforceLeftPaneOrder;
 end;
 
 procedure TMarkdownPadForm.HandleFindClick(Sender: TObject);
@@ -1108,7 +1038,36 @@ end;
 
 procedure TMarkdownPadForm.HandleTabChange(Sender: TObject);
 begin
-  SwitchToDocument(FTabs.TabIndex);
+  SwitchToDocument(tabsDocs.TabIndex);
+end;
+
+procedure TMarkdownPadForm.HandleDrawTab(Control: TCustomTabControl; TabIndex: Integer;
+  const Rect: TRect; Active: Boolean);
+begin
+  const Canvas = tabsDocs.Canvas;
+
+  if Active then
+    Canvas.Brush.Color := FTabActiveColor
+  else
+    Canvas.Brush.Color := FTabInactiveColor;
+  Canvas.FillRect(Rect);
+
+  if Active then
+  begin
+    Canvas.Brush.Color := TabAccentColor;
+    Canvas.FillRect(TRect.Create(Rect.Left, Rect.Top, Rect.Right, Rect.Top + 2));
+  end;
+
+  const Caption = tabsDocs.Tabs[TabIndex];
+
+  Canvas.Font.Color := FTabTextColor;
+  Canvas.Brush.Style := bsClear;
+
+  var TextRect := Rect;
+  DrawText(Canvas.Handle, PChar(Caption), System.Length(Caption), TextRect,
+    DT_SINGLELINE or DT_VCENTER or DT_CENTER or DT_END_ELLIPSIS);
+
+  Canvas.Brush.Style := bsSolid;
 end;
 
 procedure TMarkdownPadForm.HandleEditorChange(Sender: TObject);
@@ -1134,11 +1093,11 @@ begin
   if FSyncing then
     Exit;
 
-  const SourceLine = FEditor.FirstVisibleSourceLine;
+  const SourceLine = mdEditor.FirstVisibleSourceLine;
 
   FSyncing := True;
   try
-    FPreview.ScrollOffset := FSync.SourceLineToPreviewOffset(SourceLine);
+    mdPreview.ScrollOffset := FSync.SourceLineToPreviewOffset(SourceLine);
   finally
     FSyncing := False;
   end;
@@ -1151,7 +1110,7 @@ begin
   if FSyncing then
     Exit;
 
-  UpdateActiveTocEntry(FSync.PreviewOffsetToSourceLine(FPreview.ScrollOffset));
+  UpdateActiveTocEntry(FSync.PreviewOffsetToSourceLine(mdPreview.ScrollOffset));
 end;
 
 procedure TMarkdownPadForm.HandlePreviewLinkClick(const Sender: TObject; const Url: string);
@@ -1161,7 +1120,7 @@ end;
 
 procedure TMarkdownPadForm.HandleTocListClick(Sender: TObject);
 begin
-  const Index = FTocList.ItemIndex;
+  const Index = lstToc.ItemIndex;
   if (Index < 0) or (Index > High(FTocEntries)) then
     Exit;
 
@@ -1175,15 +1134,15 @@ begin
 
   FSyncing := True;
   try
-    FEditor.CaretPosition := FEditor.SourceLineStartOffset(SourceLine);
-    FEditor.ScrollToSourceLine(SourceLine);
-    FPreview.ScrollOffset := FSync.SourceLineToPreviewOffset(SourceLine);
+    mdEditor.CaretPosition := mdEditor.SourceLineStartOffset(SourceLine);
+    mdEditor.ScrollToSourceLine(SourceLine);
+    mdPreview.ScrollOffset := FSync.SourceLineToPreviewOffset(SourceLine);
   finally
     FSyncing := False;
   end;
 
-  FTocList.ItemIndex := Index;
-  FEditor.SetFocus;
+  lstToc.ItemIndex := Index;
+  mdEditor.SetFocus;
 end;
 
 procedure TMarkdownPadForm.HandleTick(Sender: TObject);
@@ -1219,11 +1178,11 @@ begin
   begin
     FSwapping := True;
     try
-      FEditor.Text := NewText;
-      FEditor.FlushPreview;
+      mdEditor.Text := NewText;
+      mdEditor.FlushPreview;
 
-      if FEditor.CaretPosition > System.Length(NewText) then
-        FEditor.CaretPosition := System.Length(NewText);
+      if mdEditor.CaretPosition > System.Length(NewText) then
+        mdEditor.CaretPosition := System.Length(NewText);
     finally
       FSwapping := False;
     end;
@@ -1265,11 +1224,11 @@ begin
 
   if FActiveDoc <> nil then
   begin
-    FActiveDoc.Text := FEditor.Text;
-    FActiveDoc.CaretPosition := FEditor.CaretPosition;
-    FActiveDoc.EditorScrollOffset := FEditor.FirstVisibleSourceLine;
-    FActiveDoc.PreviewScrollOffset := FPreview.ScrollOffset;
-    FActiveDoc.EditState := FEditor.SaveEditState;
+    FActiveDoc.Text := mdEditor.Text;
+    FActiveDoc.CaretPosition := mdEditor.CaretPosition;
+    FActiveDoc.EditorScrollOffset := mdEditor.FirstVisibleSourceLine;
+    FActiveDoc.PreviewScrollOffset := mdPreview.ScrollOffset;
+    FActiveDoc.EditState := mdEditor.SaveEditState;
   end;
 
   FWorkspace.Activate(Index);
@@ -1282,14 +1241,14 @@ begin
   try
     var State: IMarkdownEditorState;
     if Supports(FActiveDoc.EditState, IMarkdownEditorState, State) then
-      FEditor.LoadEditState(State)
+      mdEditor.LoadEditState(State)
     else
-      FEditor.Text := FActiveDoc.Text;
+      mdEditor.Text := FActiveDoc.Text;
 
-    FEditor.FlushPreview;
-    FEditor.CaretPosition := FActiveDoc.CaretPosition;
-    FEditor.ScrollToSourceLine(Round(FActiveDoc.EditorScrollOffset));
-    FPreview.ScrollOffset := FActiveDoc.PreviewScrollOffset;
+    mdEditor.FlushPreview;
+    mdEditor.CaretPosition := FActiveDoc.CaretPosition;
+    mdEditor.ScrollToSourceLine(Round(FActiveDoc.EditorScrollOffset));
+    mdPreview.ScrollOffset := FActiveDoc.PreviewScrollOffset;
   finally
     FSwapping := False;
   end;
@@ -1334,14 +1293,14 @@ begin
   if FActiveDoc = nil then
     Exit(False);
 
-  FActiveDoc.Text := FEditor.Text;
+  FActiveDoc.Text := mdEditor.Text;
 
   if FActiveDoc.IsUntitled then
   begin
-    if not FSaveDialog.Execute then
+    if not dlgSave.Execute then
       Exit(False);
 
-    SaveToFile(FSaveDialog.FileName);
+    SaveToFile(dlgSave.FileName);
   end
   else
     SaveToFile(FActiveDoc.FileName);
@@ -1351,9 +1310,9 @@ end;
 
 procedure TMarkdownPadForm.SaveToFile(const FileName: string);
 begin
-  TFile.WriteAllText(FileName, FEditor.Text);
+  TFile.WriteAllText(FileName, mdEditor.Text);
 
-  FActiveDoc.Text := FEditor.Text;
+  FActiveDoc.Text := mdEditor.Text;
   FActiveDoc.FileName := FileName;
   FActiveDoc.Modified := False;
 
@@ -1411,7 +1370,7 @@ end;
 procedure TMarkdownPadForm.SaveSession;
 begin
   if FActiveDoc <> nil then
-    FActiveDoc.Text := FEditor.Text;
+    FActiveDoc.Text := mdEditor.Text;
 
   var Titled: TArray<string> := [];
   var FilteredActive := -1;
@@ -1441,11 +1400,11 @@ end;
 
 procedure TMarkdownPadForm.RebuildTabs;
 begin
-  FTabs.OnChange := nil;
+  tabsDocs.OnChange := nil;
   try
-    FTabs.Tabs.BeginUpdate;
+    tabsDocs.Tabs.BeginUpdate;
     try
-      FTabs.Tabs.Clear;
+      tabsDocs.Tabs.Clear;
 
       for var Index := 0 to FWorkspace.Count - 1 do
       begin
@@ -1455,16 +1414,16 @@ begin
         if Document.Modified then
           Caption := Caption + ModifiedMarker;
 
-        FTabs.Tabs.Add(Caption);
+        tabsDocs.Tabs.Add(Caption);
       end;
     finally
-      FTabs.Tabs.EndUpdate;
+      tabsDocs.Tabs.EndUpdate;
     end;
 
     if FWorkspace.ActiveIndex >= 0 then
-      FTabs.TabIndex := FWorkspace.ActiveIndex;
+      tabsDocs.TabIndex := FWorkspace.ActiveIndex;
   finally
-    FTabs.OnChange := HandleTabChange;
+    tabsDocs.OnChange := HandleTabChange;
   end;
 end;
 
@@ -1476,22 +1435,29 @@ begin
 
   if FDarkThemeActive then
   begin
-    FEditor.Theme := FDarkTheme;
-    FPreview.Theme := FDarkTheme;
+    mdEditor.Theme := FDarkTheme;
+    mdPreview.Theme := FDarkTheme;
     Color := clBlack;
 
     ToolbarColor := ToolbarDarkColor;
     IconColor := IconDarkColor;
     SeparatorColor := SeparatorDarkColor;
+
+    FTabActiveColor := clBlack;
   end
   else
   begin
-    FEditor.Theme := FLightTheme;
-    FPreview.Theme := FLightTheme;
+    mdEditor.Theme := FLightTheme;
+    mdPreview.Theme := FLightTheme;
     Color := clWhite;
+
+    FTabActiveColor := clWhite;
   end;
 
-  FToolbar.Color := ToolbarColor;
+  FTabInactiveColor := ToolbarColor;
+  FTabTextColor := IconColor;
+
+  pnlToolbar.Color := ToolbarColor;
 
   for var Button in FIconButtons do
   begin
@@ -1503,35 +1469,41 @@ begin
     Separator.Color := SeparatorColor;
   end;
 
-  FTocPanel.Color := ToolbarColor;
-  FTocPanel.Font.Color := IconColor;
-  FTocList.Color := ToolbarColor;
-  FTocList.Font.Color := IconColor;
-  FTocSplitter.Color := SeparatorColor;
-  FMainSplitter.Color := SeparatorColor;
+  tabsDocs.Font.Color := IconColor;
 
-  FStatusBar.Color := ToolbarColor;
-  FStatusPositionLabel.Font.Color := IconColor;
-  FStatusWordsLabel.Font.Color := IconColor;
+  pnlToc.Color := ToolbarColor;
+  pnlToc.Font.Color := IconColor;
+  lstToc.Color := ToolbarColor;
+  lstToc.Font.Color := IconColor;
+  splToc.Color := SeparatorColor;
+  splMain.Color := SeparatorColor;
 
-  FTocPanel.Invalidate;
-  FTocList.Invalidate;
-  FStatusBar.Invalidate;
+  pnlStatus.Color := ToolbarColor;
+  lblPos.Font.Color := IconColor;
+  lblWords.Font.Color := IconColor;
+
+  pnlFind.Color := ToolbarColor;
+  lblFindCount.Font.Color := IconColor;
+
+  tabsDocs.Invalidate;
+  pnlToc.Invalidate;
+  lstToc.Invalidate;
+  pnlStatus.Invalidate;
 end;
 
 procedure TMarkdownPadForm.RebuildSyncAndToc;
 begin
   FMapDirty := False;
 
-  const Document = TMarkdown.Parse(FEditor.Text, TMarkdownDialect.Gfm);
-  FSync.Update(Document, FPreview.DisplayList);
+  const Document = TMarkdown.Parse(mdEditor.Text, TMarkdownDialect.Gfm);
+  FSync.Update(Document, mdPreview.DisplayList);
 
   const Toc = TMarkdownToc.FromDocument(Document);
 
   FTocEntries := [];
-  FTocList.Items.BeginUpdate;
+  lstToc.Items.BeginUpdate;
   try
-    FTocList.Items.Clear;
+    lstToc.Items.Clear;
 
     var Stack: TArray<IMarkdownTocEntry> := [];
     for var Index := Toc.EntryCount - 1 downto 0 do
@@ -1545,7 +1517,7 @@ begin
       SetLength(Stack, System.Length(Stack) - 1);
 
       FTocEntries := FTocEntries + [Entry];
-      FTocList.Items.Add(Format('%s%s', [StringOfChar(' ', 2 * (Entry.Level - 1)), Entry.Caption]));
+      lstToc.Items.Add(Format('%s%s', [StringOfChar(' ', 2 * (Entry.Level - 1)), Entry.Caption]));
 
       for var Index := Entry.ChildCount - 1 downto 0 do
       begin
@@ -1553,7 +1525,7 @@ begin
       end;
     end;
   finally
-    FTocList.Items.EndUpdate;
+    lstToc.Items.EndUpdate;
   end;
 end;
 
@@ -1566,22 +1538,22 @@ begin
       Best := Index;
   end;
 
-  if Best <> FTocList.ItemIndex then
-    FTocList.ItemIndex := Best;
+  if Best <> lstToc.ItemIndex then
+    lstToc.ItemIndex := Best;
 end;
 
 procedure TMarkdownPadForm.UpdateStatusBar;
 begin
-  const Caret = FEditor.CaretPosition;
+  const Caret = mdEditor.CaretPosition;
   if Caret = FLastCaret then
     Exit;
 
   FLastCaret := Caret;
 
   var Line, Column: Integer;
-  ComputeLineColumn(FEditor.Text, Caret, Line, Column);
-  FStatusPositionLabel.Caption := Format(StatusPositionFormat, [Line, Column]);
-  FStatusWordsLabel.Caption := Format(StatusWordsFormat, [CountWords(FEditor.Text)]);
+  ComputeLineColumn(mdEditor.Text, Caret, Line, Column);
+  lblPos.Caption := Format(StatusPositionFormat, [Line, Column]);
+  lblWords.Caption := Format(StatusWordsFormat, [CountWords(mdEditor.Text)]);
 end;
 
 procedure TMarkdownPadForm.UpdateTitle;
@@ -1604,36 +1576,7 @@ begin
   if Needle = '' then
     Exit;
 
-  FPreview.FindText(Needle);
-end;
-
-procedure TMarkdownPadForm.BuildFindBar;
-begin
-  FFindBar := TPanel.Create(Self);
-  FFindBar.Parent := Self;
-  FFindBar.Align := alTop;
-  FFindBar.Height := FindBarHeight;
-  FFindBar.BevelOuter := bvNone;
-  FFindBar.ShowCaption := False;
-  FFindBar.Visible := False;
-
-  FEditorFindEdit := TEdit.Create(Self);
-  FEditorFindEdit.Parent := FFindBar;
-  FEditorFindEdit.Align := alLeft;
-  FEditorFindEdit.AlignWithMargins := True;
-  FEditorFindEdit.Margins.SetBounds(ButtonSpacing, ButtonSpacing, ButtonSpacing, ButtonSpacing);
-  FEditorFindEdit.Width := FindBarEditWidth;
-  FEditorFindEdit.TextHint := FindHintCaption;
-  FEditorFindEdit.OnChange := HandleEditorFindChange;
-
-  FEditorFindCount := TLabel.Create(Self);
-  FEditorFindCount.Parent := FFindBar;
-  FEditorFindCount.Align := alRight;
-  FEditorFindCount.AutoSize := True;
-  FEditorFindCount.Layout := tlCenter;
-  FEditorFindCount.AlignWithMargins := True;
-  FEditorFindCount.Margins.SetBounds(ButtonSpacing, ButtonSpacing, ButtonSpacing, ButtonSpacing);
-  FEditorFindCount.Caption := EmptyFindCaption;
+  mdPreview.FindText(Needle);
 end;
 
 procedure TMarkdownPadForm.BuildPalette;
@@ -1775,29 +1718,29 @@ begin
   FCommands.Register(CmdBoldName, CatFormat, CmdBoldShortcut,
     procedure
     begin
-      FEditor.ExecuteCommand(TEditorCommand.Bold);
-      FEditor.SetFocus;
+      mdEditor.ExecuteCommand(TEditorCommand.Bold);
+      mdEditor.SetFocus;
     end);
 
   FCommands.Register(CmdItalicName, CatFormat, CmdItalicShortcut,
     procedure
     begin
-      FEditor.ExecuteCommand(TEditorCommand.Italic);
-      FEditor.SetFocus;
+      mdEditor.ExecuteCommand(TEditorCommand.Italic);
+      mdEditor.SetFocus;
     end);
 
   FCommands.Register(CmdLinkName, CatFormat, CmdLinkShortcut,
     procedure
     begin
-      FEditor.ExecuteCommand(TEditorCommand.Link);
-      FEditor.SetFocus;
+      mdEditor.ExecuteCommand(TEditorCommand.Link);
+      mdEditor.SetFocus;
     end);
 
   FCommands.Register(CmdCodeName, CatFormat, CmdCodeShortcut,
     procedure
     begin
-      FEditor.ExecuteCommand(TEditorCommand.CodeBlock);
-      FEditor.SetFocus;
+      mdEditor.ExecuteCommand(TEditorCommand.CodeBlock);
+      mdEditor.SetFocus;
     end);
 
   FCommands.Register(CmdH1Name, CatFormat, CmdH1Shortcut,
@@ -1855,7 +1798,7 @@ begin
     ExitZen;
 
   if FViewMode = TPadViewMode.Split then
-    FSplitEditorWidth := FEditor.Width;
+    FSplitEditorWidth := mdEditor.Width;
 
   FViewMode := Mode;
   ApplyViewMode;
@@ -1866,37 +1809,69 @@ begin
   case FViewMode of
     TPadViewMode.EditorOnly:
       begin
-        FMainSplitter.Visible := False;
-        FPreview.Visible := False;
-        FEditor.Visible := True;
-        FEditor.Align := alClient;
+        splMain.Visible := False;
+        mdPreview.Visible := False;
+        mdEditor.Visible := True;
+        mdEditor.Align := alClient;
       end;
     TPadViewMode.PreviewOnly:
       begin
-        FEditor.Visible := False;
-        FMainSplitter.Visible := False;
-        FPreview.Visible := True;
+        mdEditor.Visible := False;
+        splMain.Visible := False;
+        mdPreview.Visible := True;
       end;
   else
     begin
-      FEditor.Align := alLeft;
-      FEditor.Visible := True;
-      FEditor.Width := FSplitEditorWidth;
-      FMainSplitter.Visible := True;
-      FPreview.Visible := True;
+      mdEditor.Align := alLeft;
+      mdEditor.Visible := True;
+      mdEditor.Width := FSplitEditorWidth;
+      splMain.Visible := True;
+      mdPreview.Visible := True;
     end;
   end;
 
   EnforceTopBarOrder;
+  EnforceLeftPaneOrder;
 end;
 
 procedure TMarkdownPadForm.EnforceTopBarOrder;
 begin
   DisableAlign;
   try
-    FToolbar.Top := 0;
-    FTabs.Top := FToolbar.Height;
-    FFindBar.Top := FToolbar.Height + FTabs.Height;
+    pnlToolbar.Top := 0;
+    tabsDocs.Top := pnlToolbar.Height;
+    pnlFind.Top := pnlToolbar.Height + tabsDocs.Height;
+  finally
+    EnableAlign;
+  end;
+end;
+
+procedure TMarkdownPadForm.EnforceLeftPaneOrder;
+begin
+  DisableAlign;
+  try
+    var LeftOrder := 0;
+
+    if pnlToc.Visible then
+    begin
+      pnlToc.Left := LeftOrder;
+      Inc(LeftOrder);
+    end;
+
+    if splToc.Visible then
+    begin
+      splToc.Left := LeftOrder;
+      Inc(LeftOrder);
+    end;
+
+    if mdEditor.Visible and (mdEditor.Align = alLeft) then
+    begin
+      mdEditor.Left := LeftOrder;
+      Inc(LeftOrder);
+    end;
+
+    if splMain.Visible then
+      splMain.Left := LeftOrder;
   finally
     EnableAlign;
   end;
@@ -1904,61 +1879,61 @@ end;
 
 procedure TMarkdownPadForm.ShowFindBar;
 begin
-  FFindBar.Visible := True;
+  pnlFind.Visible := True;
 
   EnforceTopBarOrder;
 
-  const Sel = FEditor.SelectedText;
+  const Sel = mdEditor.SelectedText;
   if Sel <> '' then
-    FEditorFindEdit.Text := Sel;
+    edtEditorFind.Text := Sel;
 
-  FEditorFindEdit.SetFocus;
-  FEditorFindEdit.SelectAll;
+  edtEditorFind.SetFocus;
+  edtEditorFind.SelectAll;
 
   UpdateFindCount;
 end;
 
 procedure TMarkdownPadForm.CloseFindBar;
 begin
-  FFindBar.Visible := False;
+  pnlFind.Visible := False;
 
   EnforceTopBarOrder;
 
-  if FEditor.CanFocus then
-    FEditor.SetFocus;
+  if mdEditor.CanFocus then
+    mdEditor.SetFocus;
 end;
 
 procedure TMarkdownPadForm.FindInEditor;
 begin
-  const Needle = FEditorFindEdit.Text;
+  const Needle = edtEditorFind.Text;
   if Needle = '' then
   begin
     UpdateFindCount;
     Exit;
   end;
 
-  FEditor.FindNext(Needle);
+  mdEditor.FindNext(Needle);
 
   UpdateFindCount;
 end;
 
 procedure TMarkdownPadForm.UpdateFindCount;
 begin
-  const Needle = FEditorFindEdit.Text;
+  const Needle = edtEditorFind.Text;
   if Needle = '' then
   begin
-    FEditorFindCount.Caption := EmptyFindCaption;
+    lblFindCount.Caption := EmptyFindCaption;
     Exit;
   end;
 
-  const Total = FEditor.FindMatchCount(Needle);
+  const Total = mdEditor.FindMatchCount(Needle);
 
   if Total = 0 then
-    FEditorFindCount.Caption := NoMatchCaption
+    lblFindCount.Caption := NoMatchCaption
   else if Total = 1 then
-    FEditorFindCount.Caption := SingleMatchCaption
+    lblFindCount.Caption := SingleMatchCaption
   else
-    FEditorFindCount.Caption := Format(MatchCountFormat, [Total]);
+    lblFindCount.Caption := Format(MatchCountFormat, [Total]);
 end;
 
 procedure TMarkdownPadForm.HandleEditorFindChange(Sender: TObject);
@@ -1995,8 +1970,8 @@ procedure TMarkdownPadForm.ClosePalette;
 begin
   FPalette.Visible := False;
 
-  if FEditor.CanFocus then
-    FEditor.SetFocus;
+  if mdEditor.CanFocus then
+    mdEditor.SetFocus;
 end;
 
 procedure TMarkdownPadForm.RefreshPaletteList;
@@ -2101,19 +2076,19 @@ begin
   if FPalette.Visible then
     ClosePalette;
 
-  FZenFindWasVisible := FFindBar.Visible;
-  FZenTocWasVisible := FTocPanel.Visible;
+  FZenFindWasVisible := pnlFind.Visible;
+  FZenTocWasVisible := pnlToc.Visible;
   FPreZenViewMode := FViewMode;
 
   if FViewMode = TPadViewMode.Split then
-    FSplitEditorWidth := FEditor.Width;
+    FSplitEditorWidth := mdEditor.Width;
 
-  FToolbar.Visible := False;
-  FTabs.Visible := False;
-  FTocPanel.Visible := False;
-  FTocSplitter.Visible := False;
-  FStatusBar.Visible := False;
-  FFindBar.Visible := False;
+  pnlToolbar.Visible := False;
+  tabsDocs.Visible := False;
+  pnlToc.Visible := False;
+  splToc.Visible := False;
+  pnlStatus.Visible := False;
+  pnlFind.Visible := False;
 
   FViewMode := TPadViewMode.EditorOnly;
   ApplyViewMode;
@@ -2130,14 +2105,14 @@ begin
   FZenRightPad.ShowCaption := False;
   FZenRightPad.Align := alRight;
 
-  FEditor.Align := alClient;
+  mdEditor.Align := alClient;
 
   UpdateZenPadding;
 
   FZenActive := True;
 
-  if FEditor.CanFocus then
-    FEditor.SetFocus;
+  if mdEditor.CanFocus then
+    mdEditor.SetFocus;
 end;
 
 procedure TMarkdownPadForm.ExitZen;
@@ -2145,20 +2120,20 @@ begin
   FreeAndNil(FZenLeftPad);
   FreeAndNil(FZenRightPad);
 
-  FToolbar.Visible := True;
-  FTabs.Visible := True;
-  FStatusBar.Visible := True;
-  FTocPanel.Visible := FZenTocWasVisible;
-  FTocSplitter.Visible := FZenTocWasVisible;
-  FFindBar.Visible := FZenFindWasVisible;
+  pnlToolbar.Visible := True;
+  tabsDocs.Visible := True;
+  pnlStatus.Visible := True;
+  pnlToc.Visible := FZenTocWasVisible;
+  splToc.Visible := FZenTocWasVisible;
+  pnlFind.Visible := FZenFindWasVisible;
 
   FViewMode := FPreZenViewMode;
   ApplyViewMode;
 
   FZenActive := False;
 
-  if FEditor.CanFocus then
-    FEditor.SetFocus;
+  if mdEditor.CanFocus then
+    mdEditor.SetFocus;
 end;
 
 procedure TMarkdownPadForm.UpdateZenPadding;
