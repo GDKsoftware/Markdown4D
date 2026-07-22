@@ -533,6 +533,12 @@ begin
   const Painter = TMarkdownFmxPainter.Create(Target);
   const PainterLifetime: IPainter = Painter;
 
+  // Clip every draw to the control's own bounds so a partially scrolled top or
+  // bottom row can never bleed above the editor (e.g. over the toolbar).
+  Painter.SaveState;
+  Painter.SetClip(TLayoutRectF.Create(0, 0, TargetWidth, TargetHeight));
+  try
+
   Painter.FillRect(TLayoutRectF.Create(0, 0, TargetWidth, TargetHeight), FTheme.BackgroundColor);
 
   const LineHeight = LineHeightPx;
@@ -586,6 +592,10 @@ begin
     const CaretPos = CaretPixelPos(ScrollY);
     Painter.FillRect(TLayoutRectF.Create(CaretPos.X, CaretPos.Y, CaretPos.X + CaretWidthPx,
       CaretPos.Y + LineHeight), FTheme.TextColor);
+  end;
+
+  finally
+    Painter.RestoreState;
   end;
 end;
 

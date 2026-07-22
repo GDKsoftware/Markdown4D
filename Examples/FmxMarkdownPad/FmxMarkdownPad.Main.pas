@@ -106,6 +106,12 @@ type
       TabHoverLightColor = TAlphaColor($FFEAEAEA);
       TabHoverDarkColor = TAlphaColor($FF383838);
       CaptionCloseHoverColor = TAlphaColor($FFE81123);
+      HintBackColor = TAlphaColor($FF1E1E1E);
+      HintTextColor = TAlphaColor($FFF0F0F0);
+      HintHeight = 24;
+      HintHorizontalPadding = 8;
+      HintGap = 4;
+      HintCornerRadius = 4;
       MarkdownFilter = 'Markdown files (*.md)|*.md|All files (*.*)|*.*';
       DefaultExtension = 'md';
       MarkdownExtension = '.md';
@@ -268,6 +274,8 @@ type
       FFindBar: TRectangle;
       FEditorFindEdit: TEdit;
       FEditorFindCount: TLabel;
+      FHintRect: TRectangle;
+      FHintText: TText;
       FPalette: TRectangle;
       FPaletteEdit: TEdit;
       FPaletteList: TListBox;
@@ -309,6 +317,9 @@ type
     procedure BuildEditorAndPreview;
     procedure BuildTimer;
     procedure BuildFindBar;
+    procedure BuildHint;
+    procedure ShowHintFor(const Control: TControl);
+    procedure HideHint;
     procedure BuildPalette;
     procedure BuildCommandRegistry;
     procedure RegisterStaticCommands;
@@ -374,6 +385,7 @@ type
     procedure ApplyTheme;
     procedure ApplyChromeColors;
     procedure ApplyTocItemColors;
+    procedure StyleTocBackground;
     procedure HandleTocListApplyStyle(Sender: TObject);
     procedure SaveSession;
     class function BuildSampleMarkdown: string;
@@ -454,6 +466,7 @@ begin
   BuildEditorAndPreview;
   BuildTimer;
   BuildPalette;
+  BuildHint;
   BuildCommandRegistry;
 
   FEditor.AttachPreview(FPreview);
@@ -619,12 +632,14 @@ procedure TFmxMarkdownPadForm.HandleIconMouseEnter(Sender: TObject);
 begin
   const Button = Sender as TRectangle;
   Button.Fill.Color := FHoverColor;
+  ShowHintFor(Button);
 end;
 
 procedure TFmxMarkdownPadForm.HandleIconMouseLeave(Sender: TObject);
 begin
   const Button = Sender as TRectangle;
   Button.Fill.Color := FToolbarFill;
+  HideHint;
 end;
 
 procedure TFmxMarkdownPadForm.BuildTitleBar;
@@ -751,12 +766,14 @@ procedure TFmxMarkdownPadForm.HandleCaptionMouseEnter(Sender: TObject);
 begin
   const Button = Sender as TRectangle;
   Button.Fill.Color := FHoverColor;
+  ShowHintFor(Button);
 end;
 
 procedure TFmxMarkdownPadForm.HandleCloseMouseEnter(Sender: TObject);
 begin
   const Button = Sender as TRectangle;
   Button.Fill.Color := CaptionCloseHoverColor;
+  ShowHintFor(Button);
 end;
 
 procedure TFmxMarkdownPadForm.HandleTabSelect(Sender: TObject; const Index: Integer);
@@ -886,6 +903,65 @@ begin
   FEditorFindCount.Margins.Right := ControlMargin;
   FEditorFindCount.Width := StatusLabelWidth;
   FEditorFindCount.TextSettings.HorzAlign := TTextAlign.Trailing;
+end;
+
+procedure TFmxMarkdownPadForm.BuildHint;
+begin
+  // FMX does not reliably show native control hints on this window, so draw a
+  // small tooltip ourselves on hover.
+  FHintRect := TRectangle.Create(Self);
+  FHintRect.Parent := Self;
+  FHintRect.Visible := False;
+  FHintRect.HitTest := False;
+  FHintRect.XRadius := HintCornerRadius;
+  FHintRect.YRadius := HintCornerRadius;
+  FHintRect.Stroke.Kind := TBrushKind.None;
+  FHintRect.Fill.Kind := TBrushKind.Solid;
+  FHintRect.Fill.Color := HintBackColor;
+  FHintRect.Height := HintHeight;
+
+  FHintText := TText.Create(Self);
+  FHintText.Parent := FHintRect;
+  FHintText.Align := TAlignLayout.Client;
+  FHintText.HitTest := False;
+  FHintText.Margins.Left := HintHorizontalPadding;
+  FHintText.Margins.Right := HintHorizontalPadding;
+  FHintText.HorzTextAlign := TTextAlign.Center;
+  FHintText.VertTextAlign := TTextAlign.Center;
+  FHintText.Color := HintTextColor;
+end;
+
+procedure TFmxMarkdownPadForm.ShowHintFor(const Control: TControl);
+begin
+  if (FHintRect = nil) or (Control = nil) or (Control.Hint = '') then
+    Exit;
+
+  FHintText.Text := Control.Hint;
+
+  const MeasureCanvas = TCanvasManager.MeasureCanvas;
+  MeasureCanvas.Font.Assign(FHintText.Font);
+  const TextWidth = MeasureCanvas.TextWidth(Control.Hint);
+  FHintRect.Width := TextWidth + 2 * HintHorizontalPadding;
+
+  // Position just below the hovered control, in form coordinates, clamped to the
+  // right edge so long hints never run off-screen.
+  const Anchor = Control.LocalToAbsolute(TPointF.Create(0, Control.Height + HintGap));
+  var Left := Anchor.X;
+  if Left + FHintRect.Width > ClientWidth - HintGap then
+    Left := ClientWidth - HintGap - FHintRect.Width;
+  if Left < HintGap then
+    Left := HintGap;
+
+  FHintRect.Position.X := Left;
+  FHintRect.Position.Y := Anchor.Y;
+  FHintRect.BringToFront;
+  FHintRect.Visible := True;
+end;
+
+procedure TFmxMarkdownPadForm.HideHint;
+begin
+  if FHintRect <> nil then
+    FHintRect.Visible := False;
 end;
 
 procedure TFmxMarkdownPadForm.BuildPalette;
@@ -1596,9 +1672,6 @@ begin
   FZenTocWasVisible := FTocPanel.Visible;
   FPreZenViewMode := FViewMode;
 
-  if FViewMode = TPadViewMode.Split then
-    FSplitEditorWidth := FEditor.Width;
-
   FToolbar.Visible := False;
   FTabStrip.Visible := False;
   FTocPanel.Visible := False;
@@ -1606,7 +1679,14 @@ begin
   FStatusBar.Visible := False;
   FFindBar.Visible := False;
 
-  FViewMode := TPadViewMode.EditorOnly;
+  // Keep the current view mode so zen mirrors what the user is doing: preview-only
+  // becomes a distraction-free rendering, editor-only a distraction-free editor.
+  // Split has no single column to center, so it collapses to editor-only.
+  if FViewMode = TPadViewMode.Split then
+  begin
+    FSplitEditorWidth := FEditor.Width;
+    FViewMode := TPadViewMode.EditorOnly;
+  end;
   ApplyViewMode;
 
   FZenLeftPad := TLayout.Create(Self);
@@ -2274,6 +2354,7 @@ begin
   FTocHeader.Color := IconColor;
   FTocList.NeedStyleLookup;
   FTocList.ApplyStyleLookup;
+  StyleTocBackground;
   ApplyTocItemColors;
 
   ApplyChromeColors;
@@ -2329,13 +2410,23 @@ end;
 
 procedure TFmxMarkdownPadForm.HandleTocListApplyStyle(Sender: TObject);
 begin
+  StyleTocBackground;
+end;
+
+procedure TFmxMarkdownPadForm.StyleTocBackground;
+begin
+  // Recolor the list-box background directly. Relying only on OnApplyStyleLookup
+  // is unreliable: the event does not always re-fire when the theme is toggled at
+  // runtime, which left the Contents panel white in dark mode.
   const Background = FTocList.FindStyleResource('background');
   if Background is TRectangle then
   begin
     TRectangle(Background).Fill.Kind := TBrushKind.Solid;
     TRectangle(Background).Fill.Color := FTocFill;
     TRectangle(Background).Stroke.Kind := TBrushKind.None;
-  end;
+  end
+  else if Background is TControl then
+    TControl(Background).Opacity := 0;
 end;
 
 procedure TFmxMarkdownPadForm.SaveSession;
