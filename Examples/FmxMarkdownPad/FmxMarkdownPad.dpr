@@ -8,6 +8,7 @@ uses
   MarkdownPad.Session in '..\Shared\MarkdownPad.Session.pas',
   MarkdownPad.Commands in '..\Shared\MarkdownPad.Commands.pas',
   MarkdownPad.TabStrip.Layout in '..\Shared\MarkdownPad.TabStrip.Layout.pas',
+  MarkdownPad.TabStrip.Interaction in '..\Shared\MarkdownPad.TabStrip.Interaction.pas',
   MarkdownPad.Fmx.TabStrip in '..\Shared\MarkdownPad.Fmx.TabStrip.pas',
   MarkdownPad.Fmx.WinFrame in '..\Shared\MarkdownPad.Fmx.WinFrame.pas',
   MarkdownPad.FileWatcher in '..\Shared\MarkdownPad.FileWatcher.pas',

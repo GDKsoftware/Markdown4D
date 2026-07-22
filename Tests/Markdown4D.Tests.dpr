@@ -54,6 +54,7 @@ uses
   MarkdownPad.Session in '..\Examples\Shared\MarkdownPad.Session.pas',
   MarkdownPad.Commands in '..\Examples\Shared\MarkdownPad.Commands.pas',
   MarkdownPad.TabStrip.Layout in '..\Examples\Shared\MarkdownPad.TabStrip.Layout.pas',
+  MarkdownPad.TabStrip.Interaction in '..\Examples\Shared\MarkdownPad.TabStrip.Interaction.pas',
   MarkdownPad.TabStrip in '..\Examples\Shared\MarkdownPad.TabStrip.pas',
   MarkdownPad.FileWatcher in '..\Examples\Shared\MarkdownPad.FileWatcher.pas',
   MarkdownPad.HtmlExport in '..\Examples\Shared\MarkdownPad.HtmlExport.pas',
