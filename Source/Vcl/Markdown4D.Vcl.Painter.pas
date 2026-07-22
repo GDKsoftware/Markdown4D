@@ -439,6 +439,9 @@ begin
   FCanvas.Font.Name := ResolveFamilyName(Font.FamilyName);
   FCanvas.Font.Height := FontPixelHeight(Font);
   FCanvas.Font.Style := TMarkdownViewerShared.FontStylesOf(Font);
+  // Force ClearType so text drawn onto the offscreen buffer stays as crisp as the
+  // rest of the OS; the default quality falls back to softer greyscale antialiasing.
+  FCanvas.Font.Quality := TFontQuality.fqClearTypeNatural;
 
   FAppliedFontKey := Key;
   FHasAppliedFont := True;
