@@ -51,8 +51,6 @@ type
     procedure FillDevicePolygonOpaque(const Points: TArray<TPoint>; const Color: TLayoutColor);
     procedure FillDevicePolygonBlended(const Points: TArray<TPoint>; const Bounds: TLayoutRectF;
       const Color: TLayoutColor);
-    class function WedgePolygon(const Center: TLayoutPointF;
-      const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single): TArray<TPoint>;
     class function PremultipliedPixel(const Color: TLayoutColor): Cardinal;
     class function ToVclColor(const Color: TLayoutColor): TColor;
     class function ToDeviceRect(const Bounds: TLayoutRectF): TRect;
@@ -87,8 +85,16 @@ implementation
 uses
   System.Math,
   Vcl.Forms,
+  Img32,
+  Img32.Draw,
+  Img32.Vector,
   Markdown4D.Defines,
   Markdown4D.Viewer.Shared;
+
+// Builds an anti-aliasable float path for a pie slice or doughnut sector, using
+// a 0deg-at-3-o'clock clockwise polar convention that matches the chart labels.
+function WedgePathD(const Center: TLayoutPointF;
+  const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single): TPathD; forward;
 
 constructor TMarkdownVclPainter.Create(const Canvas: TCanvas; const PixelsPerInch: Integer);
 begin
@@ -299,17 +305,85 @@ begin
   if (Alpha = 0) or (OuterRadius <= 0) or (SweepAngle = 0) then
     Exit;
 
-  const Points = WedgePolygon(Center, OuterRadius, InnerRadius, StartAngle, SweepAngle);
-  if Length(Points) < 3 then
+  const Path = WedgePathD(Center, OuterRadius, InnerRadius, StartAngle, SweepAngle);
+  if Length(Path) < 3 then
     Exit;
 
-  if Alpha = OpaqueAlpha then
-    FillDevicePolygonOpaque(Points, Color)
+  // GDI has no anti-aliasing, which leaves pie/doughnut arcs jagged. Render the
+  // wedge with Image32's anti-aliased rasteriser onto a small transparent buffer
+  // and alpha-blend it onto the canvas. Drawing wedges in order keeps shared
+  // radial edges seam-free: a later wedge blends over its neighbour, not the gap.
+  var MinX := Path[0].X;
+  var MinY := Path[0].Y;
+  var MaxX := Path[0].X;
+  var MaxY := Path[0].Y;
+  for var Index := 1 to High(Path) do
+  begin
+    MinX := Min(MinX, Path[Index].X);
+    MinY := Min(MinY, Path[Index].Y);
+    MaxX := Max(MaxX, Path[Index].X);
+    MaxY := Max(MaxY, Path[Index].Y);
+  end;
+
+  const Margin = 2;
+  const Left = Floor(MinX) - Margin;
+  const Top = Floor(MinY) - Margin;
+  const BufferWidth = Ceil(MaxX) - Left + Margin;
+  const BufferHeight = Ceil(MaxY) - Top + Margin;
+  if (BufferWidth <= 0) or (BufferHeight <= 0) then
+    Exit;
+
+  var Local: TPathD;
+  SetLength(Local, Length(Path));
+  for var Index := 0 to High(Path) do
+    Local[Index] := PointD(Path[Index].X - Left, Path[Index].Y - Top);
+
+  const Image = TImage32.Create(BufferWidth, BufferHeight);
+  try
+    DrawPolygon(Image, Local, frNonZero, TColor32(Color));
+    Image.CopyToDc(FCanvas.Handle, Left, Top, True);
+  finally
+    Image.Free;
+  end;
+end;
+
+function WedgePathD(const Center: TLayoutPointF;
+  const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single): TPathD;
+const
+  DegreesToRadians = Pi / 180;
+  SegmentDegrees = 1.5;
+begin
+  const Steps = Max(1, Ceil(Abs(SweepAngle) / SegmentDegrees));
+  const HasHole = (InnerRadius > 0);
+
+  var PointCount := Steps + 1;
+  if HasHole then
+    PointCount := PointCount + (Steps + 1)
+  else
+    PointCount := PointCount + 1;
+
+  SetLength(Result, PointCount);
+
+  var Index := 0;
+  for var Step := 0 to Steps do
+  begin
+    const Angle = (StartAngle + SweepAngle * Step / Steps) * DegreesToRadians;
+    Result[Index] := PointD(Center.X + OuterRadius * Cos(Angle), Center.Y + OuterRadius * Sin(Angle));
+    Inc(Index);
+  end;
+
+  if HasHole then
+  begin
+    for var Step := Steps downto 0 do
+    begin
+      const Angle = (StartAngle + SweepAngle * Step / Steps) * DegreesToRadians;
+      Result[Index] := PointD(Center.X + InnerRadius * Cos(Angle), Center.Y + InnerRadius * Sin(Angle));
+      Inc(Index);
+    end;
+  end
   else
   begin
-    const Bounds = TLayoutRectF.Create(Center.X - OuterRadius, Center.Y - OuterRadius, Center.X + OuterRadius,
-      Center.Y + OuterRadius);
-    FillDevicePolygonBlended(Points, Bounds, Color);
+    Result[Index] := PointD(Center.X, Center.Y);
   end;
 end;
 
@@ -368,46 +442,6 @@ begin
   finally
     RestoreDC(FCanvas.Handle, Saved);
   end;
-end;
-
-class function TMarkdownVclPainter.WedgePolygon(const Center: TLayoutPointF;
-  const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single): TArray<TPoint>;
-const
-  DegreesToRadians = Pi / 180;
-  SegmentDegrees = 3.0;
-begin
-  const Steps = Max(1, Ceil(Abs(SweepAngle) / SegmentDegrees));
-  const HasHole = (InnerRadius > 0);
-
-  var PointCount := Steps + 1;
-  if HasHole then
-    PointCount := PointCount + (Steps + 1)
-  else
-    PointCount := PointCount + 1;
-
-  SetLength(Result, PointCount);
-
-  var Index := 0;
-  for var Step := 0 to Steps do
-  begin
-    const Angle = (StartAngle + SweepAngle * Step / Steps) * DegreesToRadians;
-    Result[Index] := TPoint.Create(Round(Center.X + OuterRadius * Cos(Angle)),
-      Round(Center.Y + OuterRadius * Sin(Angle)));
-    Inc(Index);
-  end;
-
-  if HasHole then
-  begin
-    for var Step := Steps downto 0 do
-    begin
-      const Angle = (StartAngle + SweepAngle * Step / Steps) * DegreesToRadians;
-      Result[Index] := TPoint.Create(Round(Center.X + InnerRadius * Cos(Angle)),
-        Round(Center.Y + InnerRadius * Sin(Angle)));
-      Inc(Index);
-    end;
-  end
-  else
-    Result[Index] := TPoint.Create(Round(Center.X), Round(Center.Y));
 end;
 
 procedure TMarkdownVclPainter.SaveState;
@@ -517,9 +551,9 @@ begin
   Result := TRect.Create(Round(Bounds.Left), Round(Bounds.Top), Round(Bounds.Right), Round(Bounds.Bottom));
 end;
 
-class function TMarkdownVclPainter.OpaqueBlendFunction: TBlendFunction;
+class function TMarkdownVclPainter.OpaqueBlendFunction: Winapi.Windows.TBlendFunction;
 begin
-  Result := Default(TBlendFunction);
+  Result := Default(Winapi.Windows.TBlendFunction);
   Result.BlendOp             := AC_SRC_OVER;
   Result.SourceConstantAlpha := ColorChannelMax;
   Result.AlphaFormat         := AC_SRC_ALPHA;
