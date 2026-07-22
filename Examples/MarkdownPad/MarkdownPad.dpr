@@ -7,6 +7,7 @@ uses
   MarkdownPad.Session in '..\Shared\MarkdownPad.Session.pas',
   MarkdownPad.Commands in '..\Shared\MarkdownPad.Commands.pas',
   MarkdownPad.TabStrip.Layout in '..\Shared\MarkdownPad.TabStrip.Layout.pas',
+  MarkdownPad.TabStrip.Interaction in '..\Shared\MarkdownPad.TabStrip.Interaction.pas',
   MarkdownPad.TabStrip in '..\Shared\MarkdownPad.TabStrip.pas',
   MarkdownPad.FileWatcher in '..\Shared\MarkdownPad.FileWatcher.pas',
   MarkdownPad.HtmlExport in '..\Shared\MarkdownPad.HtmlExport.pas',

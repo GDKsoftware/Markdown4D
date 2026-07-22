@@ -11,7 +11,8 @@ uses
   FMX.Controls,
   FMX.Graphics,
   FMX.Types,
-  MarkdownPad.TabStrip.Layout;
+  MarkdownPad.TabStrip.Layout,
+  MarkdownPad.TabStrip.Interaction;
 
 type
   TPadFmxTabIndexEvent = procedure(Sender: TObject; const Index: Integer) of object;
@@ -19,8 +20,8 @@ type
 
   /// <summary>
   /// Owner-drawn Firefox-style tab strip for FMX. Mirrors the VCL TPadTabStrip and
-  /// shares the framework-neutral TPadTabLayout geometry, so tab widths, hit regions
-  /// and interaction match across both example apps.
+  /// shares the framework-neutral TPadTabLayout geometry and TPadTabInteraction
+  /// pointer handling, so tab widths, hit regions and behaviour match both apps.
   /// </summary>
   TPadFmxTabStrip = class(TControl)
   public
@@ -33,7 +34,7 @@ type
       CloseGlyphSize = 11;
       PlusGlyphSize = 13;
       ModifiedMarkerSize = 6;
-      DragThreshold = 6;
+      CaptionFontSize = 13;
       GlyphClose = Char($E8BB);
       GlyphAdd = Char($E710);
 
@@ -44,13 +45,8 @@ type
     FAvailableWidth: Integer;
     FTabWidth: Integer;
     FContentWidth: Integer;
-    FHotIndex: Integer;
-    FHotKind: TPadTabHitKind;
-    FPressIndex: Integer;
-    FPressKind: TPadTabHitKind;
-    FPressX: Single;
+    FInteraction: TPadTabInteraction;
     FLastDownX: Single;
-    FDragging: Boolean;
     FActiveColor: TAlphaColor;
     FInactiveColor: TAlphaColor;
     FHoverColor: TAlphaColor;
@@ -64,8 +60,7 @@ type
     FOnReorderTab: TPadFmxTabReorderEvent;
     function EffectiveWidth: Integer;
     procedure RecalcLayout;
-    function HitAtX(const X: Single): TPadTabHit;
-    procedure UpdateHot(const X: Single);
+    procedure ApplyPointerResult(const PointerResult: TPadTabPointerResult);
     procedure DrawTab(const Index: Integer; const TabLeft: Single);
     procedure DrawPill(const Bounds: TRectF; const PillColor: TAlphaColor);
     procedure DrawCloseGlyph(const CenterX, CenterY: Single; const Highlight: Boolean);
@@ -107,9 +102,6 @@ type
 
 implementation
 
-uses
-  System.Math;
-
 constructor TPadFmxTabStrip.Create(Owner: TComponent);
 begin
   inherited Create(Owner);
@@ -118,10 +110,7 @@ begin
   AutoCapture := True;
 
   FActiveIndex := -1;
-  FHotIndex := -1;
-  FHotKind := TPadTabHitKind.None;
-  FPressIndex := -1;
-  FPressKind := TPadTabHitKind.None;
+  FInteraction.Reset;
   FFontFamily := 'Segoe UI';
 
   FActiveColor := TAlphaColors.White;
@@ -162,11 +151,6 @@ begin
 
   if FAvailableWidth > 0 then
     Width := FContentWidth;
-end;
-
-function TPadFmxTabStrip.HitAtX(const X: Single): TPadTabHit;
-begin
-  Result := TPadTabLayout.HitTest(Round(X), EffectiveWidth, TabCount);
 end;
 
 procedure TPadFmxTabStrip.SetAvailableWidth(const Value: Integer);
@@ -214,13 +198,14 @@ begin
 
   const PlusLeft = FContentWidth - TPadTabLayout.PlusButtonWidth;
   DrawPlusGlyph(PlusLeft + TPadTabLayout.PlusButtonWidth / 2, Height / 2,
-    FHotKind = TPadTabHitKind.Plus);
+    FInteraction.HotKind = TPadTabHitKind.Plus);
 end;
 
 procedure TPadFmxTabStrip.DrawTab(const Index: Integer; const TabLeft: Single);
 begin
   const Active = Index = FActiveIndex;
-  const Hot = (FHotIndex = Index) and (FHotKind in [TPadTabHitKind.Tab, TPadTabHitKind.Close]);
+  const Hot = (FInteraction.HotIndex = Index) and
+    (FInteraction.HotKind in [TPadTabHitKind.Tab, TPadTabHitKind.Close]);
   const TabRight = TabLeft + FTabWidth;
 
   const Pill = RectF(TabLeft + TabGap, TabTopMargin, TabRight - TabGap, Height - TabBottomMargin);
@@ -239,7 +224,7 @@ begin
     TextRight := TextRight - ModifiedMarkerSize - 6;
 
   Canvas.Font.Family := FFontFamily;
-  Canvas.Font.Size := 13;
+  Canvas.Font.Size := CaptionFontSize;
   Canvas.Fill.Kind := TBrushKind.Solid;
   Canvas.Fill.Color := FTextColor;
   Canvas.FillText(RectF(TabLeft + TabLeftPadding, 0, TextRight, Height), FCaptions[Index],
@@ -250,7 +235,7 @@ begin
 
   if ShowClose then
     DrawCloseGlyph((CloseLeft + CloseRight) / 2, Height / 2,
-      (FHotIndex = Index) and (FHotKind = TPadTabHitKind.Close));
+      (FInteraction.HotIndex = Index) and (FInteraction.HotKind = TPadTabHitKind.Close));
 end;
 
 procedure TPadFmxTabStrip.DrawModifiedMarker(const CenterX, CenterY: Single);
@@ -299,15 +284,22 @@ begin
   DrawGlyphText(CenterX, CenterY, GlyphAdd, PlusGlyphSize);
 end;
 
-procedure TPadFmxTabStrip.UpdateHot(const X: Single);
+procedure TPadFmxTabStrip.ApplyPointerResult(const PointerResult: TPadTabPointerResult);
 begin
-  const Hit = HitAtX(X);
-  if (Hit.Index = FHotIndex) and (Hit.Kind = FHotKind) then
-    Exit;
+  if PointerResult.RepaintNeeded then
+    Repaint;
 
-  FHotIndex := Hit.Index;
-  FHotKind := Hit.Kind;
-  Repaint;
+  if PointerResult.Select and (PointerResult.SelectIndex <> FActiveIndex) and Assigned(FOnSelectTab) then
+    FOnSelectTab(Self, PointerResult.SelectIndex);
+
+  if PointerResult.Close and Assigned(FOnCloseTab) then
+    FOnCloseTab(Self, PointerResult.CloseIndex);
+
+  if PointerResult.Add and Assigned(FOnAddTab) then
+    FOnAddTab(Self);
+
+  if PointerResult.Reorder and Assigned(FOnReorderTab) then
+    FOnReorderTab(Self, PointerResult.ReorderFrom, PointerResult.ReorderTo);
 end;
 
 procedure TPadFmxTabStrip.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Single);
@@ -315,107 +307,36 @@ begin
   inherited MouseDown(Button, Shift, X, Y);
 
   FLastDownX := X;
-  const Hit = HitAtX(X);
-
-  if Button = TMouseButton.mbMiddle then
-  begin
-    if (Hit.Kind in [TPadTabHitKind.Tab, TPadTabHitKind.Close]) and Assigned(FOnCloseTab) then
-      FOnCloseTab(Self, Hit.Index);
-    Exit;
-  end;
-
-  if Button <> TMouseButton.mbLeft then
-    Exit;
-
-  FPressKind := Hit.Kind;
-  FPressIndex := Hit.Index;
-  FPressX := X;
-  FDragging := False;
-
-  if (Hit.Kind = TPadTabHitKind.Tab) and (Hit.Index <> FActiveIndex) and Assigned(FOnSelectTab) then
-    FOnSelectTab(Self, Hit.Index);
+  ApplyPointerResult(FInteraction.BeginPress(Round(X), EffectiveWidth, TabCount, Button));
 end;
 
 procedure TPadFmxTabStrip.MouseMove(Shift: TShiftState; X, Y: Single);
 begin
   inherited MouseMove(Shift, X, Y);
 
-  UpdateHot(X);
-
-  if not (ssLeft in Shift) then
-    Exit;
-
-  if FPressKind <> TPadTabHitKind.Tab then
-    Exit;
-
-  if not FDragging and (Abs(X - FPressX) >= DragThreshold) then
-    FDragging := True;
-
-  if not FDragging then
-    Exit;
-
-  const Target = TPadTabLayout.TabIndexAt(Round(X), FTabWidth, TabCount);
-  if (Target >= 0) and (Target <> FPressIndex) and Assigned(FOnReorderTab) then
-  begin
-    const From = FPressIndex;
-    FPressIndex := Target;
-    FPressX := X;
-    FOnReorderTab(Self, From, Target);
-  end;
+  ApplyPointerResult(FInteraction.PointerMove(Round(X), EffectiveWidth, TabCount, ssLeft in Shift));
 end;
 
 procedure TPadFmxTabStrip.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Single);
 begin
   inherited MouseUp(Button, Shift, X, Y);
 
-  if Button <> TMouseButton.mbLeft then
-    Exit;
-
-  const Hit = HitAtX(X);
-  const WasDragging = FDragging;
-  const PressKind = FPressKind;
-  const PressIndex = FPressIndex;
-
-  FDragging := False;
-  FPressKind := TPadTabHitKind.None;
-  FPressIndex := -1;
-
-  if WasDragging then
-    Exit;
-
-  case PressKind of
-    TPadTabHitKind.Close:
-      if (Hit.Kind = TPadTabHitKind.Close) and (Hit.Index = PressIndex) and Assigned(FOnCloseTab) then
-        FOnCloseTab(Self, PressIndex);
-    TPadTabHitKind.Plus:
-      if (Hit.Kind = TPadTabHitKind.Plus) and Assigned(FOnAddTab) then
-        FOnAddTab(Self);
-  else
-    // A press that started on a tab body or empty area needs no action on release.
-  end;
+  ApplyPointerResult(FInteraction.EndPress(Round(X), EffectiveWidth, TabCount, Button));
 end;
 
 procedure TPadFmxTabStrip.DblClick;
 begin
   inherited DblClick;
 
-  // Close glyph already closes on a single click; only treat a double-click on the
-  // tab body as a close so double-clicking the glyph does not close twice.
-  const Hit = HitAtX(FLastDownX);
-  if (Hit.Kind = TPadTabHitKind.Tab) and Assigned(FOnCloseTab) then
-    FOnCloseTab(Self, Hit.Index);
+  ApplyPointerResult(FInteraction.DoubleClickClose(Round(FLastDownX), EffectiveWidth, TabCount));
 end;
 
 procedure TPadFmxTabStrip.DoMouseLeave;
 begin
   inherited DoMouseLeave;
 
-  if (FHotIndex <> -1) or (FHotKind <> TPadTabHitKind.None) then
-  begin
-    FHotIndex := -1;
-    FHotKind := TPadTabHitKind.None;
+  if FInteraction.ClearHover then
     Repaint;
-  end;
 end;
 
 end.

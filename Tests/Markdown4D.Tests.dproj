@@ -112,6 +112,7 @@
         <DCCReference Include="..\Examples\Shared\MarkdownPad.Session.pas"/>
         <DCCReference Include="..\Examples\Shared\MarkdownPad.Commands.pas"/>
         <DCCReference Include="..\Examples\Shared\MarkdownPad.TabStrip.Layout.pas"/>
+        <DCCReference Include="..\Examples\Shared\MarkdownPad.TabStrip.Interaction.pas"/>
         <DCCReference Include="..\Examples\Shared\MarkdownPad.TabStrip.pas"/>
         <DCCReference Include="..\Examples\Shared\MarkdownPad.FileWatcher.pas"/>
         <DCCReference Include="..\Examples\Shared\MarkdownPad.HtmlExport.pas"/>

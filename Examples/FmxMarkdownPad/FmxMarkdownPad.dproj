@@ -61,6 +61,7 @@
         <DCCReference Include="..\Shared\MarkdownPad.Session.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.Commands.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.TabStrip.Layout.pas"/>
+        <DCCReference Include="..\Shared\MarkdownPad.TabStrip.Interaction.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.Fmx.TabStrip.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.Fmx.WinFrame.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.FileWatcher.pas"/>
