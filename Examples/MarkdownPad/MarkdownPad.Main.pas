@@ -114,6 +114,7 @@ type
       TabActiveDarkColor = TColor($003F3F3F);
       TabHoverLightColor = TColor($00EAEAEA);
       TabHoverDarkColor = TColor($00383838);
+      ZenPadDarkColor = TColor($0017110D); // matches the dark theme editor/preview background ($0D1117)
       MarkdownFilter = 'Markdown files (*.md)|*.md|All files (*.*)|*.*';
       DefaultExtension = 'md';
       ModifiedMarker = ' *';
@@ -2205,9 +2206,6 @@ begin
   FZenTocWasVisible := pnlToc.Visible;
   FPreZenViewMode := FViewMode;
 
-  if FViewMode = TPadViewMode.Split then
-    FSplitEditorWidth := mdEditor.Width;
-
   pnlToolbar.Visible := False;
   FTabStrip.Visible := False;
   pnlToc.Visible := False;
@@ -2215,22 +2213,39 @@ begin
   pnlStatus.Visible := False;
   pnlFind.Visible := False;
 
-  FViewMode := TPadViewMode.EditorOnly;
+  // Keep the current view mode so zen mirrors what the user is doing: preview-only
+  // becomes a distraction-free rendering, editor-only a distraction-free editor.
+  // Split has no single column to center, so it collapses to editor-only.
+  if FViewMode = TPadViewMode.Split then
+  begin
+    FSplitEditorWidth := mdEditor.Width;
+    FViewMode := TPadViewMode.EditorOnly;
+  end;
   ApplyViewMode;
+
+  // Blend the padding margins into the centered pane's background.
+  var ZenPadColor := clWhite;
+  if FDarkThemeActive then
+    ZenPadColor := ZenPadDarkColor;
 
   FZenLeftPad := TPanel.Create(Self);
   FZenLeftPad.Parent := Self;
   FZenLeftPad.BevelOuter := bvNone;
   FZenLeftPad.ShowCaption := False;
+  FZenLeftPad.ParentBackground := False;
+  FZenLeftPad.Color := ZenPadColor;
   FZenLeftPad.Align := alLeft;
 
   FZenRightPad := TPanel.Create(Self);
   FZenRightPad.Parent := Self;
   FZenRightPad.BevelOuter := bvNone;
   FZenRightPad.ShowCaption := False;
+  FZenRightPad.ParentBackground := False;
+  FZenRightPad.Color := ZenPadColor;
   FZenRightPad.Align := alRight;
 
-  mdEditor.Align := alClient;
+  // The visible pane (editor for editor-only, preview for preview-only) is already
+  // client-aligned by ApplyViewMode, so it centers between the zen padding panels.
 
   UpdateZenPadding;
 
