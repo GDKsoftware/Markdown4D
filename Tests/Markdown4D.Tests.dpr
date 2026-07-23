@@ -54,6 +54,7 @@ uses
   MarkdownPad.Session in '..\Examples\Shared\MarkdownPad.Session.pas',
   MarkdownPad.Commands in '..\Examples\Shared\MarkdownPad.Commands.pas',
   MarkdownPad.CommandSet in '..\Examples\Shared\MarkdownPad.CommandSet.pas',
+  MarkdownPad.SessionSync in '..\Examples\Shared\MarkdownPad.SessionSync.pas',
   MarkdownPad.TabStrip.Layout in '..\Examples\Shared\MarkdownPad.TabStrip.Layout.pas',
   MarkdownPad.TabStrip.Interaction in '..\Examples\Shared\MarkdownPad.TabStrip.Interaction.pas',
   MarkdownPad.TabStrip in '..\Examples\Shared\MarkdownPad.TabStrip.pas',
@@ -65,6 +66,7 @@ uses
   MarkdownPad.Session.Tests in 'MarkdownPad.Session.Tests.pas',
   MarkdownPad.Commands.Tests in 'MarkdownPad.Commands.Tests.pas',
   MarkdownPad.CommandSet.Tests in 'MarkdownPad.CommandSet.Tests.pas',
+  MarkdownPad.SessionSync.Tests in 'MarkdownPad.SessionSync.Tests.pas',
   MarkdownPad.FileWatcher.Tests in 'MarkdownPad.FileWatcher.Tests.pas',
   MarkdownPad.HtmlExport.Tests in 'MarkdownPad.HtmlExport.Tests.pas',
   StreamingMarkdown.Demo.Tests in 'StreamingMarkdown.Demo.Tests.pas';
