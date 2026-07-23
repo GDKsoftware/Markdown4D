@@ -133,14 +133,51 @@ type
 
     [Test]
     procedure CodeBlockRegions_TwoBlocks_ReturnsTwo;
+
+    [Test]
+    procedure CodeBlockRegions_OverriddenBlock_IsExcluded;
   end;
 
 implementation
 
 uses
   System.SysUtils,
+  Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.DisplayList,
+  Markdown4D.Layout.BlockOverride,
   Markdown4D.Layout.FakeMeasurer;
+
+type
+  // Stands in for the chart/mermaid overrides: claims every code block and
+  // draws it as a rectangle so the block renders as graphics, not source.
+  TFakeCodeBlockOverride = class(TInterfacedObject, ILayoutBlockOverride)
+  public
+    function GetName: string;
+    function Handles(const Node: IMarkdownNode): Boolean;
+    function LayoutBlock(const Node: IMarkdownNode; const Top: Single;
+      const Context: ILayoutBlockContext): Single;
+  end;
+
+function TFakeCodeBlockOverride.GetName: string;
+begin
+  Result := 'fake';
+end;
+
+function TFakeCodeBlockOverride.Handles(const Node: IMarkdownNode): Boolean;
+var
+  Code: IMarkdownCodeBlock;
+begin
+  Result := Supports(Node, IMarkdownCodeBlock, Code);
+end;
+
+function TFakeCodeBlockOverride.LayoutBlock(const Node: IMarkdownNode; const Top: Single;
+  const Context: ILayoutBlockContext): Single;
+const
+  BlockHeight = 30.0;
+begin
+  Context.Canvas.FillRectangle(TLayoutRectF.Create(0, Top, Context.Width, Top + BlockHeight), $FF000000);
+  Result := BlockHeight;
+end;
 
 procedure TMarkdownViewerModelTests.Setup;
 begin
@@ -554,6 +591,19 @@ begin
   const Regions = FModel.CodeBlockRegions;
   Assert.AreEqual(2, Integer(Length(Regions)));
   Assert.IsTrue(Regions[0].Rect.Top < Regions[1].Rect.Top);
+end;
+
+procedure TMarkdownViewerModelTests.CodeBlockRegions_OverriddenBlock_IsExcluded;
+begin
+  TLayoutBlockOverrideRegistry.Register(TFakeCodeBlockOverride.Create, 0);
+  try
+    FModel.SetViewport(DefaultWidth, DefaultHeight);
+    FModel.Text := Fence + #10 + 'x' + #10 + Fence;
+
+    Assert.AreEqual(0, Integer(Length(FModel.CodeBlockRegions)));
+  finally
+    TLayoutBlockOverrideRegistry.Clear;
+  end;
 end;
 
 class function TMarkdownViewerModelTests.BuildTallMarkdown: string;
