@@ -240,6 +240,7 @@ uses
   Markdown4D.Extensions.Chart.BlockOverride,
   Markdown4D.Extensions.Mermaid.BlockOverride,
   MarkdownPad.Defines,
+  MarkdownPad.CommandSet,
   MarkdownPad.Text,
   MarkdownPad.Outline,
   MarkdownPad.Workspace,
@@ -1558,179 +1559,37 @@ begin
 end;
 
 procedure TMarkdownPadVCLForm.RegisterStaticCommands;
+var
+  Actions: TPadCommandActions;
 begin
-  FCommands.Register(CmdNewName, CatFile, CmdNewShortcut,
-    procedure
-    begin
-      HandleNewClick(nil);
-    end);
-
-  FCommands.Register(CmdOpenName, CatFile, CmdOpenShortcut,
-    procedure
-    begin
-      HandleOpenClick(nil);
-    end);
-
-  FCommands.Register(CmdSaveName, CatFile, CmdSaveShortcut,
-    procedure
-    begin
-      HandleSaveClick(nil);
-    end);
-
-  FCommands.Register(CmdSaveAsName, CatFile, CmdSaveAsShortcut,
-    procedure
-    begin
-      HandleSaveAsClick(nil);
-    end);
-
-  FCommands.Register(CmdCloseName, CatFile, CmdCloseShortcut,
-    procedure
-    begin
-      CloseActiveDocument;
-    end);
-
-  FCommands.Register(CmdNextTabName, CatFile, CmdNextTabShortcut,
+  Actions.NewDocument := procedure begin HandleNewClick(nil); end;
+  Actions.OpenDocument := procedure begin HandleOpenClick(nil); end;
+  Actions.Save := procedure begin HandleSaveClick(nil); end;
+  Actions.SaveAs := procedure begin HandleSaveAsClick(nil); end;
+  Actions.CloseDocument := procedure begin CloseActiveDocument; end;
+  Actions.NextTab :=
     procedure
     begin
       FWorkspace.ActivateNext;
       SwitchToDocument(FWorkspace.ActiveIndex);
-    end);
-
-  FCommands.Register(CmdExportName, CatFile, CmdExportShortcut,
-    procedure
+    end;
+  Actions.ExportHtml := procedure begin DoExportHtml; end;
+  Actions.CopyHtml := procedure begin DoCopyHtml; end;
+  Actions.ViewEditorOnly := procedure begin SetViewMode(TPadViewMode.EditorOnly); end;
+  Actions.ViewSplit := procedure begin SetViewMode(TPadViewMode.Split); end;
+  Actions.ViewPreviewOnly := procedure begin SetViewMode(TPadViewMode.PreviewOnly); end;
+  Actions.ToggleZen := procedure begin ToggleZen; end;
+  Actions.ToggleTheme := procedure begin HandleThemeClick(nil); end;
+  Actions.ToggleToc := procedure begin HandleTocClick(nil); end;
+  Actions.ShowFind := procedure begin ShowFindBar; end;
+  Actions.FindInPreview := procedure begin ExecuteFind; end;
+  Actions.ExecuteFormat :=
+    procedure(const Command: TEditorCommand)
     begin
-      DoExportHtml;
-    end);
+      ExecuteFormatCommand(Command);
+    end;
 
-  FCommands.Register(CmdCopyHtmlName, CatFile, CmdCopyHtmlShortcut,
-    procedure
-    begin
-      DoCopyHtml;
-    end);
-
-  FCommands.Register(CmdViewEditorName, CatView, CmdViewEditorShortcut,
-    procedure
-    begin
-      SetViewMode(TPadViewMode.EditorOnly);
-    end);
-
-  FCommands.Register(CmdViewSplitName, CatView, CmdViewSplitShortcut,
-    procedure
-    begin
-      SetViewMode(TPadViewMode.Split);
-    end);
-
-  FCommands.Register(CmdViewPreviewName, CatView, CmdViewPreviewShortcut,
-    procedure
-    begin
-      SetViewMode(TPadViewMode.PreviewOnly);
-    end);
-
-  FCommands.Register(CmdZenName, CatView, CmdZenShortcut,
-    procedure
-    begin
-      ToggleZen;
-    end);
-
-  FCommands.Register(CmdThemeName, CatView, CmdThemeShortcut,
-    procedure
-    begin
-      HandleThemeClick(nil);
-    end);
-
-  FCommands.Register(CmdTocName, CatView, CmdTocShortcut,
-    procedure
-    begin
-      HandleTocClick(nil);
-    end);
-
-  FCommands.Register(CmdFindName, CatEdit, CmdFindShortcut,
-    procedure
-    begin
-      ShowFindBar;
-    end);
-
-  FCommands.Register(CmdFindPreviewName, CatEdit, CmdFindPreviewShortcut,
-    procedure
-    begin
-      ExecuteFind;
-    end);
-
-  FCommands.Register(CmdBoldName, CatFormat, CmdBoldShortcut,
-    procedure
-    begin
-      mdEditor.ExecuteCommand(TEditorCommand.Bold);
-      mdEditor.SetFocus;
-    end);
-
-  FCommands.Register(CmdItalicName, CatFormat, CmdItalicShortcut,
-    procedure
-    begin
-      mdEditor.ExecuteCommand(TEditorCommand.Italic);
-      mdEditor.SetFocus;
-    end);
-
-  FCommands.Register(CmdLinkName, CatFormat, CmdLinkShortcut,
-    procedure
-    begin
-      mdEditor.ExecuteCommand(TEditorCommand.Link);
-      mdEditor.SetFocus;
-    end);
-
-  FCommands.Register(CmdCodeName, CatFormat, CmdCodeShortcut,
-    procedure
-    begin
-      mdEditor.ExecuteCommand(TEditorCommand.CodeBlock);
-      mdEditor.SetFocus;
-    end);
-
-  FCommands.Register(CmdH1Name, CatFormat, CmdH1Shortcut,
-    procedure
-    begin
-      ExecuteFormatCommand(TEditorCommand.Heading1);
-    end);
-
-  FCommands.Register(CmdH2Name, CatFormat, CmdH2Shortcut,
-    procedure
-    begin
-      ExecuteFormatCommand(TEditorCommand.Heading2);
-    end);
-
-  FCommands.Register(CmdH3Name, CatFormat, CmdH3Shortcut,
-    procedure
-    begin
-      ExecuteFormatCommand(TEditorCommand.Heading3);
-    end);
-
-  FCommands.Register(CmdBulletName, CatFormat, CmdBulletShortcut,
-    procedure
-    begin
-      ExecuteFormatCommand(TEditorCommand.BulletList);
-    end);
-
-  FCommands.Register(CmdNumberName, CatFormat, CmdNumberShortcut,
-    procedure
-    begin
-      ExecuteFormatCommand(TEditorCommand.NumberedList);
-    end);
-
-  FCommands.Register(CmdQuoteName, CatFormat, CmdQuoteShortcut,
-    procedure
-    begin
-      ExecuteFormatCommand(TEditorCommand.Quote);
-    end);
-
-  FCommands.Register(CmdStrikeName, CatFormat, CmdStrikeShortcut,
-    procedure
-    begin
-      ExecuteFormatCommand(TEditorCommand.Strikethrough);
-    end);
-
-  FCommands.Register(CmdTableName, CatFormat, CmdTableShortcut,
-    procedure
-    begin
-      ExecuteFormatCommand(TEditorCommand.Table);
-    end);
+  RegisterStaticPadCommands(FCommands, Actions);
 end;
 
 procedure TMarkdownPadVCLForm.SetViewMode(const Mode: TPadViewMode);

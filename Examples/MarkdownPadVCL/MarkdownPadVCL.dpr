@@ -11,6 +11,7 @@ uses
   MarkdownPad.TabStrip in '..\Shared\MarkdownPad.TabStrip.pas',
   MarkdownPad.FileWatcher in '..\Shared\MarkdownPad.FileWatcher.pas',
   MarkdownPad.HtmlExport in '..\Shared\MarkdownPad.HtmlExport.pas',
+  MarkdownPad.CommandSet in '..\Shared\MarkdownPad.CommandSet.pas',
   MarkdownPadVCL.Main in 'MarkdownPadVCL.Main.pas' {MarkdownPadVCLForm},
   MarkdownPad.Defines in '..\Shared\MarkdownPad.Defines.pas',
   MarkdownPad.Text in '..\Shared\MarkdownPad.Text.pas',
