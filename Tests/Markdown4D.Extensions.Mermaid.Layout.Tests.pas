@@ -40,6 +40,9 @@ type
     procedure Flowchart_EmitsEdgeSegments;
 
     [Test]
+    procedure Flowchart_AntiParallelEdges_DoNotOverlap;
+
+    [Test]
     procedure Flowchart_TopDown_SourceRanksAboveTarget;
 
     [Test]
@@ -195,6 +198,26 @@ procedure TMermaidLayoutTests.Flowchart_EmitsEdgeSegments;
 begin
   const Items = ModelItems('flowchart-simple-chain');
   Assert.IsTrue(CountKind(Items, TDisplayItemKind.Line) >= 2, 'A two-edge flowchart must emit edge line segments');
+end;
+
+procedure TMermaidLayoutTests.Flowchart_AntiParallelEdges_DoNotOverlap;
+begin
+  const Items = ItemsForDiagram('flowchart LR' + LineFeed + '  A --> B' + LineFeed + '  B --> A');
+
+  var Lines: TArray<IDisplayLine> := nil;
+  for var Item in Items do
+  begin
+    var Line: IDisplayLine;
+    if Supports(Item, IDisplayLine, Line) then
+      Lines := Lines + [Line];
+  end;
+
+  Assert.AreEqual(2, Integer(Length(Lines)), 'Two edges between the same nodes must emit two segments');
+
+  const MidY0 = (Lines[0].StartPoint.Y + Lines[0].EndPoint.Y) / 2;
+  const MidY1 = (Lines[1].StartPoint.Y + Lines[1].EndPoint.Y) / 2;
+  Assert.IsTrue(Abs(MidY0 - MidY1) > 1.0,
+    'Anti-parallel edges must be fanned apart instead of drawn on top of each other');
 end;
 
 procedure TMermaidLayoutTests.Flowchart_TopDown_SourceRanksAboveTarget;

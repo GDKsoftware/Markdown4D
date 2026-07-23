@@ -104,6 +104,7 @@ type
       RoundedCornerPadding = 6.0;
       OrderingSweeps = 2;
       EdgeLabelPadding = 3.0;
+      ParallelEdgeSpacing = 16.0;
     var
       FBounds: TLayoutRectF;
       FBoxes: TArray<TMermaidNodeBox>;
@@ -147,6 +148,7 @@ type
     procedure EmitEdges;
     procedure EmitArrowHead(const Tip, Direction: TLayoutPointF);
     procedure EmitEdgeLabel(const Caption: string; const Center: TLayoutPointF);
+    function ParallelEdgeShift(const EdgeIndex: Integer): TLayoutPointF;
     procedure EmitWedge(const Center: TLayoutPointF; const Radius: Single; const Color: TLayoutColor);
     class function NodeCenter(const Box: TMermaidNodeBox): TLayoutPointF; static;
     class function BorderPoint(const Box: TMermaidNodeBox; const Toward: TLayoutPointF): TLayoutPointF; static;
@@ -1039,8 +1041,11 @@ begin
     const SourceCenter = NodeCenter(FBoxes[Source]);
     const TargetCenter = NodeCenter(FBoxes[Target]);
 
-    const StartPoint = BorderPoint(FBoxes[Source], TargetCenter);
-    const EndPoint = BorderPoint(FBoxes[Target], SourceCenter);
+    const Shift = ParallelEdgeShift(Index);
+    const RawStart = BorderPoint(FBoxes[Source], TargetCenter);
+    const RawEnd = BorderPoint(FBoxes[Target], SourceCenter);
+    const StartPoint = TLayoutPointF.Create(RawStart.X + Shift.X, RawStart.Y + Shift.Y);
+    const EndPoint = TLayoutPointF.Create(RawEnd.X + Shift.X, RawEnd.Y + Shift.Y);
 
     var StrokeWidth := SolidStrokeWidth;
     if Edge.Stroke = TMermaidEdgeStroke.Thick then
@@ -1073,6 +1078,46 @@ begin
       EmitEdgeLabel(Edge.Caption, Midpoint);
     end;
   end;
+end;
+
+function TMermaidFlowchartBuilder.ParallelEdgeShift(const EdgeIndex: Integer): TLayoutPointF;
+begin
+  const Edge = FModel.Edges[EdgeIndex];
+  const PairLow = Min(Edge.SourceIndex, Edge.TargetIndex);
+  const PairHigh = Max(Edge.SourceIndex, Edge.TargetIndex);
+
+  // Fan out every edge that connects the same node pair (parallel and
+  // anti-parallel edges) so they no longer draw on top of each other. The
+  // offset uses the pair's canonical low->high direction, so a back-edge lands
+  // on the opposite side of the forward edge instead of cancelling it out.
+  var Count := 0;
+  var Position := 0;
+  for var Other := 0 to FModel.EdgeCount - 1 do
+  begin
+    const OtherEdge = FModel.Edges[Other];
+    if (Min(OtherEdge.SourceIndex, OtherEdge.TargetIndex) = PairLow) and
+      (Max(OtherEdge.SourceIndex, OtherEdge.TargetIndex) = PairHigh) then
+    begin
+      if Other < EdgeIndex then
+        Inc(Position);
+      Inc(Count);
+    end;
+  end;
+
+  if Count <= 1 then
+    Exit(TLayoutPointF.Create(0, 0));
+
+  const Offset = (Position - (Count - 1) / 2) * ParallelEdgeSpacing;
+
+  const LowCenter = NodeCenter(FBoxes[PairLow]);
+  const HighCenter = NodeCenter(FBoxes[PairHigh]);
+  const DeltaX = HighCenter.X - LowCenter.X;
+  const DeltaY = HighCenter.Y - LowCenter.Y;
+  const Distance = Sqrt(DeltaX * DeltaX + DeltaY * DeltaY);
+  if Distance = 0 then
+    Exit(TLayoutPointF.Create(0, 0));
+
+  Result := TLayoutPointF.Create(-DeltaY / Distance * Offset, DeltaX / Distance * Offset);
 end;
 
 procedure TMermaidFlowchartBuilder.EmitArrowHead(const Tip, Direction: TLayoutPointF);
