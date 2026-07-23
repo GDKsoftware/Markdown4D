@@ -108,11 +108,11 @@ begin
   try
     Loaded.Load;
 
-    Assert.AreEqual(2, Length(Loaded.OpenFiles));
+    Assert.AreEqual(2, Integer(Length(Loaded.OpenFiles)));
     Assert.AreEqual('a.md', Loaded.OpenFiles[0]);
     Assert.AreEqual('b.md', Loaded.OpenFiles[1]);
     Assert.AreEqual(1, Loaded.ActiveIndex);
-    Assert.AreEqual(1, Length(Loaded.RecentFiles));
+    Assert.AreEqual(1, Integer(Length(Loaded.RecentFiles)));
     Assert.AreEqual('r1.md', Loaded.RecentFiles[0]);
     Assert.IsTrue(Loaded.DarkTheme);
     Assert.IsTrue(Loaded.ViewMode = TPadViewMode.PreviewOnly);
@@ -127,9 +127,9 @@ begin
   try
     Missing.Load;
 
-    Assert.AreEqual(0, Length(Missing.OpenFiles));
+    Assert.AreEqual(0, Integer(Length(Missing.OpenFiles)));
     Assert.AreEqual(-1, Missing.ActiveIndex);
-    Assert.AreEqual(0, Length(Missing.RecentFiles));
+    Assert.AreEqual(0, Integer(Length(Missing.RecentFiles)));
     Assert.IsFalse(Missing.DarkTheme);
     Assert.IsTrue(Missing.ViewMode = TPadViewMode.Split);
   finally
@@ -143,7 +143,7 @@ begin
 
   FSession.Load;
 
-  Assert.AreEqual(0, Length(FSession.OpenFiles));
+  Assert.AreEqual(0, Integer(Length(FSession.OpenFiles)));
   Assert.AreEqual(-1, FSession.ActiveIndex);
   Assert.IsFalse(FSession.DarkTheme);
 end;
@@ -154,7 +154,7 @@ begin
 
   FSession.Load;
 
-  Assert.AreEqual(0, Length(FSession.OpenFiles));
+  Assert.AreEqual(0, Integer(Length(FSession.OpenFiles)));
   Assert.AreEqual(-1, FSession.ActiveIndex);
 end;
 
@@ -186,7 +186,7 @@ begin
   FSession.AddRecentFile('two.md');
   FSession.AddRecentFile('one.md');
 
-  Assert.AreEqual(2, Length(FSession.RecentFiles));
+  Assert.AreEqual(2, Integer(Length(FSession.RecentFiles)));
   Assert.AreEqual('one.md', FSession.RecentFiles[0]);
   Assert.AreEqual('two.md', FSession.RecentFiles[1]);
 end;
@@ -196,7 +196,7 @@ begin
   FSession.AddRecentFile('File.md');
   FSession.AddRecentFile('FILE.MD');
 
-  Assert.AreEqual(1, Length(FSession.RecentFiles));
+  Assert.AreEqual(1, Integer(Length(FSession.RecentFiles)));
   Assert.AreEqual('FILE.MD', FSession.RecentFiles[0]);
 end;
 
@@ -207,7 +207,7 @@ begin
     FSession.AddRecentFile(Format('file%d.md', [Index]));
   end;
 
-  Assert.AreEqual(10, Length(FSession.RecentFiles));
+  Assert.AreEqual(10, Integer(Length(FSession.RecentFiles)));
   Assert.AreEqual('file15.md', FSession.RecentFiles[0]);
   Assert.AreEqual('file6.md', FSession.RecentFiles[9]);
 end;
@@ -216,14 +216,14 @@ procedure TPadSessionTests.AddRecentFile_EmptyIgnored;
 begin
   FSession.AddRecentFile('');
 
-  Assert.AreEqual(0, Length(FSession.RecentFiles));
+  Assert.AreEqual(0, Integer(Length(FSession.RecentFiles)));
 end;
 
 procedure TPadSessionTests.SetOpenFiles_DropsEmptyPaths;
 begin
   FSession.SetOpenFiles(['a.md', '', 'b.md', ''], 0);
 
-  Assert.AreEqual(2, Length(FSession.OpenFiles));
+  Assert.AreEqual(2, Integer(Length(FSession.OpenFiles)));
   Assert.AreEqual('a.md', FSession.OpenFiles[0]);
   Assert.AreEqual('b.md', FSession.OpenFiles[1]);
 end;

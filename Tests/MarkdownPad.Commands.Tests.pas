@@ -94,7 +94,7 @@ begin
 
   const Commands = FRegistry.Commands;
 
-  Assert.AreEqual(3, Length(Commands));
+  Assert.AreEqual(3, Integer(Length(Commands)));
   Assert.AreEqual('Alpha', Commands[0].Name);
   Assert.AreEqual('Beta', Commands[1].Name);
   Assert.AreEqual('Gamma', Commands[2].Name);
@@ -140,7 +140,7 @@ begin
 
   const Matches = FRegistry.Match('');
 
-  Assert.AreEqual(3, Length(Matches));
+  Assert.AreEqual(3, Integer(Length(Matches)));
   Assert.AreEqual('First', Matches[0].Command.Name);
   Assert.AreEqual('Second', Matches[1].Command.Name);
   Assert.AreEqual('Third', Matches[2].Command.Name);
@@ -152,7 +152,7 @@ begin
 
   const Matches = FRegistry.Match('zz');
 
-  Assert.AreEqual(0, Length(Matches));
+  Assert.AreEqual(0, Integer(Length(Matches)));
 end;
 
 procedure TPadCommandsTests.Match_CaseInsensitive;
@@ -161,7 +161,7 @@ begin
 
   const Matches = FRegistry.Match('sav');
 
-  Assert.AreEqual(1, Length(Matches));
+  Assert.AreEqual(1, Integer(Length(Matches)));
   Assert.AreEqual('Save', Matches[0].Command.Name);
 end;
 
@@ -184,7 +184,7 @@ begin
 
   const Matches = FRegistry.Match('sa');
 
-  Assert.AreEqual(2, Length(Matches));
+  Assert.AreEqual(2, Integer(Length(Matches)));
   Assert.AreEqual('Save As', Matches[0].Command.Name);
   Assert.IsTrue(Matches[0].Score > Matches[1].Score);
 end;
@@ -196,7 +196,7 @@ begin
 
   const Matches = FRegistry.Match('o');
 
-  Assert.AreEqual(2, Length(Matches));
+  Assert.AreEqual(2, Integer(Length(Matches)));
   Assert.AreEqual('Open File', Matches[0].Command.Name);
   Assert.IsTrue(Matches[0].Score > Matches[1].Score);
 end;
@@ -208,7 +208,7 @@ begin
 
   const Matches = FRegistry.Match('x');
 
-  Assert.AreEqual(2, Length(Matches));
+  Assert.AreEqual(2, Integer(Length(Matches)));
   Assert.AreEqual('axb', Matches[0].Command.Name);
   Assert.IsTrue(Matches[0].Score > Matches[1].Score);
 end;
@@ -220,7 +220,7 @@ begin
 
   const Matches = FRegistry.Match('a');
 
-  Assert.AreEqual(2, Length(Matches));
+  Assert.AreEqual(2, Integer(Length(Matches)));
   Assert.AreEqual(Matches[0].Score, Matches[1].Score);
   Assert.AreEqual('apple', Matches[0].Command.Name);
   Assert.AreEqual('avocado', Matches[1].Command.Name);

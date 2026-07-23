@@ -75,7 +75,7 @@ begin
   const Updated = UpdateSource(OriginalSource, EditedSource, TLayoutBlockRange.Create(1, 1, 1));
 
   const Indexes = Updated.RecomputedBlockIndexes;
-  Assert.AreEqual(1, Length(Indexes));
+  Assert.AreEqual(1, Integer(Length(Indexes)));
   Assert.AreEqual(1, Indexes[0]);
 end;
 
@@ -120,7 +120,7 @@ begin
   const Updated = UpdateSource(OriginalSource, InsertSource, TLayoutBlockRange.Create(1, 0, 1));
 
   const Indexes = Updated.RecomputedBlockIndexes;
-  Assert.AreEqual(1, Length(Indexes));
+  Assert.AreEqual(1, Integer(Length(Indexes)));
   Assert.AreEqual(1, Indexes[0]);
 
   const Fresh = LayoutSource(InsertSource);
@@ -131,7 +131,7 @@ procedure TMarkdownLayoutIncrementalTests.UpdateLayout_RemovedBlock_RecomputesNo
 begin
   const Updated = UpdateSource(OriginalSource, DeleteSource, TLayoutBlockRange.Create(1, 1, 0));
 
-  Assert.AreEqual(0, Length(Updated.RecomputedBlockIndexes));
+  Assert.AreEqual(0, Integer(Length(Updated.RecomputedBlockIndexes)));
 
   const Fresh = LayoutSource(DeleteSource);
   AssertEquivalent(Fresh, Updated);

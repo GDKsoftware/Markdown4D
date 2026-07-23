@@ -99,7 +99,7 @@ begin
 
   FWatcher.Poll;
 
-  Assert.AreEqual(0, Length(FFiredDocuments));
+  Assert.AreEqual(0, Integer(Length(FFiredDocuments)));
 end;
 
 procedure TPadFileWatcherTests.Poll_FileModifiedExternally_FiresOnceWithDocument;
@@ -109,7 +109,7 @@ begin
   SimulateExternalEdit(FFile1);
   FWatcher.Poll;
 
-  Assert.AreEqual(1, Length(FFiredDocuments));
+  Assert.AreEqual(1, Integer(Length(FFiredDocuments)));
   Assert.IsTrue(FFiredDocuments[0] = Doc);
 end;
 
@@ -121,7 +121,7 @@ begin
   FWatcher.Poll;
   FWatcher.Poll;
 
-  Assert.AreEqual(1, Length(FFiredDocuments));
+  Assert.AreEqual(1, Integer(Length(FFiredDocuments)));
 end;
 
 procedure TPadFileWatcherTests.Poll_UpdatesDocumentTimestampBeforeCallback;
@@ -141,7 +141,7 @@ begin
 
   FWatcher.Poll;
 
-  Assert.AreEqual(0, Length(FFiredDocuments));
+  Assert.AreEqual(0, Integer(Length(FFiredDocuments)));
 end;
 
 procedure TPadFileWatcherTests.Poll_MissingFile_Ignored;
@@ -151,7 +151,7 @@ begin
   TFile.Delete(FFile1);
   FWatcher.Poll;
 
-  Assert.AreEqual(0, Length(FFiredDocuments));
+  Assert.AreEqual(0, Integer(Length(FFiredDocuments)));
 end;
 
 procedure TPadFileWatcherTests.Poll_ModifiedDocument_StillFires;
@@ -162,7 +162,7 @@ begin
   SimulateExternalEdit(FFile1);
   FWatcher.Poll;
 
-  Assert.AreEqual(1, Length(FFiredDocuments));
+  Assert.AreEqual(1, Integer(Length(FFiredDocuments)));
 end;
 
 procedure TPadFileWatcherTests.Poll_MultipleDocuments_FiresPerChangedFileOnly;
@@ -173,7 +173,7 @@ begin
   SimulateExternalEdit(FFile2);
   FWatcher.Poll;
 
-  Assert.AreEqual(1, Length(FFiredDocuments));
+  Assert.AreEqual(1, Integer(Length(FFiredDocuments)));
   Assert.IsTrue(FFiredDocuments[0] = Doc2);
 end;
 
@@ -185,7 +185,7 @@ begin
   FWatcher.Reset(Doc);
   FWatcher.Poll;
 
-  Assert.AreEqual(0, Length(FFiredDocuments));
+  Assert.AreEqual(0, Integer(Length(FFiredDocuments)));
 end;
 
 procedure TPadFileWatcherTests.HandleFileChanged(const Document: IPadDocument);
