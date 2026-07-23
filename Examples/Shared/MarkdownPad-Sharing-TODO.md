@@ -15,16 +15,15 @@ twee schillen om dezelfde app. De echt identieke stukken zijn al uitgetild naar
 - `MarkdownPad.SessionSync.pas` — `TPadSessionSync`: opent de sessiebestanden in
   de workspace (`RestoreOpenFiles`), verzamelt de op te slaan getitelde bestanden
   (`CollectOpenFiles`) en de tab-captions/modified-vlaggen (`CollectTabs`).
+- `MarkdownPad.EditorView.pas` — `IPadEditorView` (framework-neutrale abstractie
+  rond de live editor + preview: tekst, caret, edit-state, preview-scrolloffset,
+  scroll-naar-bronregel, swap-suppressie) en `TPadDocumentSwitch.Execute` (de
+  buffer-swap: uitgaand document opslaan, doel activeren, inkomend document laden).
+  Elke form implementeert `IPadEditorView` met triviale forwarders naar zijn eigen
+  `mdEditor`/`mdPreview` (VCL) resp. `FEditor`/`FPreview` (FMX); `SwitchToDocument`
+  is nu een paar regels die `TPadDocumentSwitch.Execute` aanroepen.
 
 ## Nog niet gedeeld (bewust uitgesteld)
-
-### `SwitchToDocument`: editor-/preview-state
-De workspace-kant is nu gedeeld, maar het opslaan en herladen van de live
-editor-/preview-state blijft per form, omdat het aan de concrete controls hangt
-(`mdEditor`/`mdPreview` vs `FEditor`/`FPreview`). Dit delen vraagt een
-editor/preview-abstractie (een klein view-model of interface rond `Text`,
-`CaretPosition`, `SaveEditState`/`LoadEditState`, `ScrollToSourceLine` en de
-preview-scrolloffset), los van de VCL/FMX-controls.
 
 ### Bewust NIET delen
 - `BuildSampleMarkdown` — de voorbeeldtekst verschilt per app (VCL vs FMX).

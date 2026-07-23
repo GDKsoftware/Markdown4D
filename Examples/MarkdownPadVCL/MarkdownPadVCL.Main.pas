@@ -26,13 +26,14 @@ uses
   Markdown4D.Vcl.Editor,
   Markdown4D.Vcl.Viewer,
   MarkdownPad.Workspace.Interfaces,
+  MarkdownPad.EditorView,
   MarkdownPad.Session,
   MarkdownPad.Commands,
   MarkdownPad.TabStrip,
   MarkdownPad.FileWatcher;
 
 type
-  TMarkdownPadVCLForm = class(TForm)
+  TMarkdownPadVCLForm = class(TForm, IPadEditorView)
     pnlToolbar: TPanel;
     pnlFind: TPanel;
     pnlStatus: TPanel;
@@ -173,6 +174,19 @@ type
     procedure HandleTick(Sender: TObject);
     procedure HandleFileChanged(const Document: IPadDocument);
     procedure OpenPath(const FileName: string);
+    function GetEditorText: string;
+    procedure SetEditorText(const Value: string);
+    function GetEditorCaret: Integer;
+    procedure SetEditorCaret(const Value: Integer);
+    function GetPreviewScrollOffset: Single;
+    procedure SetPreviewScrollOffset(const Value: Single);
+    function FirstVisibleSourceLine: Integer;
+    procedure ScrollToSourceLine(const LineIndex: Integer);
+    function SaveEditState: IMarkdownEditorState;
+    procedure LoadEditState(const State: IMarkdownEditorState);
+    procedure FlushPreview;
+    procedure BeginSwap;
+    procedure EndSwap;
     procedure SwitchToDocument(const Index: Integer);
     procedure CloseActiveDocument;
     procedure CloseDocumentAt(const Index: Integer);
@@ -1174,41 +1188,80 @@ begin
   SwitchToDocument(FWorkspace.ActiveIndex);
 end;
 
+function TMarkdownPadVCLForm.GetEditorText: string;
+begin
+  Result := mdEditor.Text;
+end;
+
+procedure TMarkdownPadVCLForm.SetEditorText(const Value: string);
+begin
+  mdEditor.Text := Value;
+end;
+
+function TMarkdownPadVCLForm.GetEditorCaret: Integer;
+begin
+  Result := mdEditor.CaretPosition;
+end;
+
+procedure TMarkdownPadVCLForm.SetEditorCaret(const Value: Integer);
+begin
+  mdEditor.CaretPosition := Value;
+end;
+
+function TMarkdownPadVCLForm.GetPreviewScrollOffset: Single;
+begin
+  Result := mdPreview.ScrollOffset;
+end;
+
+procedure TMarkdownPadVCLForm.SetPreviewScrollOffset(const Value: Single);
+begin
+  mdPreview.ScrollOffset := Value;
+end;
+
+function TMarkdownPadVCLForm.FirstVisibleSourceLine: Integer;
+begin
+  Result := mdEditor.FirstVisibleSourceLine;
+end;
+
+procedure TMarkdownPadVCLForm.ScrollToSourceLine(const LineIndex: Integer);
+begin
+  mdEditor.ScrollToSourceLine(LineIndex);
+end;
+
+function TMarkdownPadVCLForm.SaveEditState: IMarkdownEditorState;
+begin
+  Result := mdEditor.SaveEditState;
+end;
+
+procedure TMarkdownPadVCLForm.LoadEditState(const State: IMarkdownEditorState);
+begin
+  mdEditor.LoadEditState(State);
+end;
+
+procedure TMarkdownPadVCLForm.FlushPreview;
+begin
+  mdEditor.FlushPreview;
+end;
+
+procedure TMarkdownPadVCLForm.BeginSwap;
+begin
+  FSwapping := True;
+end;
+
+procedure TMarkdownPadVCLForm.EndSwap;
+begin
+  FSwapping := False;
+end;
+
 procedure TMarkdownPadVCLForm.SwitchToDocument(const Index: Integer);
 begin
   if FSwapping then
     Exit;
 
-  if FActiveDoc <> nil then
-  begin
-    FActiveDoc.Text := mdEditor.Text;
-    FActiveDoc.CaretPosition := mdEditor.CaretPosition;
-    FActiveDoc.EditorScrollOffset := mdEditor.FirstVisibleSourceLine;
-    FActiveDoc.PreviewScrollOffset := mdPreview.ScrollOffset;
-    FActiveDoc.EditState := mdEditor.SaveEditState;
-  end;
-
-  FWorkspace.Activate(Index);
-  FActiveDoc := FWorkspace.ActiveDocument;
+  FActiveDoc := TPadDocumentSwitch.Execute(FWorkspace, Self, FActiveDoc, Index);
 
   if FActiveDoc = nil then
     Exit;
-
-  FSwapping := True;
-  try
-    var State: IMarkdownEditorState;
-    if Supports(FActiveDoc.EditState, IMarkdownEditorState, State) then
-      mdEditor.LoadEditState(State)
-    else
-      mdEditor.Text := FActiveDoc.Text;
-
-    mdEditor.FlushPreview;
-    mdEditor.CaretPosition := FActiveDoc.CaretPosition;
-    mdEditor.ScrollToSourceLine(Round(FActiveDoc.EditorScrollOffset));
-    mdPreview.ScrollOffset := FActiveDoc.PreviewScrollOffset;
-  finally
-    FSwapping := False;
-  end;
 
   FLastCaret := -1;
   FMapDirty := True;
