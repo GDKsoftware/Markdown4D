@@ -1,7 +1,7 @@
 unit MarkdownPad.Defines;
 
-// Constants shared verbatim between the VCL (MarkdownPad) and FMX
-// (FmxMarkdownPad) builds of the pad. Platform-specific values (colours,
+// Constants shared verbatim between the VCL (MarkdownPadVCL) and FMX
+// (MarkdownPadFMX) builds of the pad. Platform-specific values (colours,
 // differing metrics, framework-only chrome) stay in each form unit.
 
 interface

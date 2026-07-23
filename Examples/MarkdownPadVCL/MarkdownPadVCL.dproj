@@ -1,15 +1,15 @@
 ﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
-        <ProjectGuid>{8F3B6E29-4D71-4A5C-B0E8-2C9D1A7F0B36}</ProjectGuid>
+        <ProjectGuid>{2C9F1D74-8A5E-4B12-9E33-7A6C0F1B2D48}</ProjectGuid>
         <ProjectVersion>20.3</ProjectVersion>
-        <FrameworkType>FMX</FrameworkType>
-        <MainSource>FmxMarkdownPad.dpr</MainSource>
+        <FrameworkType>VCL</FrameworkType>
+        <MainSource>MarkdownPadVCL.dpr</MainSource>
         <Base>True</Base>
         <Config Condition="'$(Config)'==''">Debug</Config>
         <Platform Condition="'$(Platform)'==''">Win32</Platform>
         <TargetedPlatforms>1</TargetedPlatforms>
         <AppType>Application</AppType>
-        <ProjectName Condition="'$(ProjectName)'==''">FmxMarkdownPad</ProjectName>
+        <ProjectName Condition="'$(ProjectName)'==''">MarkdownPadVCL</ProjectName>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
         <Base>true</Base>
@@ -48,30 +48,27 @@
         <Base>true</Base>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base)'!=''">
-        <SanitizedProjectName>FmxMarkdownPad</SanitizedProjectName>
+        <SanitizedProjectName>MarkdownPadVCL</SanitizedProjectName>
         <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
         <DCC_ExeOutput>.\$(Platform)\$(Config)</DCC_ExeOutput>
-        <DCC_UnitSearchPath>..\..\Source\Core;..\..\Source\Layout;..\..\Source\Fmx;..\Shared;..\..\ThirdParty\Image32\source;..\..\ThirdParty\Image32\source\Clipper2;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
-        <DCC_Namespace>System;System.Win;Winapi;Xml;Data;Datasnap;Web;Soap;Fmx;$(DCC_Namespace)</DCC_Namespace>
+        <DCC_UnitSearchPath>..\..\Source\Core;..\..\Source\Layout;..\..\Source\Vcl;..\..\ThirdParty\Image32\source;..\..\ThirdParty\Image32\source\Clipper2;..\Shared;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_Namespace>Winapi;System.Win;Data.Win;Datasnap.Win;Web.Win;Soap.Win;Vcl;Vcl.Imaging;Vcl.Touch;Vcl.Samples;Vcl.Shell;System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
         <DCC_E>false</DCC_E>
         <DCC_N>false</DCC_N>
         <DCC_S>false</DCC_S>
         <DCC_F>false</DCC_F>
         <DCC_K>false</DCC_K>
         <VerInfo_Locale>1033</VerInfo_Locale>
-        <VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
-        <VerInfo_Keys>CompanyName=;FileDescription=$(MSBuildProjectName);FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProgramID=com.embarcadero.$(MSBuildProjectName);ProductName=$(MSBuildProjectName);ProductVersion=1.0.0.0;Comments=</VerInfo_Keys>
-        <Icon_MainIcon>$(BDS)\bin\delphi_PROJECTICON.ico</Icon_MainIcon>
-        <PostBuildEvent><![CDATA[copy /Y "$(BDS)\bin\sk4d.dll" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\"
-$(PostBuildEvent)]]></PostBuildEvent>
-        <Icns_MainIcns>$(BDS)\bin\delphi_PROJECTICNS.icns</Icns_MainIcns>
-    </PropertyGroup>
-    <PropertyGroup Condition="'$(Base_Win64)'!=''">
-        <DCC_Namespace>Data.Win;Datasnap.Win;Web.Win;Soap.Win;Xml.Win;$(DCC_Namespace)</DCC_Namespace>
-        <BT_BuildType>Debug</BT_BuildType>
-        <Manifest_File>$(BDS)\bin\default_app.manifest</Manifest_File>
+        <Icon_MainIcon>MarkdownPadVCL.ico</Icon_MainIcon>
         <UWP_DelphiLogo44>$(BDS)\bin\Artwork\Windows\UWP\delphi_UwpDefault_44.png</UWP_DelphiLogo44>
         <UWP_DelphiLogo150>$(BDS)\bin\Artwork\Windows\UWP\delphi_UwpDefault_150.png</UWP_DelphiLogo150>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Base_Win64)'!=''">
+        <DCC_Namespace>Xml.Win;$(DCC_Namespace)</DCC_Namespace>
+        <BT_BuildType>Debug</BT_BuildType>
+        <VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
+        <VerInfo_Keys>CompanyName=;FileDescription=$(MSBuildProjectName);FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProgramID=com.embarcadero.$(MSBuildProjectName);ProductName=$(MSBuildProjectName);ProductVersion=1.0.0.0;Comments=</VerInfo_Keys>
+        <Manifest_File>$(BDS)\bin\default_app.manifest</Manifest_File>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_1)'!=''">
         <DCC_Define>DEBUG;$(DCC_Define)</DCC_Define>
@@ -105,11 +102,13 @@ $(PostBuildEvent)]]></PostBuildEvent>
         <DCCReference Include="..\Shared\MarkdownPad.Commands.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.TabStrip.Layout.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.TabStrip.Interaction.pas"/>
-        <DCCReference Include="..\Shared\MarkdownPad.Fmx.TabStrip.pas"/>
-        <DCCReference Include="..\Shared\MarkdownPad.Fmx.WinFrame.pas"/>
+        <DCCReference Include="..\Shared\MarkdownPad.TabStrip.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.FileWatcher.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.HtmlExport.pas"/>
-        <DCCReference Include="FmxMarkdownPad.Main.pas"/>
+        <DCCReference Include="MarkdownPadVCL.Main.pas">
+            <Form>MarkdownPadVCLForm</Form>
+            <FormType>dfm</FormType>
+        </DCCReference>
         <DCCReference Include="..\Shared\MarkdownPad.Defines.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.Text.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.Outline.pas"/>
@@ -131,7 +130,7 @@ $(PostBuildEvent)]]></PostBuildEvent>
         <BorlandProject>
             <Delphi.Personality>
                 <Source>
-                    <Source Name="MainSource">FmxMarkdownPad.dpr</Source>
+                    <Source Name="MainSource">MarkdownPadVCL.dpr</Source>
                 </Source>
             </Delphi.Personality>
             <Platforms>
@@ -139,24 +138,9 @@ $(PostBuildEvent)]]></PostBuildEvent>
                 <Platform value="Win64">False</Platform>
             </Platforms>
             <Deployment Version="5">
-                <DeployFile LocalName="$(BDS)\Redist\iossimulator\libcgunwind.1.0.dylib" Class="DependencyModule">
-                    <Platform Name="iOSSimulator">
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="$(BDS)\Redist\iossimulator\libpcre.dylib" Class="DependencyModule">
-                    <Platform Name="iOSSimulator">
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="$(BDS)\Redist\osx32\libcgunwind.1.0.dylib" Class="DependencyModule">
-                    <Platform Name="OSX32">
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="Win32\Debug\FmxMarkdownPad.exe" Configuration="Debug" Class="ProjectOutput">
+                <DeployFile LocalName="Win32\Debug\MarkdownPadVCL.exe" Configuration="Debug" Class="ProjectOutput">
                     <Platform Name="Win32">
-                        <RemoteName>FmxMarkdownPad.exe</RemoteName>
+                        <RemoteName>MarkdownPadVCL.exe</RemoteName>
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>
@@ -1117,36 +1101,4 @@ $(PostBuildEvent)]]></PostBuildEvent>
     <Import Project="$(BDS)\Bin\CodeGear.Delphi.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Delphi.Targets')"/>
     <Import Project="$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj" Condition="Exists('$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj')"/>
     <Import Project="$(MSBuildProjectName).deployproj" Condition="Exists('$(MSBuildProjectName).deployproj')"/>
-    <PropertyGroup Condition="'$(Config)'=='Debug' And '$(Platform)'=='Win32'">
-        <PreBuildEvent/>
-        <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
-        <PreLinkEvent/>
-        <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
-        <PostBuildEvent>copy /Y &quot;$(BDS)\bin\sk4d.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;</PostBuildEvent>
-        <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
-    </PropertyGroup>
-    <PropertyGroup Condition="'$(Config)'=='Debug' And '$(Platform)'=='Win64'">
-        <PreBuildEvent/>
-        <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
-        <PreLinkEvent/>
-        <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
-        <PostBuildEvent>copy /Y &quot;$(BDS)\bin\sk4d.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;</PostBuildEvent>
-        <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
-    </PropertyGroup>
-    <PropertyGroup Condition="'$(Config)'=='Release' And '$(Platform)'=='Win32'">
-        <PreBuildEvent/>
-        <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
-        <PreLinkEvent/>
-        <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
-        <PostBuildEvent>copy /Y &quot;$(BDS)\bin\sk4d.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;</PostBuildEvent>
-        <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
-    </PropertyGroup>
-    <PropertyGroup Condition="'$(Config)'=='Release' And '$(Platform)'=='Win64'">
-        <PreBuildEvent/>
-        <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
-        <PreLinkEvent/>
-        <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
-        <PostBuildEvent>copy /Y &quot;$(BDS)\bin\sk4d.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;</PostBuildEvent>
-        <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
-    </PropertyGroup>
 </Project>

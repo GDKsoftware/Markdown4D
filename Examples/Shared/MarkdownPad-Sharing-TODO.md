@@ -1,6 +1,6 @@
 # MarkdownPad — gedeelde code: nog te doen
 
-De VCL- (`Examples/MarkdownPad`) en FMX-build (`Examples/FmxMarkdownPad`) zijn
+De VCL- (`Examples/MarkdownPadVCL`) en FMX-build (`Examples/MarkdownPadFMX`) zijn
 twee schillen om dezelfde app. De echt identieke stukken zijn al uitgetild naar
 `Examples/Shared`:
 

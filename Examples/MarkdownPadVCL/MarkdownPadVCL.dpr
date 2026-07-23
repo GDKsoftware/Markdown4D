@@ -1,4 +1,4 @@
-program MarkdownPad;
+program MarkdownPadVCL;
 
 uses
   Vcl.Forms,
@@ -11,7 +11,7 @@ uses
   MarkdownPad.TabStrip in '..\Shared\MarkdownPad.TabStrip.pas',
   MarkdownPad.FileWatcher in '..\Shared\MarkdownPad.FileWatcher.pas',
   MarkdownPad.HtmlExport in '..\Shared\MarkdownPad.HtmlExport.pas',
-  MarkdownPad.Main in 'MarkdownPad.Main.pas' {MarkdownPadForm},
+  MarkdownPadVCL.Main in 'MarkdownPadVCL.Main.pas' {MarkdownPadVCLForm},
   MarkdownPad.Defines in '..\Shared\MarkdownPad.Defines.pas',
   MarkdownPad.Text in '..\Shared\MarkdownPad.Text.pas',
   MarkdownPad.Outline in '..\Shared\MarkdownPad.Outline.pas';
@@ -21,6 +21,6 @@ uses
 begin
   Application.Initialize;
   Application.MainFormOnTaskbar := True;
-  Application.CreateForm(TMarkdownPadForm, MarkdownPadForm);
+  Application.CreateForm(TMarkdownPadVCLForm, MarkdownPadVCLForm);
   Application.Run;
 end.
