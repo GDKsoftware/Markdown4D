@@ -99,7 +99,7 @@ begin
   const EndFragment = ReadHeaderInt(Payload, 'EndFragment');
 
   const Bytes = TEncoding.UTF8.GetBytes(Payload);
-  Assert.AreEqual(EndHtml, Length(Bytes));
+  Assert.AreEqual(EndHtml, Integer(Length(Bytes)));
 
   const FromStartHtml = TEncoding.UTF8.GetString(Bytes, StartHtml, Length(Bytes) - StartHtml);
   Assert.IsTrue(FromStartHtml.StartsWith('<html>'));

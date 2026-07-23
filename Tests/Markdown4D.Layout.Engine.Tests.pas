@@ -187,7 +187,7 @@ begin
   const DisplayList = LayoutMarkdownWithPadding(Source, 400, ContentPaddingValue);
 
   const Runs = TextRunsOf(DisplayList);
-  Assert.AreEqual(2, Length(Runs));
+  Assert.AreEqual(2, Integer(Length(Runs)));
 
   const ExpectedFirstLine = Word + ' ' + Word + ' ' + Word;
   Assert.AreEqual(ExpectedFirstLine, Runs[0].Text);
@@ -207,7 +207,7 @@ begin
   const DisplayList = LayoutMarkdown('alpha beta gamma', 12 * BaseCharWidth);
 
   const Runs = TextRunsOf(DisplayList);
-  Assert.AreEqual(2, Length(Runs));
+  Assert.AreEqual(2, Integer(Length(Runs)));
 
   Assert.AreEqual('alpha beta', Runs[0].Text);
   AssertSingle(0, Runs[0].Bounds.Left);
@@ -232,7 +232,7 @@ begin
   const DisplayList = LayoutMarkdown('alpha beta', 5 * BaseCharWidth);
 
   const Runs = TextRunsOf(DisplayList);
-  Assert.AreEqual(2, Length(Runs));
+  Assert.AreEqual(2, Integer(Length(Runs)));
 
   Assert.AreEqual('alpha', Runs[0].Text);
   AssertSingle(5 * BaseCharWidth, Runs[0].Bounds.Width);
@@ -246,7 +246,7 @@ begin
   const DisplayList = LayoutMarkdown(StringOfChar('a', 30), 10 * BaseCharWidth);
 
   const Runs = TextRunsOf(DisplayList);
-  Assert.AreEqual(3, Length(Runs));
+  Assert.AreEqual(3, Integer(Length(Runs)));
 
   const ExpectedLineText = StringOfChar('a', 10);
   for var Index := 0 to Length(Runs) - 1 do
@@ -264,7 +264,7 @@ begin
   const DisplayList = LayoutMarkdown('one'#10#10'two', DefaultWidth);
 
   const Runs = TextRunsOf(DisplayList);
-  Assert.AreEqual(2, Length(Runs));
+  Assert.AreEqual(2, Integer(Length(Runs)));
 
   AssertSingle(0, Runs[0].Bounds.Top);
   AssertSingle(BaseLineHeight + ParagraphSpacingValue, Runs[1].Bounds.Top);
@@ -276,7 +276,7 @@ begin
   const DisplayList = LayoutMarkdown('# Title'#10#10'Body', DefaultWidth);
 
   const Runs = TextRunsOf(DisplayList);
-  Assert.AreEqual(2, Length(Runs));
+  Assert.AreEqual(2, Integer(Length(Runs)));
 
   Assert.AreEqual('Title', Runs[0].Text);
   Assert.AreEqual(BaseFamilyName, Runs[0].Font.FamilyName);
@@ -297,7 +297,7 @@ begin
 
   const Runs = TextRunsOf(DisplayList);
   const Markers = RunsWithText(Runs, BulletMarkerText);
-  Assert.AreEqual(2, Length(Markers));
+  Assert.AreEqual(2, Integer(Length(Markers)));
 
   AssertSingle(0, Markers[0].Bounds.Left);
   AssertSingle(ListIndentValue, Markers[1].Bounds.Left);
@@ -360,7 +360,7 @@ begin
   AssertSingle(2 * BaseLineHeight, Background.Bounds.Height);
 
   const Runs = TextRunsOf(DisplayList);
-  Assert.AreEqual(2, Length(Runs));
+  Assert.AreEqual(2, Integer(Length(Runs)));
 
   Assert.AreEqual(CodeFamilyName, Runs[0].Font.FamilyName);
   AssertSingle(40 * BaseCharWidth, Runs[0].Bounds.Width);
@@ -414,7 +414,7 @@ begin
   AssertSingle(2 * BaseLineHeight, Header.Bounds.Height);
 
   const Runs = TextRunsOf(DisplayList);
-  Assert.AreEqual(3, Length(Runs));
+  Assert.AreEqual(3, Integer(Length(Runs)));
 
   Assert.AreEqual(StringOfChar('b', 15), Runs[0].Text);
   Assert.AreEqual(StringOfChar('b', 15), Runs[1].Text);
@@ -491,7 +491,7 @@ begin
   const DisplayList = LayoutMarkdown('- [x] done'#10'- [ ] later', DefaultWidth);
 
   const Checkboxes = CheckboxesOf(DisplayList);
-  Assert.AreEqual(2, Length(Checkboxes));
+  Assert.AreEqual(2, Integer(Length(Checkboxes)));
 
   Assert.IsTrue(Checkboxes[0].Checked);
   Assert.IsFalse(Checkboxes[1].Checked);
@@ -514,7 +514,7 @@ begin
 
   const PlainList = LayoutMarkdown('aaaa bbbb cccc', WrapWidth);
   const PlainRuns = TextRunsOf(PlainList);
-  Assert.AreEqual(1, Length(PlainRuns));
+  Assert.AreEqual(1, Integer(Length(PlainRuns)));
   AssertSingle(BaseLineHeight, PlainList.Height);
 
   const BoldList = LayoutMarkdown('aaaa **bbbb** cccc', WrapWidth);
@@ -597,12 +597,12 @@ begin
   const DisplayList = LayoutMarkdown('`aaaa bbbb`', WrapWidth);
 
   const Runs = TextRunsOf(DisplayList);
-  Assert.AreEqual(2, Length(Runs));
+  Assert.AreEqual(2, Integer(Length(Runs)));
   Assert.AreEqual('aaaa', Runs[0].Text);
   Assert.AreEqual('bbbb', Runs[1].Text);
 
   const Chips = RectanglesWithFill(DisplayList, CodeSpanBackgroundColorValue);
-  Assert.AreEqual(2, Length(Chips));
+  Assert.AreEqual(2, Integer(Length(Chips)));
 
   AssertSingle(Runs[0].Bounds.Top, Chips[0].Bounds.Top);
   AssertSingle(Runs[0].Bounds.Left - CodeSpanChipPaddingValue, Chips[0].Bounds.Left);

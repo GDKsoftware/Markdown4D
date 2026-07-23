@@ -183,7 +183,7 @@ begin
   Assert.AreEqual('alpha', FModel.SelectedText);
 
   const Rects = FModel.SelectionRects;
-  Assert.AreEqual(1, Length(Rects));
+  Assert.AreEqual(1, Integer(Length(Rects)));
   AssertSingle(0, Rects[0].Left);
   AssertSingle(0, Rects[0].Top);
   AssertSingle(5 * BaseCharWidth, Rects[0].Right);
@@ -200,7 +200,7 @@ begin
   Assert.AreEqual('alpha beta gam', FModel.SelectedText);
 
   const Rects = FModel.SelectionRects;
-  Assert.AreEqual(2, Length(Rects));
+  Assert.AreEqual(2, Integer(Length(Rects)));
   AssertSingle(0, Rects[0].Left);
   AssertSingle(0, Rects[0].Top);
   AssertSingle(10 * BaseCharWidth, Rects[0].Right);
@@ -221,7 +221,7 @@ begin
   Assert.AreEqual('one' + sLineBreak + 'two', FModel.SelectedText);
 
   const Rects = FModel.SelectionRects;
-  Assert.AreEqual(2, Length(Rects));
+  Assert.AreEqual(2, Integer(Length(Rects)));
   AssertSingle(0, Rects[0].Left);
   AssertSingle(3 * BaseCharWidth, Rects[0].Right);
   AssertSingle(BaseLineHeight + ParagraphSpacingValue, Rects[1].Top);
@@ -248,7 +248,7 @@ begin
 
   Assert.IsFalse(FModel.HasSelection);
   Assert.AreEqual('', FModel.SelectedText);
-  Assert.AreEqual(0, Length(FModel.SelectionRects));
+  Assert.AreEqual(0, Integer(Length(FModel.SelectionRects)));
 end;
 
 procedure TMarkdownViewerModelTests.AppendMarkdown_MarksDirtyWithoutRelayout;
@@ -345,7 +345,7 @@ begin
   Assert.IsTrue(IsRequested);
 
   const Pending = FModel.PendingImageSources;
-  Assert.AreEqual(1, Length(Pending));
+  Assert.AreEqual(1, Integer(Length(Pending)));
   Assert.AreEqual(ImageSource, Pending[0]);
 end;
 
@@ -367,7 +367,7 @@ begin
 
   FModel.NotifyImageArrived(ImageSource, TLayoutSizeF.Create(LoadedImageWidth, LoadedImageHeight));
   Assert.AreEqual(2, FModel.LayoutCount);
-  Assert.AreEqual(0, Length(FModel.PendingImageSources));
+  Assert.AreEqual(0, Integer(Length(FModel.PendingImageSources)));
 end;
 
 procedure TMarkdownViewerModelTests.ImageFailed_MarksSlotFailed;
@@ -381,7 +381,7 @@ begin
 
   var Size: TLayoutSizeF;
   Assert.IsFalse(FModel.TryGetImageSize(ImageSource, Size));
-  Assert.AreEqual(0, Length(FModel.PendingImageSources));
+  Assert.AreEqual(0, Integer(Length(FModel.PendingImageSources)));
 end;
 
 procedure TMarkdownViewerModelTests.ImageSlot_SurvivesDocumentUpdate_WhenUrlUnchanged;
@@ -396,7 +396,7 @@ begin
 
   var Size: TLayoutSizeF;
   Assert.IsTrue(FModel.TryGetImageSize(ImageSource, Size));
-  Assert.AreEqual(0, Length(FModel.PendingImageSources));
+  Assert.AreEqual(0, Integer(Length(FModel.PendingImageSources)));
 end;
 
 procedure TMarkdownViewerModelTests.ImageSlotState_UnknownSource_ReturnsUnknown;
@@ -415,7 +415,7 @@ begin
 
   const Ranges = FModel.FindText('alpha');
 
-  Assert.AreEqual(2, Length(Ranges));
+  Assert.AreEqual(2, Integer(Length(Ranges)));
   Assert.AreEqual(Ranges[0].ItemIndex, Ranges[1].ItemIndex);
   Assert.AreEqual(1, Ranges[0].StartCharacter);
   Assert.AreEqual(5, Ranges[0].CharacterCount);
@@ -434,7 +434,7 @@ begin
 
   const Ranges = FModel.FindText('one');
 
-  Assert.AreEqual(2, Length(Ranges));
+  Assert.AreEqual(2, Integer(Length(Ranges)));
   const ItemsDiffer = (Ranges[0].ItemIndex <> Ranges[1].ItemIndex);
   Assert.IsTrue(ItemsDiffer);
   Assert.AreEqual(1, Ranges[0].StartCharacter);
@@ -446,7 +446,8 @@ begin
   FModel.SetViewport(DefaultWidth, DefaultHeight);
   FModel.Text := 'alpha beta';
 
-  Assert.AreEqual(0, Length(FModel.FindText('zulu')));
+  const Matches = FModel.FindText('zulu');
+  Assert.AreEqual(0, Integer(Length(Matches)));
 end;
 
 procedure TMarkdownViewerModelTests.FindText_EmptyNeedle_ReturnsEmpty;
@@ -454,7 +455,8 @@ begin
   FModel.SetViewport(DefaultWidth, DefaultHeight);
   FModel.Text := 'alpha beta';
 
-  Assert.AreEqual(0, Length(FModel.FindText('')));
+  const Matches = FModel.FindText('');
+  Assert.AreEqual(0, Integer(Length(Matches)));
 end;
 
 procedure TMarkdownViewerModelTests.FindText_NonAsciiNeedle_KeepsSourceOffsets;
@@ -469,7 +471,7 @@ begin
 
   const Ranges = FModel.FindText('CAF' + AccentUpper);
 
-  Assert.AreEqual(1, Length(Ranges));
+  Assert.AreEqual(1, Integer(Length(Ranges)));
   Assert.AreEqual(6, Ranges[0].StartCharacter);
   Assert.AreEqual(4, Ranges[0].CharacterCount);
 
@@ -483,7 +485,7 @@ begin
   FModel.SetViewport(DefaultWidth, DefaultHeight);
   FModel.Text := 'plain paragraph';
 
-  Assert.AreEqual(0, Length(FModel.CodeBlockRegions));
+  Assert.AreEqual(0, Integer(Length(FModel.CodeBlockRegions)));
 end;
 
 procedure TMarkdownViewerModelTests.TryGetCodeBlockAt_InsideCodeBlock_ReturnsTextAndRect;
@@ -492,7 +494,7 @@ begin
   FModel.Text := Fence + #10 + 'alpha' + #10 + Fence;
 
   const Regions = FModel.CodeBlockRegions;
-  Assert.AreEqual(1, Length(Regions));
+  Assert.AreEqual(1, Integer(Length(Regions)));
   const R = Regions[0];
 
   var Region: TMarkdownCodeBlockRegion;
@@ -511,7 +513,7 @@ begin
   FModel.Text := Fence + #10 + 'alpha'#10'beta' + #10 + Fence;
 
   const Regions = FModel.CodeBlockRegions;
-  Assert.AreEqual(1, Length(Regions));
+  Assert.AreEqual(1, Integer(Length(Regions)));
   const R = Regions[0];
 
   var Region: TMarkdownCodeBlockRegion;
@@ -529,7 +531,7 @@ begin
   Assert.IsFalse(FModel.TryGetCodeBlockAt(TLayoutPointF.Create(1, 0.5), Region));
 
   const Regions = FModel.CodeBlockRegions;
-  Assert.AreEqual(1, Length(Regions));
+  Assert.AreEqual(1, Integer(Length(Regions)));
   const R = Regions[0];
   const Center = TLayoutPointF.Create((R.Rect.Left + R.Rect.Right) / 2, (R.Rect.Top + R.Rect.Bottom) / 2);
   Assert.IsTrue(FModel.TryGetCodeBlockAt(Center, Region));
@@ -550,7 +552,7 @@ begin
   FModel.Text := Fence + #10 + 'a' + #10 + Fence + #10#10 + 'mid' + #10#10 + Fence + #10 + 'b' + #10 + Fence;
 
   const Regions = FModel.CodeBlockRegions;
-  Assert.AreEqual(2, Length(Regions));
+  Assert.AreEqual(2, Integer(Length(Regions)));
   Assert.IsTrue(Regions[0].Rect.Top < Regions[1].Rect.Top);
 end;
 
