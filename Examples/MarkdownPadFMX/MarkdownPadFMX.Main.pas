@@ -20,12 +20,14 @@ uses
   FMX.Objects,
   FMX.Dialogs,
   Markdown4D.Toc,
+  Markdown4D.Editor.Model,
   Markdown4D.Editor.Sync,
   Markdown4D.Theme,
   Markdown4D.Fmx.Editor,
   Markdown4D.Fmx.Viewer,
   MarkdownPad.Defines,
   MarkdownPad.Workspace.Interfaces,
+  MarkdownPad.EditorView,
   MarkdownPad.Session,
   MarkdownPad.Commands,
   MarkdownPad.TabStrip.Layout,
@@ -33,7 +35,7 @@ uses
   MarkdownPad.FileWatcher;
 
 type
-  TMarkdownPadFMXForm = class(TForm)
+  TMarkdownPadFMXForm = class(TForm, IPadEditorView)
   private
     const
       // Shared constants live in MarkdownPad.Defines; only FMX-specific values
@@ -248,6 +250,19 @@ type
     procedure HandleTick(Sender: TObject);
     procedure HandleFileChanged(const Document: IPadDocument);
     procedure ReloadDocument(const Document: IPadDocument);
+    function GetEditorText: string;
+    procedure SetEditorText(const Value: string);
+    function GetEditorCaret: Integer;
+    procedure SetEditorCaret(const Value: Integer);
+    function GetPreviewScrollOffset: Single;
+    procedure SetPreviewScrollOffset(const Value: Single);
+    function FirstVisibleSourceLine: Integer;
+    procedure ScrollToSourceLine(const LineIndex: Integer);
+    function SaveEditState: IMarkdownEditorState;
+    procedure LoadEditState(const State: IMarkdownEditorState);
+    procedure FlushPreview;
+    procedure BeginSwap;
+    procedure EndSwap;
     procedure SwitchToDocument(const Index: Integer);
     procedure RebuildTabs;
     procedure RebuildSyncAndToc;
@@ -292,7 +307,6 @@ uses
   Markdown4D,
   Markdown4D.Defines,
   Markdown4D.Ast.Interfaces,
-  Markdown4D.Editor.Model,
   MarkdownPad.Text,
   MarkdownPad.Outline,
   MarkdownPad.CommandSet,
@@ -1822,41 +1836,80 @@ begin
   UpdateTitle;
 end;
 
+function TMarkdownPadFMXForm.GetEditorText: string;
+begin
+  Result := FEditor.Text;
+end;
+
+procedure TMarkdownPadFMXForm.SetEditorText(const Value: string);
+begin
+  FEditor.Text := Value;
+end;
+
+function TMarkdownPadFMXForm.GetEditorCaret: Integer;
+begin
+  Result := FEditor.CaretPosition;
+end;
+
+procedure TMarkdownPadFMXForm.SetEditorCaret(const Value: Integer);
+begin
+  FEditor.CaretPosition := Value;
+end;
+
+function TMarkdownPadFMXForm.GetPreviewScrollOffset: Single;
+begin
+  Result := FPreview.ScrollOffset;
+end;
+
+procedure TMarkdownPadFMXForm.SetPreviewScrollOffset(const Value: Single);
+begin
+  FPreview.ScrollOffset := Value;
+end;
+
+function TMarkdownPadFMXForm.FirstVisibleSourceLine: Integer;
+begin
+  Result := FEditor.FirstVisibleSourceLine;
+end;
+
+procedure TMarkdownPadFMXForm.ScrollToSourceLine(const LineIndex: Integer);
+begin
+  FEditor.ScrollToSourceLine(LineIndex);
+end;
+
+function TMarkdownPadFMXForm.SaveEditState: IMarkdownEditorState;
+begin
+  Result := FEditor.SaveEditState;
+end;
+
+procedure TMarkdownPadFMXForm.LoadEditState(const State: IMarkdownEditorState);
+begin
+  FEditor.LoadEditState(State);
+end;
+
+procedure TMarkdownPadFMXForm.FlushPreview;
+begin
+  FEditor.FlushPreview;
+end;
+
+procedure TMarkdownPadFMXForm.BeginSwap;
+begin
+  FSwapping := True;
+end;
+
+procedure TMarkdownPadFMXForm.EndSwap;
+begin
+  FSwapping := False;
+end;
+
 procedure TMarkdownPadFMXForm.SwitchToDocument(const Index: Integer);
 begin
   if FSwapping then
     Exit;
 
-  if FActiveDoc <> nil then
-  begin
-    FActiveDoc.Text := FEditor.Text;
-    FActiveDoc.CaretPosition := FEditor.CaretPosition;
-    FActiveDoc.EditorScrollOffset := FEditor.FirstVisibleSourceLine;
-    FActiveDoc.PreviewScrollOffset := FPreview.ScrollOffset;
-    FActiveDoc.EditState := FEditor.SaveEditState;
-  end;
-
-  FWorkspace.Activate(Index);
-  FActiveDoc := FWorkspace.ActiveDocument;
+  FActiveDoc := TPadDocumentSwitch.Execute(FWorkspace, Self, FActiveDoc, Index);
 
   if FActiveDoc = nil then
     Exit;
-
-  FSwapping := True;
-  try
-    var State: IMarkdownEditorState;
-    if Supports(FActiveDoc.EditState, IMarkdownEditorState, State) then
-      FEditor.LoadEditState(State)
-    else
-      FEditor.Text := FActiveDoc.Text;
-
-    FEditor.FlushPreview;
-    FEditor.CaretPosition := FActiveDoc.CaretPosition;
-    FEditor.ScrollToSourceLine(Round(FActiveDoc.EditorScrollOffset));
-    FPreview.ScrollOffset := FActiveDoc.PreviewScrollOffset;
-  finally
-    FSwapping := False;
-  end;
 
   FLastCaret := -1;
   FMapDirty := True;
