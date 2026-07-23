@@ -117,6 +117,7 @@
         <DCCReference Include="..\Source\Core\Markdown4D.Writer.Markdown.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Version.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Folding.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Highlighter.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Model.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Sync.pas"/>

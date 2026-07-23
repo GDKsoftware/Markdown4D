@@ -103,6 +103,7 @@
         <DCCReference Include="Markdown4D.Vcl.Wedge.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Polygon.Tests.pas"/>
         <DCCReference Include="Markdown4D.Editor.Model.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Editor.Folding.Tests.pas"/>
         <DCCReference Include="Markdown4D.Editor.Highlighter.Tests.pas"/>
         <DCCReference Include="Markdown4D.Editor.Sync.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Editor.Tests.pas"/>

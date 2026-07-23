@@ -34,6 +34,7 @@ type
       DefaultControlHeight = 300;
       SelectionFillColor = TLayoutColor($402F81F7);
       MinimumWrapWidthDips = 48;
+      FoldMarkerWidthDips = 14;
     type
       // One on-screen line from soft-wrapping a source line. Offsets are absolute
       // into the model text and the range excludes the trailing line break.
@@ -106,8 +107,11 @@ type
     procedure DrawRowTokens(const Painter: IPainter; const Row: TVisualRow; const LineText: string;
       const Tokens: TArray<TMarkdownSourceToken>; const TextLeft, Top: Integer);
     procedure DrawGutterNumber(const Painter: IPainter; const LineIndex, GutterWidth, Top: Integer);
+    procedure DrawFoldMarker(const Painter: IPainter; const GutterWidth, Top: Integer; const Collapsed: Boolean);
+    function HandleFoldClick(const X, Y: Integer): Boolean;
     function TokenColor(const Kind: TMarkdownSourceTokenKind): TLayoutColor;
     function GutterWidthPx(const Painter: IPainter; const PixelsPerInch: Integer): Integer;
+    function FoldGutterWidthPx(const PixelsPerInch: Integer): Integer;
     function CodeFont: TMarkdownFontStyle;
     function LineHeightPx: Integer;
     function VisibleLineCount: Integer;
@@ -121,6 +125,7 @@ type
     function MaxScrollOffset: Integer;
     procedure SetScrollOffset(const Value: Integer);
     procedure ScrollCaretIntoView;
+    procedure RevealSelection;
     procedure UpdateScrollBar;
     procedure UpdateCaret;
     function CaretPixelPos: TPoint;
@@ -180,8 +185,13 @@ type
     procedure ScrollToSourceLine(const LineIndex: Integer);
     function SaveEditState: IMarkdownEditorState;
     procedure LoadEditState(const State: IMarkdownEditorState);
-    function FindMatchCount(const Needle: string): Integer;
-    function FindNext(const Needle: string): Boolean;
+    function FindMatchCount(const Needle: string): Integer; overload;
+    function FindMatchCount(const Needle: string; const Options: TMarkdownFindOptions): Integer; overload;
+    function FindNext(const Needle: string): Boolean; overload;
+    function FindNext(const Needle: string; const Options: TMarkdownFindOptions): Boolean; overload;
+    function FindPrevious(const Needle: string; const Options: TMarkdownFindOptions): Boolean;
+    function ReplaceCurrent(const Needle, Replacement: string; const Options: TMarkdownFindOptions): Boolean;
+    function ReplaceAll(const Needle, Replacement: string; const Options: TMarkdownFindOptions): Integer;
     property CaretPosition: Integer read GetCaretPosition write SetCaretPosition;
     property SelectedText: string read GetSelectedText;
     property Theme: TMarkdownTheme read FTheme write SetTheme;
@@ -492,23 +502,75 @@ begin
   Result := FModel.FindText(Needle);
 end;
 
+function TMarkdownEditor.FindMatchCount(const Needle: string; const Options: TMarkdownFindOptions): Integer;
+begin
+  Result := FModel.FindText(Needle, Options);
+end;
+
 function TMarkdownEditor.FindNext(const Needle: string): Boolean;
+begin
+  Result := FindNext(Needle, Default(TMarkdownFindOptions));
+end;
+
+function TMarkdownEditor.FindNext(const Needle: string; const Options: TMarkdownFindOptions): Boolean;
 begin
   if Needle = '' then
     Exit(False);
 
   const StartAfter = FModel.SelectionStart + FModel.SelectionLength - 1;
-  const Offset = FModel.FindNext(Needle, StartAfter);
+  const Offset = FModel.FindNext(Needle, StartAfter, Options);
   if Offset < 0 then
     Exit(False);
 
   FModel.SetSelection(Offset, System.Length(Needle));
+  RevealSelection;
 
+  Result := True;
+end;
+
+function TMarkdownEditor.FindPrevious(const Needle: string; const Options: TMarkdownFindOptions): Boolean;
+begin
+  if Needle = '' then
+    Exit(False);
+
+  const Offset = FModel.FindPrevious(Needle, FModel.SelectionStart, Options);
+  if Offset < 0 then
+    Exit(False);
+
+  FModel.SetSelection(Offset, System.Length(Needle));
+  RevealSelection;
+
+  Result := True;
+end;
+
+function TMarkdownEditor.ReplaceCurrent(const Needle, Replacement: string;
+  const Options: TMarkdownFindOptions): Boolean;
+begin
+  if Needle = '' then
+    Exit(False);
+
+  Result := FModel.ReplaceCurrent(Needle, Replacement, Options);
+  RevealSelection;
+end;
+
+function TMarkdownEditor.ReplaceAll(const Needle, Replacement: string;
+  const Options: TMarkdownFindOptions): Integer;
+begin
+  if Needle = '' then
+    Exit(0);
+
+  Result := FModel.ReplaceAll(Needle, Replacement, Options);
+  RevealSelection;
+end;
+
+procedure TMarkdownEditor.RevealSelection;
+begin
+  FModel.ExpandAt(FModel.SelectionStart);
+  RebuildRows;
+  UpdateScrollBar;
   ScrollCaretIntoView;
   UpdateCaret;
   Invalidate;
-
-  Result := True;
 end;
 
 procedure TMarkdownEditor.HandleModelChange(const Sender: TObject; const Range: TEditorReplaceRange);
@@ -610,6 +672,8 @@ begin
         DrawRowSelection(PainterLifetime, Row, TextLeft, Top, TargetWidth);
         if FShowLineNumbers and Row.IsFirst then
           DrawGutterNumber(PainterLifetime, LineIndex, GutterWidth, Top);
+        if Row.IsFirst and FModel.IsFoldHeader(LineIndex) then
+          DrawFoldMarker(PainterLifetime, GutterWidth, Top, FModel.IsRegionCollapsed(LineIndex));
         DrawRowTokens(PainterLifetime, Row, LineText, Tokenized.Tokens, TextLeft, Top);
       end;
 
@@ -687,6 +751,9 @@ begin
     const LineCount = FModel.LineCount;
     for var LineIndex := 0 to LineCount - 1 do
     begin
+      if FModel.IsLineHidden(LineIndex) then
+        Continue;
+
       AppendWrappedRows(Rows, LineIndex);
     end;
 
@@ -850,8 +917,64 @@ begin
   const Number = IntToStr(LineIndex + 1);
   const Padding = MulDiv(GutterPaddingDips, CurrentPPI, ReferencePixelsPerInch);
   const NumberWidth = Round(Painter.MeasureText(Number, CodeFont).Width);
-  const NumberLeft = GutterWidth - Padding - NumberWidth;
+  const NumberLeft = GutterWidth - FoldGutterWidthPx(CurrentPPI) - Padding - NumberWidth;
   Painter.DrawTextRun(TLayoutPointF.Create(NumberLeft, Top), Number, CodeFont, FTheme.BlockQuoteTextColor);
+end;
+
+procedure TMarkdownEditor.DrawFoldMarker(const Painter: IPainter; const GutterWidth, Top: Integer;
+  const Collapsed: Boolean);
+begin
+  const FoldWidth = FoldGutterWidthPx(CurrentPPI);
+  if FoldWidth <= 0 then
+    Exit;
+
+  const ColumnLeft = GutterWidth - FoldWidth;
+  const CenterX = ColumnLeft + FoldWidth / 2;
+  const CenterY = Top + LineHeightPx / 2;
+  const Reach = Min(FoldWidth, LineHeightPx) / 2 - MulDiv(GutterPaddingDips, CurrentPPI, ReferencePixelsPerInch);
+  const Color = FTheme.BlockQuoteTextColor;
+
+  if Reach <= 0 then
+    Exit;
+
+  if Collapsed then
+    Painter.FillPolygon([TLayoutPointF.Create(CenterX - Reach * 0.6, CenterY - Reach),
+      TLayoutPointF.Create(CenterX + Reach * 0.8, CenterY),
+      TLayoutPointF.Create(CenterX - Reach * 0.6, CenterY + Reach)], Color)
+  else
+    Painter.FillPolygon([TLayoutPointF.Create(CenterX - Reach, CenterY - Reach * 0.6),
+      TLayoutPointF.Create(CenterX + Reach, CenterY - Reach * 0.6),
+      TLayoutPointF.Create(CenterX, CenterY + Reach * 0.8)], Color);
+end;
+
+function TMarkdownEditor.HandleFoldClick(const X, Y: Integer): Boolean;
+begin
+  Result := False;
+
+  const FoldWidth = FoldGutterWidthPx(CurrentPPI);
+  if FoldWidth <= 0 then
+    Exit;
+
+  const GutterWidth = GutterWidthPx(FMeasurePainterLifetime, CurrentPPI);
+  const InFoldColumn = (X >= GutterWidth - FoldWidth) and (X < GutterWidth);
+  if not InFoldColumn then
+    Exit;
+
+  const RowIndex = (Y + FScrollOffset) div LineHeightPx;
+  if (RowIndex < 0) or (RowIndex > High(FRows)) then
+    Exit;
+
+  const Row = FRows[RowIndex];
+  if not (Row.IsFirst and FModel.IsFoldHeader(Row.LineIndex)) then
+    Exit;
+
+  FModel.ToggleFold(Row.LineIndex);
+  RebuildRows;
+  UpdateScrollBar;
+  ScrollCaretIntoView;
+  UpdateCaret;
+  Invalidate;
+  Result := True;
 end;
 
 function TMarkdownEditor.TokenColor(const Kind: TMarkdownSourceTokenKind): TLayoutColor;
@@ -878,14 +1001,24 @@ end;
 
 function TMarkdownEditor.GutterWidthPx(const Painter: IPainter; const PixelsPerInch: Integer): Integer;
 begin
+  Result := FoldGutterWidthPx(PixelsPerInch);
+
   if not FShowLineNumbers then
-    Exit(0);
+    Exit;
 
   const LineCount = Max(1, FModel.LineCount);
   const Digits = Length(IntToStr(LineCount));
   const Sample = StringOfChar('0', Digits);
   const Padding = MulDiv(GutterPaddingDips, PixelsPerInch, ReferencePixelsPerInch);
-  Result := Round(Painter.MeasureText(Sample, CodeFont).Width) + 2 * Padding;
+  Result := Result + Round(Painter.MeasureText(Sample, CodeFont).Width) + 2 * Padding;
+end;
+
+function TMarkdownEditor.FoldGutterWidthPx(const PixelsPerInch: Integer): Integer;
+begin
+  if FModel.HasFoldRegions then
+    Result := MulDiv(FoldMarkerWidthDips, PixelsPerInch, ReferencePixelsPerInch)
+  else
+    Result := 0;
 end;
 
 function TMarkdownEditor.CodeFont: TMarkdownFontStyle;
@@ -1176,6 +1309,9 @@ begin
   if CanFocus then
     SetFocus;
   FModel.BreakUndoCoalescing;
+
+  if HandleFoldClick(X, Y) then
+    Exit;
 
   const Offset = OffsetFromPoint(X, Y);
 

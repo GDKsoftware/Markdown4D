@@ -45,6 +45,7 @@ uses
   Markdown4D.Vcl.Wedge.Tests in 'Markdown4D.Vcl.Wedge.Tests.pas',
   Markdown4D.Vcl.Polygon.Tests in 'Markdown4D.Vcl.Polygon.Tests.pas',
   Markdown4D.Editor.Model.Tests in 'Markdown4D.Editor.Model.Tests.pas',
+  Markdown4D.Editor.Folding.Tests in 'Markdown4D.Editor.Folding.Tests.pas',
   Markdown4D.Editor.Highlighter.Tests in 'Markdown4D.Editor.Highlighter.Tests.pas',
   Markdown4D.Editor.Sync.Tests in 'Markdown4D.Editor.Sync.Tests.pas',
   Markdown4D.Vcl.Editor.Tests in 'Markdown4D.Vcl.Editor.Tests.pas',
