@@ -53,57 +53,19 @@ type
     lblFindCount: TLabel;
   private
     const
+      // Shared constants live in MarkdownPad.Defines; only VCL-specific values
+      // (custom title bar, DWM caption, TColor palette) stay here.
       WindowCaption = 'Markdown4D Pad';
       InitialClientWidth = 1200;
-      InitialClientHeight = 760;
       ToolbarHeight = 36;
       TabsHeight = 30;
-      TitleBarHeight = 40;
-      TitleBarLeftInset = 8;
       CaptionButtonsReserve = 160;
       DwmCaptionColorAttribute = 35;
       StatusBarHeight = 22;
       StatusLabelWidth = 160;
       StatusLabelLeftMargin = 8;
-      TocPanelWidth = 240;
       ButtonSpacing = 4;
-      IconButtonSize = 32;
       IconGlyphSize = 14;
-      SeparatorWidth = 1;
-      FindEditWidth = 160;
-      TickIntervalMilliseconds = 100;
-      TocHeaderCaption = 'Contents';
-      FindButtonCaption = 'Find';
-      FluentIconFontName = 'Segoe Fluent Icons';
-      Mdl2IconFontName = 'Segoe MDL2 Assets';
-      GlyphNew = Char($E7C3);
-      GlyphOpen = Char($E8E5);
-      GlyphSave = Char($E74E);
-      GlyphSaveAs = Char($E792);
-      GlyphRecent = Char($E81C);
-      GlyphExport = Char($E896);
-      GlyphCopyHtml = Char($E8C8);
-      GlyphBold = Char($E8DD);
-      GlyphItalic = Char($E8DB);
-      GlyphLink = Char($E71B);
-      GlyphCode = Char($E943);
-      GlyphTheme = Char($E793);
-      GlyphToc = Char($E8FD);
-      GlyphFind = Char($E721);
-      HintNew = 'New (Ctrl+N)';
-      HintOpen = 'Open (Ctrl+O)';
-      HintSave = 'Save (Ctrl+S)';
-      HintSaveAs = 'Save As (Ctrl+Shift+S)';
-      HintRecent = 'Recent files';
-      HintExport = 'Export HTML (Ctrl+Shift+E)';
-      HintCopyHtml = 'Copy HTML (Ctrl+Shift+C)';
-      HintBold = 'Bold (Ctrl+B)';
-      HintItalic = 'Italic (Ctrl+I)';
-      HintLink = 'Link (Ctrl+K)';
-      HintCode = 'Code block';
-      HintTheme = 'Toggle theme';
-      HintToc = 'Toggle contents';
-      HintFind = 'Find in preview';
       ToolbarLightColor = TColor($00F3F3F3);
       ToolbarDarkColor = TColor($002D2D2D);
       IconLightColor = TColor($00404040);
@@ -115,97 +77,10 @@ type
       TabHoverLightColor = TColor($00EAEAEA);
       TabHoverDarkColor = TColor($00383838);
       ZenPadDarkColor = TColor($0017110D); // matches the dark theme editor/preview background ($0D1117)
-      MarkdownFilter = 'Markdown files (*.md)|*.md|All files (*.*)|*.*';
-      DefaultExtension = 'md';
-      ModifiedMarker = ' *';
-      StatusPositionFormat = 'Ln %d, Col %d';
-      StatusWordsFormat = '%d words';
-      TitleFormat = '%s - %s';
       SessionFileName = 'MarkdownPad.Vcl.json';
-      UntitledName = 'Untitled';
-      RecentNoneCaption = '(none)';
       CloseUnsavedPrompt = 'Save changes before closing this document?';
-      CloseDocumentPromptFormat = 'Save changes to %s before closing?';
       ReloadPrompt = 'File changed on disk. Reload and lose your changes?';
-      FindBarHeight = 32;
-      FindBarEditWidth = 240;
-      PaletteWidth = 560;
-      PaletteTop = 80;
-      PaletteRowHeight = 22;
-      PaletteVisibleRows = 10;
       PaletteTextMargin = 8;
-      ZenMaxTextWidth = 820;
-      MatchCountFormat = '%d matches';
-      SingleMatchCaption = '1 match';
-      NoMatchCaption = 'No matches';
-      EmptyFindCaption = '';
-      FindHintCaption = 'Find in editor';
-      PaletteHintCaption = 'Type a command';
-      CmdNewName = 'New tab';
-      CmdNewShortcut = 'Ctrl+N';
-      CmdOpenName = 'Open...';
-      CmdOpenShortcut = 'Ctrl+O';
-      CmdSaveName = 'Save';
-      CmdSaveShortcut = 'Ctrl+S';
-      CmdSaveAsName = 'Save As...';
-      CmdSaveAsShortcut = 'Ctrl+Shift+S';
-      CmdCloseName = 'Close tab';
-      CmdCloseShortcut = 'Ctrl+W';
-      CmdNextTabName = 'Next tab';
-      CmdNextTabShortcut = 'Ctrl+Tab';
-      CmdThemeName = 'Toggle theme';
-      CmdThemeShortcut = '';
-      CmdTocName = 'Toggle contents';
-      CmdTocShortcut = '';
-      CmdViewEditorName = 'Editor only';
-      CmdViewEditorShortcut = 'Ctrl+1';
-      CmdViewSplitName = 'Split view';
-      CmdViewSplitShortcut = 'Ctrl+2';
-      CmdViewPreviewName = 'Preview only';
-      CmdViewPreviewShortcut = 'Ctrl+3';
-      CmdZenName = 'Zen mode';
-      CmdZenShortcut = 'F11';
-      CmdFindName = 'Find in editor';
-      CmdFindShortcut = 'Ctrl+F';
-      CmdFindPreviewName = 'Find in preview';
-      CmdFindPreviewShortcut = '';
-      CmdBoldName = 'Bold';
-      CmdBoldShortcut = 'Ctrl+B';
-      CmdItalicName = 'Italic';
-      CmdItalicShortcut = 'Ctrl+I';
-      CmdLinkName = 'Link';
-      CmdLinkShortcut = '';
-      CmdCodeName = 'Code block';
-      CmdCodeShortcut = '';
-      CmdH1Name = 'Heading 1';
-      CmdH1Shortcut = 'Ctrl+Shift+1';
-      CmdH2Name = 'Heading 2';
-      CmdH2Shortcut = 'Ctrl+Shift+2';
-      CmdH3Name = 'Heading 3';
-      CmdH3Shortcut = 'Ctrl+Shift+3';
-      CmdBulletName = 'Bullet list';
-      CmdBulletShortcut = 'Ctrl+Shift+U';
-      CmdNumberName = 'Numbered list';
-      CmdNumberShortcut = 'Ctrl+Shift+O';
-      CmdQuoteName = 'Quote';
-      CmdQuoteShortcut = 'Ctrl+Shift+Q';
-      CmdStrikeName = 'Strikethrough';
-      CmdStrikeShortcut = 'Ctrl+Shift+X';
-      CmdTableName = 'Insert table';
-      CmdTableShortcut = 'Ctrl+Shift+T';
-      CmdExportName = 'Export HTML...';
-      CmdExportShortcut = 'Ctrl+Shift+E';
-      CmdCopyHtmlName = 'Copy HTML';
-      CmdCopyHtmlShortcut = 'Ctrl+Shift+C';
-      ExportButtonCaption = 'Export';
-      CopyHtmlButtonCaption = 'Copy HTML';
-      HtmlFilter = 'HTML files (*.html)|*.html|All files (*.*)|*.*';
-      HtmlExtension = 'html';
-      CatFile = 'File';
-      CatView = 'View';
-      CatEdit = 'Edit';
-      CatFormat = 'Format';
-      CatRecent = 'Recent';
       RecentShortcut = '';
     var
       FIconFontName: string;
@@ -338,8 +213,6 @@ type
     procedure UpdateZenPadding;
     procedure HandleResize(Sender: TObject);
     class function BuildSampleMarkdown: string;
-    class procedure ComputeLineColumn(const Text: string; const Offset: Integer; out Line, Column: Integer);
-    class function CountWords(const Text: string): Integer;
 
   protected
     procedure CreateWnd; override;
@@ -366,6 +239,9 @@ uses
   Markdown4D.Defines,
   Markdown4D.Extensions.Chart.BlockOverride,
   Markdown4D.Extensions.Mermaid.BlockOverride,
+  MarkdownPad.Defines,
+  MarkdownPad.Text,
+  MarkdownPad.Outline,
   MarkdownPad.Workspace,
   MarkdownPad.HtmlExport;
 
@@ -1585,32 +1461,15 @@ begin
 
   const Document = TMarkdown.Parse(mdEditor.Text, TMarkdownDialect.Gfm);
 
-  const Toc = TMarkdownToc.FromDocument(Document);
+  const Outline = TPadOutlineBuilder.Build(TMarkdownToc.FromDocument(Document));
+  FTocEntries := Outline.Entries;
 
-  FTocEntries := [];
   lstToc.Items.BeginUpdate;
   try
     lstToc.Items.Clear;
 
-    var Stack: TArray<IMarkdownTocEntry> := [];
-    for var Index := Toc.EntryCount - 1 downto 0 do
-    begin
-      Stack := Stack + [Toc.Entries[Index]];
-    end;
-
-    while System.Length(Stack) > 0 do
-    begin
-      const Entry = Stack[High(Stack)];
-      SetLength(Stack, System.Length(Stack) - 1);
-
-      FTocEntries := FTocEntries + [Entry];
-      lstToc.Items.Add(Format('%s%s', [StringOfChar(' ', 2 * (Entry.Level - 1)), Entry.Caption]));
-
-      for var Index := Entry.ChildCount - 1 downto 0 do
-      begin
-        Stack := Stack + [Entry.Children[Index]];
-      end;
-    end;
+    for var Caption in Outline.Captions do
+      lstToc.Items.Add(Caption);
   finally
     lstToc.Items.EndUpdate;
   end;
@@ -1618,12 +1477,7 @@ end;
 
 procedure TMarkdownPadForm.UpdateActiveTocEntry(const SourceLine: Integer);
 begin
-  var Best := -1;
-  for var Index := 0 to High(FTocEntries) do
-  begin
-    if FTocEntries[Index].SourceLine - 1 <= SourceLine then
-      Best := Index;
-  end;
+  const Best = TPadOutlineBuilder.ActiveIndex(FTocEntries, SourceLine);
 
   if Best <> lstToc.ItemIndex then
     lstToc.ItemIndex := Best;
@@ -1638,9 +1492,9 @@ begin
   FLastCaret := Caret;
 
   var Line, Column: Integer;
-  ComputeLineColumn(mdEditor.Text, Caret, Line, Column);
+  TPadText.ComputeLineColumn(mdEditor.Text, Caret, Line, Column);
   lblPos.Caption := Format(StatusPositionFormat, [Line, Column]);
-  lblWords.Caption := Format(StatusWordsFormat, [CountWords(mdEditor.Text)]);
+  lblWords.Caption := Format(StatusWordsFormat, [TPadText.CountWords(mdEditor.Text)]);
 end;
 
 procedure TMarkdownPadForm.UpdateTitle;
@@ -2265,41 +2119,6 @@ begin
 
   if FPalette <> nil then
     FPalette.Left := (ClientWidth - FPalette.Width) div 2;
-end;
-
-class procedure TMarkdownPadForm.ComputeLineColumn(const Text: string; const Offset: Integer;
-  out Line, Column: Integer);
-begin
-  Line := 1;
-  Column := 1;
-
-  const Limit = System.Math.Min(Offset, System.Length(Text));
-  for var Index := 1 to Limit do
-  begin
-    if Text[Index] = #10 then
-    begin
-      Inc(Line);
-      Column := 1;
-    end
-    else
-      Inc(Column);
-  end;
-end;
-
-class function TMarkdownPadForm.CountWords(const Text: string): Integer;
-begin
-  Result := 0;
-  var InsideWord := False;
-  for var Character in Text do
-  begin
-    if Character.IsWhiteSpace then
-      InsideWord := False
-    else if not InsideWord then
-    begin
-      InsideWord := True;
-      Inc(Result);
-    end;
-  end;
 end;
 
 class function TMarkdownPadForm.BuildSampleMarkdown: string;

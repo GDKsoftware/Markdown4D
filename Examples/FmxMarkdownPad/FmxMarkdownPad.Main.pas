@@ -24,6 +24,7 @@ uses
   Markdown4D.Theme,
   Markdown4D.Fmx.Editor,
   Markdown4D.Fmx.Viewer,
+  MarkdownPad.Defines,
   MarkdownPad.Workspace.Interfaces,
   MarkdownPad.Session,
   MarkdownPad.Commands,
@@ -35,43 +36,19 @@ type
   TFmxMarkdownPadForm = class(TForm)
   private
     const
+      // Shared constants live in MarkdownPad.Defines; only FMX-specific values
+      // (window chrome, custom title bar/tooltip, TAlphaColor palette) stay here.
       WindowCaption = 'Markdown4D Pad (FMX)';
       InitialClientWidth = 1180;
-      InitialClientHeight = 760;
       ToolbarHeight = 38;
       TabControlHeight = 32;
-      TitleBarHeight = 40;
-      TitleBarLeftInset = 8;
       CaptionButtonWidth = 46;
       StatusBarHeight = 26;
       ControlMargin = 6;
-      IconButtonSize = 32;
       IconGlyphSize = 16;
-      SeparatorWidth = 1;
-      FindEditWidth = 160;
-      TocPanelWidth = 240;
       TocHeaderHeight = 22;
       SplitterWidth = 6;
       StatusLabelWidth = 150;
-      TickIntervalMilliseconds = 100;
-      TocHeaderCaption = 'Contents';
-      FindButtonCaption = 'Find';
-      FluentIconFontName = 'Segoe Fluent Icons';
-      Mdl2IconFontName = 'Segoe MDL2 Assets';
-      GlyphNew = Char($E7C3);
-      GlyphOpen = Char($E8E5);
-      GlyphSave = Char($E74E);
-      GlyphSaveAs = Char($E792);
-      GlyphRecent = Char($E81C);
-      GlyphExport = Char($E896);
-      GlyphCopyHtml = Char($E8C8);
-      GlyphBold = Char($E8DD);
-      GlyphItalic = Char($E8DB);
-      GlyphLink = Char($E71B);
-      GlyphCode = Char($E943);
-      GlyphTheme = Char($E793);
-      GlyphToc = Char($E8FD);
-      GlyphFind = Char($E721);
       GlyphMinimize = Char($E921);
       GlyphMaximize = Char($E922);
       GlyphRestore = Char($E923);
@@ -79,20 +56,6 @@ type
       HintMinimize = 'Minimize';
       HintMaximize = 'Maximize';
       HintCloseWindow = 'Close';
-      HintNew = 'New (Ctrl+N)';
-      HintOpen = 'Open (Ctrl+O)';
-      HintSave = 'Save (Ctrl+S)';
-      HintSaveAs = 'Save As (Ctrl+Shift+S)';
-      HintRecent = 'Recent files';
-      HintExport = 'Export HTML (Ctrl+Shift+E)';
-      HintCopyHtml = 'Copy HTML (Ctrl+Shift+C)';
-      HintBold = 'Bold (Ctrl+B)';
-      HintItalic = 'Italic (Ctrl+I)';
-      HintLink = 'Link (Ctrl+K)';
-      HintCode = 'Code block';
-      HintTheme = 'Toggle theme';
-      HintToc = 'Toggle contents';
-      HintFind = 'Find in preview';
       ToolbarLightColor = TAlphaColor($FFF3F3F3);
       ToolbarDarkColor = TAlphaColor($FF2D2D2D);
       IconLightColor = TAlphaColor($FF404040);
@@ -112,102 +75,15 @@ type
       HintHorizontalPadding = 8;
       HintGap = 4;
       HintCornerRadius = 4;
-      MarkdownFilter = 'Markdown files (*.md)|*.md|All files (*.*)|*.*';
-      DefaultExtension = 'md';
       MarkdownExtension = '.md';
-      ModifiedMarker = ' *';
-      UntitledName = 'Untitled';
-      RecentNoneCaption = '(none)';
       SessionFileName = 'MarkdownPad.Fmx.json';
-      StatusPositionFormat = 'Ln %d, Col %d';
-      StatusWordsFormat = '%d words';
-      TitleFormat = '%s - %s';
       OpenErrorFormat = 'Could not open the file:'#10'%s';
       CloseUnsavedPrompt = 'This document has unsaved changes. Save before closing?';
-      CloseDocumentPromptFormat = 'Save changes to %s before closing?';
       ReloadPrompt = 'This file changed on disk. Reload and lose your local changes?';
-      FindBarHeight = 32;
-      FindBarEditWidth = 240;
-      PaletteWidth = 560;
-      PaletteTop = 80;
-      PaletteRowHeight = 22;
-      PaletteVisibleRows = 10;
       PaletteListHeight = PaletteRowHeight * PaletteVisibleRows;
       PaletteEditHeight = 30;
       PaletteShortcutWidth = 120;
       PaletteShortcutOpacity = 0.6;
-      ZenMaxTextWidth = 820;
-      MatchCountFormat = '%d matches';
-      SingleMatchCaption = '1 match';
-      NoMatchCaption = 'No matches';
-      EmptyFindCaption = '';
-      FindHintCaption = 'Find in editor';
-      PaletteHintCaption = 'Type a command';
-      CmdNewName = 'New tab';
-      CmdNewShortcut = 'Ctrl+N';
-      CmdOpenName = 'Open...';
-      CmdOpenShortcut = 'Ctrl+O';
-      CmdSaveName = 'Save';
-      CmdSaveShortcut = 'Ctrl+S';
-      CmdSaveAsName = 'Save As...';
-      CmdSaveAsShortcut = 'Ctrl+Shift+S';
-      CmdCloseName = 'Close tab';
-      CmdCloseShortcut = 'Ctrl+W';
-      CmdNextTabName = 'Next tab';
-      CmdNextTabShortcut = 'Ctrl+Tab';
-      CmdThemeName = 'Toggle theme';
-      CmdThemeShortcut = '';
-      CmdTocName = 'Toggle contents';
-      CmdTocShortcut = '';
-      CmdViewEditorName = 'Editor only';
-      CmdViewEditorShortcut = 'Ctrl+1';
-      CmdViewSplitName = 'Split view';
-      CmdViewSplitShortcut = 'Ctrl+2';
-      CmdViewPreviewName = 'Preview only';
-      CmdViewPreviewShortcut = 'Ctrl+3';
-      CmdZenName = 'Zen mode';
-      CmdZenShortcut = 'F11';
-      CmdFindName = 'Find in editor';
-      CmdFindShortcut = 'Ctrl+F';
-      CmdFindPreviewName = 'Find in preview';
-      CmdFindPreviewShortcut = '';
-      CmdBoldName = 'Bold';
-      CmdBoldShortcut = 'Ctrl+B';
-      CmdItalicName = 'Italic';
-      CmdItalicShortcut = 'Ctrl+I';
-      CmdLinkName = 'Link';
-      CmdLinkShortcut = '';
-      CmdCodeName = 'Code block';
-      CmdCodeShortcut = '';
-      CmdH1Name = 'Heading 1';
-      CmdH1Shortcut = 'Ctrl+Shift+1';
-      CmdH2Name = 'Heading 2';
-      CmdH2Shortcut = 'Ctrl+Shift+2';
-      CmdH3Name = 'Heading 3';
-      CmdH3Shortcut = 'Ctrl+Shift+3';
-      CmdBulletName = 'Bullet list';
-      CmdBulletShortcut = 'Ctrl+Shift+U';
-      CmdNumberName = 'Numbered list';
-      CmdNumberShortcut = 'Ctrl+Shift+O';
-      CmdQuoteName = 'Quote';
-      CmdQuoteShortcut = 'Ctrl+Shift+Q';
-      CmdStrikeName = 'Strikethrough';
-      CmdStrikeShortcut = 'Ctrl+Shift+X';
-      CmdTableName = 'Insert table';
-      CmdTableShortcut = 'Ctrl+Shift+T';
-      CmdExportName = 'Export HTML...';
-      CmdExportShortcut = 'Ctrl+Shift+E';
-      CmdCopyHtmlName = 'Copy HTML';
-      CmdCopyHtmlShortcut = 'Ctrl+Shift+C';
-      ExportButtonCaption = 'Export';
-      CopyHtmlButtonCaption = 'Copy HTML';
-      HtmlFilter = 'HTML files (*.html)|*.html|All files (*.*)|*.*';
-      HtmlExtension = 'html';
-      CatFile = 'File';
-      CatView = 'View';
-      CatEdit = 'Edit';
-      CatFormat = 'Format';
-      CatRecent = 'Recent';
     var
       FToolbar: TRectangle;
       FTitleBar: TRectangle;
@@ -386,8 +262,6 @@ type
     procedure HandleTocListApplyStyle(Sender: TObject);
     procedure SaveSession;
     class function BuildSampleMarkdown: string;
-    class procedure ComputeLineColumn(const Text: string; const Offset: Integer; out Line, Column: Integer);
-    class function CountWords(const Text: string): Integer;
 
   public
     constructor Create(Owner: TComponent); override;
@@ -419,6 +293,8 @@ uses
   Markdown4D.Defines,
   Markdown4D.Ast.Interfaces,
   Markdown4D.Editor.Model,
+  MarkdownPad.Text,
+  MarkdownPad.Outline,
   MarkdownPad.Workspace,
   MarkdownPad.HtmlExport,
   Markdown4D.Extensions.Chart.BlockOverride,
@@ -2186,33 +2062,16 @@ begin
 
   const Document = TMarkdown.Parse(FEditor.Text, TMarkdownDialect.Gfm);
 
-  const Toc = TMarkdownToc.FromDocument(Document);
+  const Outline = TPadOutlineBuilder.Build(TMarkdownToc.FromDocument(Document));
+  FTocEntries := Outline.Entries;
 
-  FTocEntries := [];
   FTocFollowing := True;
   FTocList.Items.BeginUpdate;
   try
     FTocList.Items.Clear;
 
-    var Stack: TArray<IMarkdownTocEntry> := [];
-    for var Index := Toc.EntryCount - 1 downto 0 do
-    begin
-      Stack := Stack + [Toc.Entries[Index]];
-    end;
-
-    while Length(Stack) > 0 do
-    begin
-      const Entry = Stack[High(Stack)];
-      SetLength(Stack, Length(Stack) - 1);
-
-      FTocEntries := FTocEntries + [Entry];
-      FTocList.Items.Add(Format('%s%s', [StringOfChar(' ', 2 * (Entry.Level - 1)), Entry.Caption]));
-
-      for var Index := Entry.ChildCount - 1 downto 0 do
-      begin
-        Stack := Stack + [Entry.Children[Index]];
-      end;
-    end;
+    for var Caption in Outline.Captions do
+      FTocList.Items.Add(Caption);
   finally
     FTocList.Items.EndUpdate;
     FTocFollowing := False;
@@ -2223,12 +2082,7 @@ end;
 
 procedure TFmxMarkdownPadForm.UpdateActiveTocEntry(const SourceLine: Integer);
 begin
-  var Best := -1;
-  for var Index := 0 to High(FTocEntries) do
-  begin
-    if FTocEntries[Index].SourceLine - 1 <= SourceLine then
-      Best := Index;
-  end;
+  const Best = TPadOutlineBuilder.ActiveIndex(FTocEntries, SourceLine);
 
   if Best = FTocList.ItemIndex then
     Exit;
@@ -2250,9 +2104,9 @@ begin
   FLastCaret := Caret;
 
   var Line, Column: Integer;
-  ComputeLineColumn(FEditor.Text, Caret, Line, Column);
+  TPadText.ComputeLineColumn(FEditor.Text, Caret, Line, Column);
   FStatusPositionLabel.Text := Format(StatusPositionFormat, [Line, Column]);
-  FStatusWordsLabel.Text := Format(StatusWordsFormat, [CountWords(FEditor.Text)]);
+  FStatusWordsLabel.Text := Format(StatusWordsFormat, [TPadText.CountWords(FEditor.Text)]);
 end;
 
 procedure TFmxMarkdownPadForm.UpdateTitle;
@@ -2480,42 +2334,6 @@ begin
     'end;'#10 +
     '```'#10#10 +
     '> Toggle the theme with the toolbar button.'#10;
-end;
-
-class procedure TFmxMarkdownPadForm.ComputeLineColumn(const Text: string; const Offset: Integer;
-  out Line, Column: Integer);
-begin
-  Line := 1;
-  Column := 1;
-
-  const Limit = System.Math.Min(Offset, Length(Text));
-  for var Index := 1 to Limit do
-  begin
-    if Text[Index] = #10 then
-    begin
-      Inc(Line);
-      Column := 1;
-    end
-    else
-      Inc(Column);
-  end;
-end;
-
-class function TFmxMarkdownPadForm.CountWords(const Text: string): Integer;
-begin
-  Result := 0;
-
-  var InsideWord := False;
-  for var Character in Text do
-  begin
-    if Character.IsWhiteSpace then
-      InsideWord := False
-    else if not InsideWord then
-    begin
-      InsideWord := True;
-      Inc(Result);
-    end;
-  end;
 end;
 
 end.
