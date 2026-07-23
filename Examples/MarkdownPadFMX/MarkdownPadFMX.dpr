@@ -1,4 +1,4 @@
-program FmxMarkdownPad;
+program MarkdownPadFMX;
 
 uses
   FMX.Forms,
@@ -13,7 +13,7 @@ uses
   MarkdownPad.Fmx.WinFrame in '..\Shared\MarkdownPad.Fmx.WinFrame.pas',
   MarkdownPad.FileWatcher in '..\Shared\MarkdownPad.FileWatcher.pas',
   MarkdownPad.HtmlExport in '..\Shared\MarkdownPad.HtmlExport.pas',
-  FmxMarkdownPad.Main in 'FmxMarkdownPad.Main.pas',
+  MarkdownPadFMX.Main in 'MarkdownPadFMX.Main.pas',
   MarkdownPad.Defines in '..\Shared\MarkdownPad.Defines.pas',
   MarkdownPad.Text in '..\Shared\MarkdownPad.Text.pas',
   MarkdownPad.Outline in '..\Shared\MarkdownPad.Outline.pas';
@@ -26,6 +26,6 @@ begin
   GlobalUseSkia := True;
 
   Application.Initialize;
-  Application.CreateForm(TFmxMarkdownPadForm, FmxMarkdownPadForm);
+  Application.CreateForm(TMarkdownPadFMXForm, MarkdownPadFMXForm);
   Application.Run;
 end.

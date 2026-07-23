@@ -1,4 +1,4 @@
-unit FmxMarkdownPad.Main;
+unit MarkdownPadFMX.Main;
 
 {$SCOPEDENUMS ON}
 
@@ -33,7 +33,7 @@ uses
   MarkdownPad.FileWatcher;
 
 type
-  TFmxMarkdownPadForm = class(TForm)
+  TMarkdownPadFMXForm = class(TForm)
   private
     const
       // Shared constants live in MarkdownPad.Defines; only FMX-specific values
@@ -275,7 +275,7 @@ type
   end;
 
 var
-  FmxMarkdownPadForm: TFmxMarkdownPadForm;
+  MarkdownPadFMXForm: TMarkdownPadFMXForm;
 
 implementation
 
@@ -300,7 +300,7 @@ uses
   Markdown4D.Extensions.Chart.BlockOverride,
   Markdown4D.Extensions.Mermaid.BlockOverride;
 
-constructor TFmxMarkdownPadForm.Create(Owner: TComponent);
+constructor TMarkdownPadFMXForm.Create(Owner: TComponent);
 begin
   inherited CreateNew(Owner);
 
@@ -352,7 +352,7 @@ begin
   FMapDirty := True;
 end;
 
-destructor TFmxMarkdownPadForm.Destroy;
+destructor TMarkdownPadFMXForm.Destroy;
 begin
   if FEditor <> nil then
     FEditor.DetachPreview;
@@ -368,7 +368,7 @@ begin
   FLightTheme.Free;
 end;
 
-procedure TFmxMarkdownPadForm.BuildToolbar;
+procedure TMarkdownPadFMXForm.BuildToolbar;
 begin
   FToolbar := TRectangle.Create(Self);
   FToolbar.Parent := Self;
@@ -415,7 +415,7 @@ begin
   FFindButton.Margins.Right := ControlMargin;
 end;
 
-function TFmxMarkdownPadForm.ResolveIconFontName: string;
+function TMarkdownPadFMXForm.ResolveIconFontName: string;
 begin
   const DeviceContext = GetDC(0);
   try
@@ -443,7 +443,7 @@ begin
   end;
 end;
 
-function TFmxMarkdownPadForm.AddIconButton(const Glyph: string; const Hint: string;
+function TMarkdownPadFMXForm.AddIconButton(const Glyph: string; const Hint: string;
   const Handler: TNotifyEvent): TRectangle;
 begin
   const VerticalMargin = (ToolbarHeight - IconButtonSize) / 2;
@@ -481,7 +481,7 @@ begin
   FIconGlyphs := FIconGlyphs + [GlyphText];
 end;
 
-procedure TFmxMarkdownPadForm.AddSeparator;
+procedure TMarkdownPadFMXForm.AddSeparator;
 begin
   const VerticalMargin = ControlMargin + 2;
 
@@ -500,21 +500,21 @@ begin
   FSeparators := FSeparators + [Separator];
 end;
 
-procedure TFmxMarkdownPadForm.HandleIconMouseEnter(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleIconMouseEnter(Sender: TObject);
 begin
   const Button = Sender as TRectangle;
   Button.Fill.Color := FHoverColor;
   ShowHintFor(Button);
 end;
 
-procedure TFmxMarkdownPadForm.HandleIconMouseLeave(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleIconMouseLeave(Sender: TObject);
 begin
   const Button = Sender as TRectangle;
   Button.Fill.Color := FToolbarFill;
   HideHint;
 end;
 
-procedure TFmxMarkdownPadForm.BuildTitleBar;
+procedure TMarkdownPadFMXForm.BuildTitleBar;
 begin
   FTitleBar := TRectangle.Create(Self);
   FTitleBar.Parent := Self;
@@ -546,7 +546,7 @@ begin
   FTabStrip.OnReorderTab := HandleTabReorder;
 end;
 
-function TFmxMarkdownPadForm.AddCaptionButton(const Glyph: string; const Hint: string;
+function TMarkdownPadFMXForm.AddCaptionButton(const Glyph: string; const Hint: string;
   const Handler: TNotifyEvent): TRectangle;
 begin
   Result := TRectangle.Create(Self);
@@ -576,7 +576,7 @@ begin
   FCaptionGlyphs := FCaptionGlyphs + [GlyphText];
 end;
 
-procedure TFmxMarkdownPadForm.LayoutTitleBar;
+procedure TMarkdownPadFMXForm.LayoutTitleBar;
 begin
   if (FTitleBar = nil) or (FTabStrip = nil) then
     Exit;
@@ -591,7 +591,7 @@ begin
   UpdateMaxRestoreGlyph;
 end;
 
-procedure TFmxMarkdownPadForm.UpdateMaxRestoreGlyph;
+procedure TMarkdownPadFMXForm.UpdateMaxRestoreGlyph;
 begin
   if FMaxGlyph = nil then
     Exit;
@@ -602,24 +602,24 @@ begin
     FMaxGlyph.Text := GlyphMaximize;
 end;
 
-procedure TFmxMarkdownPadForm.HandleTitleBarMouseDown(Sender: TObject; Button: TMouseButton;
+procedure TMarkdownPadFMXForm.HandleTitleBarMouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Single);
 begin
   if Button = TMouseButton.mbLeft then
     TFmxWinFrame.BeginDrag;
 end;
 
-procedure TFmxMarkdownPadForm.HandleTitleBarDblClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleTitleBarDblClick(Sender: TObject);
 begin
   HandleMaximizeClick(Sender);
 end;
 
-procedure TFmxMarkdownPadForm.HandleMinimizeClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleMinimizeClick(Sender: TObject);
 begin
   WindowState := TWindowState.wsMinimized;
 end;
 
-procedure TFmxMarkdownPadForm.HandleMaximizeClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleMaximizeClick(Sender: TObject);
 begin
   if WindowState = TWindowState.wsMaximized then
     WindowState := TWindowState.wsNormal
@@ -629,47 +629,47 @@ begin
   UpdateMaxRestoreGlyph;
 end;
 
-procedure TFmxMarkdownPadForm.HandleCloseButtonClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleCloseButtonClick(Sender: TObject);
 begin
   Close;
 end;
 
-procedure TFmxMarkdownPadForm.HandleCaptionMouseEnter(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleCaptionMouseEnter(Sender: TObject);
 begin
   const Button = Sender as TRectangle;
   Button.Fill.Color := FHoverColor;
   ShowHintFor(Button);
 end;
 
-procedure TFmxMarkdownPadForm.HandleCloseMouseEnter(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleCloseMouseEnter(Sender: TObject);
 begin
   const Button = Sender as TRectangle;
   Button.Fill.Color := CaptionCloseHoverColor;
   ShowHintFor(Button);
 end;
 
-procedure TFmxMarkdownPadForm.HandleTabSelect(Sender: TObject; const Index: Integer);
+procedure TMarkdownPadFMXForm.HandleTabSelect(Sender: TObject; const Index: Integer);
 begin
   SwitchToDocument(Index);
 end;
 
-procedure TFmxMarkdownPadForm.HandleTabCloseRequest(Sender: TObject; const Index: Integer);
+procedure TMarkdownPadFMXForm.HandleTabCloseRequest(Sender: TObject; const Index: Integer);
 begin
   CloseDocumentAt(Index);
 end;
 
-procedure TFmxMarkdownPadForm.HandleTabAdd(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleTabAdd(Sender: TObject);
 begin
   HandleNewClick(nil);
 end;
 
-procedure TFmxMarkdownPadForm.HandleTabReorder(Sender: TObject; const FromIndex, ToIndex: Integer);
+procedure TMarkdownPadFMXForm.HandleTabReorder(Sender: TObject; const FromIndex, ToIndex: Integer);
 begin
   FWorkspace.Move(FromIndex, ToIndex);
   RebuildTabs;
 end;
 
-procedure TFmxMarkdownPadForm.BuildStatusBar;
+procedure TMarkdownPadFMXForm.BuildStatusBar;
 begin
   FStatusBar := TRectangle.Create(Self);
   FStatusBar.Parent := Self;
@@ -691,7 +691,7 @@ begin
   FStatusWordsLabel.Width := StatusLabelWidth;
 end;
 
-procedure TFmxMarkdownPadForm.BuildTocPanel;
+procedure TMarkdownPadFMXForm.BuildTocPanel;
 begin
   FTocPanel := TLayout.Create(Self);
   FTocPanel.Parent := Self;
@@ -718,7 +718,7 @@ begin
   FTocSplitter.Width := SplitterWidth;
 end;
 
-procedure TFmxMarkdownPadForm.BuildEditorAndPreview;
+procedure TMarkdownPadFMXForm.BuildEditorAndPreview;
 begin
   FEditor := TMarkdownEditor.Create(Self);
   FEditor.Parent := Self;
@@ -738,7 +738,7 @@ begin
   FPreview.OnLinkClick := HandlePreviewLinkClick;
 end;
 
-procedure TFmxMarkdownPadForm.BuildTimer;
+procedure TMarkdownPadFMXForm.BuildTimer;
 begin
   FTickTimer := TTimer.Create(Self);
   FTickTimer.Interval := TickIntervalMilliseconds;
@@ -746,7 +746,7 @@ begin
   FTickTimer.Enabled := True;
 end;
 
-procedure TFmxMarkdownPadForm.BuildFindBar;
+procedure TMarkdownPadFMXForm.BuildFindBar;
 begin
   FFindBar := TRectangle.Create(Self);
   FFindBar.Parent := Self;
@@ -775,7 +775,7 @@ begin
   FEditorFindCount.TextSettings.HorzAlign := TTextAlign.Trailing;
 end;
 
-procedure TFmxMarkdownPadForm.BuildHint;
+procedure TMarkdownPadFMXForm.BuildHint;
 begin
   // FMX does not reliably show native control hints on this window, so draw a
   // small tooltip ourselves on hover.
@@ -801,7 +801,7 @@ begin
   FHintText.Color := HintTextColor;
 end;
 
-procedure TFmxMarkdownPadForm.ShowHintFor(const Control: TControl);
+procedure TMarkdownPadFMXForm.ShowHintFor(const Control: TControl);
 begin
   if (FHintRect = nil) or (Control = nil) or (Control.Hint = '') then
     Exit;
@@ -828,13 +828,13 @@ begin
   FHintRect.Visible := True;
 end;
 
-procedure TFmxMarkdownPadForm.HideHint;
+procedure TMarkdownPadFMXForm.HideHint;
 begin
   if FHintRect <> nil then
     FHintRect.Visible := False;
 end;
 
-procedure TFmxMarkdownPadForm.BuildPalette;
+procedure TMarkdownPadFMXForm.BuildPalette;
 begin
   FPalette := TRectangle.Create(Self);
   FPalette.Parent := Self;
@@ -856,14 +856,14 @@ begin
   FPaletteList.OnDblClick := HandlePaletteDblClick;
 end;
 
-procedure TFmxMarkdownPadForm.BuildCommandRegistry;
+procedure TMarkdownPadFMXForm.BuildCommandRegistry;
 begin
   FCommands := TPadCommandRegistry.Create;
 
   RegisterStaticCommands;
 end;
 
-procedure TFmxMarkdownPadForm.RegisterStaticCommands;
+procedure TMarkdownPadFMXForm.RegisterStaticCommands;
 begin
   FCommands.Register(CmdNewName, CatFile, CmdNewShortcut,
     procedure
@@ -1047,7 +1047,7 @@ begin
     end);
 end;
 
-procedure TFmxMarkdownPadForm.RestoreSession;
+procedure TMarkdownPadFMXForm.RestoreSession;
 begin
   FSession := TPadSession.Create(TPadSession.ResolvePath(SessionFileName));
   FSession.Load;
@@ -1097,7 +1097,7 @@ begin
   SwitchToDocument(FWorkspace.ActiveIndex);
 end;
 
-procedure TFmxMarkdownPadForm.KeyDown(var Key: Word; var KeyChar: WideChar; Shift: TShiftState);
+procedure TMarkdownPadFMXForm.KeyDown(var Key: Word; var KeyChar: WideChar; Shift: TShiftState);
 begin
   if HandleFormKey(Key, Shift) then
   begin
@@ -1109,7 +1109,7 @@ begin
   inherited KeyDown(Key, KeyChar, Shift);
 end;
 
-function TFmxMarkdownPadForm.HandleFormKey(const Key: Word; const Shift: TShiftState): Boolean;
+function TMarkdownPadFMXForm.HandleFormKey(const Key: Word; const Shift: TShiftState): Boolean;
 begin
   Result := True;
 
@@ -1245,7 +1245,7 @@ begin
   end;
 end;
 
-procedure TFmxMarkdownPadForm.DoShow;
+procedure TMarkdownPadFMXForm.DoShow;
 begin
   inherited DoShow;
 
@@ -1256,7 +1256,7 @@ begin
   LayoutTitleBar;
 end;
 
-function TFmxMarkdownPadForm.CloseQuery: Boolean;
+function TMarkdownPadFMXForm.CloseQuery: Boolean;
 begin
   if FZenActive then
     ExitZen;
@@ -1285,7 +1285,7 @@ begin
   Result := True;
 end;
 
-procedure TFmxMarkdownPadForm.Resize;
+procedure TMarkdownPadFMXForm.Resize;
 begin
   inherited Resize;
 
@@ -1298,7 +1298,7 @@ begin
     FPalette.Position.X := (ClientWidth - FPalette.Width) / 2;
 end;
 
-procedure TFmxMarkdownPadForm.SetViewMode(const Mode: TPadViewMode);
+procedure TMarkdownPadFMXForm.SetViewMode(const Mode: TPadViewMode);
 begin
   if FZenActive then
     ExitZen;
@@ -1311,7 +1311,7 @@ begin
   ApplyViewMode;
 end;
 
-procedure TFmxMarkdownPadForm.ApplyViewMode;
+procedure TMarkdownPadFMXForm.ApplyViewMode;
 begin
   case FViewMode of
     TPadViewMode.Split:
@@ -1338,7 +1338,7 @@ begin
   end;
 end;
 
-procedure TFmxMarkdownPadForm.ShowFindBar;
+procedure TMarkdownPadFMXForm.ShowFindBar;
 begin
   FFindBar.Visible := True;
 
@@ -1352,14 +1352,14 @@ begin
   UpdateFindCount;
 end;
 
-procedure TFmxMarkdownPadForm.CloseFindBar;
+procedure TMarkdownPadFMXForm.CloseFindBar;
 begin
   FFindBar.Visible := False;
 
   FEditor.SetFocus;
 end;
 
-procedure TFmxMarkdownPadForm.FindInEditor;
+procedure TMarkdownPadFMXForm.FindInEditor;
 begin
   const Needle = FEditorFindEdit.Text;
   if Needle = '' then
@@ -1373,7 +1373,7 @@ begin
   UpdateFindCount;
 end;
 
-procedure TFmxMarkdownPadForm.UpdateFindCount;
+procedure TMarkdownPadFMXForm.UpdateFindCount;
 begin
   const Needle = FEditorFindEdit.Text;
   if Needle = '' then
@@ -1392,7 +1392,7 @@ begin
     FEditorFindCount.Text := Format(MatchCountFormat, [N]);
 end;
 
-procedure TFmxMarkdownPadForm.HandleEditorFindKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
+procedure TMarkdownPadFMXForm.HandleEditorFindKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
   Shift: TShiftState);
 begin
   case Key of
@@ -1410,12 +1410,12 @@ begin
   KeyChar := #0;
 end;
 
-procedure TFmxMarkdownPadForm.HandleEditorFindChange(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleEditorFindChange(Sender: TObject);
 begin
   UpdateFindCount;
 end;
 
-procedure TFmxMarkdownPadForm.ShowPalette;
+procedure TMarkdownPadFMXForm.ShowPalette;
 begin
   FCommands.Clear;
   RegisterStaticCommands;
@@ -1442,14 +1442,14 @@ begin
   FPaletteEdit.SetFocus;
 end;
 
-procedure TFmxMarkdownPadForm.ClosePalette;
+procedure TMarkdownPadFMXForm.ClosePalette;
 begin
   FPalette.Visible := False;
 
   FEditor.SetFocus;
 end;
 
-procedure TFmxMarkdownPadForm.RefreshPaletteList;
+procedure TMarkdownPadFMXForm.RefreshPaletteList;
 begin
   FPaletteMatches := FCommands.Match(FPaletteEdit.Text);
 
@@ -1489,12 +1489,12 @@ begin
     FPaletteList.ItemIndex := -1;
 end;
 
-procedure TFmxMarkdownPadForm.HandlePaletteDblClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandlePaletteDblClick(Sender: TObject);
 begin
   ExecuteSelectedCommand;
 end;
 
-procedure TFmxMarkdownPadForm.PaletteMoveSelection(const Delta: Integer);
+procedure TMarkdownPadFMXForm.PaletteMoveSelection(const Delta: Integer);
 begin
   if FPaletteList.Count = 0 then
     Exit;
@@ -1503,7 +1503,7 @@ begin
   FPaletteList.ItemIndex := NewIndex;
 end;
 
-procedure TFmxMarkdownPadForm.ExecuteSelectedCommand;
+procedure TMarkdownPadFMXForm.ExecuteSelectedCommand;
 begin
   const Index = FPaletteList.ItemIndex;
   if (Index < 0) or (Index > High(FPaletteMatches)) then
@@ -1517,7 +1517,7 @@ begin
     Action();
 end;
 
-procedure TFmxMarkdownPadForm.HandlePaletteChange(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandlePaletteChange(Sender: TObject);
 begin
   RefreshPaletteList;
 
@@ -1525,7 +1525,7 @@ begin
     FPaletteList.ItemIndex := 0;
 end;
 
-procedure TFmxMarkdownPadForm.ToggleZen;
+procedure TMarkdownPadFMXForm.ToggleZen;
 begin
   if FZenActive then
     ExitZen
@@ -1533,7 +1533,7 @@ begin
     EnterZen;
 end;
 
-procedure TFmxMarkdownPadForm.EnterZen;
+procedure TMarkdownPadFMXForm.EnterZen;
 begin
   if FPalette.Visible then
     ClosePalette;
@@ -1573,7 +1573,7 @@ begin
   FEditor.SetFocus;
 end;
 
-procedure TFmxMarkdownPadForm.ExitZen;
+procedure TMarkdownPadFMXForm.ExitZen;
 begin
   FreeAndNil(FZenLeftPad);
   FreeAndNil(FZenRightPad);
@@ -1592,7 +1592,7 @@ begin
   FEditor.SetFocus;
 end;
 
-procedure TFmxMarkdownPadForm.UpdateZenPadding;
+procedure TMarkdownPadFMXForm.UpdateZenPadding;
 begin
   const Pad = Max(0, (ClientWidth - ZenMaxTextWidth) div 2);
 
@@ -1600,7 +1600,7 @@ begin
   FZenRightPad.Width := Pad;
 end;
 
-procedure TFmxMarkdownPadForm.DragOver(const Data: TDragObject; const Point: TPointF;
+procedure TMarkdownPadFMXForm.DragOver(const Data: TDragObject; const Point: TPointF;
   var Operation: TDragOperation);
 begin
   inherited DragOver(Data, Point, Operation);
@@ -1609,7 +1609,7 @@ begin
     Operation := TDragOperation.Copy;
 end;
 
-procedure TFmxMarkdownPadForm.DragDrop(const Data: TDragObject; const Point: TPointF);
+procedure TMarkdownPadFMXForm.DragDrop(const Data: TDragObject; const Point: TPointF);
 begin
   inherited DragDrop(Data, Point);
 
@@ -1620,7 +1620,7 @@ begin
   end;
 end;
 
-procedure TFmxMarkdownPadForm.HandleNewClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleNewClick(Sender: TObject);
 begin
   FWorkspace.NewDocument;
 
@@ -1628,13 +1628,13 @@ begin
   SwitchToDocument(FWorkspace.ActiveIndex);
 end;
 
-procedure TFmxMarkdownPadForm.HandleOpenClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleOpenClick(Sender: TObject);
 begin
   if FOpenDialog.Execute then
     OpenPath(FOpenDialog.FileName);
 end;
 
-procedure TFmxMarkdownPadForm.HandleRecentClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleRecentClick(Sender: TObject);
 begin
   FRecentMenu.Free;
   FRecentMenu := TPopupMenu.Create(Self);
@@ -1663,13 +1663,13 @@ begin
   FRecentMenu.Popup(ScreenPos.X, ScreenPos.Y);
 end;
 
-procedure TFmxMarkdownPadForm.HandleRecentItemClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleRecentItemClick(Sender: TObject);
 begin
   const Item = Sender as TMenuItem;
   OpenPath(Item.TagString);
 end;
 
-procedure TFmxMarkdownPadForm.OpenPath(const FileName: string);
+procedure TMarkdownPadFMXForm.OpenPath(const FileName: string);
 begin
   if not TFile.Exists(FileName) then
     Exit;
@@ -1693,12 +1693,12 @@ begin
   SwitchToDocument(FWorkspace.ActiveIndex);
 end;
 
-procedure TFmxMarkdownPadForm.HandleSaveClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleSaveClick(Sender: TObject);
 begin
   TrySaveActive;
 end;
 
-procedure TFmxMarkdownPadForm.HandleSaveAsClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleSaveAsClick(Sender: TObject);
 begin
   if FActiveDoc = nil then
     Exit;
@@ -1710,7 +1710,7 @@ begin
     SaveToFile(FSaveDialog.FileName);
 end;
 
-function TFmxMarkdownPadForm.TrySaveActive: Boolean;
+function TMarkdownPadFMXForm.TrySaveActive: Boolean;
 begin
   if FActiveDoc = nil then
     Exit(True);
@@ -1728,7 +1728,7 @@ begin
   Result := True;
 end;
 
-procedure TFmxMarkdownPadForm.SaveToFile(const FileName: string);
+procedure TMarkdownPadFMXForm.SaveToFile(const FileName: string);
 begin
   FActiveDoc.Text := FEditor.Text;
 
@@ -1744,12 +1744,12 @@ begin
   UpdateTitle;
 end;
 
-procedure TFmxMarkdownPadForm.CloseActiveDocument;
+procedure TMarkdownPadFMXForm.CloseActiveDocument;
 begin
   CloseDocumentAt(FWorkspace.ActiveIndex);
 end;
 
-procedure TFmxMarkdownPadForm.CloseDocumentAt(const Index: Integer);
+procedure TMarkdownPadFMXForm.CloseDocumentAt(const Index: Integer);
 begin
   if (Index < 0) or (Index >= FWorkspace.Count) then
     Exit;
@@ -1786,12 +1786,12 @@ begin
   SwitchToDocument(FWorkspace.ActiveIndex);
 end;
 
-procedure TFmxMarkdownPadForm.HandleExportClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleExportClick(Sender: TObject);
 begin
   DoExportHtml;
 end;
 
-procedure TFmxMarkdownPadForm.DoExportHtml;
+procedure TMarkdownPadFMXForm.DoExportHtml;
 begin
   if FActiveDoc <> nil then
     FActiveDoc.Text := FEditor.Text;
@@ -1810,12 +1810,12 @@ begin
   TFile.WriteAllText(FHtmlSaveDialog.FileName, Html, TEncoding.UTF8);
 end;
 
-procedure TFmxMarkdownPadForm.HandleCopyHtmlClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleCopyHtmlClick(Sender: TObject);
 begin
   DoCopyHtml;
 end;
 
-procedure TFmxMarkdownPadForm.DoCopyHtml;
+procedure TMarkdownPadFMXForm.DoCopyHtml;
 begin
   const Fragment = TMarkdown.ToHtml(FEditor.Text, TMarkdownDialect.Gfm);
 
@@ -1824,49 +1824,49 @@ begin
     Clip.SetClipboard(Fragment);
 end;
 
-procedure TFmxMarkdownPadForm.HandleBoldClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleBoldClick(Sender: TObject);
 begin
   FEditor.ExecuteCommand(TEditorCommand.Bold);
   FEditor.SetFocus;
 end;
 
-procedure TFmxMarkdownPadForm.HandleItalicClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleItalicClick(Sender: TObject);
 begin
   FEditor.ExecuteCommand(TEditorCommand.Italic);
   FEditor.SetFocus;
 end;
 
-procedure TFmxMarkdownPadForm.HandleLinkClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleLinkClick(Sender: TObject);
 begin
   FEditor.ExecuteCommand(TEditorCommand.Link);
   FEditor.SetFocus;
 end;
 
-procedure TFmxMarkdownPadForm.HandleCodeClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleCodeClick(Sender: TObject);
 begin
   FEditor.ExecuteCommand(TEditorCommand.CodeBlock);
   FEditor.SetFocus;
 end;
 
-procedure TFmxMarkdownPadForm.HandleThemeClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleThemeClick(Sender: TObject);
 begin
   FDarkThemeActive := not FDarkThemeActive;
   ApplyTheme;
 end;
 
-procedure TFmxMarkdownPadForm.HandleTocClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleTocClick(Sender: TObject);
 begin
   const ShowToc = not FTocPanel.Visible;
   FTocPanel.Visible := ShowToc;
   FTocSplitter.Visible := ShowToc;
 end;
 
-procedure TFmxMarkdownPadForm.HandleFindClick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleFindClick(Sender: TObject);
 begin
   ExecuteFind;
 end;
 
-procedure TFmxMarkdownPadForm.HandleFindEditKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
+procedure TMarkdownPadFMXForm.HandleFindEditKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
   Shift: TShiftState);
 begin
   if Key <> vkReturn then
@@ -1877,7 +1877,7 @@ begin
   ExecuteFind;
 end;
 
-procedure TFmxMarkdownPadForm.HandleEditorChange(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleEditorChange(Sender: TObject);
 begin
   if FSwapping then
     Exit;
@@ -1895,7 +1895,7 @@ begin
   UpdateTitle;
 end;
 
-procedure TFmxMarkdownPadForm.HandleSyncScroll(Sender: TObject; const SourceLine: Integer);
+procedure TMarkdownPadFMXForm.HandleSyncScroll(Sender: TObject; const SourceLine: Integer);
 begin
   // The editor keeps the two panes in step itself; we only reflect the position
   // in the contents outline. Suppressed while the outline drives the scroll.
@@ -1905,12 +1905,12 @@ begin
   UpdateActiveTocEntry(SourceLine);
 end;
 
-procedure TFmxMarkdownPadForm.HandlePreviewLinkClick(const Sender: TObject; const Url: string);
+procedure TMarkdownPadFMXForm.HandlePreviewLinkClick(const Sender: TObject; const Url: string);
 begin
   ShellExecute(0, nil, PChar(Url), nil, nil, SW_SHOWNORMAL);
 end;
 
-procedure TFmxMarkdownPadForm.HandleTocChange(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleTocChange(Sender: TObject);
 begin
   if FTocFollowing then
     Exit;
@@ -1941,7 +1941,7 @@ begin
   FEditor.SetFocus;
 end;
 
-procedure TFmxMarkdownPadForm.HandleTick(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleTick(Sender: TObject);
 begin
   if FMapDirty then
     RebuildSyncAndToc;
@@ -1951,7 +1951,7 @@ begin
   FWatcher.Poll;
 end;
 
-procedure TFmxMarkdownPadForm.HandleFileChanged(const Document: IPadDocument);
+procedure TMarkdownPadFMXForm.HandleFileChanged(const Document: IPadDocument);
 begin
   if Document.Modified then
   begin
@@ -1965,7 +1965,7 @@ begin
   ReloadDocument(Document);
 end;
 
-procedure TFmxMarkdownPadForm.ReloadDocument(const Document: IPadDocument);
+procedure TMarkdownPadFMXForm.ReloadDocument(const Document: IPadDocument);
 begin
   var NewText: string;
   try
@@ -1998,7 +1998,7 @@ begin
   UpdateTitle;
 end;
 
-procedure TFmxMarkdownPadForm.SwitchToDocument(const Index: Integer);
+procedure TMarkdownPadFMXForm.SwitchToDocument(const Index: Integer);
 begin
   if FSwapping then
     Exit;
@@ -2041,7 +2041,7 @@ begin
   UpdateTitle;
 end;
 
-procedure TFmxMarkdownPadForm.RebuildTabs;
+procedure TMarkdownPadFMXForm.RebuildTabs;
 begin
   var Captions: TArray<string> := [];
   var Modified: TArray<Boolean> := [];
@@ -2056,7 +2056,7 @@ begin
   FTabStrip.SetTabs(Captions, Modified, FWorkspace.ActiveIndex);
 end;
 
-procedure TFmxMarkdownPadForm.RebuildSyncAndToc;
+procedure TMarkdownPadFMXForm.RebuildSyncAndToc;
 begin
   FMapDirty := False;
 
@@ -2080,7 +2080,7 @@ begin
   ApplyTocItemColors;
 end;
 
-procedure TFmxMarkdownPadForm.UpdateActiveTocEntry(const SourceLine: Integer);
+procedure TMarkdownPadFMXForm.UpdateActiveTocEntry(const SourceLine: Integer);
 begin
   const Best = TPadOutlineBuilder.ActiveIndex(FTocEntries, SourceLine);
 
@@ -2095,7 +2095,7 @@ begin
   end;
 end;
 
-procedure TFmxMarkdownPadForm.UpdateStatusBar;
+procedure TMarkdownPadFMXForm.UpdateStatusBar;
 begin
   const Caret = FEditor.CaretPosition;
   if Caret = FLastCaret then
@@ -2109,7 +2109,7 @@ begin
   FStatusWordsLabel.Text := Format(StatusWordsFormat, [TPadText.CountWords(FEditor.Text)]);
 end;
 
-procedure TFmxMarkdownPadForm.UpdateTitle;
+procedure TMarkdownPadFMXForm.UpdateTitle;
 begin
   var Name := UntitledName;
   if FActiveDoc <> nil then
@@ -2121,7 +2121,7 @@ begin
   Caption := Format(TitleFormat, [WindowCaption, Name]);
 end;
 
-procedure TFmxMarkdownPadForm.ExecuteFind;
+procedure TMarkdownPadFMXForm.ExecuteFind;
 begin
   const Needle = FFindEdit.Text;
   if Needle = '' then
@@ -2130,7 +2130,7 @@ begin
   FPreview.FindText(Needle);
 end;
 
-procedure TFmxMarkdownPadForm.ApplyTheme;
+procedure TMarkdownPadFMXForm.ApplyTheme;
 begin
   var IconColor := IconLightColor;
   var SeparatorColor := SeparatorLightColor;
@@ -2187,7 +2187,7 @@ begin
   ApplyChromeColors;
 end;
 
-procedure TFmxMarkdownPadForm.ApplyChromeColors;
+procedure TMarkdownPadFMXForm.ApplyChromeColors;
 begin
   FStatusBar.Fill.Color := FToolbarFill;
   FFindBar.Fill.Color := FToolbarFill;
@@ -2225,7 +2225,7 @@ begin
   end;
 end;
 
-procedure TFmxMarkdownPadForm.ApplyTocItemColors;
+procedure TMarkdownPadFMXForm.ApplyTocItemColors;
 begin
   for var Index := 0 to FTocList.Count - 1 do
   begin
@@ -2235,12 +2235,12 @@ begin
   end;
 end;
 
-procedure TFmxMarkdownPadForm.HandleTocListApplyStyle(Sender: TObject);
+procedure TMarkdownPadFMXForm.HandleTocListApplyStyle(Sender: TObject);
 begin
   StyleTocBackground;
 end;
 
-procedure TFmxMarkdownPadForm.StyleTocBackground;
+procedure TMarkdownPadFMXForm.StyleTocBackground;
 begin
   // Recolor the list-box background directly. Relying only on OnApplyStyleLookup
   // is unreliable: the event does not always re-fire when the theme is toggled at
@@ -2256,7 +2256,7 @@ begin
     TControl(Background).Opacity := 0;
 end;
 
-procedure TFmxMarkdownPadForm.SaveSession;
+procedure TMarkdownPadFMXForm.SaveSession;
 begin
   if FSession = nil then
     Exit;
@@ -2287,7 +2287,7 @@ begin
   FSession.Save;
 end;
 
-class function TFmxMarkdownPadForm.BuildSampleMarkdown: string;
+class function TMarkdownPadFMXForm.BuildSampleMarkdown: string;
 begin
   Result :=
     '# Markdown4D Pad (FMX)'#10#10 +

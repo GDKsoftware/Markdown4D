@@ -1,4 +1,4 @@
-object MarkdownPadForm: TMarkdownPadForm
+object MarkdownPadVCLForm: TMarkdownPadVCLForm
   Left = 0
   Top = 0
   Caption = 'Markdown4D Pad'

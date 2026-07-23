@@ -1,4 +1,4 @@
-unit MarkdownPad.Main;
+unit MarkdownPadVCL.Main;
 
 {$SCOPEDENUMS ON}
 
@@ -32,7 +32,7 @@ uses
   MarkdownPad.FileWatcher;
 
 type
-  TMarkdownPadForm = class(TForm)
+  TMarkdownPadVCLForm = class(TForm)
     pnlToolbar: TPanel;
     pnlFind: TPanel;
     pnlStatus: TPanel;
@@ -223,7 +223,7 @@ type
   end;
 
 var
-  MarkdownPadForm: TMarkdownPadForm;
+  MarkdownPadVCLForm: TMarkdownPadVCLForm;
 
 implementation
 
@@ -247,7 +247,7 @@ uses
 
 {$R *.dfm}
 
-constructor TMarkdownPadForm.Create(Owner: TComponent);
+constructor TMarkdownPadVCLForm.Create(Owner: TComponent);
 begin
   inherited Create(Owner);
 
@@ -297,7 +297,7 @@ begin
       end);
 end;
 
-destructor TMarkdownPadForm.Destroy;
+destructor TMarkdownPadVCLForm.Destroy;
 begin
   SaveSession;
 
@@ -313,7 +313,7 @@ begin
   FLightTheme.Free;
 end;
 
-procedure TMarkdownPadForm.ConfigureControls;
+procedure TMarkdownPadVCLForm.ConfigureControls;
 begin
   lstToc.AlignWithMargins := True;
   lstToc.Margins.SetBounds(4, 20, 4, 4);
@@ -352,7 +352,7 @@ begin
   tmrTick.Enabled := True;
 end;
 
-procedure TMarkdownPadForm.BuildToolbar;
+procedure TMarkdownPadVCLForm.BuildToolbar;
 begin
   FIconFontName := ResolveIconFontName;
 
@@ -392,7 +392,7 @@ begin
   FFindButton.Align := alRight;
 end;
 
-function TMarkdownPadForm.ResolveIconFontName: string;
+function TMarkdownPadVCLForm.ResolveIconFontName: string;
 begin
   if Screen.Fonts.IndexOf(FluentIconFontName) >= 0 then
     Result := FluentIconFontName
@@ -400,7 +400,7 @@ begin
     Result := Mdl2IconFontName;
 end;
 
-function TMarkdownPadForm.AddIconButton(const Glyph: string; const Hint: string;
+function TMarkdownPadVCLForm.AddIconButton(const Glyph: string; const Hint: string;
   const Handler: TNotifyEvent): TSpeedButton;
 begin
   const VerticalMargin = (ToolbarHeight - IconButtonSize) div 2;
@@ -422,7 +422,7 @@ begin
   FIconButtons := FIconButtons + [Result];
 end;
 
-procedure TMarkdownPadForm.AddSeparator;
+procedure TMarkdownPadVCLForm.AddSeparator;
 begin
   const VerticalMargin = ButtonSpacing + 2;
 
@@ -439,14 +439,14 @@ begin
   FSeparators := FSeparators + [Separator];
 end;
 
-procedure TMarkdownPadForm.CreateWnd;
+procedure TMarkdownPadVCLForm.CreateWnd;
 begin
   inherited CreateWnd;
 
   DragAcceptFiles(Handle, True);
 end;
 
-procedure TMarkdownPadForm.WMDropFiles(var Message: TMessage);
+procedure TMarkdownPadVCLForm.WMDropFiles(var Message: TMessage);
 begin
   const Drop = HDROP(Message.WParam);
 
@@ -466,7 +466,7 @@ begin
   DragFinish(Drop);
 end;
 
-procedure TMarkdownPadForm.HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+procedure TMarkdownPadVCLForm.HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
 begin
   if FPalette.Visible then
   begin
@@ -683,7 +683,7 @@ begin
   end;
 end;
 
-procedure TMarkdownPadForm.HandleCloseQuery(Sender: TObject; var CanClose: Boolean);
+procedure TMarkdownPadVCLForm.HandleCloseQuery(Sender: TObject; var CanClose: Boolean);
 begin
   if FZenActive then
     ExitZen;
@@ -717,19 +717,19 @@ begin
   CanClose := True;
 end;
 
-procedure TMarkdownPadForm.HandleNewClick(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleNewClick(Sender: TObject);
 begin
   FWorkspace.NewDocument;
   SwitchToDocument(FWorkspace.ActiveIndex);
 end;
 
-procedure TMarkdownPadForm.HandleOpenClick(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleOpenClick(Sender: TObject);
 begin
   if dlgOpen.Execute then
     OpenPath(dlgOpen.FileName);
 end;
 
-procedure TMarkdownPadForm.HandleSaveClick(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleSaveClick(Sender: TObject);
 begin
   if FActiveDoc = nil then
     Exit;
@@ -740,7 +740,7 @@ begin
     SaveToFile(FActiveDoc.FileName);
 end;
 
-procedure TMarkdownPadForm.HandleSaveAsClick(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleSaveAsClick(Sender: TObject);
 begin
   if FActiveDoc = nil then
     Exit;
@@ -752,7 +752,7 @@ begin
     SaveToFile(dlgSave.FileName);
 end;
 
-procedure TMarkdownPadForm.HandleRecentClick(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleRecentClick(Sender: TObject);
 begin
   popRecent.Items.Clear;
 
@@ -778,53 +778,53 @@ begin
   popRecent.Popup(Origin.X, Origin.Y);
 end;
 
-procedure TMarkdownPadForm.HandleRecentItemClick(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleRecentItemClick(Sender: TObject);
 begin
   const Item = Sender as TMenuItem;
   OpenPath(Item.Caption);
 end;
 
-procedure TMarkdownPadForm.HandleBoldClick(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleBoldClick(Sender: TObject);
 begin
   mdEditor.ExecuteCommand(TEditorCommand.Bold);
   mdEditor.SetFocus;
 end;
 
-procedure TMarkdownPadForm.HandleItalicClick(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleItalicClick(Sender: TObject);
 begin
   mdEditor.ExecuteCommand(TEditorCommand.Italic);
   mdEditor.SetFocus;
 end;
 
-procedure TMarkdownPadForm.HandleLinkClick(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleLinkClick(Sender: TObject);
 begin
   mdEditor.ExecuteCommand(TEditorCommand.Link);
   mdEditor.SetFocus;
 end;
 
-procedure TMarkdownPadForm.HandleCodeClick(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleCodeClick(Sender: TObject);
 begin
   mdEditor.ExecuteCommand(TEditorCommand.CodeBlock);
   mdEditor.SetFocus;
 end;
 
-procedure TMarkdownPadForm.HandleExportClick(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleExportClick(Sender: TObject);
 begin
   DoExportHtml;
 end;
 
-procedure TMarkdownPadForm.HandleCopyHtmlClick(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleCopyHtmlClick(Sender: TObject);
 begin
   DoCopyHtml;
 end;
 
-procedure TMarkdownPadForm.ExecuteFormatCommand(const Command: TEditorCommand);
+procedure TMarkdownPadVCLForm.ExecuteFormatCommand(const Command: TEditorCommand);
 begin
   mdEditor.ExecuteCommand(Command);
   mdEditor.SetFocus;
 end;
 
-procedure TMarkdownPadForm.DoExportHtml;
+procedure TMarkdownPadVCLForm.DoExportHtml;
 begin
   if FActiveDoc <> nil then
     FActiveDoc.Text := mdEditor.Text;
@@ -842,13 +842,13 @@ begin
   TFile.WriteAllText(dlgSaveHtml.FileName, Html, TEncoding.UTF8);
 end;
 
-procedure TMarkdownPadForm.DoCopyHtml;
+procedure TMarkdownPadVCLForm.DoCopyHtml;
 begin
   const Fragment = TMarkdown.ToHtml(mdEditor.Text, TMarkdownDialect.Gfm);
   CopyHtmlToClipboard(Fragment);
 end;
 
-procedure TMarkdownPadForm.CopyHtmlToClipboard(const Fragment: string);
+procedure TMarkdownPadVCLForm.CopyHtmlToClipboard(const Fragment: string);
 const
   CfHtmlName = 'HTML Format';
 begin
@@ -898,13 +898,13 @@ begin
   end;
 end;
 
-procedure TMarkdownPadForm.HandleThemeClick(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleThemeClick(Sender: TObject);
 begin
   FDarkThemeActive := not FDarkThemeActive;
   ApplyTheme;
 end;
 
-procedure TMarkdownPadForm.HandleTocClick(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleTocClick(Sender: TObject);
 begin
   const ShowToc = not pnlToc.Visible;
   pnlToc.Visible := ShowToc;
@@ -913,12 +913,12 @@ begin
   EnforceLeftPaneOrder;
 end;
 
-procedure TMarkdownPadForm.HandleFindClick(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleFindClick(Sender: TObject);
 begin
   ExecuteFind;
 end;
 
-procedure TMarkdownPadForm.HandleFindEditKeyPress(Sender: TObject; var Key: Char);
+procedure TMarkdownPadVCLForm.HandleFindEditKeyPress(Sender: TObject; var Key: Char);
 begin
   if Key <> #13 then
     Exit;
@@ -927,7 +927,7 @@ begin
   ExecuteFind;
 end;
 
-procedure TMarkdownPadForm.BuildTitleBar;
+procedure TMarkdownPadVCLForm.BuildTitleBar;
 begin
   FUseCustomTitleBar := TTitleBar.Supported;
 
@@ -968,7 +968,7 @@ begin
   end;
 end;
 
-procedure TMarkdownPadForm.LayoutTitleBar;
+procedure TMarkdownPadVCLForm.LayoutTitleBar;
 begin
   if not FUseCustomTitleBar or (FTitleBar = nil) or (FTabStrip = nil) then
     Exit;
@@ -987,14 +987,14 @@ begin
   ApplyCaptionColor;
 end;
 
-procedure TMarkdownPadForm.HandleTitleBarPaint(Sender: TObject; Canvas: TCanvas; var ARect: TRect);
+procedure TMarkdownPadVCLForm.HandleTitleBarPaint(Sender: TObject; Canvas: TCanvas; var ARect: TRect);
 begin
   Canvas.Brush.Style := bsSolid;
   Canvas.Brush.Color := FTitleBarColor;
   Canvas.FillRect(ARect);
 end;
 
-procedure TMarkdownPadForm.ApplyCaptionColor;
+procedure TMarkdownPadVCLForm.ApplyCaptionColor;
 begin
   if not FUseCustomTitleBar or not HandleAllocated then
     Exit;
@@ -1003,7 +1003,7 @@ begin
   DwmSetWindowAttribute(Handle, DwmCaptionColorAttribute, @CaptionColor, SizeOf(CaptionColor));
 end;
 
-procedure TMarkdownPadForm.ApplyTitleBarColors(const ToolbarColor, IconColor, SeparatorColor: TColor);
+procedure TMarkdownPadVCLForm.ApplyTitleBarColors(const ToolbarColor, IconColor, SeparatorColor: TColor);
 begin
   if not FUseCustomTitleBar then
     Exit;
@@ -1027,28 +1027,28 @@ begin
   ApplyCaptionColor;
 end;
 
-procedure TMarkdownPadForm.HandleTabSelect(Sender: TObject; const Index: Integer);
+procedure TMarkdownPadVCLForm.HandleTabSelect(Sender: TObject; const Index: Integer);
 begin
   SwitchToDocument(Index);
 end;
 
-procedure TMarkdownPadForm.HandleTabClose(Sender: TObject; const Index: Integer);
+procedure TMarkdownPadVCLForm.HandleTabClose(Sender: TObject; const Index: Integer);
 begin
   CloseDocumentAt(Index);
 end;
 
-procedure TMarkdownPadForm.HandleTabAdd(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleTabAdd(Sender: TObject);
 begin
   HandleNewClick(nil);
 end;
 
-procedure TMarkdownPadForm.HandleTabReorder(Sender: TObject; const FromIndex, ToIndex: Integer);
+procedure TMarkdownPadVCLForm.HandleTabReorder(Sender: TObject; const FromIndex, ToIndex: Integer);
 begin
   FWorkspace.Move(FromIndex, ToIndex);
   RebuildTabs;
 end;
 
-procedure TMarkdownPadForm.HandleEditorChange(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleEditorChange(Sender: TObject);
 begin
   if FSwapping then
     Exit;
@@ -1066,19 +1066,19 @@ begin
   UpdateTitle;
 end;
 
-procedure TMarkdownPadForm.HandleSyncScroll(Sender: TObject; const SourceLine: Integer);
+procedure TMarkdownPadVCLForm.HandleSyncScroll(Sender: TObject; const SourceLine: Integer);
 begin
   // The editor keeps the two panes in step itself; we only reflect the position
   // in the contents outline.
   UpdateActiveTocEntry(SourceLine);
 end;
 
-procedure TMarkdownPadForm.HandlePreviewLinkClick(const Sender: TObject; const Url: string);
+procedure TMarkdownPadVCLForm.HandlePreviewLinkClick(const Sender: TObject; const Url: string);
 begin
   ShellExecute(0, nil, PChar(Url), nil, nil, SW_SHOWNORMAL);
 end;
 
-procedure TMarkdownPadForm.HandleTocListClick(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleTocListClick(Sender: TObject);
 begin
   const Index = lstToc.ItemIndex;
   if (Index < 0) or (Index > High(FTocEntries)) then
@@ -1100,7 +1100,7 @@ begin
   mdEditor.SetFocus;
 end;
 
-procedure TMarkdownPadForm.HandleTick(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleTick(Sender: TObject);
 begin
   if FMapDirty then
     RebuildSyncAndToc;
@@ -1110,7 +1110,7 @@ begin
   FWatcher.Poll;
 end;
 
-procedure TMarkdownPadForm.HandleFileChanged(const Document: IPadDocument);
+procedure TMarkdownPadVCLForm.HandleFileChanged(const Document: IPadDocument);
 begin
   if Document.Modified then
   begin
@@ -1149,7 +1149,7 @@ begin
   UpdateTitle;
 end;
 
-procedure TMarkdownPadForm.OpenPath(const FileName: string);
+procedure TMarkdownPadVCLForm.OpenPath(const FileName: string);
 begin
   if not TFile.Exists(FileName) then
     Exit;
@@ -1172,7 +1172,7 @@ begin
   SwitchToDocument(FWorkspace.ActiveIndex);
 end;
 
-procedure TMarkdownPadForm.SwitchToDocument(const Index: Integer);
+procedure TMarkdownPadVCLForm.SwitchToDocument(const Index: Integer);
 begin
   if FSwapping then
     Exit;
@@ -1215,12 +1215,12 @@ begin
   UpdateTitle;
 end;
 
-procedure TMarkdownPadForm.CloseActiveDocument;
+procedure TMarkdownPadVCLForm.CloseActiveDocument;
 begin
   CloseDocumentAt(FWorkspace.ActiveIndex);
 end;
 
-procedure TMarkdownPadForm.CloseDocumentAt(const Index: Integer);
+procedure TMarkdownPadVCLForm.CloseDocumentAt(const Index: Integer);
 begin
   if (Index < 0) or (Index >= FWorkspace.Count) then
     Exit;
@@ -1254,7 +1254,7 @@ begin
   SwitchToDocument(FWorkspace.ActiveIndex);
 end;
 
-function TMarkdownPadForm.SaveActiveDocument: Boolean;
+function TMarkdownPadVCLForm.SaveActiveDocument: Boolean;
 begin
   if FActiveDoc = nil then
     Exit(False);
@@ -1274,7 +1274,7 @@ begin
   Result := True;
 end;
 
-procedure TMarkdownPadForm.SaveToFile(const FileName: string);
+procedure TMarkdownPadVCLForm.SaveToFile(const FileName: string);
 begin
   TFile.WriteAllText(FileName, mdEditor.Text);
 
@@ -1289,7 +1289,7 @@ begin
   UpdateTitle;
 end;
 
-procedure TMarkdownPadForm.RestoreSession;
+procedure TMarkdownPadVCLForm.RestoreSession;
 begin
   var ActivePath := '';
   if (FSession.ActiveIndex >= 0) and (FSession.ActiveIndex <= High(FSession.OpenFiles)) then
@@ -1333,7 +1333,7 @@ begin
   ApplyViewMode;
 end;
 
-procedure TMarkdownPadForm.SaveSession;
+procedure TMarkdownPadVCLForm.SaveSession;
 begin
   if FActiveDoc <> nil then
     FActiveDoc.Text := mdEditor.Text;
@@ -1364,7 +1364,7 @@ begin
   FSession.Save;
 end;
 
-procedure TMarkdownPadForm.RebuildTabs;
+procedure TMarkdownPadVCLForm.RebuildTabs;
 begin
   var Captions: TArray<string> := [];
   var Modified: TArray<Boolean> := [];
@@ -1379,7 +1379,7 @@ begin
   FTabStrip.SetTabs(Captions, Modified, FWorkspace.ActiveIndex);
 end;
 
-procedure TMarkdownPadForm.ApplyTheme;
+procedure TMarkdownPadVCLForm.ApplyTheme;
 begin
   var ToolbarColor := ToolbarLightColor;
   var IconColor := IconLightColor;
@@ -1455,7 +1455,7 @@ begin
   pnlStatus.Invalidate;
 end;
 
-procedure TMarkdownPadForm.RebuildSyncAndToc;
+procedure TMarkdownPadVCLForm.RebuildSyncAndToc;
 begin
   FMapDirty := False;
 
@@ -1475,7 +1475,7 @@ begin
   end;
 end;
 
-procedure TMarkdownPadForm.UpdateActiveTocEntry(const SourceLine: Integer);
+procedure TMarkdownPadVCLForm.UpdateActiveTocEntry(const SourceLine: Integer);
 begin
   const Best = TPadOutlineBuilder.ActiveIndex(FTocEntries, SourceLine);
 
@@ -1483,7 +1483,7 @@ begin
     lstToc.ItemIndex := Best;
 end;
 
-procedure TMarkdownPadForm.UpdateStatusBar;
+procedure TMarkdownPadVCLForm.UpdateStatusBar;
 begin
   const Caret = mdEditor.CaretPosition;
   if Caret = FLastCaret then
@@ -1497,7 +1497,7 @@ begin
   lblWords.Caption := Format(StatusWordsFormat, [TPadText.CountWords(mdEditor.Text)]);
 end;
 
-procedure TMarkdownPadForm.UpdateTitle;
+procedure TMarkdownPadVCLForm.UpdateTitle;
 begin
   var Name := UntitledName;
 
@@ -1511,7 +1511,7 @@ begin
   Caption := Format(TitleFormat, [WindowCaption, Name]);
 end;
 
-procedure TMarkdownPadForm.ExecuteFind;
+procedure TMarkdownPadVCLForm.ExecuteFind;
 begin
   const Needle = FFindEdit.Text;
   if Needle = '' then
@@ -1520,7 +1520,7 @@ begin
   mdPreview.FindText(Needle);
 end;
 
-procedure TMarkdownPadForm.BuildPalette;
+procedure TMarkdownPadVCLForm.BuildPalette;
 begin
   FPalette := TPanel.Create(Self);
   FPalette.Parent := Self;
@@ -1550,14 +1550,14 @@ begin
   FPalette.Top := PaletteTop;
 end;
 
-procedure TMarkdownPadForm.BuildCommandRegistry;
+procedure TMarkdownPadVCLForm.BuildCommandRegistry;
 begin
   FCommands := TPadCommandRegistry.Create;
 
   RegisterStaticCommands;
 end;
 
-procedure TMarkdownPadForm.RegisterStaticCommands;
+procedure TMarkdownPadVCLForm.RegisterStaticCommands;
 begin
   FCommands.Register(CmdNewName, CatFile, CmdNewShortcut,
     procedure
@@ -1733,7 +1733,7 @@ begin
     end);
 end;
 
-procedure TMarkdownPadForm.SetViewMode(const Mode: TPadViewMode);
+procedure TMarkdownPadVCLForm.SetViewMode(const Mode: TPadViewMode);
 begin
   if FZenActive then
     ExitZen;
@@ -1745,7 +1745,7 @@ begin
   ApplyViewMode;
 end;
 
-procedure TMarkdownPadForm.ApplyViewMode;
+procedure TMarkdownPadVCLForm.ApplyViewMode;
 begin
   case FViewMode of
     TPadViewMode.EditorOnly:
@@ -1775,7 +1775,7 @@ begin
   EnforceLeftPaneOrder;
 end;
 
-procedure TMarkdownPadForm.EnforceTopBarOrder;
+procedure TMarkdownPadVCLForm.EnforceTopBarOrder;
 begin
   DisableAlign;
   try
@@ -1796,7 +1796,7 @@ begin
   end;
 end;
 
-procedure TMarkdownPadForm.EnforceLeftPaneOrder;
+procedure TMarkdownPadVCLForm.EnforceLeftPaneOrder;
 begin
   DisableAlign;
   try
@@ -1827,7 +1827,7 @@ begin
   end;
 end;
 
-procedure TMarkdownPadForm.ShowFindBar;
+procedure TMarkdownPadVCLForm.ShowFindBar;
 begin
   pnlFind.Visible := True;
 
@@ -1843,7 +1843,7 @@ begin
   UpdateFindCount;
 end;
 
-procedure TMarkdownPadForm.CloseFindBar;
+procedure TMarkdownPadVCLForm.CloseFindBar;
 begin
   pnlFind.Visible := False;
 
@@ -1853,7 +1853,7 @@ begin
     mdEditor.SetFocus;
 end;
 
-procedure TMarkdownPadForm.FindInEditor;
+procedure TMarkdownPadVCLForm.FindInEditor;
 begin
   const Needle = edtEditorFind.Text;
   if Needle = '' then
@@ -1867,7 +1867,7 @@ begin
   UpdateFindCount;
 end;
 
-procedure TMarkdownPadForm.UpdateFindCount;
+procedure TMarkdownPadVCLForm.UpdateFindCount;
 begin
   const Needle = edtEditorFind.Text;
   if Needle = '' then
@@ -1886,12 +1886,12 @@ begin
     lblFindCount.Caption := Format(MatchCountFormat, [Total]);
 end;
 
-procedure TMarkdownPadForm.HandleEditorFindChange(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleEditorFindChange(Sender: TObject);
 begin
   UpdateFindCount;
 end;
 
-procedure TMarkdownPadForm.ShowPalette;
+procedure TMarkdownPadVCLForm.ShowPalette;
 begin
   FCommands.Clear;
   RegisterStaticCommands;
@@ -1916,7 +1916,7 @@ begin
   FPaletteEdit.SetFocus;
 end;
 
-procedure TMarkdownPadForm.ClosePalette;
+procedure TMarkdownPadVCLForm.ClosePalette;
 begin
   FPalette.Visible := False;
 
@@ -1924,7 +1924,7 @@ begin
     mdEditor.SetFocus;
 end;
 
-procedure TMarkdownPadForm.RefreshPaletteList;
+procedure TMarkdownPadVCLForm.RefreshPaletteList;
 begin
   FPaletteMatches := FCommands.Match(FPaletteEdit.Text);
 
@@ -1946,7 +1946,7 @@ begin
     FPaletteList.ItemIndex := -1;
 end;
 
-procedure TMarkdownPadForm.HandlePaletteChange(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandlePaletteChange(Sender: TObject);
 begin
   RefreshPaletteList;
 
@@ -1954,7 +1954,7 @@ begin
     FPaletteList.ItemIndex := 0;
 end;
 
-procedure TMarkdownPadForm.HandlePaletteDrawItem(Control: TWinControl; Index: Integer; Rect: TRect;
+procedure TMarkdownPadVCLForm.HandlePaletteDrawItem(Control: TWinControl; Index: Integer; Rect: TRect;
   State: TOwnerDrawState);
 begin
   const List = Control as TListBox;
@@ -1985,12 +1985,12 @@ begin
   end;
 end;
 
-procedure TMarkdownPadForm.HandlePaletteDblClick(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandlePaletteDblClick(Sender: TObject);
 begin
   ExecuteSelectedCommand;
 end;
 
-procedure TMarkdownPadForm.PaletteMoveSelection(const Delta: Integer);
+procedure TMarkdownPadVCLForm.PaletteMoveSelection(const Delta: Integer);
 begin
   if FPaletteList.Count = 0 then
     Exit;
@@ -1999,7 +1999,7 @@ begin
   FPaletteList.ItemIndex := NewIndex;
 end;
 
-procedure TMarkdownPadForm.ExecuteSelectedCommand;
+procedure TMarkdownPadVCLForm.ExecuteSelectedCommand;
 begin
   const Index = FPaletteList.ItemIndex;
   if (Index < 0) or (Index > High(FPaletteMatches)) then
@@ -2013,7 +2013,7 @@ begin
     Action();
 end;
 
-procedure TMarkdownPadForm.ToggleZen;
+procedure TMarkdownPadVCLForm.ToggleZen;
 begin
   if FZenActive then
     ExitZen
@@ -2021,7 +2021,7 @@ begin
     EnterZen;
 end;
 
-procedure TMarkdownPadForm.EnterZen;
+procedure TMarkdownPadVCLForm.EnterZen;
 begin
   if FPalette.Visible then
     ClosePalette;
@@ -2079,7 +2079,7 @@ begin
     mdEditor.SetFocus;
 end;
 
-procedure TMarkdownPadForm.ExitZen;
+procedure TMarkdownPadVCLForm.ExitZen;
 begin
   FreeAndNil(FZenLeftPad);
   FreeAndNil(FZenRightPad);
@@ -2100,7 +2100,7 @@ begin
     mdEditor.SetFocus;
 end;
 
-procedure TMarkdownPadForm.UpdateZenPadding;
+procedure TMarkdownPadVCLForm.UpdateZenPadding;
 begin
   if (FZenLeftPad = nil) or (FZenRightPad = nil) then
     Exit;
@@ -2110,7 +2110,7 @@ begin
   FZenRightPad.Width := Pad;
 end;
 
-procedure TMarkdownPadForm.HandleResize(Sender: TObject);
+procedure TMarkdownPadVCLForm.HandleResize(Sender: TObject);
 begin
   LayoutTitleBar;
 
@@ -2121,7 +2121,7 @@ begin
     FPalette.Left := (ClientWidth - FPalette.Width) div 2;
 end;
 
-class function TMarkdownPadForm.BuildSampleMarkdown: string;
+class function TMarkdownPadVCLForm.BuildSampleMarkdown: string;
 begin
   Result :=
     '# Markdown4D Pad'#10#10 +

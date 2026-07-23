@@ -120,16 +120,13 @@ build order and step-by-step IDE instructions are in
 
 ## Examples
 
-The `Examples\` folder contains seven runnable projects:
+The `Examples\` folder contains four runnable projects:
 
 | Project | Framework | Shows |
 |---------|-----------|-------|
-| `Md2Html` | Console | `markdown → HTML` CLI with `--gfm`, `--xhtml`, `--safe`, `--version` |
-| `VclViewerDemo` | VCL | Viewer with file open, light/dark theme switching, find and a native chart |
-| `MarkdownPad` | VCL | Editor + live preview + table of contents, with native charts and mermaid diagrams |
+| `MarkdownPadVCL` | VCL | Editor + live preview + table of contents, with native charts and mermaid diagrams |
 | `LlmChat` | VCL | Streaming chat with incremental render, async images, live charts and mermaid diagrams |
-| `FmxViewerDemo` | FMX | Viewer with file open, theme switching, find and a native chart |
-| `FmxMarkdownPad` | FMX | Editor + live preview, with native charts and mermaid diagrams |
+| `MarkdownPadFMX` | FMX | Editor + live preview, with native charts and mermaid diagrams |
 | `FmxLlmChat` | FMX | Streaming chat with live charts and mermaid diagrams |
 
 ## Architecture
