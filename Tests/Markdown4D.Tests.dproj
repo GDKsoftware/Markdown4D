@@ -116,12 +116,14 @@
         <DCCReference Include="..\Examples\Shared\MarkdownPad.TabStrip.pas"/>
         <DCCReference Include="..\Examples\Shared\MarkdownPad.FileWatcher.pas"/>
         <DCCReference Include="..\Examples\Shared\MarkdownPad.HtmlExport.pas"/>
+        <DCCReference Include="..\Examples\Shared\StreamingMarkdown.Demo.pas"/>
         <DCCReference Include="MarkdownPad.Workspace.Tests.pas"/>
         <DCCReference Include="MarkdownPad.TabStrip.Tests.pas"/>
         <DCCReference Include="MarkdownPad.Session.Tests.pas"/>
         <DCCReference Include="MarkdownPad.Commands.Tests.pas"/>
         <DCCReference Include="MarkdownPad.FileWatcher.Tests.pas"/>
         <DCCReference Include="MarkdownPad.HtmlExport.Tests.pas"/>
+        <DCCReference Include="StreamingMarkdown.Demo.Tests.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
