@@ -931,20 +931,20 @@ begin
   const ColumnLeft = GutterWidth - FoldWidth;
   const CenterX = ColumnLeft + FoldWidth / 2;
   const CenterY = Top + LineHeightPx / 2;
-  const Reach = Min(FoldWidth, LineHeightPx) / 2 - MulDiv(GutterPaddingDips, CurrentPPI, ReferencePixelsPerInch);
+  const Half = Min(FoldWidth, LineHeightPx) * 0.3;
   const Color = FTheme.BlockQuoteTextColor;
 
-  if Reach <= 0 then
+  if Half <= 0 then
     Exit;
 
   if Collapsed then
-    Painter.FillPolygon([TLayoutPointF.Create(CenterX - Reach * 0.6, CenterY - Reach),
-      TLayoutPointF.Create(CenterX + Reach * 0.8, CenterY),
-      TLayoutPointF.Create(CenterX - Reach * 0.6, CenterY + Reach)], Color)
+    Painter.FillPolygon([TLayoutPointF.Create(CenterX - Half * 0.7, CenterY - Half),
+      TLayoutPointF.Create(CenterX + Half * 0.9, CenterY),
+      TLayoutPointF.Create(CenterX - Half * 0.7, CenterY + Half)], Color)
   else
-    Painter.FillPolygon([TLayoutPointF.Create(CenterX - Reach, CenterY - Reach * 0.6),
-      TLayoutPointF.Create(CenterX + Reach, CenterY - Reach * 0.6),
-      TLayoutPointF.Create(CenterX, CenterY + Reach * 0.8)], Color);
+    Painter.FillPolygon([TLayoutPointF.Create(CenterX - Half, CenterY - Half * 0.7),
+      TLayoutPointF.Create(CenterX + Half, CenterY - Half * 0.7),
+      TLayoutPointF.Create(CenterX, CenterY + Half * 0.9)], Color);
 end;
 
 function TMarkdownEditor.HandleFoldClick(const X, Y: Integer): Boolean;
