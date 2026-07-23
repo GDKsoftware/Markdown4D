@@ -478,6 +478,13 @@ begin
     if (Item.Node = nil) or not Supports(Item.Node, IMarkdownCodeBlock, Code) then
       Continue;
 
+    // Skip code blocks that a layout override (chart, mermaid, ...) renders as
+    // graphics: their rectangles are the drawing, not copyable source, so the
+    // hover copy button must not appear over them.
+    var Handler: ILayoutBlockOverride;
+    if TLayoutBlockOverrideRegistry.TryFind(Item.Node, Handler) then
+      Continue;
+
     Result := Result + [TMarkdownCodeBlockRegion.Create(Item.Bounds, CodeTextOf(Code))];
   end;
 end;
