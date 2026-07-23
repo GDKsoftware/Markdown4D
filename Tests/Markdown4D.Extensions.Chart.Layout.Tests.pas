@@ -63,6 +63,18 @@ type
 
     [Test]
     procedure Streaming_MidFence_NoModel_AfterClose_Model;
+
+    [Test]
+    procedure HorizontalBar_ProducesBarRectangles;
+
+    [Test]
+    procedure Area_ProducesFilledPolygon;
+
+    [Test]
+    procedure Radar_ProducesPolygonPerDataset;
+
+    [Test]
+    procedure Scatter_ProducesMarkerPerPoint;
   end;
 
 implementation
@@ -99,15 +111,20 @@ begin
   Result := False;
 end;
 
-function CountWedges(const Items: TArray<IDisplayItem>): Integer;
+function CountKind(const Items: TArray<IDisplayItem>; const Kind: TDisplayItemKind): Integer;
 begin
   Result := 0;
 
   for var Item in Items do
   begin
-    if Item.Kind = TDisplayItemKind.Wedge then
+    if Item.Kind = Kind then
       Inc(Result);
   end;
+end;
+
+function CountWedges(const Items: TArray<IDisplayItem>): Integer;
+begin
+  Result := CountKind(Items, TDisplayItemKind.Wedge);
 end;
 
 procedure TChartLayoutTests.SetupFixture;
@@ -260,6 +277,34 @@ begin
   var ClosedModel: IChartModel;
   Assert.IsTrue(TChartExtension.TryGetModel(ClosedCode, ClosedModel),
     'A closed chart fence must expose a chart model');
+end;
+
+procedure TChartLayoutTests.HorizontalBar_ProducesBarRectangles;
+begin
+  const Items = ModelItems('bar-horizontal');
+  Assert.IsTrue(CountKind(Items, TDisplayItemKind.Rectangle) >= 3,
+    'A horizontal bar chart must emit one bar rectangle per label');
+end;
+
+procedure TChartLayoutTests.Area_ProducesFilledPolygon;
+begin
+  const Items = ModelItems('line-area');
+  Assert.IsTrue(CountKind(Items, TDisplayItemKind.Polygon) >= 1,
+    'A filled line (area) chart must emit a filled polygon under the series');
+end;
+
+procedure TChartLayoutTests.Radar_ProducesPolygonPerDataset;
+begin
+  const Items = ModelItems('radar-multi');
+  Assert.IsTrue(CountKind(Items, TDisplayItemKind.Polygon) >= 2,
+    'A radar chart must emit one filled polygon per dataset');
+end;
+
+procedure TChartLayoutTests.Scatter_ProducesMarkerPerPoint;
+begin
+  const Items = ModelItems('scatter-minimal');
+  Assert.AreEqual(3, CountKind(Items, TDisplayItemKind.Wedge),
+    'A three-point scatter chart must emit one marker per point');
 end;
 
 end.

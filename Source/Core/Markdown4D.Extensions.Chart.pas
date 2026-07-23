@@ -10,7 +10,7 @@ uses
   Markdown4D.Layout.Interfaces;
 
 type
-  TChartKind = (Bar, Line, Pie, Doughnut);
+  TChartKind = (Bar, Line, Pie, Doughnut, Radar, Scatter);
 
   TChartLegendPosition = (Top, Left, Bottom, Right);
 
@@ -23,13 +23,21 @@ type
     function GetBackgroundColor(const Index: Integer): TLayoutColor;
     function GetBorderColorCount: Integer;
     function GetBorderColor(const Index: Integer): TLayoutColor;
+    function GetFill: Boolean;
+    function GetPointCount: Integer;
+    function GetPointX(const Index: Integer): Double;
+    function GetPointY(const Index: Integer): Double;
     property Values[const Index: Integer]: Double read GetValue;
     property BackgroundColors[const Index: Integer]: TLayoutColor read GetBackgroundColor;
     property BorderColors[const Index: Integer]: TLayoutColor read GetBorderColor;
+    property PointsX[const Index: Integer]: Double read GetPointX;
+    property PointsY[const Index: Integer]: Double read GetPointY;
     property Caption: string read GetLabel;
     property ValueCount: Integer read GetValueCount;
     property BackgroundColorCount: Integer read GetBackgroundColorCount;
     property BorderColorCount: Integer read GetBorderColorCount;
+    property Fill: Boolean read GetFill;
+    property PointCount: Integer read GetPointCount;
   end;
 
   IChartModel = interface
@@ -40,6 +48,7 @@ type
     function GetLegendVisible: Boolean;
     function GetLegendPosition: TChartLegendPosition;
     function GetStacked: Boolean;
+    function GetHorizontal: Boolean;
     function GetHasScaleMin: Boolean;
     function GetScaleMin: Double;
     function GetHasScaleMax: Boolean;
@@ -54,6 +63,7 @@ type
     property LegendVisible: Boolean read GetLegendVisible;
     property LegendPosition: TChartLegendPosition read GetLegendPosition;
     property Stacked: Boolean read GetStacked;
+    property Horizontal: Boolean read GetHorizontal;
     property HasScaleMin: Boolean read GetHasScaleMin;
     property ScaleMin: Double read GetScaleMin;
     property HasScaleMax: Boolean read GetHasScaleMax;
@@ -95,6 +105,9 @@ type
     FValues: TArray<Double>;
     FBackgroundColors: TArray<TLayoutColor>;
     FBorderColors: TArray<TLayoutColor>;
+    FFill: Boolean;
+    FPointsX: TArray<Double>;
+    FPointsY: TArray<Double>;
     function GetLabel: string;
     function GetValueCount: Integer;
     function GetValue(const Index: Integer): Double;
@@ -102,10 +115,15 @@ type
     function GetBackgroundColor(const Index: Integer): TLayoutColor;
     function GetBorderColorCount: Integer;
     function GetBorderColor(const Index: Integer): TLayoutColor;
+    function GetFill: Boolean;
+    function GetPointCount: Integer;
+    function GetPointX(const Index: Integer): Double;
+    function GetPointY(const Index: Integer): Double;
 
   public
     constructor Create(const Caption: string; const Values: TArray<Double>;
-      const BackgroundColors, BorderColors: TArray<TLayoutColor>);
+      const BackgroundColors, BorderColors: TArray<TLayoutColor>; const Fill: Boolean;
+      const PointsX, PointsY: TArray<Double>);
   end;
 
   TChartModel = class(TInterfacedObject, IChartModel)
@@ -116,6 +134,7 @@ type
     FLegendVisible: Boolean;
     FLegendPosition: TChartLegendPosition;
     FStacked: Boolean;
+    FHorizontal: Boolean;
     FHasScaleMin: Boolean;
     FScaleMin: Double;
     FHasScaleMax: Boolean;
@@ -128,6 +147,7 @@ type
     function GetLegendVisible: Boolean;
     function GetLegendPosition: TChartLegendPosition;
     function GetStacked: Boolean;
+    function GetHorizontal: Boolean;
     function GetHasScaleMin: Boolean;
     function GetScaleMin: Double;
     function GetHasScaleMax: Boolean;
@@ -164,6 +184,8 @@ type
       MinKey = 'min';
       MaxKey = 'max';
       StackedKey = 'stacked';
+      FillKey = 'fill';
+      IndexAxisKey = 'indexAxis';
     class function TryParseHexColor(const Text: string; out Color: TLayoutColor): Boolean;
     class function TryParseFunctionalColor(const Text: string; out Color: TLayoutColor): Boolean;
     class procedure ReadTitleOptions(const Plugins: TJSONObject; const Model: TChartModel);
@@ -174,6 +196,7 @@ type
     class function TryParseColor(const Value: string; out Color: TLayoutColor): Boolean;
     class function ReadColors(const Value: TJSONValue): TArray<TLayoutColor>;
     class function ReadValues(const Value: TJSONArray): TArray<Double>;
+    class procedure ReadData(const Value: TJSONArray; out Values, PointsX, PointsY: TArray<Double>);
     class function ReadDataset(const Value: TJSONObject): IChartDataset;
     class procedure ReadOptions(const Options: TJSONObject; const Model: TChartModel);
     class procedure BuildLabels(const Data: TJSONObject; const Model: TChartModel);
@@ -182,7 +205,8 @@ type
   end;
 
 constructor TChartDataset.Create(const Caption: string; const Values: TArray<Double>;
-  const BackgroundColors, BorderColors: TArray<TLayoutColor>);
+  const BackgroundColors, BorderColors: TArray<TLayoutColor>; const Fill: Boolean;
+  const PointsX, PointsY: TArray<Double>);
 begin
   inherited Create;
 
@@ -190,6 +214,9 @@ begin
   FValues := Values;
   FBackgroundColors := BackgroundColors;
   FBorderColors := BorderColors;
+  FFill := Fill;
+  FPointsX := PointsX;
+  FPointsY := PointsY;
 end;
 
 function TChartDataset.GetLabel: string;
@@ -227,6 +254,26 @@ begin
   Result := FBorderColors[Index];
 end;
 
+function TChartDataset.GetFill: Boolean;
+begin
+  Result := FFill;
+end;
+
+function TChartDataset.GetPointCount: Integer;
+begin
+  Result := Length(FPointsX);
+end;
+
+function TChartDataset.GetPointX(const Index: Integer): Double;
+begin
+  Result := FPointsX[Index];
+end;
+
+function TChartDataset.GetPointY(const Index: Integer): Double;
+begin
+  Result := FPointsY[Index];
+end;
+
 function TChartModel.GetChartKind: TChartKind;
 begin
   Result := FChartKind;
@@ -255,6 +302,11 @@ end;
 function TChartModel.GetStacked: Boolean;
 begin
   Result := FStacked;
+end;
+
+function TChartModel.GetHorizontal: Boolean;
+begin
+  Result := FHorizontal;
 end;
 
 function TChartModel.GetHasScaleMin: Boolean;
@@ -309,6 +361,10 @@ begin
     Kind := TChartKind.Pie
   else if Normalized = 'doughnut' then
     Kind := TChartKind.Doughnut
+  else if Normalized = 'radar' then
+    Kind := TChartKind.Radar
+  else if Normalized = 'scatter' then
+    Kind := TChartKind.Scatter
   else
     Exit(False);
 
@@ -470,6 +526,44 @@ begin
   end;
 end;
 
+class procedure TChartParser.ReadData(const Value: TJSONArray; out Values, PointsX, PointsY: TArray<Double>);
+begin
+  const Numbers = TList<Double>.Create;
+  const XCoords = TList<Double>.Create;
+  const YCoords = TList<Double>.Create;
+  try
+    for var Index := 0 to Value.Count - 1 do
+    begin
+      const Entry = Value.Items[Index];
+      if Entry is TJSONNumber then
+        Numbers.Add(TJSONNumber(Entry).AsDouble)
+      else if Entry is TJSONObject then
+      begin
+        var X := 0.0;
+        var Y := 0.0;
+        const XValue = TJSONObject(Entry).GetValue(XScaleKey);
+        const YValue = TJSONObject(Entry).GetValue(YScaleKey);
+        if XValue is TJSONNumber then
+          X := TJSONNumber(XValue).AsDouble;
+        if YValue is TJSONNumber then
+          Y := TJSONNumber(YValue).AsDouble;
+        XCoords.Add(X);
+        YCoords.Add(Y);
+      end
+      else
+        Numbers.Add(0);
+    end;
+
+    Values := Numbers.ToArray;
+    PointsX := XCoords.ToArray;
+    PointsY := YCoords.ToArray;
+  finally
+    Numbers.Free;
+    XCoords.Free;
+    YCoords.Free;
+  end;
+end;
+
 class function TChartParser.ReadDataset(const Value: TJSONObject): IChartDataset;
 begin
   var Caption := '';
@@ -478,9 +572,11 @@ begin
     Caption := TJSONString(LabelValue).Value;
 
   var Values: TArray<Double> := nil;
+  var PointsX: TArray<Double> := nil;
+  var PointsY: TArray<Double> := nil;
   const DataValue = Value.GetValue(TChartExtension.ChartDataKey);
   if DataValue is TJSONArray then
-    Values := ReadValues(TJSONArray(DataValue));
+    ReadData(TJSONArray(DataValue), Values, PointsX, PointsY);
 
   var BackgroundColors: TArray<TLayoutColor> := nil;
   const BackgroundValue = Value.GetValue(BackgroundColorKey);
@@ -492,7 +588,12 @@ begin
   if BorderValue <> nil then
     BorderColors := ReadColors(BorderValue);
 
-  Result := TChartDataset.Create(Caption, Values, BackgroundColors, BorderColors);
+  var Fill := False;
+  const FillValue = Value.GetValue(FillKey);
+  if FillValue is TJSONBool then
+    Fill := TJSONBool(FillValue).AsBoolean;
+
+  Result := TChartDataset.Create(Caption, Values, BackgroundColors, BorderColors, Fill, PointsX, PointsY);
 end;
 
 class procedure TChartParser.ReadTitleOptions(const Plugins: TJSONObject; const Model: TChartModel);
@@ -581,6 +682,10 @@ begin
     ReadLegendOptions(TJSONObject(Plugins), Model);
   end;
 
+  const IndexAxisValue = Options.GetValue(IndexAxisKey);
+  if (IndexAxisValue is TJSONString) and (LowerCase(Trim(TJSONString(IndexAxisValue).Value)) = YScaleKey) then
+    Model.FHorizontal := True;
+
   ReadScaleOptions(Options, Model);
 end;
 
@@ -611,7 +716,7 @@ begin
     if Entry is TJSONObject then
       Model.FDatasets[Index] := ReadDataset(TJSONObject(Entry))
     else
-      Model.FDatasets[Index] := TChartDataset.Create('', nil, nil, nil);
+      Model.FDatasets[Index] := TChartDataset.Create('', nil, nil, nil, False, nil, nil);
   end;
 end;
 

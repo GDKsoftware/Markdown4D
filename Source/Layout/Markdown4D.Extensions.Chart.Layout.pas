@@ -64,6 +64,11 @@ type
       PieRadiusFactor = 0.9;
       DoughnutInnerFactor = 0.55;
       TickLabelFormat = '%g';
+      AreaFillAlphaFactor = 0.3;
+      RadarRingCount = 4;
+      RadarMinAxes = 3;
+      MarkerRadius = 3.5;
+      FullCircleDegrees = 360.0;
     var
       FModel: IChartModel;
       FTheme: TMarkdownTheme;
@@ -103,6 +108,16 @@ type
       PlotHeight, PlotBottom: Single);
     procedure LayoutLine(const PlotLeft, PlotTop, PlotRight, PlotBottom, AxisMin, AxisMax: Single);
     procedure LayoutPie;
+    procedure LayoutHorizontalAxes;
+    procedure LayoutHorizontalBars(const PlotLeft, PlotTop, PlotRight, PlotBottom, AxisMin, AxisMax: Single);
+    procedure EmitHorizontalStackedBars(const LabelIndex: Integer; const SlotTop, SlotHeight, BaseX, AxisSpan,
+      PlotWidth: Single);
+    procedure EmitHorizontalGroupedBars(const LabelIndex: Integer; const SlotTop, SlotHeight, BaseX, AxisMin, AxisSpan,
+      PlotWidth, PlotLeft: Single);
+    procedure LayoutRadar;
+    procedure LayoutScatter;
+    procedure EmitFilledPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor);
+    class function Translucent(const Color: TLayoutColor; const Factor: Single): TLayoutColor; static;
     function NiceNum(const Value: Double; const RoundResult: Boolean): Double;
     function BuildValueAxis(const Range: TChartValueRange): TChartValueAxis;
     function CollectValueRange: TChartValueRange;
@@ -179,16 +194,25 @@ begin
   LayoutLegend;
 
   const HasPlotArea = (FRight > FLeft) and (FBottom > FTop);
-  if HasPlotArea then
-  begin
-    case FModel.ChartKind of
-      TChartKind.Bar, TChartKind.Line:
+  if not HasPlotArea then
+    Exit;
+
+  case FModel.ChartKind of
+    TChartKind.Bar:
+      if FModel.Horizontal then
+        LayoutHorizontalAxes
+      else
         LayoutAxes;
-      TChartKind.Pie, TChartKind.Doughnut:
-        LayoutPie;
-    else
-      raise EMarkdownError.CreateFmt('Unhandled chart kind: %d', [Ord(FModel.ChartKind)]);
-    end;
+    TChartKind.Line:
+      LayoutAxes;
+    TChartKind.Pie, TChartKind.Doughnut:
+      LayoutPie;
+    TChartKind.Radar:
+      LayoutRadar;
+    TChartKind.Scatter:
+      LayoutScatter;
+  else
+    raise EMarkdownError.CreateFmt('Unhandled chart kind: %d', [Ord(FModel.ChartKind)]);
   end;
 end;
 
@@ -673,29 +697,41 @@ begin
 
   const PlotHeight = PlotBottom - PlotTop;
   const SlotWidth = (PlotRight - PlotLeft) / Max(1, FModel.LabelCount);
+  const BaseValue = Min(Max(0, AxisMin), AxisMax);
+  const BaseY = PlotBottom - (BaseValue - AxisMin) / AxisSpan * PlotHeight;
 
   for var DatasetIndex := 0 to FModel.DatasetCount - 1 do
   begin
     const Dataset = FModel.Datasets[DatasetIndex];
     const Color = DatasetColor(DatasetIndex);
+    const Count = Dataset.ValueCount;
+    if Count = 0 then
+      Continue;
 
-    var PreviousX := 0.0;
-    var PreviousY := 0.0;
-    var HasPrevious := False;
+    var Xs: TArray<Single>;
+    var Ys: TArray<Single>;
+    SetLength(Xs, Count);
+    SetLength(Ys, Count);
 
-    for var ValueIndex := 0 to Dataset.ValueCount - 1 do
+    for var ValueIndex := 0 to Count - 1 do
     begin
-      const CenterX = PlotLeft + SlotWidth * (ValueIndex + 0.5);
-      const Value = Dataset.Values[ValueIndex];
-      const ValueY = PlotBottom - (Value - AxisMin) / AxisSpan * PlotHeight;
-
-      if HasPrevious then
-        EmitLineSegment(PreviousX, PreviousY, CenterX, ValueY, Color, LineStrokeWidth);
-
-      PreviousX := CenterX;
-      PreviousY := ValueY;
-      HasPrevious := True;
+      Xs[ValueIndex] := PlotLeft + SlotWidth * (ValueIndex + 0.5);
+      Ys[ValueIndex] := PlotBottom - (Dataset.Values[ValueIndex] - AxisMin) / AxisSpan * PlotHeight;
     end;
+
+    if Dataset.Fill then
+    begin
+      var Polygon: TArray<TLayoutPointF>;
+      SetLength(Polygon, Count + 2);
+      for var Index := 0 to Count - 1 do
+        Polygon[Index] := TLayoutPointF.Create(Xs[Index], Ys[Index]);
+      Polygon[Count] := TLayoutPointF.Create(Xs[Count - 1], BaseY);
+      Polygon[Count + 1] := TLayoutPointF.Create(Xs[0], BaseY);
+      EmitFilledPolygon(Polygon, Translucent(Color, AreaFillAlphaFactor));
+    end;
+
+    for var Index := 1 to Count - 1 do
+      EmitLineSegment(Xs[Index - 1], Ys[Index - 1], Xs[Index], Ys[Index], Color, LineStrokeWidth);
   end;
 end;
 
@@ -753,6 +789,299 @@ begin
 
     StartAngle := StartAngle + Sweep;
   end;
+end;
+
+procedure TChartLayoutBuilder.LayoutHorizontalAxes;
+begin
+  const Range = CollectValueRange;
+  const Axis = BuildValueAxis(Range);
+  const Font = LabelFont;
+
+  var GutterWidth := 0.0;
+  for var LabelIndex := 0 to FModel.LabelCount - 1 do
+    GutterWidth := Max(GutterWidth, FMeasurer.MeasureText(FModel.Labels[LabelIndex], Font).Width);
+  GutterWidth := GutterWidth + AxisGap;
+
+  const BottomGutter = FMeasurer.LineHeight(Font) + AxisGap;
+
+  const PlotLeft = FLeft + GutterWidth;
+  const PlotTop = FTop;
+  const PlotRight = FRight;
+  const PlotBottom = FBottom - BottomGutter;
+
+  if (PlotRight <= PlotLeft) or (PlotBottom <= PlotTop) then
+    Exit;
+
+  const AxisSpan = Axis.Maximum - Axis.Minimum;
+  for var Tick in Axis.Ticks do
+  begin
+    const Ratio = (Tick - Axis.Minimum) / AxisSpan;
+    const X = PlotLeft + Ratio * (PlotRight - PlotLeft);
+    EmitLineSegment(X, PlotTop, X, PlotBottom, FTheme.ChartGridLineColor, GridStrokeWidth);
+    EmitCenteredText(Format(TickLabelFormat, [Tick]), X, PlotBottom + AxisGap, Font, FTheme.ChartTextColor);
+  end;
+
+  const SlotHeight = (PlotBottom - PlotTop) / Max(1, FModel.LabelCount);
+  for var LabelIndex := 0 to FModel.LabelCount - 1 do
+  begin
+    const CenterY = PlotTop + SlotHeight * (LabelIndex + 0.5);
+    const Size = FMeasurer.MeasureText(FModel.Labels[LabelIndex], Font);
+    EmitText(FModel.Labels[LabelIndex], PlotLeft - AxisGap - Size.Width, CenterY - Size.Height / 2, Font,
+      FTheme.ChartTextColor);
+  end;
+
+  LayoutHorizontalBars(PlotLeft, PlotTop, PlotRight, PlotBottom, Axis.Minimum, Axis.Maximum);
+end;
+
+procedure TChartLayoutBuilder.LayoutHorizontalBars(const PlotLeft, PlotTop, PlotRight, PlotBottom, AxisMin,
+  AxisMax: Single);
+begin
+  const AxisSpan = AxisMax - AxisMin;
+  if AxisSpan <= 0 then
+    Exit;
+
+  const PlotWidth = PlotRight - PlotLeft;
+  const SlotHeight = (PlotBottom - PlotTop) / Max(1, FModel.LabelCount);
+  const BaseValue = Min(Max(0, AxisMin), AxisMax);
+  const BaseX = PlotLeft + (BaseValue - AxisMin) / AxisSpan * PlotWidth;
+
+  for var LabelIndex := 0 to FModel.LabelCount - 1 do
+  begin
+    const SlotTop = PlotTop + SlotHeight * LabelIndex;
+
+    if FModel.Stacked then
+      EmitHorizontalStackedBars(LabelIndex, SlotTop, SlotHeight, BaseX, AxisSpan, PlotWidth)
+    else
+      EmitHorizontalGroupedBars(LabelIndex, SlotTop, SlotHeight, BaseX, AxisMin, AxisSpan, PlotWidth, PlotLeft);
+  end;
+end;
+
+procedure TChartLayoutBuilder.EmitHorizontalStackedBars(const LabelIndex: Integer; const SlotTop, SlotHeight, BaseX,
+  AxisSpan, PlotWidth: Single);
+begin
+  const BarHeight = SlotHeight * 0.6;
+  const BarTop = SlotTop + (SlotHeight - BarHeight) / 2;
+  var StackRightX := BaseX;
+  var StackLeftX := BaseX;
+
+  for var DatasetIndex := 0 to FModel.DatasetCount - 1 do
+  begin
+    const Dataset = FModel.Datasets[DatasetIndex];
+    if LabelIndex >= Dataset.ValueCount then
+      Continue;
+
+    const Value = Dataset.Values[LabelIndex];
+    const SegmentWidth = Value / AxisSpan * PlotWidth;
+
+    var SegmentLeft: Single;
+    var SegmentRight: Single;
+    if Value >= 0 then
+    begin
+      SegmentLeft := StackRightX;
+      SegmentRight := StackRightX + SegmentWidth;
+      StackRightX := SegmentRight;
+    end
+    else
+    begin
+      SegmentRight := StackLeftX;
+      SegmentLeft := StackLeftX + SegmentWidth;
+      StackLeftX := SegmentLeft;
+    end;
+
+    EmitRectangle(TLayoutRectF.Create(Min(SegmentLeft, SegmentRight), BarTop, Max(SegmentLeft, SegmentRight),
+      BarTop + BarHeight), DatasetColor(DatasetIndex), 0, 0);
+  end;
+end;
+
+procedure TChartLayoutBuilder.EmitHorizontalGroupedBars(const LabelIndex: Integer; const SlotTop, SlotHeight, BaseX,
+  AxisMin, AxisSpan, PlotWidth, PlotLeft: Single);
+begin
+  const GroupHeight = SlotHeight * 0.8;
+  const BarHeight = GroupHeight / Max(1, FModel.DatasetCount);
+  const GroupTop = SlotTop + (SlotHeight - GroupHeight) / 2;
+
+  for var DatasetIndex := 0 to FModel.DatasetCount - 1 do
+  begin
+    const Dataset = FModel.Datasets[DatasetIndex];
+    if LabelIndex >= Dataset.ValueCount then
+      Continue;
+
+    const Value = Dataset.Values[LabelIndex];
+    const ValueX = PlotLeft + (Value - AxisMin) / AxisSpan * PlotWidth;
+    const BarTop = GroupTop + BarHeight * DatasetIndex;
+
+    EmitRectangle(TLayoutRectF.Create(Min(BaseX, ValueX), BarTop, Max(BaseX, ValueX), BarTop + BarHeight),
+      DatasetColor(DatasetIndex), 0, 0);
+  end;
+end;
+
+procedure TChartLayoutBuilder.LayoutRadar;
+begin
+  const AxisCount = FModel.LabelCount;
+  if AxisCount < RadarMinAxes then
+    Exit;
+
+  var MaxValue := 0.0;
+  for var DatasetIndex := 0 to FModel.DatasetCount - 1 do
+  begin
+    const Dataset = FModel.Datasets[DatasetIndex];
+    for var ValueIndex := 0 to Dataset.ValueCount - 1 do
+      MaxValue := Max(MaxValue, Dataset.Values[ValueIndex]);
+  end;
+
+  if FModel.HasScaleMax then
+    MaxValue := FModel.ScaleMax;
+  if MaxValue <= 0 then
+    MaxValue := 1;
+
+  const CenterX = (FLeft + FRight) / 2;
+  const CenterY = (FTop + FBottom) / 2;
+  const Radius = Min(FRight - FLeft, FBottom - FTop) / 2 * PieRadiusFactor;
+  if Radius <= 0 then
+    Exit;
+
+  const Font = LabelFont;
+  const LineHeight = FMeasurer.LineHeight(Font);
+
+  var Angles: TArray<Single>;
+  SetLength(Angles, AxisCount);
+  for var Index := 0 to AxisCount - 1 do
+    Angles[Index] := -Pi / 2 + 2 * Pi * Index / AxisCount;
+
+  for var Ring := 1 to RadarRingCount do
+  begin
+    const RingRadius = Radius * Ring / RadarRingCount;
+    for var Index := 0 to AxisCount - 1 do
+    begin
+      const NextIndex = (Index + 1) mod AxisCount;
+      EmitLineSegment(CenterX + RingRadius * Cos(Angles[Index]), CenterY + RingRadius * Sin(Angles[Index]),
+        CenterX + RingRadius * Cos(Angles[NextIndex]), CenterY + RingRadius * Sin(Angles[NextIndex]),
+        FTheme.ChartGridLineColor, GridStrokeWidth);
+    end;
+  end;
+
+  for var Index := 0 to AxisCount - 1 do
+  begin
+    const EdgeX = CenterX + Radius * Cos(Angles[Index]);
+    const EdgeY = CenterY + Radius * Sin(Angles[Index]);
+    EmitLineSegment(CenterX, CenterY, EdgeX, EdgeY, FTheme.ChartGridLineColor, GridStrokeWidth);
+    EmitCenteredText(FModel.Labels[Index], CenterX + (Radius + AxisGap) * Cos(Angles[Index]),
+      CenterY + (Radius + AxisGap) * Sin(Angles[Index]) - LineHeight / 2, Font, FTheme.ChartTextColor);
+  end;
+
+  for var DatasetIndex := 0 to FModel.DatasetCount - 1 do
+  begin
+    const Dataset = FModel.Datasets[DatasetIndex];
+    const Color = DatasetColor(DatasetIndex);
+    const PointCount = Min(Dataset.ValueCount, AxisCount);
+    if PointCount < RadarMinAxes then
+      Continue;
+
+    var Polygon: TArray<TLayoutPointF>;
+    SetLength(Polygon, PointCount);
+    for var Index := 0 to PointCount - 1 do
+    begin
+      const Ratio = Max(0, Dataset.Values[Index]) / MaxValue;
+      Polygon[Index] := TLayoutPointF.Create(CenterX + Radius * Ratio * Cos(Angles[Index]),
+        CenterY + Radius * Ratio * Sin(Angles[Index]));
+    end;
+
+    EmitFilledPolygon(Polygon, Translucent(Color, AreaFillAlphaFactor));
+
+    for var Index := 0 to PointCount - 1 do
+    begin
+      const NextIndex = (Index + 1) mod PointCount;
+      EmitLineSegment(Polygon[Index].X, Polygon[Index].Y, Polygon[NextIndex].X, Polygon[NextIndex].Y, Color,
+        LineStrokeWidth);
+    end;
+  end;
+end;
+
+procedure TChartLayoutBuilder.LayoutScatter;
+begin
+  var MinX := 0.0;
+  var MaxX := 0.0;
+  var MinY := 0.0;
+  var MaxY := 0.0;
+  var HasPoint := False;
+
+  for var DatasetIndex := 0 to FModel.DatasetCount - 1 do
+  begin
+    const Dataset = FModel.Datasets[DatasetIndex];
+    for var PointIndex := 0 to Dataset.PointCount - 1 do
+    begin
+      const X = Dataset.PointsX[PointIndex];
+      const Y = Dataset.PointsY[PointIndex];
+      if not HasPoint then
+      begin
+        MinX := X;
+        MaxX := X;
+        MinY := Y;
+        MaxY := Y;
+        HasPoint := True;
+      end
+      else
+      begin
+        MinX := Min(MinX, X);
+        MaxX := Max(MaxX, X);
+        MinY := Min(MinY, Y);
+        MaxY := Max(MaxY, Y);
+      end;
+    end;
+  end;
+
+  if not HasPoint then
+    Exit;
+
+  if MaxX <= MinX then
+    MaxX := MinX + 1;
+  if MaxY <= MinY then
+    MaxY := MinY + 1;
+
+  const Font = LabelFont;
+  const BottomGutter = FMeasurer.LineHeight(Font) + AxisGap;
+  const GutterWidth = FMeasurer.MeasureText(Format(TickLabelFormat, [MaxY]), Font).Width + AxisGap;
+
+  const PlotLeft = FLeft + GutterWidth;
+  const PlotTop = FTop;
+  const PlotRight = FRight;
+  const PlotBottom = FBottom - BottomGutter;
+  if (PlotRight <= PlotLeft) or (PlotBottom <= PlotTop) then
+    Exit;
+
+  EmitLineSegment(PlotLeft, PlotTop, PlotLeft, PlotBottom, FTheme.ChartGridLineColor, GridStrokeWidth);
+  EmitLineSegment(PlotLeft, PlotBottom, PlotRight, PlotBottom, FTheme.ChartGridLineColor, GridStrokeWidth);
+
+  EmitText(Format(TickLabelFormat, [MinX]), PlotLeft, PlotBottom + AxisGap, Font, FTheme.ChartTextColor);
+  EmitCenteredText(Format(TickLabelFormat, [MaxX]), PlotRight, PlotBottom + AxisGap, Font, FTheme.ChartTextColor);
+  EmitText(Format(TickLabelFormat, [MaxY]), FLeft, PlotTop, Font, FTheme.ChartTextColor);
+
+  const SpanX = MaxX - MinX;
+  const SpanY = MaxY - MinY;
+
+  for var DatasetIndex := 0 to FModel.DatasetCount - 1 do
+  begin
+    const Dataset = FModel.Datasets[DatasetIndex];
+    const Color = DatasetColor(DatasetIndex);
+    for var PointIndex := 0 to Dataset.PointCount - 1 do
+    begin
+      const PlotX = PlotLeft + (Dataset.PointsX[PointIndex] - MinX) / SpanX * (PlotRight - PlotLeft);
+      const PlotY = PlotBottom - (Dataset.PointsY[PointIndex] - MinY) / SpanY * (PlotBottom - PlotTop);
+      EmitWedge(PlotX, PlotY, MarkerRadius, 0, 0, FullCircleDegrees, Color);
+    end;
+  end;
+end;
+
+procedure TChartLayoutBuilder.EmitFilledPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor);
+begin
+  FCanvas.FillPolygon(Points, Color);
+end;
+
+class function TChartLayoutBuilder.Translucent(const Color: TLayoutColor; const Factor: Single): TLayoutColor;
+begin
+  const Alpha = (Cardinal(Color) shr 24) and $FF;
+  const NewAlpha = Round(Alpha * Factor);
+  Result := TLayoutColor((Cardinal(NewAlpha) shl 24) or (Cardinal(Color) and $00FFFFFF));
 end;
 
 end.
