@@ -33,6 +33,21 @@
         <Projects Include="Examples\LlmChat\LlmChat.dproj">
             <Dependencies/>
         </Projects>
+        <Projects Include="Examples\VclViewerDemo\VclViewerDemo.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="Examples\Md2Html\Md2Html.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="Examples\FmxMarkdownPad\FmxMarkdownPad.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="Examples\FmxLlmChat\FmxLlmChat.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="Examples\FmxViewerDemo\FmxViewerDemo.dproj">
+            <Dependencies/>
+        </Projects>
     </ItemGroup>
     <ProjectExtensions>
         <Borland.Personality>Default.Personality.12</Borland.Personality>
@@ -131,14 +146,59 @@
     <Target Name="LlmChat:Make">
         <MSBuild Projects="Examples\LlmChat\LlmChat.dproj" Targets="Make"/>
     </Target>
+    <Target Name="VclViewerDemo">
+        <MSBuild Projects="Examples\VclViewerDemo\VclViewerDemo.dproj"/>
+    </Target>
+    <Target Name="VclViewerDemo:Clean">
+        <MSBuild Projects="Examples\VclViewerDemo\VclViewerDemo.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="VclViewerDemo:Make">
+        <MSBuild Projects="Examples\VclViewerDemo\VclViewerDemo.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Md2Html">
+        <MSBuild Projects="Examples\Md2Html\Md2Html.dproj"/>
+    </Target>
+    <Target Name="Md2Html:Clean">
+        <MSBuild Projects="Examples\Md2Html\Md2Html.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="Md2Html:Make">
+        <MSBuild Projects="Examples\Md2Html\Md2Html.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="FmxMarkdownPad">
+        <MSBuild Projects="Examples\FmxMarkdownPad\FmxMarkdownPad.dproj"/>
+    </Target>
+    <Target Name="FmxMarkdownPad:Clean">
+        <MSBuild Projects="Examples\FmxMarkdownPad\FmxMarkdownPad.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="FmxMarkdownPad:Make">
+        <MSBuild Projects="Examples\FmxMarkdownPad\FmxMarkdownPad.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="FmxLlmChat">
+        <MSBuild Projects="Examples\FmxLlmChat\FmxLlmChat.dproj"/>
+    </Target>
+    <Target Name="FmxLlmChat:Clean">
+        <MSBuild Projects="Examples\FmxLlmChat\FmxLlmChat.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="FmxLlmChat:Make">
+        <MSBuild Projects="Examples\FmxLlmChat\FmxLlmChat.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="FmxViewerDemo">
+        <MSBuild Projects="Examples\FmxViewerDemo\FmxViewerDemo.dproj"/>
+    </Target>
+    <Target Name="FmxViewerDemo:Clean">
+        <MSBuild Projects="Examples\FmxViewerDemo\FmxViewerDemo.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="FmxViewerDemo:Make">
+        <MSBuild Projects="Examples\FmxViewerDemo\FmxViewerDemo.dproj" Targets="Make"/>
+    </Target>
     <Target Name="Build">
-        <CallTarget Targets="Markdown4D_Core;Markdown4D_Vcl;Markdown4D_Fmx;Markdown4D_Vcl_Design;Markdown4D_Fmx_Design;Markdown4D_Tests;Markdown4D_Fmx_Tests;Markdown4D_Benchmarks;MarkdownPad;LlmChat"/>
+        <CallTarget Targets="Markdown4D_Core;Markdown4D_Vcl;Markdown4D_Fmx;Markdown4D_Vcl_Design;Markdown4D_Fmx_Design;Markdown4D_Tests;Markdown4D_Fmx_Tests;Markdown4D_Benchmarks;MarkdownPad;LlmChat;VclViewerDemo;Md2Html;FmxMarkdownPad;FmxLlmChat;FmxViewerDemo"/>
     </Target>
     <Target Name="Clean">
-        <CallTarget Targets="Markdown4D_Core:Clean;Markdown4D_Vcl:Clean;Markdown4D_Fmx:Clean;Markdown4D_Vcl_Design:Clean;Markdown4D_Fmx_Design:Clean;Markdown4D_Tests:Clean;Markdown4D_Fmx_Tests:Clean;Markdown4D_Benchmarks:Clean;MarkdownPad:Clean;LlmChat:Clean"/>
+        <CallTarget Targets="Markdown4D_Core:Clean;Markdown4D_Vcl:Clean;Markdown4D_Fmx:Clean;Markdown4D_Vcl_Design:Clean;Markdown4D_Fmx_Design:Clean;Markdown4D_Tests:Clean;Markdown4D_Fmx_Tests:Clean;Markdown4D_Benchmarks:Clean;MarkdownPad:Clean;LlmChat:Clean;VclViewerDemo:Clean;Md2Html:Clean;FmxMarkdownPad:Clean;FmxLlmChat:Clean;FmxViewerDemo:Clean"/>
     </Target>
     <Target Name="Make">
-        <CallTarget Targets="Markdown4D_Core:Make;Markdown4D_Vcl:Make;Markdown4D_Fmx:Make;Markdown4D_Vcl_Design:Make;Markdown4D_Fmx_Design:Make;Markdown4D_Tests:Make;Markdown4D_Fmx_Tests:Make;Markdown4D_Benchmarks:Make;MarkdownPad:Make;LlmChat:Make"/>
+        <CallTarget Targets="Markdown4D_Core:Make;Markdown4D_Vcl:Make;Markdown4D_Fmx:Make;Markdown4D_Vcl_Design:Make;Markdown4D_Fmx_Design:Make;Markdown4D_Tests:Make;Markdown4D_Fmx_Tests:Make;Markdown4D_Benchmarks:Make;MarkdownPad:Make;LlmChat:Make;VclViewerDemo:Make;Md2Html:Make;FmxMarkdownPad:Make;FmxLlmChat:Make;FmxViewerDemo:Make"/>
     </Target>
     <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
 </Project>
