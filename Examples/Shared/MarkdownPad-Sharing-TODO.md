@@ -12,15 +12,19 @@ twee schillen om dezelfde app. De echt identieke stukken zijn al uitgetild naar
 - `MarkdownPad.CommandSet.pas` — `RegisterStaticPadCommands` registreert het
   vaste commandopalet (namen, categorieën, shortcuts, volgorde) één keer; elke
   form levert alleen de actie-bodies aan via `TPadCommandActions`.
+- `MarkdownPad.SessionSync.pas` — `TPadSessionSync`: opent de sessiebestanden in
+  de workspace (`RestoreOpenFiles`), verzamelt de op te slaan getitelde bestanden
+  (`CollectOpenFiles`) en de tab-captions/modified-vlaggen (`CollectTabs`).
 
 ## Nog niet gedeeld (bewust uitgesteld)
 
-### Sessie-/documentbeheer-lus
-`SaveSession`, de open-files-lus in `RestoreSession`, en delen van
-`SwitchToDocument` / `RebuildTabs` zijn grotendeels gelijk. Ze lezen echter de
-live editor + form-state, dus vergen dezelfde `Actions`/host-interface-aanpak
-als `MarkdownPad.CommandSet`, of een klein view-model dat de editor-inhoud
-abstraheert.
+### `SwitchToDocument`: editor-/preview-state
+De workspace-kant is nu gedeeld, maar het opslaan en herladen van de live
+editor-/preview-state blijft per form, omdat het aan de concrete controls hangt
+(`mdEditor`/`mdPreview` vs `FEditor`/`FPreview`). Dit delen vraagt een
+editor/preview-abstractie (een klein view-model of interface rond `Text`,
+`CaretPosition`, `SaveEditState`/`LoadEditState`, `ScrollToSourceLine` en de
+preview-scrolloffset), los van de VCL/FMX-controls.
 
 ### Bewust NIET delen
 - `BuildSampleMarkdown` — de voorbeeldtekst verschilt per app (VCL vs FMX).

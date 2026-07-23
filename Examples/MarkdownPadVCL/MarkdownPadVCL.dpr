@@ -12,6 +12,7 @@ uses
   MarkdownPad.FileWatcher in '..\Shared\MarkdownPad.FileWatcher.pas',
   MarkdownPad.HtmlExport in '..\Shared\MarkdownPad.HtmlExport.pas',
   MarkdownPad.CommandSet in '..\Shared\MarkdownPad.CommandSet.pas',
+  MarkdownPad.SessionSync in '..\Shared\MarkdownPad.SessionSync.pas',
   MarkdownPadVCL.Main in 'MarkdownPadVCL.Main.pas' {MarkdownPadVCLForm},
   MarkdownPad.Defines in '..\Shared\MarkdownPad.Defines.pas',
   MarkdownPad.Text in '..\Shared\MarkdownPad.Text.pas',

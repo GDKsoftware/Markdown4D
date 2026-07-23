@@ -296,6 +296,7 @@ uses
   MarkdownPad.Text,
   MarkdownPad.Outline,
   MarkdownPad.CommandSet,
+  MarkdownPad.SessionSync,
   MarkdownPad.Workspace,
   MarkdownPad.HtmlExport,
   Markdown4D.Extensions.Chart.BlockOverride,
@@ -910,39 +911,10 @@ begin
   FViewMode := FSession.ViewMode;
   ApplyViewMode;
 
-  var ActivePath := '';
-  if (FSession.ActiveIndex >= 0) and (FSession.ActiveIndex <= High(FSession.OpenFiles)) then
-    ActivePath := FSession.OpenFiles[FSession.ActiveIndex];
-
-  for var FileName in FSession.OpenFiles do
-  begin
-    if not TFile.Exists(FileName) then
-      Continue;
-
-    try
-      FWorkspace.OpenFile(FileName);
-    except
-      on E: Exception do
-        Continue;
-    end;
-  end;
-
-  if FWorkspace.Count = 0 then
+  if not TPadSessionSync.RestoreOpenFiles(FWorkspace, FSession) then
   begin
     const Document = FWorkspace.NewDocument;
     Document.Text := BuildSampleMarkdown;
-  end
-  else
-  begin
-    var Target := 0;
-    if ActivePath <> '' then
-    begin
-      const Found = FWorkspace.IndexOfFile(ActivePath);
-      if Found >= 0 then
-        Target := Found;
-    end;
-
-    FWorkspace.Activate(Target);
   end;
 
   RebuildTabs;
@@ -1895,15 +1867,9 @@ end;
 
 procedure TMarkdownPadFMXForm.RebuildTabs;
 begin
-  var Captions: TArray<string> := [];
-  var Modified: TArray<Boolean> := [];
-
-  for var Index := 0 to FWorkspace.Count - 1 do
-  begin
-    const Document = FWorkspace.Documents[Index];
-    Captions := Captions + [Document.DisplayName];
-    Modified := Modified + [Document.Modified];
-  end;
+  var Captions: TArray<string>;
+  var Modified: TArray<Boolean>;
+  TPadSessionSync.CollectTabs(FWorkspace, Captions, Modified);
 
   FTabStrip.SetTabs(Captions, Modified, FWorkspace.ActiveIndex);
 end;
@@ -2113,20 +2079,8 @@ begin
   if FSession = nil then
     Exit;
 
-  var Titled: TArray<string> := [];
-  var FilteredActive := -1;
-
-  for var Index := 0 to FWorkspace.Count - 1 do
-  begin
-    const Document = FWorkspace.Documents[Index];
-    if Document.IsUntitled then
-      Continue;
-
-    if Index = FWorkspace.ActiveIndex then
-      FilteredActive := Length(Titled);
-
-    Titled := Titled + [Document.FileName];
-  end;
+  var FilteredActive: Integer;
+  const Titled = TPadSessionSync.CollectOpenFiles(FWorkspace, FilteredActive);
 
   FSession.SetOpenFiles(Titled, FilteredActive);
   FSession.DarkTheme := FDarkThemeActive;
