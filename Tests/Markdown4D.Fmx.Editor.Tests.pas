@@ -40,9 +40,12 @@ type
       ManyLineCount = 40;
     var
       FEditor: TMarkdownEditor;
+      FSavedClipboard: IInterface;
+      FClipboardReplaced: Boolean;
     class function ManyLines(const Count: Integer): string; static;
     class function OneWrappedLine: string; static;
-    class function ClipboardIsAvailable: Boolean; static;
+    procedure ReplaceClipboardWithFake;
+    procedure RestoreClipboard;
 
   public
     [Setup]
@@ -187,6 +190,27 @@ uses
   FMX.Platform,
   FMX.Graphics;
 
+type
+  // In-memory clipboard so the copy/cut/paste tests never touch the real OS
+  // clipboard, which is a shared resource and makes them flaky under contention.
+  TFakeClipboardService = class(TInterfacedObject, IFMXClipboardService)
+  private
+    FValue: TValue;
+  public
+    procedure SetClipboard(Value: TValue);
+    function GetClipboard: TValue;
+  end;
+
+procedure TFakeClipboardService.SetClipboard(Value: TValue);
+begin
+  FValue := Value;
+end;
+
+function TFakeClipboardService.GetClipboard: TValue;
+begin
+  Result := FValue;
+end;
+
 procedure TTestableFmxEditor.SimulateMouseDown(const X, Y: Single; const Shift: TShiftState);
 begin
   MouseDown(TMouseButton.mbLeft, Shift, X, Y);
@@ -261,21 +285,31 @@ begin
   Result := Builder;
 end;
 
-class function TMarkdownFmxEditorTests.ClipboardIsAvailable: Boolean;
+procedure TMarkdownFmxEditorTests.ReplaceClipboardWithFake;
 begin
-  Result := False;
+  var Existing: IFMXClipboardService;
+  if TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Existing) then
+  begin
+    FSavedClipboard := Existing;
+    TPlatformServices.Current.RemovePlatformService(IFMXClipboardService);
+  end;
 
-  var Service: IFMXClipboardService;
-  if not TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Service) then
+  TPlatformServices.Current.AddPlatformService(IFMXClipboardService, TFakeClipboardService.Create);
+  FClipboardReplaced := True;
+end;
+
+procedure TMarkdownFmxEditorTests.RestoreClipboard;
+begin
+  if not FClipboardReplaced then
     Exit;
 
-  try
-    const Prior = Service.GetClipboard;
-    Service.SetClipboard(Prior);
-    Result := True;
-  except
-    Result := False;
-  end;
+  TPlatformServices.Current.RemovePlatformService(IFMXClipboardService);
+
+  if FSavedClipboard <> nil then
+    TPlatformServices.Current.AddPlatformService(IFMXClipboardService, FSavedClipboard);
+
+  FSavedClipboard := nil;
+  FClipboardReplaced := False;
 end;
 
 procedure TMarkdownFmxEditorTests.NewEditor_ConstructsWithoutForm;
@@ -665,63 +699,66 @@ end;
 
 procedure TMarkdownFmxEditorTests.CtrlC_CopiesSelectionToClipboard;
 begin
-  if not ClipboardIsAvailable then
-    Assert.Pass('Clipboard service unavailable in this test session');
-
-  var Service: IFMXClipboardService;
-  TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Service);
-  const Saved = Service.GetClipboard;
-  const Editor = TTestableFmxEditor.Create(nil);
+  ReplaceClipboardWithFake;
   try
-    Editor.Text := 'copy target';
-    Editor.SimulateKeyDown(vkA, #0, [ssCtrl]);
-    Editor.SimulateKeyDown(vkC, #0, [ssCtrl]);
-    Assert.AreEqual('copy target', Service.GetClipboard.ToString);
+    var Service: IFMXClipboardService;
+    TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Service);
+
+    const Editor = TTestableFmxEditor.Create(nil);
+    try
+      Editor.Text := 'copy target';
+      Editor.SimulateKeyDown(vkA, #0, [ssCtrl]);
+      Editor.SimulateKeyDown(vkC, #0, [ssCtrl]);
+      Assert.AreEqual('copy target', Service.GetClipboard.ToString);
+    finally
+      Editor.Free;
+    end;
   finally
-    Editor.Free;
-    Service.SetClipboard(Saved);
+    RestoreClipboard;
   end;
 end;
 
 procedure TMarkdownFmxEditorTests.CtrlX_CutsSelectionToClipboard;
 begin
-  if not ClipboardIsAvailable then
-    Assert.Pass('Clipboard service unavailable in this test session');
-
-  var Service: IFMXClipboardService;
-  TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Service);
-  const Saved = Service.GetClipboard;
-  const Editor = TTestableFmxEditor.Create(nil);
+  ReplaceClipboardWithFake;
   try
-    Editor.Text := 'cut target';
-    Editor.SimulateKeyDown(vkA, #0, [ssCtrl]);
-    Editor.SimulateKeyDown(vkX, #0, [ssCtrl]);
-    Assert.AreEqual('cut target', Service.GetClipboard.ToString);
-    Assert.AreEqual('', Editor.Text);
+    var Service: IFMXClipboardService;
+    TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Service);
+
+    const Editor = TTestableFmxEditor.Create(nil);
+    try
+      Editor.Text := 'cut target';
+      Editor.SimulateKeyDown(vkA, #0, [ssCtrl]);
+      Editor.SimulateKeyDown(vkX, #0, [ssCtrl]);
+      Assert.AreEqual('cut target', Service.GetClipboard.ToString);
+      Assert.AreEqual('', Editor.Text);
+    finally
+      Editor.Free;
+    end;
   finally
-    Editor.Free;
-    Service.SetClipboard(Saved);
+    RestoreClipboard;
   end;
 end;
 
 procedure TMarkdownFmxEditorTests.CtrlV_PastesClipboardText;
 begin
-  if not ClipboardIsAvailable then
-    Assert.Pass('Clipboard service unavailable in this test session');
-
-  var Service: IFMXClipboardService;
-  TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Service);
-  const Saved = Service.GetClipboard;
-  const Editor = TTestableFmxEditor.Create(nil);
+  ReplaceClipboardWithFake;
   try
-    Service.SetClipboard('pasted');
-    Editor.Text := '';
-    Editor.CaretPosition := 0;
-    Editor.SimulateKeyDown(vkV, #0, [ssCtrl]);
-    Assert.AreEqual('pasted', Editor.Text);
+    var Service: IFMXClipboardService;
+    TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Service);
+
+    const Editor = TTestableFmxEditor.Create(nil);
+    try
+      Service.SetClipboard('pasted');
+      Editor.Text := '';
+      Editor.CaretPosition := 0;
+      Editor.SimulateKeyDown(vkV, #0, [ssCtrl]);
+      Assert.AreEqual('pasted', Editor.Text);
+    finally
+      Editor.Free;
+    end;
   finally
-    Editor.Free;
-    Service.SetClipboard(Saved);
+    RestoreClipboard;
   end;
 end;
 
