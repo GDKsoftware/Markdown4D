@@ -2,6 +2,7 @@ program StreamingMarkdownVCL;
 
 uses
   Vcl.Forms,
+  StreamingMarkdown.Demo in '..\Shared\StreamingMarkdown.Demo.pas',
   StreamingMarkdownVCL.Main in 'StreamingMarkdownVCL.Main.pas';
 
 {$R *.res}

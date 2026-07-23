@@ -97,6 +97,7 @@
         <DelphiCompile Include="$(MainSource)">
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
+        <DCCReference Include="..\Shared\StreamingMarkdown.Demo.pas"/>
         <DCCReference Include="StreamingMarkdownFMX.Main.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>

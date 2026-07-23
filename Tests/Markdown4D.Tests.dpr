@@ -58,12 +58,14 @@ uses
   MarkdownPad.TabStrip in '..\Examples\Shared\MarkdownPad.TabStrip.pas',
   MarkdownPad.FileWatcher in '..\Examples\Shared\MarkdownPad.FileWatcher.pas',
   MarkdownPad.HtmlExport in '..\Examples\Shared\MarkdownPad.HtmlExport.pas',
+  StreamingMarkdown.Demo in '..\Examples\Shared\StreamingMarkdown.Demo.pas',
   MarkdownPad.Workspace.Tests in 'MarkdownPad.Workspace.Tests.pas',
   MarkdownPad.TabStrip.Tests in 'MarkdownPad.TabStrip.Tests.pas',
   MarkdownPad.Session.Tests in 'MarkdownPad.Session.Tests.pas',
   MarkdownPad.Commands.Tests in 'MarkdownPad.Commands.Tests.pas',
   MarkdownPad.FileWatcher.Tests in 'MarkdownPad.FileWatcher.Tests.pas',
-  MarkdownPad.HtmlExport.Tests in 'MarkdownPad.HtmlExport.Tests.pas';
+  MarkdownPad.HtmlExport.Tests in 'MarkdownPad.HtmlExport.Tests.pas',
+  StreamingMarkdown.Demo.Tests in 'StreamingMarkdown.Demo.Tests.pas';
 
 const
   TestsFolderName = 'Tests';
