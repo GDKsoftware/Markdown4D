@@ -163,7 +163,7 @@
   },
   {
     "name": "unknown-type",
-    "markdown": "```chart\n{\"type\":\"chart\",\"data\":{\"type\":\"radar\",\"data\":{\"labels\":[\"A\",\"B\"],\"datasets\":[{\"label\":\"S\",\"data\":[1,2]}]}}}\n```",
+    "markdown": "```chart\n{\"type\":\"chart\",\"data\":{\"type\":\"polarArea\",\"data\":{\"labels\":[\"A\",\"B\"],\"datasets\":[{\"label\":\"S\",\"data\":[1,2]}]}}}\n```",
     "detected": false,
     "reason": "unsupported chart type"
   },
@@ -192,5 +192,65 @@
     "chartType": "line",
     "datasetCount": 1,
     "labelCount": 1000
+  },
+  {
+    "name": "bar-horizontal",
+    "markdown": "```chart\n{\"type\":\"chart\",\"data\":{\"type\":\"bar\",\"data\":{\"labels\":[\"A\",\"B\",\"C\"],\"datasets\":[{\"label\":\"S1\",\"data\":[1,2,3]}]},\"options\":{\"indexAxis\":\"y\"}}}\n```",
+    "detected": true,
+    "chartType": "bar",
+    "datasetCount": 1,
+    "labelCount": 3,
+    "horizontal": true
+  },
+  {
+    "name": "bar-horizontal-stacked",
+    "markdown": "```chart\n{\"type\":\"chart\",\"data\":{\"type\":\"bar\",\"data\":{\"labels\":[\"Q1\",\"Q2\"],\"datasets\":[{\"label\":\"North\",\"data\":[1,2]},{\"label\":\"South\",\"data\":[3,4]}]},\"options\":{\"indexAxis\":\"y\",\"scales\":{\"x\":{\"stacked\":true},\"y\":{\"stacked\":true}}}}}\n```",
+    "detected": true,
+    "chartType": "bar",
+    "datasetCount": 2,
+    "labelCount": 2,
+    "horizontal": true,
+    "stacked": true
+  },
+  {
+    "name": "line-area",
+    "markdown": "```chart\n{\"type\":\"chart\",\"data\":{\"type\":\"line\",\"data\":{\"labels\":[\"A\",\"B\",\"C\"],\"datasets\":[{\"label\":\"S\",\"data\":[3,6,4],\"fill\":true}]}}}\n```",
+    "detected": true,
+    "chartType": "line",
+    "datasetCount": 1,
+    "labelCount": 3,
+    "fill": true
+  },
+  {
+    "name": "radar-minimal",
+    "markdown": "```chart\n{\"type\":\"chart\",\"data\":{\"type\":\"radar\",\"data\":{\"labels\":[\"A\",\"B\",\"C\"],\"datasets\":[{\"label\":\"S\",\"data\":[3,5,2]}]}}}\n```",
+    "detected": true,
+    "chartType": "radar",
+    "datasetCount": 1,
+    "labelCount": 3
+  },
+  {
+    "name": "radar-multi",
+    "markdown": "```chart\n{\"type\":\"chart\",\"data\":{\"type\":\"radar\",\"data\":{\"labels\":[\"A\",\"B\",\"C\",\"D\"],\"datasets\":[{\"label\":\"S1\",\"data\":[3,5,2,4]},{\"label\":\"S2\",\"data\":[4,2,5,3]}]}}}\n```",
+    "detected": true,
+    "chartType": "radar",
+    "datasetCount": 2,
+    "labelCount": 4
+  },
+  {
+    "name": "scatter-minimal",
+    "markdown": "```chart\n{\"type\":\"chart\",\"data\":{\"type\":\"scatter\",\"data\":{\"datasets\":[{\"label\":\"S\",\"data\":[{\"x\":1,\"y\":2},{\"x\":3,\"y\":4},{\"x\":5,\"y\":1}]}]}}}\n```",
+    "detected": true,
+    "chartType": "scatter",
+    "datasetCount": 1,
+    "labelCount": 0
+  },
+  {
+    "name": "scatter-multi",
+    "markdown": "```chart\n{\"type\":\"chart\",\"data\":{\"type\":\"scatter\",\"data\":{\"datasets\":[{\"label\":\"A\",\"data\":[{\"x\":1,\"y\":2},{\"x\":2,\"y\":3}]},{\"label\":\"B\",\"data\":[{\"x\":3,\"y\":1},{\"x\":4,\"y\":5}]}]}}}\n```",
+    "detected": true,
+    "chartType": "scatter",
+    "datasetCount": 2,
+    "labelCount": 0
   }
 ]

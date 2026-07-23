@@ -13,7 +13,7 @@ type
   TChartExtensionTests = class
   private
     const
-      ExpectedCaseCount = 24;
+      ExpectedCaseCount = 31;
       InlineCaseName = 'inline-code-chart';
     var
       FCorpus: TChartCorpus;
@@ -36,6 +36,18 @@ type
 
     [Test]
     procedure Model_ResolvesTypeSeriesAndLabels;
+
+    [Test]
+    procedure Model_HorizontalBar_SetsHorizontalFlag;
+
+    [Test]
+    procedure Model_AreaDataset_SetsFillFlag;
+
+    [Test]
+    procedure Model_Radar_ResolvesKindAndValues;
+
+    [Test]
+    procedure Model_Scatter_ResolvesPointData;
 
     [Test]
     procedure Html_FencedCases_RenderPlainCodeBlock;
@@ -155,6 +167,46 @@ begin
   Assert.AreEqual(2, Model.LabelCount);
   Assert.AreEqual(Double(1), Model.Datasets[0].Values[0], 0.001);
   Assert.AreEqual('North', Model.Datasets[0].Caption);
+end;
+
+function ParseModel(const Markdown: string): IChartModel;
+begin
+  const Document = ChartPipeline.Parse(Markdown);
+
+  var Code: IMarkdownCodeBlock;
+  Assert.IsTrue(FindFirstCodeBlock(Document, Code), 'Case must expose a code block');
+  Assert.IsTrue(TChartExtension.TryParse(Code, Result), 'Case must parse into a chart model');
+end;
+
+procedure TChartExtensionTests.Model_HorizontalBar_SetsHorizontalFlag;
+begin
+  const Model = ParseModel(FCorpus.FindCase('bar-horizontal').Markdown);
+  Assert.AreEqual(Ord(TChartKind.Bar), Ord(Model.ChartKind));
+  Assert.IsTrue(Model.Horizontal, 'indexAxis "y" must set the horizontal flag');
+end;
+
+procedure TChartExtensionTests.Model_AreaDataset_SetsFillFlag;
+begin
+  const Model = ParseModel(FCorpus.FindCase('line-area').Markdown);
+  Assert.AreEqual(Ord(TChartKind.Line), Ord(Model.ChartKind));
+  Assert.IsTrue(Model.Datasets[0].Fill, 'A dataset with fill:true must set the fill flag');
+end;
+
+procedure TChartExtensionTests.Model_Radar_ResolvesKindAndValues;
+begin
+  const Model = ParseModel(FCorpus.FindCase('radar-minimal').Markdown);
+  Assert.AreEqual(Ord(TChartKind.Radar), Ord(Model.ChartKind));
+  Assert.AreEqual(3, Model.LabelCount);
+  Assert.AreEqual(Double(5), Model.Datasets[0].Values[1], 0.001);
+end;
+
+procedure TChartExtensionTests.Model_Scatter_ResolvesPointData;
+begin
+  const Model = ParseModel(FCorpus.FindCase('scatter-minimal').Markdown);
+  Assert.AreEqual(Ord(TChartKind.Scatter), Ord(Model.ChartKind));
+  Assert.AreEqual(3, Model.Datasets[0].PointCount);
+  Assert.AreEqual(Double(5), Model.Datasets[0].PointsX[2], 0.001);
+  Assert.AreEqual(Double(1), Model.Datasets[0].PointsY[2], 0.001);
 end;
 
 procedure TChartExtensionTests.Html_FencedCases_RenderPlainCodeBlock;
