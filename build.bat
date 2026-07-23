@@ -57,9 +57,9 @@ echo.
 echo === Building example projects ^(Debug, Win32^) ===
 for %%P in (
     "%ROOT%Examples\MarkdownPadVCL\MarkdownPadVCL.dproj"
-    "%ROOT%Examples\LlmChat\LlmChat.dproj"
+    "%ROOT%Examples\StreamingMarkdownVCL\StreamingMarkdownVCL.dproj"
     "%ROOT%Examples\MarkdownPadFMX\MarkdownPadFMX.dproj"
-    "%ROOT%Examples\FmxLlmChat\FmxLlmChat.dproj"
+    "%ROOT%Examples\StreamingMarkdownFMX\StreamingMarkdownFMX.dproj"
 ) do (
     msbuild "%%~P" /t:Build /p:Config=Debug /p:Platform=Win32 /v:m
     if errorlevel 1 (

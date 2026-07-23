@@ -1,4 +1,4 @@
-unit FmxLlmChat.Main;
+unit StreamingMarkdownFMX.Main;
 
 {$SCOPEDENUMS ON}
 
@@ -17,7 +17,7 @@ uses
   Markdown4D.Fmx.Viewer;
 
 type
-  TFmxLlmChatForm = class(TForm)
+  TStreamingMarkdownFMXForm = class(TForm)
   private
     const
       WindowCaption = 'Markdown4D FMX LLM Chat Demo';
@@ -71,7 +71,7 @@ type
   end;
 
 var
-  FmxLlmChatForm: TFmxLlmChatForm;
+  StreamingMarkdownFMXForm: TStreamingMarkdownFMXForm;
 
 implementation
 
@@ -82,7 +82,7 @@ uses
   Markdown4D.Extensions.Chart.BlockOverride,
   Markdown4D.Extensions.Mermaid.BlockOverride;
 
-constructor TFmxLlmChatForm.Create(Owner: TComponent);
+constructor TStreamingMarkdownFMXForm.Create(Owner: TComponent);
 begin
   inherited CreateNew(Owner);
 
@@ -103,14 +103,14 @@ begin
   BuildTimers;
 end;
 
-procedure TFmxLlmChatForm.BuildMessagesBox;
+procedure TStreamingMarkdownFMXForm.BuildMessagesBox;
 begin
   FMessagesBox := TVertScrollBox.Create(Self);
   FMessagesBox.Parent := Self;
   FMessagesBox.Align := TAlignLayout.Client;
 end;
 
-procedure TFmxLlmChatForm.BuildInputPanel;
+procedure TStreamingMarkdownFMXForm.BuildInputPanel;
 begin
   FInputPanel := TPanel.Create(Self);
   FInputPanel.Parent := Self;
@@ -133,7 +133,7 @@ begin
   FInputEdit.OnKeyDown := HandleInputEditKeyDown;
 end;
 
-procedure TFmxLlmChatForm.BuildTimers;
+procedure TStreamingMarkdownFMXForm.BuildTimers;
 begin
   FStreamTimer := TTimer.Create(Self);
   FStreamTimer.Enabled := False;
@@ -145,7 +145,7 @@ begin
   FLayoutTimer.OnTimer := HandleLayoutTimer;
 end;
 
-procedure TFmxLlmChatForm.SetUniformMargins(const Control: TControl; const Amount: Single);
+procedure TStreamingMarkdownFMXForm.SetUniformMargins(const Control: TControl; const Amount: Single);
 begin
   Control.Margins.Left := Amount;
   Control.Margins.Top := Amount;
@@ -153,12 +153,12 @@ begin
   Control.Margins.Bottom := Amount;
 end;
 
-procedure TFmxLlmChatForm.HandleSendClick(Sender: TObject);
+procedure TStreamingMarkdownFMXForm.HandleSendClick(Sender: TObject);
 begin
   SendPrompt;
 end;
 
-procedure TFmxLlmChatForm.HandleInputEditKeyDown(Sender: TObject; var Key: Word; var KeyChar: Char;
+procedure TStreamingMarkdownFMXForm.HandleInputEditKeyDown(Sender: TObject; var Key: Word; var KeyChar: Char;
   Shift: TShiftState);
 begin
   if Key <> vkReturn then
@@ -170,7 +170,7 @@ begin
     SendPrompt;
 end;
 
-procedure TFmxLlmChatForm.SendPrompt;
+procedure TStreamingMarkdownFMXForm.SendPrompt;
 begin
   const Prompt = Trim(FInputEdit.Text);
   if Prompt = '' then
@@ -181,7 +181,7 @@ begin
   StartStreaming;
 end;
 
-function TFmxLlmChatForm.AddMessageViewer(const Markdown: string): TMarkdownViewer;
+function TStreamingMarkdownFMXForm.AddMessageViewer(const Markdown: string): TMarkdownViewer;
 begin
   Result := TMarkdownViewer.Create(Self);
   Result.Parent := FMessagesBox;
@@ -194,7 +194,7 @@ begin
   FMessageViewers.Add(Result);
 end;
 
-procedure TFmxLlmChatForm.StartStreaming;
+procedure TStreamingMarkdownFMXForm.StartStreaming;
 begin
   FStreamingViewer := AddMessageViewer('');
   FStreamPosition := 1;
@@ -203,7 +203,7 @@ begin
   FStreamTimer.Enabled := True;
 end;
 
-procedure TFmxLlmChatForm.HandleStreamTimer(Sender: TObject);
+procedure TStreamingMarkdownFMXForm.HandleStreamTimer(Sender: TObject);
 begin
   const IsFinished = FStreamPosition > Length(FCannedResponse);
   if IsFinished then
@@ -215,7 +215,7 @@ begin
   AppendNextChunk;
 end;
 
-procedure TFmxLlmChatForm.AppendNextChunk;
+procedure TStreamingMarkdownFMXForm.AppendNextChunk;
 begin
   const Remaining = Length(FCannedResponse) - FStreamPosition + 1;
   const ChunkLength = Min(Remaining, MinChunkLength + Random(MaxChunkLength - MinChunkLength + 1));
@@ -225,7 +225,7 @@ begin
   FStreamTimer.Interval := MinTickMilliseconds + Random(MaxTickMilliseconds - MinTickMilliseconds + 1);
 end;
 
-procedure TFmxLlmChatForm.FinishStreaming;
+procedure TStreamingMarkdownFMXForm.FinishStreaming;
 begin
   FStreamTimer.Enabled := False;
   FStreamingViewer := nil;
@@ -233,7 +233,7 @@ begin
   FInputEdit.SetFocus;
 end;
 
-procedure TFmxLlmChatForm.HandleLayoutTimer(Sender: TObject);
+procedure TStreamingMarkdownFMXForm.HandleLayoutTimer(Sender: TObject);
 begin
   SyncMessageHeights;
 
@@ -241,7 +241,7 @@ begin
     ScrollMessagesToBottom;
 end;
 
-procedure TFmxLlmChatForm.SyncMessageHeights;
+procedure TStreamingMarkdownFMXForm.SyncMessageHeights;
 begin
   for var Viewer in FMessageViewers do
   begin
@@ -251,12 +251,12 @@ begin
   end;
 end;
 
-procedure TFmxLlmChatForm.ScrollMessagesToBottom;
+procedure TStreamingMarkdownFMXForm.ScrollMessagesToBottom;
 begin
   FMessagesBox.ViewportPosition := PointF(0, FMessagesBox.ContentBounds.Height);
 end;
 
-class function TFmxLlmChatForm.BuildCannedResponse: string;
+class function TStreamingMarkdownFMXForm.BuildCannedResponse: string;
 begin
   Result :=
     '# Streaming Markdown'#10#10 +
@@ -325,7 +325,7 @@ begin
     '[GFM spec](https://github.github.com/gfm/).'#10;
 end;
 
-destructor TFmxLlmChatForm.Destroy;
+destructor TStreamingMarkdownFMXForm.Destroy;
 begin
   FMessageViewers.Free;
 
