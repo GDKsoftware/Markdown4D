@@ -109,6 +109,9 @@
             <Form>MarkdownPadForm</Form>
             <FormType>dfm</FormType>
         </DCCReference>
+        <DCCReference Include="..\Shared\MarkdownPad.Defines.pas"/>
+        <DCCReference Include="..\Shared\MarkdownPad.Text.pas"/>
+        <DCCReference Include="..\Shared\MarkdownPad.Outline.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

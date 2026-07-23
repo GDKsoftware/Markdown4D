@@ -11,7 +11,10 @@ uses
   MarkdownPad.TabStrip in '..\Shared\MarkdownPad.TabStrip.pas',
   MarkdownPad.FileWatcher in '..\Shared\MarkdownPad.FileWatcher.pas',
   MarkdownPad.HtmlExport in '..\Shared\MarkdownPad.HtmlExport.pas',
-  MarkdownPad.Main in 'MarkdownPad.Main.pas' {MarkdownPadForm};
+  MarkdownPad.Main in 'MarkdownPad.Main.pas' {MarkdownPadForm},
+  MarkdownPad.Defines in '..\Shared\MarkdownPad.Defines.pas',
+  MarkdownPad.Text in '..\Shared\MarkdownPad.Text.pas',
+  MarkdownPad.Outline in '..\Shared\MarkdownPad.Outline.pas';
 
 {$R *.res}
 
