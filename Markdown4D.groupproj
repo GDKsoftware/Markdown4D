@@ -30,13 +30,13 @@
         <Projects Include="Examples\MarkdownPadVCL\MarkdownPadVCL.dproj">
             <Dependencies/>
         </Projects>
-        <Projects Include="Examples\LlmChat\LlmChat.dproj">
+        <Projects Include="Examples\StreamingMarkdownVCL\StreamingMarkdownVCL.dproj">
             <Dependencies/>
         </Projects>
         <Projects Include="Examples\MarkdownPadFMX\MarkdownPadFMX.dproj">
             <Dependencies/>
         </Projects>
-        <Projects Include="Examples\FmxLlmChat\FmxLlmChat.dproj">
+        <Projects Include="Examples\StreamingMarkdownFMX\StreamingMarkdownFMX.dproj">
             <Dependencies/>
         </Projects>
     </ItemGroup>
@@ -128,14 +128,14 @@
     <Target Name="MarkdownPadVCL:Make">
         <MSBuild Projects="Examples\MarkdownPadVCL\MarkdownPadVCL.dproj" Targets="Make"/>
     </Target>
-    <Target Name="LlmChat">
-        <MSBuild Projects="Examples\LlmChat\LlmChat.dproj"/>
+    <Target Name="StreamingMarkdownVCL">
+        <MSBuild Projects="Examples\StreamingMarkdownVCL\StreamingMarkdownVCL.dproj"/>
     </Target>
-    <Target Name="LlmChat:Clean">
-        <MSBuild Projects="Examples\LlmChat\LlmChat.dproj" Targets="Clean"/>
+    <Target Name="StreamingMarkdownVCL:Clean">
+        <MSBuild Projects="Examples\StreamingMarkdownVCL\StreamingMarkdownVCL.dproj" Targets="Clean"/>
     </Target>
-    <Target Name="LlmChat:Make">
-        <MSBuild Projects="Examples\LlmChat\LlmChat.dproj" Targets="Make"/>
+    <Target Name="StreamingMarkdownVCL:Make">
+        <MSBuild Projects="Examples\StreamingMarkdownVCL\StreamingMarkdownVCL.dproj" Targets="Make"/>
     </Target>
     <Target Name="MarkdownPadFMX">
         <MSBuild Projects="Examples\MarkdownPadFMX\MarkdownPadFMX.dproj"/>
@@ -146,23 +146,23 @@
     <Target Name="MarkdownPadFMX:Make">
         <MSBuild Projects="Examples\MarkdownPadFMX\MarkdownPadFMX.dproj" Targets="Make"/>
     </Target>
-    <Target Name="FmxLlmChat">
-        <MSBuild Projects="Examples\FmxLlmChat\FmxLlmChat.dproj"/>
+    <Target Name="StreamingMarkdownFMX">
+        <MSBuild Projects="Examples\StreamingMarkdownFMX\StreamingMarkdownFMX.dproj"/>
     </Target>
-    <Target Name="FmxLlmChat:Clean">
-        <MSBuild Projects="Examples\FmxLlmChat\FmxLlmChat.dproj" Targets="Clean"/>
+    <Target Name="StreamingMarkdownFMX:Clean">
+        <MSBuild Projects="Examples\StreamingMarkdownFMX\StreamingMarkdownFMX.dproj" Targets="Clean"/>
     </Target>
-    <Target Name="FmxLlmChat:Make">
-        <MSBuild Projects="Examples\FmxLlmChat\FmxLlmChat.dproj" Targets="Make"/>
+    <Target Name="StreamingMarkdownFMX:Make">
+        <MSBuild Projects="Examples\StreamingMarkdownFMX\StreamingMarkdownFMX.dproj" Targets="Make"/>
     </Target>
     <Target Name="Build">
-        <CallTarget Targets="Markdown4D_Core;Markdown4D_Vcl;Markdown4D_Fmx;Markdown4D_Vcl_Design;Markdown4D_Fmx_Design;Markdown4D_Tests;Markdown4D_Fmx_Tests;Markdown4D_Benchmarks;MarkdownPadVCL;LlmChat;MarkdownPadFMX;FmxLlmChat"/>
+        <CallTarget Targets="Markdown4D_Core;Markdown4D_Vcl;Markdown4D_Fmx;Markdown4D_Vcl_Design;Markdown4D_Fmx_Design;Markdown4D_Tests;Markdown4D_Fmx_Tests;Markdown4D_Benchmarks;MarkdownPadVCL;StreamingMarkdownVCL;MarkdownPadFMX;StreamingMarkdownFMX"/>
     </Target>
     <Target Name="Clean">
-        <CallTarget Targets="Markdown4D_Core:Clean;Markdown4D_Vcl:Clean;Markdown4D_Fmx:Clean;Markdown4D_Vcl_Design:Clean;Markdown4D_Fmx_Design:Clean;Markdown4D_Tests:Clean;Markdown4D_Fmx_Tests:Clean;Markdown4D_Benchmarks:Clean;MarkdownPadVCL:Clean;LlmChat:Clean;MarkdownPadFMX:Clean;FmxLlmChat:Clean"/>
+        <CallTarget Targets="Markdown4D_Core:Clean;Markdown4D_Vcl:Clean;Markdown4D_Fmx:Clean;Markdown4D_Vcl_Design:Clean;Markdown4D_Fmx_Design:Clean;Markdown4D_Tests:Clean;Markdown4D_Fmx_Tests:Clean;Markdown4D_Benchmarks:Clean;MarkdownPadVCL:Clean;StreamingMarkdownVCL:Clean;MarkdownPadFMX:Clean;StreamingMarkdownFMX:Clean"/>
     </Target>
     <Target Name="Make">
-        <CallTarget Targets="Markdown4D_Core:Make;Markdown4D_Vcl:Make;Markdown4D_Fmx:Make;Markdown4D_Vcl_Design:Make;Markdown4D_Fmx_Design:Make;Markdown4D_Tests:Make;Markdown4D_Fmx_Tests:Make;Markdown4D_Benchmarks:Make;MarkdownPadVCL:Make;LlmChat:Make;MarkdownPadFMX:Make;FmxLlmChat:Make"/>
+        <CallTarget Targets="Markdown4D_Core:Make;Markdown4D_Vcl:Make;Markdown4D_Fmx:Make;Markdown4D_Vcl_Design:Make;Markdown4D_Fmx_Design:Make;Markdown4D_Tests:Make;Markdown4D_Fmx_Tests:Make;Markdown4D_Benchmarks:Make;MarkdownPadVCL:Make;StreamingMarkdownVCL:Make;MarkdownPadFMX:Make;StreamingMarkdownFMX:Make"/>
     </Target>
     <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
 </Project>

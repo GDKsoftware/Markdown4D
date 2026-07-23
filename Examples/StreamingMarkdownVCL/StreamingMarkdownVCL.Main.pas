@@ -1,4 +1,4 @@
-unit LlmChat.Main;
+unit StreamingMarkdownVCL.Main;
 
 {$SCOPEDENUMS ON}
 
@@ -14,7 +14,7 @@ uses
   Markdown4D.Vcl.Viewer;
 
 type
-  TLlmChatForm = class(TForm)
+  TStreamingMarkdownVCLForm = class(TForm)
   private
     const
       WindowCaption = 'Markdown4D LLM Chat Demo';
@@ -67,7 +67,7 @@ type
   end;
 
 var
-  LlmChatForm: TLlmChatForm;
+  StreamingMarkdownVCLForm: TStreamingMarkdownVCLForm;
 
 implementation
 
@@ -77,7 +77,7 @@ uses
   Markdown4D.Extensions.Chart.BlockOverride,
   Markdown4D.Extensions.Mermaid.BlockOverride;
 
-constructor TLlmChatForm.Create(Owner: TComponent);
+constructor TStreamingMarkdownVCLForm.Create(Owner: TComponent);
 begin
   inherited CreateNew(Owner);
 
@@ -98,7 +98,7 @@ begin
   BuildTimers;
 end;
 
-procedure TLlmChatForm.BuildMessagesBox;
+procedure TStreamingMarkdownVCLForm.BuildMessagesBox;
 begin
   FMessagesBox := TScrollBox.Create(Self);
   FMessagesBox.Parent := Self;
@@ -107,7 +107,7 @@ begin
   FMessagesBox.BorderStyle := bsNone;
 end;
 
-procedure TLlmChatForm.BuildInputPanel;
+procedure TStreamingMarkdownVCLForm.BuildInputPanel;
 begin
   FInputPanel := TPanel.Create(Self);
   FInputPanel.Parent := Self;
@@ -134,7 +134,7 @@ begin
   FInputEdit.OnKeyPress := HandleInputEditKeyPress;
 end;
 
-procedure TLlmChatForm.BuildTimers;
+procedure TStreamingMarkdownVCLForm.BuildTimers;
 begin
   FStreamTimer := TTimer.Create(Self);
   FStreamTimer.Enabled := False;
@@ -146,12 +146,12 @@ begin
   FLayoutTimer.OnTimer := HandleLayoutTimer;
 end;
 
-procedure TLlmChatForm.HandleSendClick(Sender: TObject);
+procedure TStreamingMarkdownVCLForm.HandleSendClick(Sender: TObject);
 begin
   SendPrompt;
 end;
 
-procedure TLlmChatForm.HandleInputEditKeyPress(Sender: TObject; var Key: Char);
+procedure TStreamingMarkdownVCLForm.HandleInputEditKeyPress(Sender: TObject; var Key: Char);
 begin
   if Key <> #13 then
     Exit;
@@ -161,7 +161,7 @@ begin
     SendPrompt;
 end;
 
-procedure TLlmChatForm.SendPrompt;
+procedure TStreamingMarkdownVCLForm.SendPrompt;
 begin
   const Prompt = Trim(FInputEdit.Text);
   if Prompt = '' then
@@ -172,7 +172,7 @@ begin
   StartStreaming;
 end;
 
-function TLlmChatForm.AddMessageViewer(const Markdown: string): TMarkdownViewer;
+function TStreamingMarkdownVCLForm.AddMessageViewer(const Markdown: string): TMarkdownViewer;
 begin
   Result := TMarkdownViewer.Create(Self);
   Result.Parent := FMessagesBox;
@@ -186,7 +186,7 @@ begin
   FMessageViewers.Add(Result);
 end;
 
-procedure TLlmChatForm.StartStreaming;
+procedure TStreamingMarkdownVCLForm.StartStreaming;
 begin
   FStreamingViewer := AddMessageViewer('');
   FStreamPosition := 1;
@@ -195,7 +195,7 @@ begin
   FStreamTimer.Enabled := True;
 end;
 
-procedure TLlmChatForm.HandleStreamTimer(Sender: TObject);
+procedure TStreamingMarkdownVCLForm.HandleStreamTimer(Sender: TObject);
 begin
   const IsFinished = FStreamPosition > Length(FCannedResponse);
   if IsFinished then
@@ -207,7 +207,7 @@ begin
   AppendNextChunk;
 end;
 
-procedure TLlmChatForm.AppendNextChunk;
+procedure TStreamingMarkdownVCLForm.AppendNextChunk;
 begin
   const Remaining = Length(FCannedResponse) - FStreamPosition + 1;
   const ChunkLength = Min(Remaining, MinChunkLength + Random(MaxChunkLength - MinChunkLength + 1));
@@ -217,7 +217,7 @@ begin
   FStreamTimer.Interval := MinTickMilliseconds + Random(MaxTickMilliseconds - MinTickMilliseconds + 1);
 end;
 
-procedure TLlmChatForm.FinishStreaming;
+procedure TStreamingMarkdownVCLForm.FinishStreaming;
 begin
   FStreamTimer.Enabled := False;
   FStreamingViewer := nil;
@@ -225,7 +225,7 @@ begin
   FInputEdit.SetFocus;
 end;
 
-procedure TLlmChatForm.HandleLayoutTimer(Sender: TObject);
+procedure TStreamingMarkdownVCLForm.HandleLayoutTimer(Sender: TObject);
 begin
   SyncMessageHeights;
 
@@ -233,7 +233,7 @@ begin
     ScrollMessagesToBottom;
 end;
 
-procedure TLlmChatForm.SyncMessageHeights;
+procedure TStreamingMarkdownVCLForm.SyncMessageHeights;
 begin
   for var Viewer in FMessageViewers do
   begin
@@ -243,12 +243,12 @@ begin
   end;
 end;
 
-procedure TLlmChatForm.ScrollMessagesToBottom;
+procedure TStreamingMarkdownVCLForm.ScrollMessagesToBottom;
 begin
   FMessagesBox.VertScrollBar.Position := FMessagesBox.VertScrollBar.Range;
 end;
 
-class function TLlmChatForm.BuildCannedResponse: string;
+class function TStreamingMarkdownVCLForm.BuildCannedResponse: string;
 begin
   Result :=
     '# Streaming Markdown'#10#10 +
@@ -276,7 +276,7 @@ begin
     '- [x] Async image loading'#10 +
     '- [ ] FMX viewer'#10#10 +
     'Images stream in asynchronously too:'#10#10 +
-    '![Sample photo](https://picsum.photos/seed/llmchat/280/140)'#10#10 +
+    '![Sample photo](https://picsum.photos/seed/StreamingMarkdownVCL/280/140)'#10#10 +
     '## Live charts'#10#10 +
     'Charts arrive as fenced code blocks and upgrade to graphics the moment the fence closes:'#10#10 +
     '```json'#10 +
@@ -317,7 +317,7 @@ begin
     '[GFM spec](https://github.github.com/gfm/).'#10;
 end;
 
-destructor TLlmChatForm.Destroy;
+destructor TStreamingMarkdownVCLForm.Destroy;
 begin
   FMessageViewers.Free;
 

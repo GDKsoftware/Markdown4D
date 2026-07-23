@@ -146,5 +146,5 @@ end;
 - Let the viewer debounce, reparse, repaint and auto-follow.
 - Read `Text` for the finished markdown when the stream completes.
 
-The `LlmChat` and `FmxLlmChat` examples implement exactly this pattern,
+The `StreamingMarkdownVCL` and `StreamingMarkdownFMX` examples implement exactly this pattern,
 including streaming charts and asynchronous image loading.

@@ -125,9 +125,9 @@ The `Examples\` folder contains four runnable projects:
 | Project | Framework | Shows |
 |---------|-----------|-------|
 | `MarkdownPadVCL` | VCL | Editor + live preview + table of contents, with native charts and mermaid diagrams |
-| `LlmChat` | VCL | Streaming chat with incremental render, async images, live charts and mermaid diagrams |
+| `StreamingMarkdownVCL` | VCL | Streaming chat with incremental render, async images, live charts and mermaid diagrams |
 | `MarkdownPadFMX` | FMX | Editor + live preview, with native charts and mermaid diagrams |
-| `FmxLlmChat` | FMX | Streaming chat with live charts and mermaid diagrams |
+| `StreamingMarkdownFMX` | FMX | Streaming chat with live charts and mermaid diagrams |
 
 ## Architecture
 
