@@ -4,6 +4,9 @@ unit Markdown4D.Editor.Model;
 
 interface
 
+uses
+  Markdown4D.Editor.Folding;
+
 type
   TEditorCommand = (Bold, Italic, Link, CodeBlock, Heading1, Heading2, Heading3, BulletList, NumberedList, Quote,
     Strikethrough, Table);
@@ -31,6 +34,12 @@ type
     ['{8F2D4A31-6B7C-4E19-9A03-2C5D8E1F4B60}']
   end;
 
+  TMarkdownFindOptions = record
+    MatchCase: Boolean;
+    WholeWord: Boolean;
+    class function Create(const MatchCase, WholeWord: Boolean): TMarkdownFindOptions; static;
+  end;
+
   TMarkdownEditorModel = class
   strict private
     type
@@ -44,6 +53,9 @@ type
       FRedoStack: TArray<TMarkdownUndoEntry>;
       FCoalesceBroken: Boolean;
       FOnChange: TEditorChangeEvent;
+      FCollapsedFolds: TArray<Integer>;
+      FFoldRegions: TArray<TFoldRegion>;
+      FFoldRegionsDirty: Boolean;
     procedure NormalizeAndLoad(const Value: string);
     procedure RebuildLineStarts;
     procedure UpdateLineStartsForEdit(const Start, OldLen: Integer; const Replacement: string);
@@ -55,9 +67,17 @@ type
     function PrevCaret(const Offset: Integer): Integer;
     function ClampOffset(const Offset: Integer): Integer;
     function SnapOffset(const Offset: Integer): Integer;
-    function IndexOfNeedle(const Needle: string; const FromOffset: Integer): Integer;
+    function IndexOfNeedle(const Needle: string; const FromOffset: Integer;
+      const Options: TMarkdownFindOptions): Integer;
+    function MatchesAt(const Needle: string; const CandidateStart: Integer;
+      const Options: TMarkdownFindOptions): Boolean;
+    function CollectMatches(const Needle: string; const Options: TMarkdownFindOptions): TArray<Integer>;
     function IsWordChar(const Ch: Char): Boolean;
     function CategoryOfChar(const Ch: Char): TCharCategory;
+    function AllLines: TArray<string>;
+    procedure ShiftFolds(const Start, OldLen, NewLen: Integer);
+    function CollapsedIndexOf(const HeaderOffset: Integer): Integer;
+    function TryRegionAtHeader(const HeaderLine: Integer; out Region: TFoldRegion): Boolean;
     procedure WrapOrToggle(const Marker: string);
     procedure InsertLink;
     procedure WrapCodeBlock;
@@ -100,13 +120,27 @@ type
     procedure SelectWordAt(const Offset: Integer);
     procedure SelectLineAt(const Offset: Integer);
     function HasSelection: Boolean;
-    function FindText(const Needle: string): Integer;
-    function FindNext(const Needle: string; const StartAfter: Integer): Integer;
+    function FindText(const Needle: string): Integer; overload;
+    function FindText(const Needle: string; const Options: TMarkdownFindOptions): Integer; overload;
+    function FindNext(const Needle: string; const StartAfter: Integer): Integer; overload;
+    function FindNext(const Needle: string; const StartAfter: Integer;
+      const Options: TMarkdownFindOptions): Integer; overload;
+    function FindPrevious(const Needle: string; const StartBefore: Integer;
+      const Options: TMarkdownFindOptions): Integer;
+    function ReplaceCurrent(const Needle, Replacement: string; const Options: TMarkdownFindOptions): Boolean;
+    function ReplaceAll(const Needle, Replacement: string; const Options: TMarkdownFindOptions): Integer;
     procedure Undo;
     procedure Redo;
     function CanUndo: Boolean;
     function CanRedo: Boolean;
     procedure BreakUndoCoalescing;
+    function FoldRegions: TArray<TFoldRegion>;
+    function HasFoldRegions: Boolean;
+    function IsFoldHeader(const LineIndex: Integer): Boolean;
+    function IsRegionCollapsed(const HeaderLine: Integer): Boolean;
+    function IsLineHidden(const LineIndex: Integer): Boolean;
+    procedure ToggleFold(const HeaderLine: Integer);
+    procedure ExpandAt(const Offset: Integer);
     procedure ExecuteCommand(const Command: TEditorCommand);
     property Text: string read GetText write SetText;
     property CaretPosition: Integer read GetCaretPosition write SetCaretPosition;
@@ -160,11 +194,18 @@ begin
   Result := Copy(Source, 1, Start) + Replacement + Copy(Source, Start + Length + 1, System.Length(Source));
 end;
 
+class function TMarkdownFindOptions.Create(const MatchCase, WholeWord: Boolean): TMarkdownFindOptions;
+begin
+  Result.MatchCase := MatchCase;
+  Result.WholeWord := WholeWord;
+end;
+
 constructor TMarkdownEditorModel.Create;
 begin
   inherited Create;
 
   FLineStarts := [0];
+  FFoldRegionsDirty := True;
 end;
 
 procedure TMarkdownEditorModel.LoadText(const Value: string);
@@ -198,6 +239,8 @@ begin
   FUndoStack := Snapshot.UndoStack;
   FRedoStack := Snapshot.RedoStack;
   FCoalesceBroken := Snapshot.CoalesceBroken;
+  FCollapsedFolds := nil;
+  FFoldRegionsDirty := True;
 end;
 
 function TMarkdownEditorModel.LineCount: Integer;
@@ -379,27 +422,21 @@ end;
 
 function TMarkdownEditorModel.FindText(const Needle: string): Integer;
 begin
-  if Needle = '' then
-    Exit(0);
+  Result := FindText(Needle, Default(TMarkdownFindOptions));
+end;
 
-  if System.Length(Needle) > System.Length(FText) then
-    Exit(0);
-
-  var Count := 0;
-  var Cursor := 0;
-
-  var Hit := IndexOfNeedle(Needle, Cursor);
-  while Hit >= 0 do
-  begin
-    Inc(Count);
-    Cursor := Hit + System.Length(Needle);
-    Hit := IndexOfNeedle(Needle, Cursor);
-  end;
-
-  Result := Count;
+function TMarkdownEditorModel.FindText(const Needle: string; const Options: TMarkdownFindOptions): Integer;
+begin
+  Result := System.Length(CollectMatches(Needle, Options));
 end;
 
 function TMarkdownEditorModel.FindNext(const Needle: string; const StartAfter: Integer): Integer;
+begin
+  Result := FindNext(Needle, StartAfter, Default(TMarkdownFindOptions));
+end;
+
+function TMarkdownEditorModel.FindNext(const Needle: string; const StartAfter: Integer;
+  const Options: TMarkdownFindOptions): Integer;
 begin
   if Needle = '' then
     Exit(-1);
@@ -407,11 +444,69 @@ begin
   if System.Length(Needle) > System.Length(FText) then
     Exit(-1);
 
-  const Primary = IndexOfNeedle(Needle, StartAfter + 1);
+  const Primary = IndexOfNeedle(Needle, StartAfter + 1, Options);
   if Primary >= 0 then
     Exit(Primary);
 
-  Result := IndexOfNeedle(Needle, 0);
+  Result := IndexOfNeedle(Needle, 0, Options);
+end;
+
+function TMarkdownEditorModel.FindPrevious(const Needle: string; const StartBefore: Integer;
+  const Options: TMarkdownFindOptions): Integer;
+begin
+  const Matches = CollectMatches(Needle, Options);
+  if System.Length(Matches) = 0 then
+    Exit(-1);
+
+  var Best := -1;
+  for var Start in Matches do
+  begin
+    if Start < StartBefore then
+      Best := Start;
+  end;
+
+  if Best >= 0 then
+    Exit(Best);
+
+  Result := Matches[High(Matches)];
+end;
+
+function TMarkdownEditorModel.ReplaceCurrent(const Needle, Replacement: string;
+  const Options: TMarkdownFindOptions): Boolean;
+begin
+  if Needle = '' then
+    Exit(False);
+
+  Result := (SelectionLength = System.Length(Needle)) and MatchesAt(Needle, SelectionStart, Options);
+  if Result then
+    ReplaceRange(SelectionStart, SelectionLength, Replacement);
+
+  const NextStart = FindNext(Needle, SelectionStart + SelectionLength - 1, Options);
+  if NextStart >= 0 then
+    SetSelection(NextStart, System.Length(Needle));
+end;
+
+function TMarkdownEditorModel.ReplaceAll(const Needle, Replacement: string;
+  const Options: TMarkdownFindOptions): Integer;
+begin
+  const Matches = CollectMatches(Needle, Options);
+  Result := System.Length(Matches);
+  if Result = 0 then
+    Exit;
+
+  const NeedleLen = System.Length(Needle);
+  const SpanStart = Matches[0];
+  const SpanEnd = Matches[High(Matches)] + NeedleLen;
+
+  var Builder := '';
+  var Cursor := SpanStart;
+  for var Start in Matches do
+  begin
+    Builder := Builder + Copy(FText, Cursor + 1, Start - Cursor) + Replacement;
+    Cursor := Start + NeedleLen;
+  end;
+
+  ReplaceRange(SpanStart, SpanEnd - SpanStart, Builder);
 end;
 
 procedure TMarkdownEditorModel.Undo;
@@ -457,6 +552,154 @@ end;
 procedure TMarkdownEditorModel.BreakUndoCoalescing;
 begin
   FCoalesceBroken := True;
+end;
+
+function TMarkdownEditorModel.FoldRegions: TArray<TFoldRegion>;
+begin
+  if FFoldRegionsDirty then
+  begin
+    FFoldRegions := TMarkdownFoldComputer.ComputeRegions(AllLines);
+    FFoldRegionsDirty := False;
+  end;
+
+  Result := FFoldRegions;
+end;
+
+function TMarkdownEditorModel.HasFoldRegions: Boolean;
+begin
+  Result := System.Length(FoldRegions) > 0;
+end;
+
+function TMarkdownEditorModel.IsFoldHeader(const LineIndex: Integer): Boolean;
+begin
+  for var Region in FoldRegions do
+  begin
+    if Region.HeaderLine = LineIndex then
+      Exit(True);
+  end;
+
+  Result := False;
+end;
+
+function TMarkdownEditorModel.IsRegionCollapsed(const HeaderLine: Integer): Boolean;
+begin
+  Result := CollapsedIndexOf(OffsetOfLineStart(HeaderLine)) >= 0;
+end;
+
+function TMarkdownEditorModel.IsLineHidden(const LineIndex: Integer): Boolean;
+begin
+  for var Region in FoldRegions do
+  begin
+    if Region.Contains(LineIndex) and IsRegionCollapsed(Region.HeaderLine) then
+      Exit(True);
+  end;
+
+  Result := False;
+end;
+
+procedure TMarkdownEditorModel.ToggleFold(const HeaderLine: Integer);
+begin
+  var Region: TFoldRegion;
+  if not TryRegionAtHeader(HeaderLine, Region) then
+    Exit;
+
+  const HeaderOffset = OffsetOfLineStart(HeaderLine);
+  const Existing = CollapsedIndexOf(HeaderOffset);
+
+  if Existing >= 0 then
+  begin
+    System.Delete(FCollapsedFolds, Existing, 1);
+    Exit;
+  end;
+
+  FCollapsedFolds := FCollapsedFolds + [HeaderOffset];
+
+  const CaretLine = LineIndexOfOffset(FCaret);
+  if Region.Contains(CaretLine) then
+  begin
+    FCaret := HeaderOffset;
+    FAnchor := HeaderOffset;
+  end;
+end;
+
+procedure TMarkdownEditorModel.ExpandAt(const Offset: Integer);
+begin
+  const Line = LineIndexOfOffset(ClampOffset(Offset));
+
+  for var Region in FoldRegions do
+  begin
+    if not (Region.Contains(Line) and IsRegionCollapsed(Region.HeaderLine)) then
+      Continue;
+
+    const Existing = CollapsedIndexOf(OffsetOfLineStart(Region.HeaderLine));
+    if Existing >= 0 then
+      System.Delete(FCollapsedFolds, Existing, 1);
+  end;
+end;
+
+function TMarkdownEditorModel.AllLines: TArray<string>;
+begin
+  const Count = LineCount;
+  SetLength(Result, Count);
+
+  for var Index := 0 to Count - 1 do
+  begin
+    const StartOffset = FLineStarts[Index];
+
+    var EndExclusive: Integer;
+    if Index < Count - 1 then
+      EndExclusive := FLineStarts[Index + 1] - 1
+    else
+      EndExclusive := System.Length(FText);
+
+    Result[Index] := Copy(FText, StartOffset + 1, EndExclusive - StartOffset);
+  end;
+end;
+
+procedure TMarkdownEditorModel.ShiftFolds(const Start, OldLen, NewLen: Integer);
+begin
+  if System.Length(FCollapsedFolds) = 0 then
+    Exit;
+
+  const Delta = NewLen - OldLen;
+  const OldEnd = Start + OldLen;
+
+  var Kept: TArray<Integer> := [];
+  for var Offset in FCollapsedFolds do
+  begin
+    if Offset <= Start then
+      Kept := Kept + [Offset]
+    else if Offset >= OldEnd then
+      Kept := Kept + [Offset + Delta];
+  end;
+
+  FCollapsedFolds := Kept;
+end;
+
+function TMarkdownEditorModel.CollapsedIndexOf(const HeaderOffset: Integer): Integer;
+begin
+  for var Index := 0 to High(FCollapsedFolds) do
+  begin
+    if FCollapsedFolds[Index] = HeaderOffset then
+      Exit(Index);
+  end;
+
+  Result := -1;
+end;
+
+function TMarkdownEditorModel.TryRegionAtHeader(const HeaderLine: Integer; out Region: TFoldRegion): Boolean;
+begin
+  for var Candidate in FoldRegions do
+  begin
+    if Candidate.HeaderLine = HeaderLine then
+    begin
+      Region := Candidate;
+      Exit(True);
+    end;
+  end;
+
+  Region := Default(TFoldRegion);
+  Result := False;
 end;
 
 procedure TMarkdownEditorModel.ExecuteCommand(const Command: TEditorCommand);
@@ -507,6 +750,8 @@ begin
   FUndoStack := nil;
   FRedoStack := nil;
   FCoalesceBroken := False;
+  FCollapsedFolds := nil;
+  FFoldRegionsDirty := True;
 end;
 
 procedure TMarkdownEditorModel.RebuildLineStarts;
@@ -550,6 +795,8 @@ procedure TMarkdownEditorModel.DoReplace(const Start, OldLen: Integer; const Rep
 begin
   FText := Copy(FText, 1, Start) + Replacement + Copy(FText, Start + OldLen + 1, System.Length(FText));
   UpdateLineStartsForEdit(Start, OldLen, Replacement);
+  ShiftFolds(Start, OldLen, System.Length(Replacement));
+  FFoldRegionsDirty := True;
 
   if Assigned(FOnChange) then
     FOnChange(Self, TEditorReplaceRange.Create(Start, OldLen, Replacement));
@@ -641,7 +888,8 @@ begin
     Inc(Result);
 end;
 
-function TMarkdownEditorModel.IndexOfNeedle(const Needle: string; const FromOffset: Integer): Integer;
+function TMarkdownEditorModel.IndexOfNeedle(const Needle: string; const FromOffset: Integer;
+  const Options: TMarkdownFindOptions): Integer;
 begin
   const NeedleLen = System.Length(Needle);
   const TextLen = System.Length(FText);
@@ -651,22 +899,66 @@ begin
 
   for var CandidateStart := Start to LastStart do
   begin
-    var Matches := True;
-
-    for var Index := 1 to NeedleLen do
-    begin
-      if FText[CandidateStart + Index].ToLower <> Needle[Index].ToLower then
-      begin
-        Matches := False;
-        Break;
-      end;
-    end;
-
-    if Matches then
+    if MatchesAt(Needle, CandidateStart, Options) then
       Exit(CandidateStart);
   end;
 
   Result := -1;
+end;
+
+function TMarkdownEditorModel.MatchesAt(const Needle: string; const CandidateStart: Integer;
+  const Options: TMarkdownFindOptions): Boolean;
+begin
+  const NeedleLen = System.Length(Needle);
+  const TextLen = System.Length(FText);
+
+  if (CandidateStart < 0) or (CandidateStart + NeedleLen > TextLen) then
+    Exit(False);
+
+  for var Index := 1 to NeedleLen do
+  begin
+    const TextChar = FText[CandidateStart + Index];
+    const NeedleChar = Needle[Index];
+    if Options.MatchCase then
+    begin
+      if TextChar <> NeedleChar then
+        Exit(False);
+    end
+    else if TextChar.ToLower <> NeedleChar.ToLower then
+      Exit(False);
+  end;
+
+  if Options.WholeWord then
+  begin
+    const HasLeftBoundary = (CandidateStart = 0) or not IsWordChar(FText[CandidateStart]);
+    const RightIndex = CandidateStart + NeedleLen + 1;
+    const HasRightBoundary = (RightIndex > TextLen) or not IsWordChar(FText[RightIndex]);
+    if not (HasLeftBoundary and HasRightBoundary) then
+      Exit(False);
+  end;
+
+  Result := True;
+end;
+
+function TMarkdownEditorModel.CollectMatches(const Needle: string;
+  const Options: TMarkdownFindOptions): TArray<Integer>;
+begin
+  Result := [];
+
+  if Needle = '' then
+    Exit;
+
+  if System.Length(Needle) > System.Length(FText) then
+    Exit;
+
+  var Cursor := 0;
+  var Hit := IndexOfNeedle(Needle, Cursor, Options);
+  while Hit >= 0 do
+  begin
+    Result := Result + [Hit];
+    Cursor := Hit + System.Length(Needle);
+    Hit := IndexOfNeedle(Needle, Cursor, Options);
+  end;
 end;
 
 function TMarkdownEditorModel.IsWordChar(const Ch: Char): Boolean;

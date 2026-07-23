@@ -70,6 +70,7 @@ contains
   Markdown4D.Writer.Markdown in '..\Source\Core\Markdown4D.Writer.Markdown.pas',
   Markdown4D.Version in '..\Source\Core\Markdown4D.Version.pas',
   Markdown4D in '..\Source\Core\Markdown4D.pas',
+  Markdown4D.Editor.Folding in '..\Source\Layout\Markdown4D.Editor.Folding.pas',
   Markdown4D.Editor.Highlighter in '..\Source\Layout\Markdown4D.Editor.Highlighter.pas',
   Markdown4D.Editor.Model in '..\Source\Layout\Markdown4D.Editor.Model.pas',
   Markdown4D.Editor.Sync in '..\Source\Layout\Markdown4D.Editor.Sync.pas',

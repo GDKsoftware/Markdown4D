@@ -147,6 +147,60 @@ type
     procedure FindNext_CaseInsensitive;
 
     [Test]
+    procedure FindText_MatchCase_CountsOnlyExactCase;
+
+    [Test]
+    procedure FindText_WholeWord_IgnoresPartialMatches;
+
+    [Test]
+    procedure FindNext_MatchCase_SkipsWrongCase;
+
+    [Test]
+    procedure FindPrevious_ReturnsNearestBefore;
+
+    [Test]
+    procedure FindPrevious_BeforeFirst_WrapsToLast;
+
+    [Test]
+    procedure FindPrevious_NoMatch_ReturnsMinusOne;
+
+    [Test]
+    procedure ReplaceCurrent_OnMatchingSelection_ReplacesAndSelectsNext;
+
+    [Test]
+    procedure ReplaceCurrent_WithoutMatch_OnlyAdvances;
+
+    [Test]
+    procedure ReplaceAll_ReplacesEveryMatch_ReturnsCount;
+
+    [Test]
+    procedure ReplaceAll_IsSingleUndoStep;
+
+    [Test]
+    procedure ReplaceAll_ReplacementContainingNeedle_DoesNotCascade;
+
+    [Test]
+    procedure ReplaceAll_WholeWord_LeavesPartialMatches;
+
+    [Test]
+    procedure ReplaceAll_NoMatch_LeavesTextAndUndoUntouched;
+
+    [Test]
+    procedure Fold_Collapse_HidesContentLines;
+
+    [Test]
+    procedure Fold_ToggleTwice_Expands;
+
+    [Test]
+    procedure Fold_EditBeforeHeader_KeepsRegionCollapsed;
+
+    [Test]
+    procedure Fold_CollapseWithCaretInside_MovesCaretToHeader;
+
+    [Test]
+    procedure Fold_ExpandAt_RevealsContainingRegion;
+
+    [Test]
     procedure ExecuteHeading1_AddsPrefix;
 
     [Test]
@@ -504,6 +558,159 @@ procedure TMarkdownEditorModelTests.FindNext_CaseInsensitive;
 begin
   FModel.LoadText('Hello');
   Assert.AreEqual(0, FModel.FindNext('HELLO', -1));
+end;
+
+procedure TMarkdownEditorModelTests.FindText_MatchCase_CountsOnlyExactCase;
+begin
+  FModel.LoadText('One one ONE');
+  Assert.AreEqual(1, FModel.FindText('one', TMarkdownFindOptions.Create(True, False)));
+end;
+
+procedure TMarkdownEditorModelTests.FindText_WholeWord_IgnoresPartialMatches;
+begin
+  FModel.LoadText('cat category cat');
+  Assert.AreEqual(2, FModel.FindText('cat', TMarkdownFindOptions.Create(False, True)));
+end;
+
+procedure TMarkdownEditorModelTests.FindNext_MatchCase_SkipsWrongCase;
+begin
+  FModel.LoadText('abc ABC abc');
+  Assert.AreEqual(8, FModel.FindNext('abc', 0, TMarkdownFindOptions.Create(True, False)));
+end;
+
+procedure TMarkdownEditorModelTests.FindPrevious_ReturnsNearestBefore;
+begin
+  FModel.LoadText('ab ab ab');
+  Assert.AreEqual(3, FModel.FindPrevious('ab', 6, TMarkdownFindOptions.Create(False, False)));
+end;
+
+procedure TMarkdownEditorModelTests.FindPrevious_BeforeFirst_WrapsToLast;
+begin
+  FModel.LoadText('ab ab ab');
+  Assert.AreEqual(6, FModel.FindPrevious('ab', 0, TMarkdownFindOptions.Create(False, False)));
+end;
+
+procedure TMarkdownEditorModelTests.FindPrevious_NoMatch_ReturnsMinusOne;
+begin
+  FModel.LoadText('ab ab ab');
+  Assert.AreEqual(-1, FModel.FindPrevious('zz', 8, TMarkdownFindOptions.Create(False, False)));
+end;
+
+procedure TMarkdownEditorModelTests.ReplaceCurrent_OnMatchingSelection_ReplacesAndSelectsNext;
+begin
+  FModel.LoadText('foo foo foo');
+  FModel.SetSelection(0, 3);
+  Assert.IsTrue(FModel.ReplaceCurrent('foo', 'bar', TMarkdownFindOptions.Create(False, False)));
+  Assert.AreEqual('bar foo foo', FModel.Text);
+  Assert.AreEqual(4, FModel.SelectionStart);
+  Assert.AreEqual(3, FModel.SelectionLength);
+end;
+
+procedure TMarkdownEditorModelTests.ReplaceCurrent_WithoutMatch_OnlyAdvances;
+begin
+  FModel.LoadText('foo foo');
+  FModel.SetSelection(0, 0);
+  Assert.IsFalse(FModel.ReplaceCurrent('foo', 'bar', TMarkdownFindOptions.Create(False, False)));
+  Assert.AreEqual('foo foo', FModel.Text);
+  Assert.AreEqual(0, FModel.SelectionStart);
+  Assert.AreEqual(3, FModel.SelectionLength);
+end;
+
+procedure TMarkdownEditorModelTests.ReplaceAll_ReplacesEveryMatch_ReturnsCount;
+begin
+  FModel.LoadText('foo foo foo');
+  Assert.AreEqual(3, FModel.ReplaceAll('foo', 'bar', TMarkdownFindOptions.Create(False, False)));
+  Assert.AreEqual('bar bar bar', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ReplaceAll_IsSingleUndoStep;
+begin
+  FModel.LoadText('foo foo foo');
+  FModel.ReplaceAll('foo', 'bar', TMarkdownFindOptions.Create(False, False));
+  Assert.IsTrue(FModel.CanUndo);
+  FModel.Undo;
+  Assert.AreEqual('foo foo foo', FModel.Text);
+  Assert.IsFalse(FModel.CanUndo);
+end;
+
+procedure TMarkdownEditorModelTests.ReplaceAll_ReplacementContainingNeedle_DoesNotCascade;
+begin
+  FModel.LoadText('a a a');
+  Assert.AreEqual(3, FModel.ReplaceAll('a', 'aa', TMarkdownFindOptions.Create(False, False)));
+  Assert.AreEqual('aa aa aa', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ReplaceAll_WholeWord_LeavesPartialMatches;
+begin
+  FModel.LoadText('cat category cat');
+  Assert.AreEqual(2, FModel.ReplaceAll('cat', 'dog', TMarkdownFindOptions.Create(False, True)));
+  Assert.AreEqual('dog category dog', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ReplaceAll_NoMatch_LeavesTextAndUndoUntouched;
+begin
+  FModel.LoadText('foo foo');
+  Assert.AreEqual(0, FModel.ReplaceAll('zz', 'bar', TMarkdownFindOptions.Create(False, False)));
+  Assert.AreEqual('foo foo', FModel.Text);
+  Assert.IsFalse(FModel.CanUndo);
+end;
+
+procedure TMarkdownEditorModelTests.Fold_Collapse_HidesContentLines;
+begin
+  FModel.LoadText('```'#10'one'#10'two'#10'```'#10'after');
+  Assert.IsTrue(FModel.IsFoldHeader(0), 'The fence line must be a fold header');
+  Assert.IsFalse(FModel.IsLineHidden(1), 'Content is visible before collapsing');
+
+  FModel.ToggleFold(0);
+
+  Assert.IsTrue(FModel.IsRegionCollapsed(0));
+  Assert.IsFalse(FModel.IsLineHidden(0), 'The header line stays visible');
+  Assert.IsTrue(FModel.IsLineHidden(1), 'Content line 1 is hidden');
+  Assert.IsTrue(FModel.IsLineHidden(3), 'The closing fence is hidden');
+  Assert.IsFalse(FModel.IsLineHidden(4), 'Lines after the region stay visible');
+end;
+
+procedure TMarkdownEditorModelTests.Fold_ToggleTwice_Expands;
+begin
+  FModel.LoadText('```'#10'code'#10'```');
+  FModel.ToggleFold(0);
+  FModel.ToggleFold(0);
+  Assert.IsFalse(FModel.IsRegionCollapsed(0), 'Toggling a fold twice must expand it again');
+end;
+
+procedure TMarkdownEditorModelTests.Fold_EditBeforeHeader_KeepsRegionCollapsed;
+begin
+  FModel.LoadText('intro'#10'```'#10'code'#10'```');
+  FModel.ToggleFold(1);
+  Assert.IsTrue(FModel.IsRegionCollapsed(1));
+
+  FModel.SetSelection(0, 0);
+  FModel.Insert('x'#10);
+
+  Assert.IsTrue(FModel.IsRegionCollapsed(2), 'The region stays collapsed after its header shifts down');
+  Assert.IsTrue(FModel.IsLineHidden(3), 'Its content stays hidden after the edit');
+end;
+
+procedure TMarkdownEditorModelTests.Fold_CollapseWithCaretInside_MovesCaretToHeader;
+begin
+  FModel.LoadText('```'#10'code'#10'```'#10'x');
+  FModel.CaretPosition := FModel.OffsetOfLineStart(1) + 2;
+
+  FModel.ToggleFold(0);
+
+  Assert.AreEqual(FModel.OffsetOfLineStart(0), FModel.CaretPosition,
+    'Collapsing a region the caret is inside must move the caret to the header line');
+end;
+
+procedure TMarkdownEditorModelTests.Fold_ExpandAt_RevealsContainingRegion;
+begin
+  FModel.LoadText('```'#10'code'#10'```'#10'x');
+  FModel.ToggleFold(0);
+  Assert.IsTrue(FModel.IsRegionCollapsed(0));
+
+  FModel.ExpandAt(FModel.OffsetOfLineStart(1));
+
+  Assert.IsFalse(FModel.IsRegionCollapsed(0), 'ExpandAt must reveal the region containing the offset');
 end;
 
 procedure TMarkdownEditorModelTests.ExecuteHeading1_AddsPrefix;
