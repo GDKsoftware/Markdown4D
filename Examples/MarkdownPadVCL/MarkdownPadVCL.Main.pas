@@ -83,6 +83,7 @@ type
       FTabStrip: TPadTabStrip;
       FUseCustomTitleBar: Boolean;
       FTitleBarColor: TColor;
+      FTitleBarWndProc: TWndMethod;
       FController: TPadController;
       FViewMode: TPadViewMode;
       FSplitEditorWidth: Integer;
@@ -160,6 +161,7 @@ type
     procedure ApplyCaptionColor;
     procedure ApplyTitleBarColors(const ToolbarColor, IconColor, SeparatorColor: TColor);
     procedure HandleTitleBarPaint(Sender: TObject; Canvas: TCanvas; var ARect: TRect);
+    procedure HandleTitleBarWndProc(var Message: TMessage);
     procedure HandleTabSelect(Sender: TObject; const Index: Integer);
     procedure HandleTabClose(Sender: TObject; const Index: Integer);
     procedure HandleTabAdd(Sender: TObject);
@@ -903,6 +905,8 @@ begin
     FTitleBar := TTitleBarPanel.Create(Self);
     FTitleBar.Parent := Self;
     FTitleBar.OnPaint := HandleTitleBarPaint;
+    FTitleBarWndProc := FTitleBar.WindowProc;
+    FTitleBar.WindowProc := HandleTitleBarWndProc;
 
     CustomTitleBar.Enabled := True;
     CustomTitleBar.SystemHeight := False;
@@ -952,6 +956,43 @@ begin
   Canvas.Brush.Style := bsSolid;
   Canvas.Brush.Color := FTitleBarColor;
   Canvas.FillRect(ARect);
+end;
+
+type
+  // Exposes the protected TrapHitTest property that drives the caption button
+  // hover repaint inside Vcl.TitleBarCtrls.
+  TTitlebarButtonAccess = class(TSystemTitlebarButton);
+
+procedure TMarkdownPadVCLForm.HandleTitleBarWndProc(var Message: TMessage);
+begin
+  FTitleBarWndProc(Message);
+
+  // The VCL repaints only the maximize/restore caption button on non-client
+  // hover (its Windows 11 Snap Layouts support); minimize and close never see
+  // a client mouse-enter because the title bar hit-tests as HTCAPTION, so we
+  // mirror the VCL TrapHitTest mechanism for those two buttons here.
+  if Message.Msg <> WM_NCHITTEST then
+    Exit;
+
+  const HitPoint = FTitleBar.ScreenToClient(
+    Point(TWMNCHitTest(Message).XPos, TWMNCHitTest(Message).YPos));
+
+  for var Index := 0 to FTitleBar.ControlCount - 1 do
+  begin
+    if not (FTitleBar.Controls[Index] is TSystemTitlebarButton) then
+      Continue;
+
+    const Button = TTitlebarButtonAccess(FTitleBar.Controls[Index]);
+    if not (Button.ButtonType in [TSystemButton.sbMinimize, TSystemButton.sbClose]) then
+      Continue;
+
+    const InsideButton = Button.Visible and Button.BoundsRect.Contains(HitPoint);
+    if Button.TrapHitTest <> InsideButton then
+    begin
+      Button.TrapHitTest := InsideButton;
+      Button.Invalidate;
+    end;
+  end;
 end;
 
 procedure TMarkdownPadVCLForm.ApplyCaptionColor;
