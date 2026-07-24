@@ -28,6 +28,11 @@ type
     function SaveEditState: IMarkdownEditorState;
     procedure LoadEditState(const State: IMarkdownEditorState);
     procedure FlushPreview;
+    // Find: highlight/advance in the editor, count matches, and search the
+    // rendered preview. Needles come from the form's find edits (via IPadShell).
+    procedure EditorFindNext(const Needle: string);
+    function EditorFindMatchCount(const Needle: string): Integer;
+    procedure PreviewFindText(const Needle: string);
     // Brackets the incoming-document load so the form suppresses its own change
     // handling while the editor and preview are repopulated.
     procedure BeginSwap;

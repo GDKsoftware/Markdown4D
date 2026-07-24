@@ -148,6 +148,9 @@ const
   CatFormat = 'Format';
   CatRecent = 'Recent';
 
+  // Shortcut label for dynamically-added recent-file palette entries.
+  RecentShortcut = '';
+
 implementation
 
 end.

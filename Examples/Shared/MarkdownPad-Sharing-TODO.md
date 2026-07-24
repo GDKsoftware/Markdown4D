@@ -20,8 +20,32 @@ twee schillen om dezelfde app. De echt identieke stukken zijn al uitgetild naar
   scroll-naar-bronregel, swap-suppressie) en `TPadDocumentSwitch.Execute` (de
   buffer-swap: uitgaand document opslaan, doel activeren, inkomend document laden).
   Elke form implementeert `IPadEditorView` met triviale forwarders naar zijn eigen
-  `mdEditor`/`mdPreview` (VCL) resp. `FEditor`/`FPreview` (FMX); `SwitchToDocument`
-  is nu een paar regels die `TPadDocumentSwitch.Execute` aanroepen.
+  `mdEditor`/`mdPreview` (VCL) resp. `FEditor`/`FPreview` (FMX).
+- `MarkdownPad.Shell.pas` — `IPadShell`: de seam waarmee de controller de
+  framework-specifieke schil aanstuurt (tab-strip, titel, dialogs, clipboard,
+  per-app tekst zoals `SampleMarkdown`). Elke form implementeert deze interface.
+- `MarkdownPad.Controller.pas` — `TPadController`: framework-agnostische
+  orkestratie. Bezit het document-model (workspace/session/file-watcher) en de
+  applicatielogica die eerst verbatim in beide forms stond. Praat met de editor
+  via `IPadEditorView` en met de schil via `IPadShell`; raakt nooit een VCL/FMX-
+  control aan. **Gefaseerde extractie — nu verhuisd:** document-lifecycle (nieuw
+  document, openen, opslaan/opslaan-als, sluiten, document wisselen, sessie
+  herstellen/bewaren); de command-palette (registry-opbouw, recent-files,
+  fuzzy-match, commando uitvoeren; de form levert de actie-closures + rendert de
+  lijst); de **editing-loop** (editor-change, tick, status/titel, find,
+  TOC-sync, extern-gewijzigd-bestand herladen, close-query); en **HTML-export/
+  copy** (de controller genereert het document/fragment via `TMarkdownHtmlExport`
+  / `TMarkdown.ToHtml`, de form doet de save-dialog en het klembord). De
+  `FTocFollowing`-reentrancy-guard blijft bewust FMX-only (VCL's lijst vuurt geen
+  change op een programmatische `ItemIndex`).
+
+### Bewust NIET naar de controller
+- **View-mode + zen** (`ApplyViewMode`, `SetViewMode`, `EnterZen`/`ExitZen`,
+  `UpdateZenPadding`): dit is view-logica, geen app-logica. Elke regel is
+  framework-specifiek (pane-visibility/align, `TPanel`/`TLayout` pad-panelen,
+  `TColor` vs `TAlphaColor`, `ClientWidth`); de gedeelde kern is ~5 regels en
+  loopt al via de `EffectiveViewMode` / `ApplyRestoredViewMode`-seams. De
+  controller hoort niks te weten van pad-panelen en pane-alignment.
 
 ## Nog niet gedeeld (bewust uitgesteld)
 

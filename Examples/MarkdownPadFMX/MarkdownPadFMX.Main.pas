@@ -30,62 +30,17 @@ uses
   MarkdownPad.EditorView,
   MarkdownPad.Session,
   MarkdownPad.Commands,
+  MarkdownPad.CommandSet,
   MarkdownPad.TabStrip.Layout,
   MarkdownPad.Fmx.TabStrip,
-  MarkdownPad.FileWatcher;
+  MarkdownPad.FileWatcher,
+  MarkdownPad.Shell,
+  MarkdownPad.Controller,
+  MarkdownPadFMX.Defines;
 
 type
-  TMarkdownPadFMXForm = class(TForm, IPadEditorView)
+  TMarkdownPadFMXForm = class(TForm, IPadEditorView, IPadShell)
   private
-    const
-      // Shared constants live in MarkdownPad.Defines; only FMX-specific values
-      // (window chrome, custom title bar/tooltip, TAlphaColor palette) stay here.
-      WindowCaption = 'Markdown4D Pad (FMX)';
-      InitialClientWidth = 1180;
-      ToolbarHeight = 38;
-      TabControlHeight = 32;
-      CaptionButtonWidth = 46;
-      StatusBarHeight = 26;
-      ControlMargin = 6;
-      IconGlyphSize = 16;
-      TocHeaderHeight = 22;
-      SplitterWidth = 6;
-      StatusLabelWidth = 150;
-      GlyphMinimize = Char($E921);
-      GlyphMaximize = Char($E922);
-      GlyphRestore = Char($E923);
-      GlyphClose = Char($E8BB);
-      HintMinimize = 'Minimize';
-      HintMaximize = 'Maximize';
-      HintCloseWindow = 'Close';
-      ToolbarLightColor = TAlphaColor($FFF3F3F3);
-      ToolbarDarkColor = TAlphaColor($FF2D2D2D);
-      IconLightColor = TAlphaColor($FF404040);
-      IconDarkColor = TAlphaColor($FFD6D6D6);
-      SeparatorLightColor = TAlphaColor($FFD0D0D0);
-      SeparatorDarkColor = TAlphaColor($FF505050);
-      HoverLightColor = TAlphaColor($FFE0E0E0);
-      HoverDarkColor = TAlphaColor($FF3E3E3E);
-      TabActiveLightColor = TAlphaColor($FFFFFFFF);
-      TabActiveDarkColor = TAlphaColor($FF3F3F3F);
-      TabHoverLightColor = TAlphaColor($FFEAEAEA);
-      TabHoverDarkColor = TAlphaColor($FF383838);
-      CaptionCloseHoverColor = TAlphaColor($FFE81123);
-      HintBackColor = TAlphaColor($FF1E1E1E);
-      HintTextColor = TAlphaColor($FFF0F0F0);
-      HintHeight = 24;
-      HintHorizontalPadding = 8;
-      HintGap = 4;
-      HintCornerRadius = 4;
-      MarkdownExtension = '.md';
-      SessionFileName = 'MarkdownPad.Fmx.json';
-      OpenErrorFormat = 'Could not open the file:'#10'%s';
-      CloseUnsavedPrompt = 'This document has unsaved changes. Save before closing?';
-      ReloadPrompt = 'This file changed on disk. Reload and lose your local changes?';
-      PaletteListHeight = PaletteRowHeight * PaletteVisibleRows;
-      PaletteEditHeight = 30;
-      PaletteShortcutWidth = 120;
-      PaletteShortcutOpacity = 0.6;
     var
       FToolbar: TRectangle;
       FTitleBar: TRectangle;
@@ -135,18 +90,11 @@ type
       FSaveDialog: TSaveDialog;
       FHtmlSaveDialog: TSaveDialog;
       FTickTimer: TTimer;
-      FTocEntries: TArray<IMarkdownTocEntry>;
       FLightTheme: TMarkdownTheme;
       FDarkTheme: TMarkdownTheme;
       FDarkThemeActive: Boolean;
-      FWorkspace: IPadWorkspace;
-      FSession: TPadSession;
-      FWatcher: TPadFileWatcher;
-      FActiveDoc: IPadDocument;
-      FMapDirty: Boolean;
-      FSwapping: Boolean;
+      FController: TPadController;
       FTocFollowing: Boolean;
-      FLastCaret: Integer;
       FFindBar: TRectangle;
       FEditorFindEdit: TEdit;
       FEditorFindCount: TLabel;
@@ -155,8 +103,6 @@ type
       FPalette: TRectangle;
       FPaletteEdit: TEdit;
       FPaletteList: TListBox;
-      FCommands: TPadCommandRegistry;
-      FPaletteMatches: TArray<TPadCommandMatch>;
       FViewMode: TPadViewMode;
       FSplitEditorWidth: Single;
       FZenActive: Boolean;
@@ -165,6 +111,39 @@ type
       FZenRightPad: TLayout;
       FZenTocWasVisible: Boolean;
       FZenFindWasVisible: Boolean;
+    // Read-through accessors to the controller-owned model state.
+    function GetWorkspace: IPadWorkspace;
+    function GetSession: TPadSession;
+    function GetMapDirty: Boolean;
+    procedure SetMapDirty(const Value: Boolean);
+    function GetSwapping: Boolean;
+    procedure SetSwapping(const Value: Boolean);
+    function GetPaletteMatches: TArray<TPadCommandMatch>;
+    property FWorkspace: IPadWorkspace read GetWorkspace;
+    property FSession: TPadSession read GetSession;
+    property FMapDirty: Boolean read GetMapDirty write SetMapDirty;
+    property FSwapping: Boolean read GetSwapping write SetSwapping;
+    property FPaletteMatches: TArray<TPadCommandMatch> read GetPaletteMatches;
+    procedure SetDocumentTitle(const Name: string);
+    procedure SetStatus(const PositionText, WordsText: string);
+    procedure SetTocCaptions(const Captions: TArray<string>);
+    procedure SetActiveTocIndex(const Index: Integer);
+    function EditorFindNeedle: string;
+    function PreviewFindNeedle: string;
+    procedure SetFindCount(const Value: string);
+    function SampleMarkdown: string;
+    function DarkThemeActive: Boolean;
+    function EffectiveViewMode: TPadViewMode;
+    procedure ApplyRestoredViewMode(const Mode: TPadViewMode);
+    function PromptOpenFile(out FileName: string): Boolean;
+    function PromptSaveFile(const SuggestedName: string; out FileName: string): Boolean;
+    function PromptExportHtml(const SuggestedName: string; out FileName: string): Boolean;
+    function ConfirmClose: TPadCloseChoice;
+    function ConfirmCloseDocument(const DocName: string): TPadCloseChoice;
+    function ConfirmReload: Boolean;
+    procedure ShowOpenError(const FileName, ErrorMessage: string);
+    procedure CopyHtmlToClipboard(const Fragment: string);
+    procedure CloseApplication;
     procedure BuildToolbar;
     function ResolveIconFontName: string;
     function AddIconButton(const Glyph: string; const Hint: string; const Handler: TNotifyEvent): TRectangle;
@@ -198,7 +177,7 @@ type
     procedure HideHint;
     procedure BuildPalette;
     procedure BuildCommandRegistry;
-    procedure RegisterStaticCommands;
+    function BuildCommandActions: TPadCommandActions;
     procedure RestoreSession;
     function HandleFormKey(const Key: Word; const Shift: TShiftState): Boolean;
     procedure SetViewMode(const Mode: TPadViewMode);
@@ -227,8 +206,6 @@ type
     procedure OpenPath(const FileName: string);
     procedure HandleSaveClick(Sender: TObject);
     procedure HandleSaveAsClick(Sender: TObject);
-    function TrySaveActive: Boolean;
-    procedure SaveToFile(const FileName: string);
     procedure CloseActiveDocument;
     procedure CloseDocumentAt(const Index: Integer);
     procedure HandleExportClick(Sender: TObject);
@@ -248,8 +225,6 @@ type
     procedure HandlePreviewLinkClick(const Sender: TObject; const Url: string);
     procedure HandleTocChange(Sender: TObject);
     procedure HandleTick(Sender: TObject);
-    procedure HandleFileChanged(const Document: IPadDocument);
-    procedure ReloadDocument(const Document: IPadDocument);
     function GetEditorText: string;
     procedure SetEditorText(const Value: string);
     function GetEditorCaret: Integer;
@@ -261,14 +236,15 @@ type
     function SaveEditState: IMarkdownEditorState;
     procedure LoadEditState(const State: IMarkdownEditorState);
     procedure FlushPreview;
+    procedure EditorFindNext(const Needle: string);
+    function EditorFindMatchCount(const Needle: string): Integer;
+    procedure PreviewFindText(const Needle: string);
     procedure BeginSwap;
     procedure EndSwap;
     procedure SwitchToDocument(const Index: Integer);
     procedure RebuildTabs;
     procedure RebuildSyncAndToc;
     procedure UpdateActiveTocEntry(const SourceLine: Integer);
-    procedure UpdateStatusBar;
-    procedure UpdateTitle;
     procedure ExecuteFind;
     procedure ApplyTheme;
     procedure ApplyChromeColors;
@@ -309,7 +285,6 @@ uses
   Markdown4D.Ast.Interfaces,
   MarkdownPad.Text,
   MarkdownPad.Outline,
-  MarkdownPad.CommandSet,
   MarkdownPad.SessionSync,
   MarkdownPad.Workspace,
   MarkdownPad.HtmlExport,
@@ -332,8 +307,7 @@ begin
   FLightTheme := TMarkdownTheme.CreateLight;
   FDarkTheme := TMarkdownTheme.CreateDark;
 
-  FWorkspace := TPadWorkspace.Create;
-  FWatcher := TPadFileWatcher.Create(FWorkspace, HandleFileChanged);
+  FController := TPadController.Create(Self, Self, SessionFileName);
 
   FOpenDialog := TOpenDialog.Create(Self);
   FOpenDialog.Filter := MarkdownFilter;
@@ -363,6 +337,9 @@ begin
   FViewMode := TPadViewMode.Split;
   FSplitEditorWidth := (InitialClientWidth - TocPanelWidth) / 2;
 
+  FDarkThemeActive := FController.Session.DarkTheme;
+  ApplyTheme;
+
   RestoreSession;
 
   FMapDirty := True;
@@ -377,9 +354,7 @@ begin
 
   inherited Destroy;
 
-  FWatcher.Free;
-  FCommands.Free;
-  FSession.Free;
+  FController.Free;
   FDarkTheme.Free;
   FLightTheme.Free;
 end;
@@ -874,65 +849,43 @@ end;
 
 procedure TMarkdownPadFMXForm.BuildCommandRegistry;
 begin
-  FCommands := TPadCommandRegistry.Create;
-
-  RegisterStaticCommands;
+  FController.InitCommandRegistry(BuildCommandActions);
 end;
 
-procedure TMarkdownPadFMXForm.RegisterStaticCommands;
-var
-  Actions: TPadCommandActions;
+function TMarkdownPadFMXForm.BuildCommandActions: TPadCommandActions;
 begin
-  Actions.NewDocument := procedure begin HandleNewClick(nil); end;
-  Actions.OpenDocument := procedure begin HandleOpenClick(nil); end;
-  Actions.Save := procedure begin HandleSaveClick(nil); end;
-  Actions.SaveAs := procedure begin HandleSaveAsClick(nil); end;
-  Actions.CloseDocument := procedure begin CloseActiveDocument; end;
-  Actions.NextTab :=
+  Result.NewDocument := procedure begin HandleNewClick(nil); end;
+  Result.OpenDocument := procedure begin HandleOpenClick(nil); end;
+  Result.Save := procedure begin HandleSaveClick(nil); end;
+  Result.SaveAs := procedure begin HandleSaveAsClick(nil); end;
+  Result.CloseDocument := procedure begin CloseActiveDocument; end;
+  Result.NextTab :=
     procedure
     begin
       FWorkspace.ActivateNext;
       SwitchToDocument(FWorkspace.ActiveIndex);
     end;
-  Actions.ExportHtml := procedure begin DoExportHtml; end;
-  Actions.CopyHtml := procedure begin DoCopyHtml; end;
-  Actions.ViewEditorOnly := procedure begin SetViewMode(TPadViewMode.EditorOnly); end;
-  Actions.ViewSplit := procedure begin SetViewMode(TPadViewMode.Split); end;
-  Actions.ViewPreviewOnly := procedure begin SetViewMode(TPadViewMode.PreviewOnly); end;
-  Actions.ToggleZen := procedure begin ToggleZen; end;
-  Actions.ToggleTheme := procedure begin HandleThemeClick(nil); end;
-  Actions.ToggleToc := procedure begin HandleTocClick(nil); end;
-  Actions.ShowFind := procedure begin ShowFindBar; end;
-  Actions.FindInPreview := procedure begin ExecuteFind; end;
-  Actions.ExecuteFormat :=
+  Result.ExportHtml := procedure begin DoExportHtml; end;
+  Result.CopyHtml := procedure begin DoCopyHtml; end;
+  Result.ViewEditorOnly := procedure begin SetViewMode(TPadViewMode.EditorOnly); end;
+  Result.ViewSplit := procedure begin SetViewMode(TPadViewMode.Split); end;
+  Result.ViewPreviewOnly := procedure begin SetViewMode(TPadViewMode.PreviewOnly); end;
+  Result.ToggleZen := procedure begin ToggleZen; end;
+  Result.ToggleTheme := procedure begin HandleThemeClick(nil); end;
+  Result.ToggleToc := procedure begin HandleTocClick(nil); end;
+  Result.ShowFind := procedure begin ShowFindBar; end;
+  Result.FindInPreview := procedure begin ExecuteFind; end;
+  Result.ExecuteFormat :=
     procedure(const Command: TEditorCommand)
     begin
       FEditor.ExecuteCommand(Command);
       FEditor.SetFocus;
     end;
-
-  RegisterStaticPadCommands(FCommands, Actions);
 end;
 
 procedure TMarkdownPadFMXForm.RestoreSession;
 begin
-  FSession := TPadSession.Create(TPadSession.ResolvePath(SessionFileName));
-  FSession.Load;
-
-  FDarkThemeActive := FSession.DarkTheme;
-  ApplyTheme;
-
-  FViewMode := FSession.ViewMode;
-  ApplyViewMode;
-
-  if not TPadSessionSync.RestoreOpenFiles(FWorkspace, FSession) then
-  begin
-    const Document = FWorkspace.NewDocument;
-    Document.Text := BuildSampleMarkdown;
-  end;
-
-  RebuildTabs;
-  SwitchToDocument(FWorkspace.ActiveIndex);
+  FController.RestoreSession;
 end;
 
 procedure TMarkdownPadFMXForm.KeyDown(var Key: Word; var KeyChar: WideChar; Shift: TShiftState);
@@ -1099,28 +1052,7 @@ begin
   if FZenActive then
     ExitZen;
 
-  for var Index := 0 to FWorkspace.Count - 1 do
-  begin
-    const Document = FWorkspace.Documents[Index];
-    if not Document.Modified then
-      Continue;
-
-    SwitchToDocument(Index);
-
-    const Prompt = Format(CloseDocumentPromptFormat, [Document.DisplayName]);
-    const Answer = TDialogServiceSync.MessageDialog(Prompt, TMsgDlgType.mtConfirmation,
-      [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo, TMsgDlgBtn.mbCancel], TMsgDlgBtn.mbCancel, 0);
-
-    if Answer = mrCancel then
-      Exit(False);
-
-    if (Answer = mrYes) and not TrySaveActive then
-      Exit(False);
-
-    Document.Modified := False;
-  end;
-
-  Result := True;
+  Result := FController.QueryClose;
 end;
 
 procedure TMarkdownPadFMXForm.Resize;
@@ -1197,38 +1129,6 @@ begin
   FEditor.SetFocus;
 end;
 
-procedure TMarkdownPadFMXForm.FindInEditor;
-begin
-  const Needle = FEditorFindEdit.Text;
-  if Needle = '' then
-  begin
-    UpdateFindCount;
-    Exit;
-  end;
-
-  FEditor.FindNext(Needle);
-
-  UpdateFindCount;
-end;
-
-procedure TMarkdownPadFMXForm.UpdateFindCount;
-begin
-  const Needle = FEditorFindEdit.Text;
-  if Needle = '' then
-  begin
-    FEditorFindCount.Text := EmptyFindCaption;
-    Exit;
-  end;
-
-  const N = FEditor.FindMatchCount(Needle);
-
-  if N = 0 then
-    FEditorFindCount.Text := NoMatchCaption
-  else if N = 1 then
-    FEditorFindCount.Text := SingleMatchCaption
-  else
-    FEditorFindCount.Text := Format(MatchCountFormat, [N]);
-end;
 
 procedure TMarkdownPadFMXForm.HandleEditorFindKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
   Shift: TShiftState);
@@ -1255,18 +1155,7 @@ end;
 
 procedure TMarkdownPadFMXForm.ShowPalette;
 begin
-  FCommands.Clear;
-  RegisterStaticCommands;
-
-  for var FileName in FSession.RecentFiles do
-  begin
-    const Path = FileName;
-    FCommands.Register(Path, CatRecent, '',
-      procedure
-      begin
-        OpenPath(Path);
-      end);
-  end;
+  FController.RebuildPaletteCommands;
 
   FPaletteEdit.Text := '';
 
@@ -1289,7 +1178,7 @@ end;
 
 procedure TMarkdownPadFMXForm.RefreshPaletteList;
 begin
-  FPaletteMatches := FCommands.Match(FPaletteEdit.Text);
+  FController.RefreshMatches(FPaletteEdit.Text);
 
   FPaletteList.BeginUpdate;
   try
@@ -1344,15 +1233,12 @@ end;
 procedure TMarkdownPadFMXForm.ExecuteSelectedCommand;
 begin
   const Index = FPaletteList.ItemIndex;
-  if (Index < 0) or (Index > High(FPaletteMatches)) then
+  if (Index < 0) or (Index >= FController.PaletteMatchCount) then
     Exit;
-
-  const Action = FPaletteMatches[Index].Command.Action;
 
   ClosePalette;
 
-  if Assigned(Action) then
-    Action();
+  FController.InvokePaletteCommand(Index);
 end;
 
 procedure TMarkdownPadFMXForm.HandlePaletteChange(Sender: TObject);
@@ -1460,16 +1346,12 @@ end;
 
 procedure TMarkdownPadFMXForm.HandleNewClick(Sender: TObject);
 begin
-  FWorkspace.NewDocument;
-
-  RebuildTabs;
-  SwitchToDocument(FWorkspace.ActiveIndex);
+  FController.NewDocument;
 end;
 
 procedure TMarkdownPadFMXForm.HandleOpenClick(Sender: TObject);
 begin
-  if FOpenDialog.Execute then
-    OpenPath(FOpenDialog.FileName);
+  FController.OpenViaDialog;
 end;
 
 procedure TMarkdownPadFMXForm.HandleRecentClick(Sender: TObject);
@@ -1509,119 +1391,27 @@ end;
 
 procedure TMarkdownPadFMXForm.OpenPath(const FileName: string);
 begin
-  if not TFile.Exists(FileName) then
-    Exit;
-
-  var Document: IPadDocument;
-  try
-    Document := FWorkspace.OpenFile(FileName);
-  except
-    on E: Exception do
-    begin
-      TDialogServiceSync.MessageDialog(Format(OpenErrorFormat, [FileName]), TMsgDlgType.mtError,
-        [TMsgDlgBtn.mbOK], TMsgDlgBtn.mbOK, 0);
-      Exit;
-    end;
-  end;
-
-  FSession.AddRecentFile(FileName);
-  FWatcher.Reset(Document);
-
-  RebuildTabs;
-  SwitchToDocument(FWorkspace.ActiveIndex);
+  FController.OpenPath(FileName);
 end;
 
 procedure TMarkdownPadFMXForm.HandleSaveClick(Sender: TObject);
 begin
-  TrySaveActive;
+  FController.Save;
 end;
 
 procedure TMarkdownPadFMXForm.HandleSaveAsClick(Sender: TObject);
 begin
-  if FActiveDoc = nil then
-    Exit;
-
-  if not FActiveDoc.IsUntitled then
-    FSaveDialog.FileName := FActiveDoc.FileName;
-
-  if FSaveDialog.Execute then
-    SaveToFile(FSaveDialog.FileName);
-end;
-
-function TMarkdownPadFMXForm.TrySaveActive: Boolean;
-begin
-  if FActiveDoc = nil then
-    Exit(True);
-
-  if FActiveDoc.IsUntitled then
-  begin
-    if not FSaveDialog.Execute then
-      Exit(False);
-
-    SaveToFile(FSaveDialog.FileName);
-  end
-  else
-    SaveToFile(FActiveDoc.FileName);
-
-  Result := True;
-end;
-
-procedure TMarkdownPadFMXForm.SaveToFile(const FileName: string);
-begin
-  FActiveDoc.Text := FEditor.Text;
-
-  TFile.WriteAllText(FileName, FEditor.Text);
-
-  FActiveDoc.FileName := FileName;
-  FActiveDoc.Modified := False;
-  FWatcher.Reset(FActiveDoc);
-
-  FSession.AddRecentFile(FileName);
-
-  RebuildTabs;
-  UpdateTitle;
+  FController.SaveAs;
 end;
 
 procedure TMarkdownPadFMXForm.CloseActiveDocument;
 begin
-  CloseDocumentAt(FWorkspace.ActiveIndex);
+  FController.CloseActiveDocument;
 end;
 
 procedure TMarkdownPadFMXForm.CloseDocumentAt(const Index: Integer);
 begin
-  if (Index < 0) or (Index >= FWorkspace.Count) then
-    Exit;
-
-  if Index <> FWorkspace.ActiveIndex then
-    SwitchToDocument(Index);
-
-  if FActiveDoc = nil then
-    Exit;
-
-  if FActiveDoc.Modified then
-  begin
-    const Answer = TDialogServiceSync.MessageDialog(CloseUnsavedPrompt, TMsgDlgType.mtConfirmation,
-      [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo, TMsgDlgBtn.mbCancel], TMsgDlgBtn.mbCancel, 0);
-
-    if Answer = mrCancel then
-      Exit;
-
-    if (Answer = mrYes) and not TrySaveActive then
-      Exit;
-  end;
-
-  const ClosingIndex = FWorkspace.ActiveIndex;
-  FActiveDoc := nil;
-  FWorkspace.CloseDocument(ClosingIndex);
-
-  if FWorkspace.Count = 0 then
-  begin
-    Close;
-    Exit;
-  end;
-
-  RebuildTabs;
-  SwitchToDocument(FWorkspace.ActiveIndex);
+  FController.CloseDocumentAt(Index);
 end;
 
 procedure TMarkdownPadFMXForm.HandleExportClick(Sender: TObject);
@@ -1631,21 +1421,17 @@ end;
 
 procedure TMarkdownPadFMXForm.DoExportHtml;
 begin
-  if FActiveDoc <> nil then
-    FActiveDoc.Text := FEditor.Text;
+  FController.ExportHtml;
+end;
 
-  var Title := UntitledName;
-  if FActiveDoc <> nil then
-    Title := FActiveDoc.DisplayName;
+function TMarkdownPadFMXForm.PromptExportHtml(const SuggestedName: string; out FileName: string): Boolean;
+begin
+  if SuggestedName <> '' then
+    FHtmlSaveDialog.FileName := SuggestedName;
 
-  FHtmlSaveDialog.FileName := TPath.ChangeExtension(Title, '.' + HtmlExtension);
-
-  if not FHtmlSaveDialog.Execute then
-    Exit;
-
-  const Html = TMarkdownHtmlExport.BuildDocument(FEditor.Text, Title, FDarkThemeActive);
-
-  TFile.WriteAllText(FHtmlSaveDialog.FileName, Html, TEncoding.UTF8);
+  Result := FHtmlSaveDialog.Execute;
+  if Result then
+    FileName := FHtmlSaveDialog.FileName;
 end;
 
 procedure TMarkdownPadFMXForm.HandleCopyHtmlClick(Sender: TObject);
@@ -1655,8 +1441,11 @@ end;
 
 procedure TMarkdownPadFMXForm.DoCopyHtml;
 begin
-  const Fragment = TMarkdown.ToHtml(FEditor.Text, TMarkdownDialect.Gfm);
+  FController.CopyHtml;
+end;
 
+procedure TMarkdownPadFMXForm.CopyHtmlToClipboard(const Fragment: string);
+begin
   var Clip: IFMXClipboardService;
   if TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Clip) then
     Clip.SetClipboard(Fragment);
@@ -1717,20 +1506,7 @@ end;
 
 procedure TMarkdownPadFMXForm.HandleEditorChange(Sender: TObject);
 begin
-  if FSwapping then
-    Exit;
-
-  const WasModified = (FActiveDoc <> nil) and FActiveDoc.Modified;
-
-  if FActiveDoc <> nil then
-    FActiveDoc.Modified := True;
-
-  FMapDirty := True;
-
-  if not WasModified then
-    RebuildTabs;
-
-  UpdateTitle;
+  FController.NotifyEditorChanged;
 end;
 
 procedure TMarkdownPadFMXForm.HandleSyncScroll(Sender: TObject; const SourceLine: Integer);
@@ -1754,16 +1530,16 @@ begin
     Exit;
 
   const Index = FTocList.ItemIndex;
-  if (Index < 0) or (Index > High(FTocEntries)) then
+  if (Index < 0) or (Index >= FController.TocEntryCount) then
     Exit;
 
   if FMapDirty then
     RebuildSyncAndToc;
 
-  if (Index < 0) or (Index > High(FTocEntries)) then
+  if (Index < 0) or (Index >= FController.TocEntryCount) then
     Exit;
 
-  const SourceLine = FTocEntries[Index].SourceLine - 1;
+  const SourceLine = FController.TocSourceLine(Index);
 
   // Scrolling the editor drives the preview through the linked SyncScroll; guard
   // the outline so the resulting sync callback does not fight the selection.
@@ -1781,59 +1557,7 @@ end;
 
 procedure TMarkdownPadFMXForm.HandleTick(Sender: TObject);
 begin
-  if FMapDirty then
-    RebuildSyncAndToc;
-
-  UpdateStatusBar;
-
-  FWatcher.Poll;
-end;
-
-procedure TMarkdownPadFMXForm.HandleFileChanged(const Document: IPadDocument);
-begin
-  if Document.Modified then
-  begin
-    const Answer = TDialogServiceSync.MessageDialog(ReloadPrompt, TMsgDlgType.mtConfirmation,
-      [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo], TMsgDlgBtn.mbNo, 0);
-
-    if Answer <> mrYes then
-      Exit;
-  end;
-
-  ReloadDocument(Document);
-end;
-
-procedure TMarkdownPadFMXForm.ReloadDocument(const Document: IPadDocument);
-begin
-  var NewText: string;
-  try
-    NewText := TFile.ReadAllText(Document.FileName);
-  except
-    on E: Exception do
-    begin
-      Document.DiskTimestampUtc := 0;
-      Exit;
-    end;
-  end;
-
-  Document.Text := NewText;
-  Document.Modified := False;
-
-  if Document = FActiveDoc then
-  begin
-    FSwapping := True;
-    try
-      FEditor.Text := NewText;
-      FEditor.FlushPreview;
-    finally
-      FSwapping := False;
-    end;
-
-    FMapDirty := True;
-  end;
-
-  RebuildTabs;
-  UpdateTitle;
+  FController.Tick;
 end;
 
 function TMarkdownPadFMXForm.GetEditorText: string;
@@ -1903,19 +1627,7 @@ end;
 
 procedure TMarkdownPadFMXForm.SwitchToDocument(const Index: Integer);
 begin
-  if FSwapping then
-    Exit;
-
-  FActiveDoc := TPadDocumentSwitch.Execute(FWorkspace, Self, FActiveDoc, Index);
-
-  if FActiveDoc = nil then
-    Exit;
-
-  FLastCaret := -1;
-  FMapDirty := True;
-
-  RebuildTabs;
-  UpdateTitle;
+  FController.SwitchToDocument(Index);
 end;
 
 procedure TMarkdownPadFMXForm.RebuildTabs;
@@ -1929,19 +1641,48 @@ end;
 
 procedure TMarkdownPadFMXForm.RebuildSyncAndToc;
 begin
-  FMapDirty := False;
+  FController.RebuildSyncAndToc;
+end;
 
-  const Document = TMarkdown.Parse(FEditor.Text, TMarkdownDialect.Gfm);
+procedure TMarkdownPadFMXForm.UpdateActiveTocEntry(const SourceLine: Integer);
+begin
+  FController.UpdateActiveTocEntry(SourceLine);
+end;
 
-  const Outline = TPadOutlineBuilder.Build(TMarkdownToc.FromDocument(Document));
-  FTocEntries := Outline.Entries;
+procedure TMarkdownPadFMXForm.ExecuteFind;
+begin
+  FController.ExecuteFind;
+end;
 
+procedure TMarkdownPadFMXForm.FindInEditor;
+begin
+  FController.FindInEditor;
+end;
+
+procedure TMarkdownPadFMXForm.UpdateFindCount;
+begin
+  FController.UpdateFindCount;
+end;
+
+procedure TMarkdownPadFMXForm.SetDocumentTitle(const Name: string);
+begin
+  Caption := Format(TitleFormat, [WindowCaption, Name]);
+end;
+
+procedure TMarkdownPadFMXForm.SetStatus(const PositionText, WordsText: string);
+begin
+  FStatusPositionLabel.Text := PositionText;
+  FStatusWordsLabel.Text := WordsText;
+end;
+
+procedure TMarkdownPadFMXForm.SetTocCaptions(const Captions: TArray<string>);
+begin
   FTocFollowing := True;
   FTocList.Items.BeginUpdate;
   try
     FTocList.Items.Clear;
 
-    for var Caption in Outline.Captions do
+    for var Caption in Captions do
       FTocList.Items.Add(Caption);
   finally
     FTocList.Items.EndUpdate;
@@ -1951,54 +1692,66 @@ begin
   ApplyTocItemColors;
 end;
 
-procedure TMarkdownPadFMXForm.UpdateActiveTocEntry(const SourceLine: Integer);
+procedure TMarkdownPadFMXForm.SetActiveTocIndex(const Index: Integer);
 begin
-  const Best = TPadOutlineBuilder.ActiveIndex(FTocEntries, SourceLine);
-
-  if Best = FTocList.ItemIndex then
+  if Index = FTocList.ItemIndex then
     Exit;
 
   FTocFollowing := True;
   try
-    FTocList.ItemIndex := Best;
+    FTocList.ItemIndex := Index;
   finally
     FTocFollowing := False;
   end;
 end;
 
-procedure TMarkdownPadFMXForm.UpdateStatusBar;
+function TMarkdownPadFMXForm.EditorFindNeedle: string;
 begin
-  const Caret = FEditor.CaretPosition;
-  if Caret = FLastCaret then
-    Exit;
-
-  FLastCaret := Caret;
-
-  var Line, Column: Integer;
-  TPadText.ComputeLineColumn(FEditor.Text, Caret, Line, Column);
-  FStatusPositionLabel.Text := Format(StatusPositionFormat, [Line, Column]);
-  FStatusWordsLabel.Text := Format(StatusWordsFormat, [TPadText.CountWords(FEditor.Text)]);
+  Result := FEditorFindEdit.Text;
 end;
 
-procedure TMarkdownPadFMXForm.UpdateTitle;
+function TMarkdownPadFMXForm.PreviewFindNeedle: string;
 begin
-  var Name := UntitledName;
-  if FActiveDoc <> nil then
-    Name := FActiveDoc.DisplayName;
-
-  if (FActiveDoc <> nil) and FActiveDoc.Modified then
-    Name := Name + ModifiedMarker;
-
-  Caption := Format(TitleFormat, [WindowCaption, Name]);
+  Result := FFindEdit.Text;
 end;
 
-procedure TMarkdownPadFMXForm.ExecuteFind;
+procedure TMarkdownPadFMXForm.SetFindCount(const Value: string);
 begin
-  const Needle = FFindEdit.Text;
-  if Needle = '' then
-    Exit;
+  FEditorFindCount.Text := Value;
+end;
 
+procedure TMarkdownPadFMXForm.EditorFindNext(const Needle: string);
+begin
+  FEditor.FindNext(Needle);
+end;
+
+function TMarkdownPadFMXForm.EditorFindMatchCount(const Needle: string): Integer;
+begin
+  Result := FEditor.FindMatchCount(Needle);
+end;
+
+procedure TMarkdownPadFMXForm.PreviewFindText(const Needle: string);
+begin
   FPreview.FindText(Needle);
+end;
+
+function TMarkdownPadFMXForm.ConfirmCloseDocument(const DocName: string): TPadCloseChoice;
+begin
+  const Answer = TDialogServiceSync.MessageDialog(Format(CloseDocumentPromptFormat, [DocName]),
+    TMsgDlgType.mtConfirmation, [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo, TMsgDlgBtn.mbCancel], TMsgDlgBtn.mbCancel, 0);
+
+  if Answer = mrCancel then
+    Result := TPadCloseChoice.Cancel
+  else if Answer = mrYes then
+    Result := TPadCloseChoice.Save
+  else
+    Result := TPadCloseChoice.Discard;
+end;
+
+function TMarkdownPadFMXForm.ConfirmReload: Boolean;
+begin
+  Result := TDialogServiceSync.MessageDialog(ReloadPrompt, TMsgDlgType.mtConfirmation,
+    [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo], TMsgDlgBtn.mbNo, 0) = mrYes;
 end;
 
 procedure TMarkdownPadFMXForm.ApplyTheme;
@@ -2129,21 +1882,107 @@ end;
 
 procedure TMarkdownPadFMXForm.SaveSession;
 begin
-  if FSession = nil then
-    Exit;
+  FController.SaveSession;
+end;
 
-  var FilteredActive: Integer;
-  const Titled = TPadSessionSync.CollectOpenFiles(FWorkspace, FilteredActive);
+function TMarkdownPadFMXForm.GetWorkspace: IPadWorkspace;
+begin
+  Result := FController.Workspace;
+end;
 
-  FSession.SetOpenFiles(Titled, FilteredActive);
-  FSession.DarkTheme := FDarkThemeActive;
+function TMarkdownPadFMXForm.GetSession: TPadSession;
+begin
+  Result := FController.Session;
+end;
 
+function TMarkdownPadFMXForm.GetMapDirty: Boolean;
+begin
+  Result := FController.MapDirty;
+end;
+
+procedure TMarkdownPadFMXForm.SetMapDirty(const Value: Boolean);
+begin
+  FController.MapDirty := Value;
+end;
+
+function TMarkdownPadFMXForm.GetSwapping: Boolean;
+begin
+  Result := FController.Swapping;
+end;
+
+procedure TMarkdownPadFMXForm.SetSwapping(const Value: Boolean);
+begin
+  FController.Swapping := Value;
+end;
+
+function TMarkdownPadFMXForm.GetPaletteMatches: TArray<TPadCommandMatch>;
+begin
+  Result := FController.PaletteMatches;
+end;
+
+function TMarkdownPadFMXForm.SampleMarkdown: string;
+begin
+  Result := BuildSampleMarkdown;
+end;
+
+function TMarkdownPadFMXForm.DarkThemeActive: Boolean;
+begin
+  Result := FDarkThemeActive;
+end;
+
+function TMarkdownPadFMXForm.EffectiveViewMode: TPadViewMode;
+begin
   if FZenActive then
-    FSession.ViewMode := FPreZenViewMode
+    Result := FPreZenViewMode
   else
-    FSession.ViewMode := FViewMode;
+    Result := FViewMode;
+end;
 
-  FSession.Save;
+procedure TMarkdownPadFMXForm.ApplyRestoredViewMode(const Mode: TPadViewMode);
+begin
+  FViewMode := Mode;
+  ApplyViewMode;
+end;
+
+function TMarkdownPadFMXForm.PromptOpenFile(out FileName: string): Boolean;
+begin
+  Result := FOpenDialog.Execute;
+  if Result then
+    FileName := FOpenDialog.FileName;
+end;
+
+function TMarkdownPadFMXForm.PromptSaveFile(const SuggestedName: string; out FileName: string): Boolean;
+begin
+  if SuggestedName <> '' then
+    FSaveDialog.FileName := SuggestedName;
+
+  Result := FSaveDialog.Execute;
+  if Result then
+    FileName := FSaveDialog.FileName;
+end;
+
+function TMarkdownPadFMXForm.ConfirmClose: TPadCloseChoice;
+begin
+  const Answer = TDialogServiceSync.MessageDialog(CloseUnsavedPrompt, TMsgDlgType.mtConfirmation,
+    [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo, TMsgDlgBtn.mbCancel], TMsgDlgBtn.mbCancel, 0);
+
+  if Answer = mrCancel then
+    Result := TPadCloseChoice.Cancel
+  else if Answer = mrYes then
+    Result := TPadCloseChoice.Save
+  else
+    Result := TPadCloseChoice.Discard;
+end;
+
+procedure TMarkdownPadFMXForm.ShowOpenError(const FileName, ErrorMessage: string);
+begin
+  TDialogServiceSync.MessageDialog(Format(OpenErrorFormat, [FileName]), TMsgDlgType.mtError,
+    [TMsgDlgBtn.mbOK], TMsgDlgBtn.mbOK, 0);
+end;
+
+procedure TMarkdownPadFMXForm.CloseApplication;
+begin
+  Close;
 end;
 
 class function TMarkdownPadFMXForm.BuildSampleMarkdown: string;

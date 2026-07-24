@@ -101,7 +101,6 @@ $(PostBuildEvent)]]></PostBuildEvent>
         </DelphiCompile>
         <DCCReference Include="..\Shared\MarkdownPad.Workspace.Interfaces.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.Workspace.pas"/>
-        <DCCReference Include="..\Shared\MarkdownPad.EditorView.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.Session.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.Commands.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.TabStrip.Layout.pas"/>
@@ -116,6 +115,9 @@ $(PostBuildEvent)]]></PostBuildEvent>
         <DCCReference Include="..\Shared\MarkdownPad.Defines.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.Text.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.Outline.pas"/>
+        <DCCReference Include="MarkdownPadFMX.Defines.pas"/>
+        <DCCReference Include="..\Shared\MarkdownPad.Shell.pas"/>
+        <DCCReference Include="..\Shared\MarkdownPad.Controller.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
@@ -1125,7 +1127,7 @@ $(PostBuildEvent)]]></PostBuildEvent>
         <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
         <PreLinkEvent/>
         <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
-        <PostBuildEvent>copy /Y &quot;$(BDS)\bin\sk4d.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;</PostBuildEvent>
+        <PostBuildEvent>copy /Y &quot;$(BDS)\bin\sk4d.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;</PostBuildEvent>
         <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Debug' And '$(Platform)'=='Win64'">
@@ -1133,7 +1135,7 @@ $(PostBuildEvent)]]></PostBuildEvent>
         <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
         <PreLinkEvent/>
         <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
-        <PostBuildEvent>copy /Y &quot;$(BDS)\bin\sk4d.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;</PostBuildEvent>
+        <PostBuildEvent>copy /Y &quot;$(BDS)\bin\sk4d.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;</PostBuildEvent>
         <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Release' And '$(Platform)'=='Win32'">
@@ -1141,7 +1143,7 @@ $(PostBuildEvent)]]></PostBuildEvent>
         <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
         <PreLinkEvent/>
         <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
-        <PostBuildEvent>copy /Y &quot;$(BDS)\bin\sk4d.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;</PostBuildEvent>
+        <PostBuildEvent>copy /Y &quot;$(BDS)\bin\sk4d.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;</PostBuildEvent>
         <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Release' And '$(Platform)'=='Win64'">
@@ -1149,7 +1151,7 @@ $(PostBuildEvent)]]></PostBuildEvent>
         <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
         <PreLinkEvent/>
         <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
-        <PostBuildEvent>copy /Y &quot;$(BDS)\bin\sk4d.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;</PostBuildEvent>
+        <PostBuildEvent>copy /Y &quot;$(BDS)\bin\sk4d.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;</PostBuildEvent>
         <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
     </PropertyGroup>
 </Project>
