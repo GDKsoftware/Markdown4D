@@ -16,7 +16,10 @@ uses
   MarkdownPadVCL.Main in 'MarkdownPadVCL.Main.pas' {MarkdownPadVCLForm},
   MarkdownPad.Defines in '..\Shared\MarkdownPad.Defines.pas',
   MarkdownPad.Text in '..\Shared\MarkdownPad.Text.pas',
-  MarkdownPad.Outline in '..\Shared\MarkdownPad.Outline.pas';
+  MarkdownPad.Outline in '..\Shared\MarkdownPad.Outline.pas',
+  MarkdownPadVCL.Defines in 'MarkdownPadVCL.Defines.pas',
+  MarkdownPad.Shell in '..\Shared\MarkdownPad.Shell.pas',
+  MarkdownPad.Controller in '..\Shared\MarkdownPad.Controller.pas';
 
 {$R *.res}
 

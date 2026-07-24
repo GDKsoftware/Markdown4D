@@ -18,7 +18,10 @@ uses
   MarkdownPadFMX.Main in 'MarkdownPadFMX.Main.pas',
   MarkdownPad.Defines in '..\Shared\MarkdownPad.Defines.pas',
   MarkdownPad.Text in '..\Shared\MarkdownPad.Text.pas',
-  MarkdownPad.Outline in '..\Shared\MarkdownPad.Outline.pas';
+  MarkdownPad.Outline in '..\Shared\MarkdownPad.Outline.pas',
+  MarkdownPadFMX.Defines in 'MarkdownPadFMX.Defines.pas',
+  MarkdownPad.Shell in '..\Shared\MarkdownPad.Shell.pas',
+  MarkdownPad.Controller in '..\Shared\MarkdownPad.Controller.pas';
 
 {$R *.res}
 

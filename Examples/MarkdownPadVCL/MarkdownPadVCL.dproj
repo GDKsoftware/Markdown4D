@@ -98,7 +98,6 @@
         </DelphiCompile>
         <DCCReference Include="..\Shared\MarkdownPad.Workspace.Interfaces.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.Workspace.pas"/>
-        <DCCReference Include="..\Shared\MarkdownPad.EditorView.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.Session.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.Commands.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.TabStrip.Layout.pas"/>
@@ -115,6 +114,9 @@
         <DCCReference Include="..\Shared\MarkdownPad.Defines.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.Text.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.Outline.pas"/>
+        <DCCReference Include="MarkdownPadVCL.Defines.pas"/>
+        <DCCReference Include="..\Shared\MarkdownPad.Shell.pas"/>
+        <DCCReference Include="..\Shared\MarkdownPad.Controller.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
