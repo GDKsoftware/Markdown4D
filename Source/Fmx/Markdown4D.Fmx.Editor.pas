@@ -54,6 +54,13 @@ type
         EndOffset: Integer;
         IsFirst: Boolean;
       end;
+      // Where one source line wraps, cached per line so an edit only re-measures
+      // the line that actually changed instead of the whole document.
+      TWrapCacheEntry = record
+        Text: string;
+        WrapWidth: Single;
+        Breaks: TArray<Integer>;
+      end;
     var
       FLifetime: IMarkdownViewerLifetime;
       FModel: TMarkdownEditorModel;
@@ -94,6 +101,7 @@ type
       FSyncScroll: Boolean;
       FSyncing: Boolean;
       FRows: TArray<TVisualRow>;
+      FWrapCache: TArray<TWrapCacheEntry>;
       FWrapWidth: Single;
       FOnChange: TNotifyEvent;
       FOnScroll: TNotifyEvent;
@@ -121,6 +129,8 @@ type
       const DrawCaret: Boolean);
     procedure RebuildRows;
     procedure AppendWrappedRows(const Rows: TList<TVisualRow>; const LineIndex: Integer);
+    function WrapBreaksFor(const LineIndex: Integer; const LineText: string): TArray<Integer>;
+    function ComputeWrapBreaks(const LineText: string): TArray<Integer>;
     function MakeRow(const LineIndex, StartOffset, EndOffset: Integer; const IsFirst: Boolean): TVisualRow;
     function NextWrapLength(const LineText: string; const StartCol: Integer): Integer;
     function LastSpaceWithin(const LineText: string; const StartCol, MaxLength: Integer): Integer;
@@ -198,6 +208,8 @@ type
     constructor Create(Owner: TComponent); override;
     destructor Destroy; override;
     procedure ExecuteCommand(const Command: TEditorCommand);
+    // Inserts Value at the caret, replacing the selection when there is one.
+    procedure InsertText(const Value: string);
     // Takes over Value as the new content through the smallest possible edit, so
     // undo history, caret and selection survive. Returns False when the text was
     // already identical.
@@ -374,6 +386,12 @@ end;
 procedure TMarkdownEditor.ExecuteCommand(const Command: TEditorCommand);
 begin
   FModel.ExecuteCommand(Command);
+  RefreshAfterEdit;
+end;
+
+procedure TMarkdownEditor.InsertText(const Value: string);
+begin
+  FModel.Insert(Value);
   RefreshAfterEdit;
 end;
 
@@ -939,6 +957,9 @@ begin
   const Rows = TList<TVisualRow>.Create;
   try
     const LineCount = FModel.LineCount;
+    if Length(FWrapCache) < LineCount then
+      SetLength(FWrapCache, LineCount);
+
     for var LineIndex := 0 to LineCount - 1 do
     begin
       if FModel.IsLineHidden(LineIndex) then
@@ -957,9 +978,8 @@ procedure TMarkdownEditor.AppendWrappedRows(const Rows: TList<TVisualRow>; const
 begin
   const LineText = LineTextAt(LineIndex);
   const LineStart = LineStartOffset(LineIndex);
-  const Len = Length(LineText);
 
-  const LineIsEmpty = Len = 0;
+  const LineIsEmpty = Length(LineText) = 0;
   if LineIsEmpty then
   begin
     Rows.Add(MakeRow(LineIndex, LineStart, LineStart, True));
@@ -967,14 +987,40 @@ begin
   end;
 
   var Consumed := 0;
-  var IsFirst := True;
+  for var Index in WrapBreaksFor(LineIndex, LineText) do
+  begin
+    Rows.Add(MakeRow(LineIndex, LineStart + Consumed, LineStart + Index, Consumed = 0));
+    Consumed := Index;
+  end;
+end;
+
+function TMarkdownEditor.WrapBreaksFor(const LineIndex: Integer; const LineText: string): TArray<Integer>;
+begin
+  const Reusable = (LineIndex <= High(FWrapCache)) and (FWrapCache[LineIndex].WrapWidth = FWrapWidth) and
+    (FWrapCache[LineIndex].Text = LineText);
+  if Reusable then
+    Exit(FWrapCache[LineIndex].Breaks);
+
+  Result := ComputeWrapBreaks(LineText);
+
+  if LineIndex > High(FWrapCache) then
+    SetLength(FWrapCache, LineIndex + 1);
+
+  FWrapCache[LineIndex].Text := LineText;
+  FWrapCache[LineIndex].WrapWidth := FWrapWidth;
+  FWrapCache[LineIndex].Breaks := Result;
+end;
+
+function TMarkdownEditor.ComputeWrapBreaks(const LineText: string): TArray<Integer>;
+begin
+  Result := [];
+
+  const Len = Length(LineText);
+  var Consumed := 0;
   while Consumed < Len do
   begin
-    const Take = NextWrapLength(LineText, Consumed);
-    Rows.Add(MakeRow(LineIndex, LineStart + Consumed, LineStart + Consumed + Take, IsFirst));
-
-    Consumed := Consumed + Take;
-    IsFirst := False;
+    Consumed := Consumed + NextWrapLength(LineText, Consumed);
+    Result := Result + [Consumed];
   end;
 end;
 

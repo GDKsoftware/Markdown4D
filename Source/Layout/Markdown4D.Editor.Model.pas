@@ -56,6 +56,8 @@ type
       FCollapsedFolds: TArray<Integer>;
       FFoldRegions: TArray<TFoldRegion>;
       FFoldRegionsDirty: Boolean;
+      FHiddenLines: TArray<Boolean>;
+      FHiddenLinesDirty: Boolean;
     procedure NormalizeAndLoad(const Value: string);
     class function NormalizeLineEndings(const Value: string): string; static;
     class function CommonPrefixLength(const Left, Right: string): Integer; static;
@@ -82,6 +84,7 @@ type
     function CategoryOfChar(const Ch: Char): TCharCategory;
     function AllLines: TArray<string>;
     procedure ShiftFolds(const Start, OldLen, NewLen: Integer);
+    procedure RebuildHiddenLines;
     function CollapsedIndexOf(const HeaderOffset: Integer): Integer;
     function TryRegionAtHeader(const HeaderLine: Integer; out Region: TFoldRegion): Boolean;
     procedure WrapOrToggle(const Marker: string);
@@ -286,6 +289,7 @@ begin
   FCoalesceBroken := Snapshot.CoalesceBroken;
   FCollapsedFolds := nil;
   FFoldRegionsDirty := True;
+  FHiddenLinesDirty := True;
 end;
 
 function TMarkdownEditorModel.LineCount: Integer;
@@ -698,13 +702,36 @@ end;
 
 function TMarkdownEditorModel.IsLineHidden(const LineIndex: Integer): Boolean;
 begin
+  // Editors ask this for every line on every repaint, so the answer is kept as
+  // a flat array instead of a scan over the fold regions per line.
+  if FHiddenLinesDirty then
+    RebuildHiddenLines;
+
+  if (LineIndex < 0) or (LineIndex > High(FHiddenLines)) then
+    Exit(False);
+
+  Result := FHiddenLines[LineIndex];
+end;
+
+procedure TMarkdownEditorModel.RebuildHiddenLines;
+begin
+  FHiddenLinesDirty := False;
+  SetLength(FHiddenLines, LineCount);
+
+  for var Index := 0 to High(FHiddenLines) do
+    FHiddenLines[Index] := False;
+
+  if System.Length(FCollapsedFolds) = 0 then
+    Exit;
+
   for var Region in FoldRegions do
   begin
-    if Region.Contains(LineIndex) and IsRegionCollapsed(Region.HeaderLine) then
-      Exit(True);
-  end;
+    if not IsRegionCollapsed(Region.HeaderLine) then
+      Continue;
 
-  Result := False;
+    for var Line := Region.StartLine to Min(Region.EndLine, High(FHiddenLines)) do
+      FHiddenLines[Line] := True;
+  end;
 end;
 
 procedure TMarkdownEditorModel.ToggleFold(const HeaderLine: Integer);
@@ -719,10 +746,12 @@ begin
   if Existing >= 0 then
   begin
     System.Delete(FCollapsedFolds, Existing, 1);
+    FHiddenLinesDirty := True;
     Exit;
   end;
 
   FCollapsedFolds := FCollapsedFolds + [HeaderOffset];
+  FHiddenLinesDirty := True;
 
   const CaretLine = LineIndexOfOffset(FCaret);
   if Region.Contains(CaretLine) then
@@ -743,7 +772,10 @@ begin
 
     const Existing = CollapsedIndexOf(OffsetOfLineStart(Region.HeaderLine));
     if Existing >= 0 then
+    begin
       System.Delete(FCollapsedFolds, Existing, 1);
+      FHiddenLinesDirty := True;
+    end;
   end;
 end;
 
@@ -951,6 +983,7 @@ begin
   UpdateLineStartsForEdit(Start, OldLen, Replacement);
   ShiftFolds(Start, OldLen, System.Length(Replacement));
   FFoldRegionsDirty := True;
+  FHiddenLinesDirty := True;
 
   if Assigned(FOnChange) then
     FOnChange(Self, TEditorReplaceRange.Create(Start, OldLen, Replacement));

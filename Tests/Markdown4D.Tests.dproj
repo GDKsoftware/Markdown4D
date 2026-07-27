@@ -115,6 +115,7 @@
         <DCCReference Include="Markdown4D.Editor.Highlighter.Tests.pas"/>
         <DCCReference Include="Markdown4D.Editor.Sync.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Editor.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Editor.Performance.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Design.Tests.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Text.FileFormat.pas"/>
         <DCCReference Include="Markdown4D.Text.FileFormat.Tests.pas"/>

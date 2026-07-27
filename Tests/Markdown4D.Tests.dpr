@@ -57,6 +57,7 @@ uses
   Markdown4D.Editor.Highlighter.Tests in 'Markdown4D.Editor.Highlighter.Tests.pas',
   Markdown4D.Editor.Sync.Tests in 'Markdown4D.Editor.Sync.Tests.pas',
   Markdown4D.Vcl.Editor.Tests in 'Markdown4D.Vcl.Editor.Tests.pas',
+  Markdown4D.Editor.Performance.Tests in 'Markdown4D.Editor.Performance.Tests.pas',
   Markdown4D.Vcl.Design.Tests in 'Markdown4D.Vcl.Design.Tests.pas',
   Markdown4D.Text.FileFormat in '..\Source\Core\Markdown4D.Text.FileFormat.pas',
   Markdown4D.Text.FileFormat.Tests in 'Markdown4D.Text.FileFormat.Tests.pas',
