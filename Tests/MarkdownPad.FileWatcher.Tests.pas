@@ -20,8 +20,10 @@ type
       FFile1: string;
       FFile2: string;
       FFiredDocuments: TArray<IPadDocument>;
+      FVanishedDocuments: TArray<IPadDocument>;
       FTimestampAtCallback: TDateTime;
     procedure HandleFileChanged(const Document: IPadDocument);
+    procedure HandleFileVanished(const Document: IPadDocument);
     procedure SimulateExternalEdit(const FileName: string);
 
   public
@@ -57,6 +59,12 @@ type
 
     [Test]
     procedure Reset_AfterExternalChange_SuppressesNextPoll;
+
+    [Test]
+    procedure Poll_DeletedFile_FiresVanishedOnceAndFlagsDocument;
+
+    [Test]
+    procedure Poll_RecreatedFile_ClearsMissingFlagAndFiresChanged;
   end;
 
 implementation
@@ -69,6 +77,7 @@ uses
 procedure TPadFileWatcherTests.Setup;
 begin
   FFiredDocuments := [];
+  FVanishedDocuments := [];
   FTimestampAtCallback := 0;
   FWorkspace := TPadWorkspace.Create;
 
@@ -78,7 +87,7 @@ begin
   FFile2 := TPath.GetTempFileName;
   TFile.WriteAllText(FFile2, 'file two');
 
-  FWatcher := TPadFileWatcher.Create(FWorkspace, HandleFileChanged);
+  FWatcher := TPadFileWatcher.Create(FWorkspace, HandleFileChanged, HandleFileVanished);
 end;
 
 procedure TPadFileWatcherTests.TearDown;
@@ -188,10 +197,43 @@ begin
   Assert.AreEqual(0, Integer(Length(FFiredDocuments)));
 end;
 
+procedure TPadFileWatcherTests.Poll_DeletedFile_FiresVanishedOnceAndFlagsDocument;
+begin
+  const Doc = FWorkspace.OpenFile(FFile1);
+
+  TFile.Delete(FFile1);
+  FWatcher.Poll;
+  FWatcher.Poll;
+
+  Assert.AreEqual(1, Integer(Length(FVanishedDocuments)));
+  Assert.IsTrue(Doc.DiskMissing);
+  Assert.AreEqual(0, Integer(Length(FFiredDocuments)));
+end;
+
+procedure TPadFileWatcherTests.Poll_RecreatedFile_ClearsMissingFlagAndFiresChanged;
+begin
+  const Doc = FWorkspace.OpenFile(FFile1);
+
+  TFile.Delete(FFile1);
+  FWatcher.Poll;
+
+  TFile.WriteAllText(FFile1, 'file one again');
+  SimulateExternalEdit(FFile1);
+  FWatcher.Poll;
+
+  Assert.IsFalse(Doc.DiskMissing);
+  Assert.AreEqual(1, Integer(Length(FFiredDocuments)));
+end;
+
 procedure TPadFileWatcherTests.HandleFileChanged(const Document: IPadDocument);
 begin
   FFiredDocuments := FFiredDocuments + [Document];
   FTimestampAtCallback := Document.DiskTimestampUtc;
+end;
+
+procedure TPadFileWatcherTests.HandleFileVanished(const Document: IPadDocument);
+begin
+  FVanishedDocuments := FVanishedDocuments + [Document];
 end;
 
 procedure TPadFileWatcherTests.SimulateExternalEdit(const FileName: string);

@@ -14,10 +14,13 @@ type
   strict private
     FWorkspace: IPadWorkspace;
     FOnFileChanged: TPadFileChangedNotify;
+    FOnFileVanished: TPadFileChangedNotify;
+    procedure PollDocument(const Document: IPadDocument);
     class function TryReadTimestamp(const FileName: string; out Value: TDateTime): Boolean; static;
 
   public
-    constructor Create(const Workspace: IPadWorkspace; const OnFileChanged: TPadFileChangedNotify);
+    constructor Create(const Workspace: IPadWorkspace; const OnFileChanged: TPadFileChangedNotify;
+      const OnFileVanished: TPadFileChangedNotify);
     procedure Poll;
     procedure Reset(const Document: IPadDocument);
   end;
@@ -28,12 +31,14 @@ uses
   System.SysUtils,
   System.IOUtils;
 
-constructor TPadFileWatcher.Create(const Workspace: IPadWorkspace; const OnFileChanged: TPadFileChangedNotify);
+constructor TPadFileWatcher.Create(const Workspace: IPadWorkspace; const OnFileChanged: TPadFileChangedNotify;
+  const OnFileVanished: TPadFileChangedNotify);
 begin
   inherited Create;
 
   FWorkspace := Workspace;
   FOnFileChanged := OnFileChanged;
+  FOnFileVanished := OnFileVanished;
 end;
 
 procedure TPadFileWatcher.Poll;
@@ -42,20 +47,38 @@ begin
   begin
     const Document = FWorkspace.Documents[Index];
 
-    if Document.IsUntitled then
-      Continue;
+    if not Document.IsUntitled then
+      PollDocument(Document);
+  end;
+end;
 
-    var Timestamp: TDateTime;
-    if not TryReadTimestamp(Document.FileName, Timestamp) then
-      Continue;
-
-    if Timestamp <> Document.DiskTimestampUtc then
+procedure TPadFileWatcher.PollDocument(const Document: IPadDocument);
+begin
+  var Timestamp: TDateTime;
+  if not TryReadTimestamp(Document.FileName, Timestamp) then
+  begin
+    const JustVanished = not Document.DiskMissing;
+    if JustVanished then
     begin
-      Document.DiskTimestampUtc := Timestamp;
+      Document.DiskMissing := True;
 
-      if Assigned(FOnFileChanged) then
-        FOnFileChanged(Document);
+      if Assigned(FOnFileVanished) then
+        FOnFileVanished(Document);
     end;
+
+    Exit;
+  end;
+
+  const Reappeared = Document.DiskMissing;
+  if Reappeared then
+    Document.DiskMissing := False;
+
+  if Timestamp <> Document.DiskTimestampUtc then
+  begin
+    Document.DiskTimestampUtc := Timestamp;
+
+    if Assigned(FOnFileChanged) then
+      FOnFileChanged(Document);
   end;
 end;
 
@@ -63,9 +86,13 @@ procedure TPadFileWatcher.Reset(const Document: IPadDocument);
 begin
   var Timestamp: TDateTime;
   if TryReadTimestamp(Document.FileName, Timestamp) then
-    Document.DiskTimestampUtc := Timestamp
-  else
-    Document.DiskTimestampUtc := 0;
+  begin
+    Document.DiskTimestampUtc := Timestamp;
+    Document.DiskMissing := False;
+    Exit;
+  end;
+
+  Document.DiskTimestampUtc := 0;
 end;
 
 class function TPadFileWatcher.TryReadTimestamp(const FileName: string; out Value: TDateTime): Boolean;

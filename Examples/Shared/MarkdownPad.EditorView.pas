@@ -35,6 +35,9 @@ type
     // rendered preview. Needles come from the form's find edits (via IPadShell).
     procedure EditorFindNext(const Needle: string);
     function EditorFindMatchCount(const Needle: string): Integer;
+    procedure EditorHighlightMatches(const Needle: string);
+    function EditorReplaceCurrent(const Needle, Replacement: string): Boolean;
+    function EditorReplaceAll(const Needle, Replacement: string): Integer;
     procedure PreviewFindText(const Needle: string);
     // Brackets the incoming-document load so the form suppresses its own change
     // handling while the editor and preview are repopulated.

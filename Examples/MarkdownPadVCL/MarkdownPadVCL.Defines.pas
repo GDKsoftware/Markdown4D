@@ -36,6 +36,8 @@ const
   SessionFileName = 'MarkdownPad.Vcl.json';
   CloseUnsavedPrompt = 'Save changes before closing this document?';
   PaletteTextMargin = 8;
+  ReplaceButtonWidth = 90;
+  ReplaceAllButtonWidth = 110;
 
 implementation
 

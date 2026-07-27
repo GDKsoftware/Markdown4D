@@ -6,6 +6,7 @@ interface
 
 uses
   System.Generics.Collections,
+  Markdown4D.Text.FileFormat,
   MarkdownPad.Workspace.Interfaces;
 
 type
@@ -58,6 +59,8 @@ type
     FPreviewScrollOffset: Single;
     FDiskTimestampUtc: TDateTime;
     FDiskConflict: Boolean;
+    FDiskMissing: Boolean;
+    FTextFormat: TMarkdownTextFormat;
     FEditState: IInterface;
     FUntitledNumber: Integer;
     function GetFileName: string;
@@ -76,12 +79,17 @@ type
     procedure SetDiskTimestampUtc(const Value: TDateTime);
     function GetDiskConflict: Boolean;
     procedure SetDiskConflict(const Value: Boolean);
+    function GetDiskMissing: Boolean;
+    procedure SetDiskMissing(const Value: Boolean);
+    function GetTextFormat: TMarkdownTextFormat;
+    procedure SetTextFormat(const Value: TMarkdownTextFormat);
     function GetEditState: IInterface;
     procedure SetEditState(const Value: IInterface);
     function GetUntitledNumber: Integer;
     procedure SetUntitledNumber(const Value: Integer);
 
   public
+    constructor Create;
     function IsUntitled: Boolean;
     function DisplayName: string;
   end;
@@ -122,9 +130,13 @@ begin
     Exit(FDocuments[Existing]);
   end;
 
+  var Format: TMarkdownTextFormat;
+  const Content = TMarkdownTextFile.Load(FileName, Format);
+
   var Document: IPadDocument := TPadDocument.Create;
   Document.FileName := FileName;
-  Document.Text := TFile.ReadAllText(FileName);
+  Document.TextFormat := Format;
+  Document.Text := Content;
   Document.Modified := False;
 
   try
@@ -232,6 +244,13 @@ begin
   Result := FDocuments[FActiveIndex];
 end;
 
+constructor TPadDocument.Create;
+begin
+  inherited Create;
+
+  FTextFormat := TMarkdownTextFormat.Default;
+end;
+
 function TPadDocument.DisplayName: string;
 begin
   if not IsUntitled then
@@ -326,6 +345,26 @@ end;
 procedure TPadDocument.SetDiskConflict(const Value: Boolean);
 begin
   FDiskConflict := Value;
+end;
+
+function TPadDocument.GetDiskMissing: Boolean;
+begin
+  Result := FDiskMissing;
+end;
+
+procedure TPadDocument.SetDiskMissing(const Value: Boolean);
+begin
+  FDiskMissing := Value;
+end;
+
+function TPadDocument.GetTextFormat: TMarkdownTextFormat;
+begin
+  Result := FTextFormat;
+end;
+
+procedure TPadDocument.SetTextFormat(const Value: TMarkdownTextFormat);
+begin
+  FTextFormat := Value;
 end;
 
 function TPadDocument.GetEditState: IInterface;

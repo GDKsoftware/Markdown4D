@@ -125,6 +125,7 @@ type
     procedure DeleteWordRight;
     procedure ReplaceRange(const Start, Length: Integer; const Replacement: string);
     procedure MoveCaret(const Delta: Integer; const Extend: Boolean);
+    procedure MoveCaretTo(const Offset: Integer; const Extend: Boolean);
     procedure MoveWordLeft(const Extend: Boolean);
     procedure MoveWordRight(const Extend: Boolean);
     procedure SelectAll;
@@ -132,6 +133,12 @@ type
     procedure SelectWordAt(const Offset: Integer);
     procedure SelectLineAt(const Offset: Integer);
     function HasSelection: Boolean;
+    function OffsetInSelection(const Offset: Integer): Boolean;
+    // Moves the selected text to Target as one undo step and keeps it selected
+    // where it lands. A target inside the selection is a no-op.
+    procedure MoveSelectionTo(const Target: Integer);
+    // Every match in document order, for hosts that highlight all of them.
+    function FindAllMatches(const Needle: string; const Options: TMarkdownFindOptions): TArray<Integer>;
     function FindText(const Needle: string): Integer; overload;
     function FindText(const Needle: string; const Options: TMarkdownFindOptions): Integer; overload;
     function FindNext(const Needle: string; const StartAfter: Integer): Integer; overload;
@@ -329,7 +336,7 @@ begin
     Exit;
 
   const Previous = PrevCaret(FCaret);
-  ApplyReplace(Previous, FCaret - Previous, '', False);
+  ApplyReplace(Previous, FCaret - Previous, '', True);
 end;
 
 procedure TMarkdownEditorModel.DeleteForward;
@@ -344,7 +351,7 @@ begin
     Exit;
 
   const Next = NextCaret(FCaret);
-  ApplyReplace(FCaret, Next - FCaret, '', False);
+  ApplyReplace(FCaret, Next - FCaret, '', True);
 end;
 
 procedure TMarkdownEditorModel.DeleteWordLeft;
@@ -359,7 +366,7 @@ begin
     Exit;
 
   const Start = WordLeftOffset(FCaret);
-  ApplyReplace(Start, FCaret - Start, '', False);
+  ApplyReplace(Start, FCaret - Start, '', True);
 end;
 
 procedure TMarkdownEditorModel.DeleteWordRight;
@@ -374,7 +381,7 @@ begin
     Exit;
 
   const EndOffset = WordRightOffset(FCaret);
-  ApplyReplace(FCaret, EndOffset - FCaret, '', False);
+  ApplyReplace(FCaret, EndOffset - FCaret, '', True);
 end;
 
 procedure TMarkdownEditorModel.ReplaceRange(const Start, Length: Integer; const Replacement: string);
@@ -401,6 +408,11 @@ begin
   end;
 
   ApplyCaretMove(NewCaret, Extend);
+end;
+
+procedure TMarkdownEditorModel.MoveCaretTo(const Offset: Integer; const Extend: Boolean);
+begin
+  ApplyCaretMove(SnapOffset(Offset), Extend);
 end;
 
 procedure TMarkdownEditorModel.MoveWordLeft(const Extend: Boolean);
@@ -474,6 +486,48 @@ end;
 function TMarkdownEditorModel.HasSelection: Boolean;
 begin
   Result := FCaret <> FAnchor;
+end;
+
+function TMarkdownEditorModel.OffsetInSelection(const Offset: Integer): Boolean;
+begin
+  Result := HasSelection and (Offset > SelectionStart) and (Offset < SelectionStart + SelectionLength);
+end;
+
+procedure TMarkdownEditorModel.MoveSelectionTo(const Target: Integer);
+begin
+  if not HasSelection then
+    Exit;
+
+  const Start = SelectionStart;
+  const Len = SelectionLength;
+  const Landing = SnapOffset(Target);
+
+  const DropsOnItself = (Landing >= Start) and (Landing <= Start + Len);
+  if DropsOnItself then
+    Exit;
+
+  const Moved = SelectedText;
+  BreakUndoCoalescing;
+
+  if Landing > Start + Len then
+  begin
+    const Between = Copy(FText, Start + Len + 1, Landing - Start - Len);
+    ApplyReplace(Start, Landing - Start, Between + Moved, False);
+    FAnchor := Landing - Len;
+    FCaret := Landing;
+    Exit;
+  end;
+
+  const Between = Copy(FText, Landing + 1, Start - Landing);
+  ApplyReplace(Landing, Start + Len - Landing, Moved + Between, False);
+  FAnchor := Landing;
+  FCaret := Landing + Len;
+end;
+
+function TMarkdownEditorModel.FindAllMatches(const Needle: string;
+  const Options: TMarkdownFindOptions): TArray<Integer>;
+begin
+  Result := CollectMatches(Needle, Options);
 end;
 
 function TMarkdownEditorModel.FindText(const Needle: string): Integer;
@@ -919,12 +973,36 @@ begin
   if CanMerge then
   begin
     var Top := FUndoStack[High(FUndoStack)];
+
     const IsContiguousInsertion = (Removed = '') and (Top.RemovedText = '') and
       (Top.Start + System.Length(Top.InsertedText) = Start);
     if IsContiguousInsertion then
     begin
       Top.InsertedText := Top.InsertedText + Inserted;
       Top.CaretAfter := Start + System.Length(Inserted);
+      FUndoStack[High(FUndoStack)] := Top;
+      Exit;
+    end;
+
+    // A run of backspaces or deletes belongs to one undo step, the same way a
+    // run of typed characters does.
+    const IsDeletion = (Inserted = '') and (Top.InsertedText = '') and (Removed <> '');
+
+    const ContinuesBackward = IsDeletion and (Start + System.Length(Removed) = Top.Start);
+    if ContinuesBackward then
+    begin
+      Top.Start := Start;
+      Top.RemovedText := Removed + Top.RemovedText;
+      Top.CaretAfter := Start;
+      FUndoStack[High(FUndoStack)] := Top;
+      Exit;
+    end;
+
+    const ContinuesForward = IsDeletion and (Start = Top.Start);
+    if ContinuesForward then
+    begin
+      Top.RemovedText := Top.RemovedText + Removed;
+      Top.CaretAfter := Start;
       FUndoStack[High(FUndoStack)] := Top;
       Exit;
     end;

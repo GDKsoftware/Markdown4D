@@ -87,6 +87,9 @@ type
       FController: TPadController;
       FViewMode: TPadViewMode;
       FSplitEditorWidth: Integer;
+      FReplaceEdit: TEdit;
+      FReplaceButton: TButton;
+      FReplaceAllButton: TButton;
       FPalette: TPanel;
       FPaletteEdit: TEdit;
       FPaletteList: TListBox;
@@ -114,6 +117,7 @@ type
     procedure SetTocCaptions(const Captions: TArray<string>);
     procedure SetActiveTocIndex(const Index: Integer);
     function EditorFindNeedle: string;
+    function EditorReplaceValue: string;
     function PreviewFindNeedle: string;
     procedure SetFindCount(const Value: string);
     function SampleMarkdown: string;
@@ -127,6 +131,7 @@ type
     function ConfirmCloseDocument(const DocName: string): TPadCloseChoice;
     function ConfirmSaveOverChangedFile(const DocName: string): TPadConflictChoice;
     procedure ShowOpenError(const FileName, ErrorMessage: string);
+    procedure ShowSaveError(const FileName, ErrorMessage: string);
     procedure CloseApplication;
     procedure ConfigureControls;
     procedure BuildToolbar;
@@ -186,6 +191,9 @@ type
     procedure FlushPreview;
     procedure EditorFindNext(const Needle: string);
     function EditorFindMatchCount(const Needle: string): Integer;
+    procedure EditorHighlightMatches(const Needle: string);
+    function EditorReplaceCurrent(const Needle, Replacement: string): Boolean;
+    function EditorReplaceAll(const Needle, Replacement: string): Integer;
     procedure PreviewFindText(const Needle: string);
     procedure BeginSwap;
     procedure EndSwap;
@@ -211,6 +219,9 @@ type
     procedure FindInEditor;
     procedure UpdateFindCount;
     procedure HandleEditorFindChange(Sender: TObject);
+    procedure HandleReplaceClick(Sender: TObject);
+    procedure HandleReplaceAllClick(Sender: TObject);
+    procedure BuildReplaceControls;
     procedure ShowPalette;
     procedure ClosePalette;
     procedure RefreshPaletteList;
@@ -349,6 +360,8 @@ begin
 
   edtEditorFind.TextHint := FindHintCaption;
   edtEditorFind.OnChange := HandleEditorFindChange;
+
+  BuildReplaceControls;
 
   lblFindCount.Layout := tlCenter;
   lblFindCount.Caption := EmptyFindCaption;
@@ -1287,6 +1300,11 @@ begin
   MessageDlg(ErrorMessage, mtError, [mbOK], 0);
 end;
 
+procedure TMarkdownPadVCLForm.ShowSaveError(const FileName, ErrorMessage: string);
+begin
+  MessageDlg(Format(SaveErrorFormat, [FileName, ErrorMessage]), mtError, [mbOK], 0);
+end;
+
 procedure TMarkdownPadVCLForm.CloseApplication;
 begin
   Close;
@@ -1420,6 +1438,62 @@ procedure TMarkdownPadVCLForm.SetActiveTocIndex(const Index: Integer);
 begin
   if Index <> lstToc.ItemIndex then
     lstToc.ItemIndex := Index;
+end;
+
+procedure TMarkdownPadVCLForm.BuildReplaceControls;
+begin
+  FReplaceEdit := TEdit.Create(Self);
+  FReplaceEdit.Parent := pnlFind;
+  FReplaceEdit.Left := FindBarEditWidth;
+  FReplaceEdit.Align := alLeft;
+  FReplaceEdit.Width := FindBarEditWidth;
+  FReplaceEdit.TextHint := ReplaceHintCaption;
+
+  FReplaceButton := TButton.Create(Self);
+  FReplaceButton.Parent := pnlFind;
+  FReplaceButton.Left := FindBarEditWidth * 2;
+  FReplaceButton.Align := alLeft;
+  FReplaceButton.Width := ReplaceButtonWidth;
+  FReplaceButton.Caption := ReplaceButtonCaption;
+  FReplaceButton.OnClick := HandleReplaceClick;
+
+  FReplaceAllButton := TButton.Create(Self);
+  FReplaceAllButton.Parent := pnlFind;
+  FReplaceAllButton.Left := FindBarEditWidth * 2 + ReplaceButtonWidth;
+  FReplaceAllButton.Align := alLeft;
+  FReplaceAllButton.Width := ReplaceAllButtonWidth;
+  FReplaceAllButton.Caption := ReplaceAllButtonCaption;
+  FReplaceAllButton.OnClick := HandleReplaceAllClick;
+end;
+
+procedure TMarkdownPadVCLForm.HandleReplaceClick(Sender: TObject);
+begin
+  FController.ReplaceInEditor;
+end;
+
+procedure TMarkdownPadVCLForm.HandleReplaceAllClick(Sender: TObject);
+begin
+  FController.ReplaceAllInEditor;
+end;
+
+function TMarkdownPadVCLForm.EditorReplaceValue: string;
+begin
+  Result := FReplaceEdit.Text;
+end;
+
+procedure TMarkdownPadVCLForm.EditorHighlightMatches(const Needle: string);
+begin
+  mdEditor.HighlightMatches(Needle);
+end;
+
+function TMarkdownPadVCLForm.EditorReplaceCurrent(const Needle, Replacement: string): Boolean;
+begin
+  Result := mdEditor.ReplaceCurrent(Needle, Replacement, Default(TMarkdownFindOptions));
+end;
+
+function TMarkdownPadVCLForm.EditorReplaceAll(const Needle, Replacement: string): Integer;
+begin
+  Result := mdEditor.ReplaceAll(Needle, Replacement, Default(TMarkdownFindOptions));
 end;
 
 function TMarkdownPadVCLForm.EditorFindNeedle: string;
@@ -1656,6 +1730,7 @@ end;
 procedure TMarkdownPadVCLForm.CloseFindBar;
 begin
   pnlFind.Visible := False;
+  mdEditor.ClearHighlights;
 
   EnforceTopBarOrder;
 

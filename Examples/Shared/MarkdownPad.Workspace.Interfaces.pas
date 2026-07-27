@@ -4,6 +4,9 @@ unit MarkdownPad.Workspace.Interfaces;
 
 interface
 
+uses
+  Markdown4D.Text.FileFormat;
+
 type
   IPadDocument = interface
     ['{B1E7A0C2-3D4F-4A6B-9C11-7E2F5A8D0C31}']
@@ -23,6 +26,10 @@ type
     procedure SetDiskTimestampUtc(const Value: TDateTime);
     function GetDiskConflict: Boolean;
     procedure SetDiskConflict(const Value: Boolean);
+    function GetDiskMissing: Boolean;
+    procedure SetDiskMissing(const Value: Boolean);
+    function GetTextFormat: TMarkdownTextFormat;
+    procedure SetTextFormat(const Value: TMarkdownTextFormat);
     function GetEditState: IInterface;
     procedure SetEditState(const Value: IInterface);
     function GetUntitledNumber: Integer;
@@ -39,6 +46,11 @@ type
     // Set when the file changed on disk while this buffer held unsaved edits.
     // Saving then asks the user before it overwrites the newer disk content.
     property DiskConflict: Boolean read GetDiskConflict write SetDiskConflict;
+    // Set when the file disappeared from disk while it was open here.
+    property DiskMissing: Boolean read GetDiskMissing write SetDiskMissing;
+    // Line endings, encoding and byte order mark as the file had them on disk,
+    // so saving reproduces that shape instead of rewriting the whole file.
+    property TextFormat: TMarkdownTextFormat read GetTextFormat write SetTextFormat;
     property EditState: IInterface read GetEditState write SetEditState;
     property UntitledNumber: Integer read GetUntitledNumber write SetUntitledNumber;
   end;

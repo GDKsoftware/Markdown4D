@@ -37,6 +37,7 @@ type
     procedure UpdateTitle;
     procedure UpdateStatusBar;
     procedure DoFileChanged(const Document: IPadDocument);
+    procedure DoFileVanished(const Document: IPadDocument);
     procedure MarkDiskConflict(const Document: IPadDocument);
     procedure ApplyDiskText(const Document: IPadDocument; const NewText: string);
     procedure ReloadActiveFromDisk;
@@ -81,6 +82,8 @@ type
     function TocEntryCount: Integer;
     function TocSourceLine(const Index: Integer): Integer;
     procedure FindInEditor;
+    procedure ReplaceInEditor;
+    procedure ReplaceAllInEditor;
     procedure UpdateFindCount;
     procedure ExecuteFind;
     procedure ExportHtml;
@@ -105,6 +108,7 @@ uses
   System.IOUtils,
   Markdown4D,
   Markdown4D.Defines,
+  Markdown4D.Text.FileFormat,
   MarkdownPad.CommandLine,
   MarkdownPad.Defines,
   MarkdownPad.Text,
@@ -124,7 +128,7 @@ begin
   FWorkspace := TPadWorkspace.Create;
   FSession := TPadSession.Create(TPadSession.ResolvePath(SessionFileName));
   FSession.Load;
-  FWatcher := TPadFileWatcher.Create(FWorkspace, DoFileChanged);
+  FWatcher := TPadFileWatcher.Create(FWorkspace, DoFileChanged, DoFileVanished);
 end;
 
 destructor TPadController.Destroy;
@@ -231,10 +235,21 @@ begin
 
   FActiveDoc.Text := FEditor.EditorText;
 
-  TFile.WriteAllText(FileName, FActiveDoc.Text);
+  // The file keeps the line endings, encoding and byte order mark it had, so
+  // saving never turns into a whole-file rewrite in someone's diff.
+  try
+    TMarkdownTextFile.Save(FileName, FActiveDoc.Text, FActiveDoc.TextFormat);
+  except
+    on E: Exception do
+    begin
+      FShell.ShowSaveError(FileName, E.Message);
+      Exit(False);
+    end;
+  end;
 
   FActiveDoc.FileName := FileName;
   FActiveDoc.Modified := False;
+  FActiveDoc.DiskMissing := False;
 
   FWatcher.Reset(FActiveDoc);
   FSession.AddRecentFile(FileName);
@@ -409,6 +424,9 @@ begin
 
     if FActiveDoc.DiskConflict then
       Name := Name + ConflictMarker;
+
+    if FActiveDoc.DiskMissing then
+      Name := Name + MissingMarker;
   end;
 
   FShell.SetDocumentTitle(Name);
@@ -503,9 +521,33 @@ begin
   UpdateFindCount;
 end;
 
+procedure TPadController.ReplaceInEditor;
+begin
+  const Needle = FShell.EditorFindNeedle;
+  if Needle = '' then
+    Exit;
+
+  FEditor.EditorReplaceCurrent(Needle, FShell.EditorReplaceValue);
+  UpdateFindCount;
+end;
+
+procedure TPadController.ReplaceAllInEditor;
+begin
+  const Needle = FShell.EditorFindNeedle;
+  if Needle = '' then
+    Exit;
+
+  FEditor.EditorReplaceAll(Needle, FShell.EditorReplaceValue);
+  UpdateFindCount;
+end;
+
 procedure TPadController.UpdateFindCount;
 begin
   const Needle = FShell.EditorFindNeedle;
+
+  // An empty needle clears the marks; anything else paints every hit.
+  FEditor.EditorHighlightMatches(Needle);
+
   if Needle = '' then
   begin
     FShell.SetFindCount(EmptyFindCaption);
@@ -582,13 +624,16 @@ end;
 
 procedure TPadController.DoFileChanged(const Document: IPadDocument);
 begin
+  var Format: TMarkdownTextFormat;
   var NewText: string;
   try
-    NewText := TFile.ReadAllText(Document.FileName);
+    NewText := TMarkdownTextFile.Load(Document.FileName, Format);
   except
     Document.DiskTimestampUtc := 0;
     Exit;
   end;
+
+  Document.TextFormat := Format;
 
   // Unsaved edits are never thrown away behind the user's back: the document is
   // flagged instead, and saving asks what should win.
@@ -625,6 +670,15 @@ begin
   Document.CaretPosition := Position.Caret;
   Document.EditorScrollOffset := Position.EditorLine;
   Document.PreviewScrollOffset := Position.PreviewOffset;
+end;
+
+procedure TPadController.DoFileVanished(const Document: IPadDocument);
+begin
+  // The buffer is the only copy left, so it counts as unsaved work from here on.
+  Document.Modified := True;
+
+  FShell.RebuildTabs;
+  UpdateTitle;
 end;
 
 procedure TPadController.MarkDiskConflict(const Document: IPadDocument);
@@ -680,13 +734,15 @@ begin
   if (FActiveDoc = nil) or FActiveDoc.IsUntitled then
     Exit;
 
+  var Format: TMarkdownTextFormat;
   var NewText: string;
   try
-    NewText := TFile.ReadAllText(FActiveDoc.FileName);
+    NewText := TMarkdownTextFile.Load(FActiveDoc.FileName, Format);
   except
     Exit;
   end;
 
+  FActiveDoc.TextFormat := Format;
   ApplyDiskText(FActiveDoc, NewText);
   FWatcher.Reset(FActiveDoc);
 end;

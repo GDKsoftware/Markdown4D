@@ -34,6 +34,7 @@ type
 
     // Find bar: needles come from the form's edits, the count label is a sink.
     function EditorFindNeedle: string;
+    function EditorReplaceValue: string;
     function PreviewFindNeedle: string;
     procedure SetFindCount(const Value: string);
 
@@ -50,6 +51,7 @@ type
     function ConfirmCloseDocument(const DocName: string): TPadCloseChoice;
     function ConfirmSaveOverChangedFile(const DocName: string): TPadConflictChoice;
     procedure ShowOpenError(const FileName, ErrorMessage: string);
+    procedure ShowSaveError(const FileName, ErrorMessage: string);
     // Clipboard mechanism differs per framework (Win32 CF_HTML vs IFMXClipboardService).
     procedure CopyHtmlToClipboard(const Fragment: string);
     procedure CloseApplication;

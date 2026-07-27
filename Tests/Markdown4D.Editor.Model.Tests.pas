@@ -103,6 +103,21 @@ type
     procedure MergeText_EmitsRangeCoveringOnlyTheDifference;
 
     [Test]
+    procedure MoveSelectionTo_Forward_MovesTextAndKeepsItSelected;
+
+    [Test]
+    procedure MoveSelectionTo_Backward_MovesTextAndKeepsItSelected;
+
+    [Test]
+    procedure MoveSelectionTo_InsideItself_ChangesNothing;
+
+    [Test]
+    procedure MoveSelectionTo_IsOneUndoStep;
+
+    [Test]
+    procedure OffsetInSelection_ReportsInteriorOnly;
+
+    [Test]
     procedure SelectAll_SelectsEntireBuffer;
 
     [Test]
@@ -110,6 +125,18 @@ type
 
     [Test]
     procedure Undo_CoalescesConsecutiveTyping;
+
+    [Test]
+    procedure Undo_CoalescesConsecutiveBackspaces;
+
+    [Test]
+    procedure Undo_CoalescesConsecutiveForwardDeletes;
+
+    [Test]
+    procedure Undo_BackspaceAfterTyping_StaysASeparateStep;
+
+    [Test]
+    procedure Undo_CaretMoveBetweenBackspaces_SplitsTheStep;
 
     [Test]
     procedure BreakUndoCoalescing_SplitsTypingIntoTwoSteps;
@@ -507,6 +534,61 @@ begin
   Assert.AreEqual(FModel.Text, FMirror);
 end;
 
+procedure TMarkdownEditorModelTests.MoveSelectionTo_Forward_MovesTextAndKeepsItSelected;
+begin
+  FModel.LoadText(SampleText);
+  FModel.SetSelection(0, 6);
+
+  FModel.MoveSelectionTo(Length(SampleText));
+
+  Assert.AreEqual('worldHello ', FModel.Text);
+  Assert.AreEqual('Hello ', FModel.SelectedText);
+end;
+
+procedure TMarkdownEditorModelTests.MoveSelectionTo_Backward_MovesTextAndKeepsItSelected;
+begin
+  FModel.LoadText(SampleText);
+  FModel.SetSelection(6, 5);
+
+  FModel.MoveSelectionTo(0);
+
+  Assert.AreEqual('worldHello ', FModel.Text);
+  Assert.AreEqual('world', FModel.SelectedText);
+end;
+
+procedure TMarkdownEditorModelTests.MoveSelectionTo_InsideItself_ChangesNothing;
+begin
+  FModel.LoadText(SampleText);
+  FModel.SetSelection(0, 6);
+
+  FModel.MoveSelectionTo(3);
+
+  Assert.AreEqual(SampleText, FModel.Text);
+  Assert.IsFalse(FModel.CanUndo);
+end;
+
+procedure TMarkdownEditorModelTests.MoveSelectionTo_IsOneUndoStep;
+begin
+  FModel.LoadText(SampleText);
+  FModel.SetSelection(0, 6);
+  FModel.MoveSelectionTo(Length(SampleText));
+
+  FModel.Undo;
+
+  Assert.AreEqual(SampleText, FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.OffsetInSelection_ReportsInteriorOnly;
+begin
+  FModel.LoadText(SampleText);
+  FModel.SetSelection(2, 4);
+
+  Assert.IsFalse(FModel.OffsetInSelection(2));
+  Assert.IsTrue(FModel.OffsetInSelection(4));
+  Assert.IsFalse(FModel.OffsetInSelection(6));
+  Assert.IsFalse(FModel.OffsetInSelection(9));
+end;
+
 procedure TMarkdownEditorModelTests.SelectAll_SelectsEntireBuffer;
 begin
   FModel.LoadText(SampleText);
@@ -530,6 +612,61 @@ begin
   FModel.Insert('c');
   FModel.Undo;
   Assert.AreEqual('', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.Undo_CoalescesConsecutiveBackspaces;
+begin
+  FModel.LoadText(SampleText);
+  FModel.CaretPosition := Length(SampleText);
+
+  FModel.DeleteBackward;
+  FModel.DeleteBackward;
+  FModel.DeleteBackward;
+  Assert.AreEqual('Hello wo', FModel.Text);
+
+  FModel.Undo;
+  Assert.AreEqual(SampleText, FModel.Text);
+  Assert.AreEqual(Length(SampleText), FModel.CaretPosition);
+end;
+
+procedure TMarkdownEditorModelTests.Undo_CoalescesConsecutiveForwardDeletes;
+begin
+  FModel.LoadText(SampleText);
+  FModel.CaretPosition := 0;
+
+  FModel.DeleteForward;
+  FModel.DeleteForward;
+  Assert.AreEqual('llo world', FModel.Text);
+
+  FModel.Undo;
+  Assert.AreEqual(SampleText, FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.Undo_BackspaceAfterTyping_StaysASeparateStep;
+begin
+  FModel.LoadText('');
+  FModel.Insert('a');
+  FModel.Insert('b');
+  FModel.DeleteBackward;
+
+  FModel.Undo;
+  Assert.AreEqual('ab', FModel.Text);
+
+  FModel.Undo;
+  Assert.AreEqual('', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.Undo_CaretMoveBetweenBackspaces_SplitsTheStep;
+begin
+  FModel.LoadText(SampleText);
+  FModel.CaretPosition := Length(SampleText);
+
+  FModel.DeleteBackward;
+  FModel.BreakUndoCoalescing;
+  FModel.DeleteBackward;
+
+  FModel.Undo;
+  Assert.AreEqual('Hello worl', FModel.Text);
 end;
 
 procedure TMarkdownEditorModelTests.BreakUndoCoalescing_SplitsTypingIntoTwoSteps;

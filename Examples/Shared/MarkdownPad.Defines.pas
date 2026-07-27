@@ -67,6 +67,8 @@ const
   DefaultExtension = 'md';
   ModifiedMarker = ' *';
   ConflictMarker = ' (!)';
+  MissingMarker = ' (deleted)';
+  SaveErrorFormat = 'Could not save the file:'#10'%s'#10#10'%s';
   ConflictPromptFormat =
     '"%s" changed on disk after you opened it.'#10#10 +
     'Yes: overwrite the file with your version.'#10 +
@@ -83,6 +85,9 @@ const
   NoMatchCaption = 'No matches';
   EmptyFindCaption = '';
   FindHintCaption = 'Find in editor';
+  ReplaceHintCaption = 'Replace with';
+  ReplaceButtonCaption = 'Replace';
+  ReplaceAllButtonCaption = 'Replace All';
   PaletteHintCaption = 'Type a command';
   ExportButtonCaption = 'Export';
   CopyHtmlButtonCaption = 'Copy HTML';

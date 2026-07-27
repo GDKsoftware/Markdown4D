@@ -13,9 +13,13 @@ uses
   Vcl.Controls,
   Vcl.Graphics,
   Vcl.ExtCtrls,
+  Vcl.Menus,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Theme,
   Markdown4D.Editor.Model,
+  Markdown4D.Editor.Keys,
+  Markdown4D.Editor.ContextMenu,
+  Markdown4D.Editor.Highlights,
   Markdown4D.Editor.Highlighter,
   Markdown4D.Editor.Sync,
   Markdown4D.Viewer.Lifetime,
@@ -33,9 +37,13 @@ type
       DefaultControlWidth = 400;
       DefaultControlHeight = 300;
       SelectionFillColor = TLayoutColor($402F81F7);
+      MatchFillColor = TLayoutColor($55E3B341);
       MinimumWrapWidthDips = 48;
       FoldMarkerWidthDips = 14;
       DeleteChar = #127;
+      DefaultIndentWidth = 2;
+      DragThresholdPx = 4;
+      MenuSeparatorCaption = '-';
     type
       // One on-screen line from soft-wrapping a source line. Offsets are absolute
       // into the model text and the range excludes the trailing line break.
@@ -49,6 +57,7 @@ type
       FLifetime: IMarkdownViewerLifetime;
       FModel: TMarkdownEditorModel;
       FHighlighter: TMarkdownSourceHighlighter;
+      FMatches: TMarkdownEditorHighlights;
       FTheme: TMarkdownTheme;
       FOwnsTheme: Boolean;
       FThemePreset: TMarkdownThemePreset;
@@ -58,9 +67,15 @@ type
       FMeasurePainterLifetime: IPainter;
       FBuffer: TBitmap;
       FScrollOffset: Integer;
+      FIndentWidth: Integer;
       FShowLineNumbers: Boolean;
       FSelecting: Boolean;
       FSelectionAnchor: Integer;
+      FDragPending: Boolean;
+      FDraggingSelection: Boolean;
+      FDragOrigin: TPoint;
+      FDragOffset: Integer;
+      FContextMenu: TPopupMenu;
       FClickCount: Integer;
       FLastClickTicks: Cardinal;
       FLastClickPos: TPoint;
@@ -106,11 +121,18 @@ type
     function RowText(const Row: TVisualRow): string;
     procedure DrawRowSelection(const Painter: IPainter; const Row: TVisualRow;
       const TextLeft, Top, TargetWidth: Integer);
+    procedure DrawRowMatches(const Painter: IPainter; const Row: TVisualRow; const TextLeft, Top: Integer);
     procedure DrawRowTokens(const Painter: IPainter; const Row: TVisualRow; const LineText: string;
       const Tokens: TArray<TMarkdownSourceToken>; const TextLeft, Top: Integer);
     procedure DrawGutterNumber(const Painter: IPainter; const LineIndex, GutterWidth, Top: Integer);
     procedure DrawFoldMarker(const Painter: IPainter; const GutterWidth, Top: Integer; const Collapsed: Boolean);
     function HandleFoldClick(const X, Y: Integer): Boolean;
+    function BeginSelectionDrag(const X, Y, Offset: Integer): Boolean;
+    procedure UpdateSelectionDrag(const X, Y: Integer);
+    function FinishSelectionDrag(const X, Y: Integer): Boolean;
+    procedure ShowContextMenu(const X, Y: Integer);
+    procedure HandleContextItemClick(Sender: TObject);
+    function ClipboardHasText: Boolean;
     function TokenColor(const Kind: TMarkdownSourceTokenKind): TLayoutColor;
     function GutterWidthPx(const Painter: IPainter; const PixelsPerInch: Integer): Integer;
     function FoldGutterWidthPx(const PixelsPerInch: Integer): Integer;
@@ -168,6 +190,7 @@ type
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
     function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean; override;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
+    function ApplyKeyStroke(const Stroke: TEditorKeyStroke): Boolean;
     procedure KeyPress(var Key: Char); override;
 
   public
@@ -191,6 +214,12 @@ type
     procedure ScrollToSourceLine(const LineIndex: Integer);
     function SaveEditState: IMarkdownEditorState;
     procedure LoadEditState(const State: IMarkdownEditorState);
+    // Paints every occurrence of Needle, so a find bar can show all hits at
+    // once. The marks follow later edits until they are cleared.
+    procedure HighlightMatches(const Needle: string); overload;
+    procedure HighlightMatches(const Needle: string; const Options: TMarkdownFindOptions); overload;
+    procedure ClearHighlights;
+    function HighlightCount: Integer;
     function FindMatchCount(const Needle: string): Integer; overload;
     function FindMatchCount(const Needle: string; const Options: TMarkdownFindOptions): Integer; overload;
     function FindNext(const Needle: string): Boolean; overload;
@@ -207,6 +236,8 @@ type
     property ThemePreset: TMarkdownThemePreset read FThemePreset write SetThemePreset
       default TMarkdownThemePreset.Light;
     property ShowLineNumbers: Boolean read FShowLineNumbers write SetShowLineNumbers default False;
+    // Spaces inserted by Tab and removed by Shift+Tab.
+    property IndentWidth: Integer read FIndentWidth write FIndentWidth default DefaultIndentWidth;
     // Link an editor to a viewer at design time to get a live preview and, when
     // SyncScroll is on, two-way scroll synchronisation between the panes.
     property Preview: TMarkdownViewer read FPreview write SetPreview;
@@ -254,8 +285,10 @@ begin
   FModel := TMarkdownEditorModel.Create;
   FModel.OnChange := HandleModelChange;
   FHighlighter := TMarkdownSourceHighlighter.Create;
+  FMatches := TMarkdownEditorHighlights.Create;
   FSync := TMarkdownEditorSync.Create;
   FSyncScroll := True;
+  FIndentWidth := DefaultIndentWidth;
 
   FMeasureBitmap := TBitmap.Create;
   FMeasureBitmap.SetSize(1, 1);
@@ -287,6 +320,7 @@ begin
     FAutoScrollTimer.Enabled := False;
 
   FHighlighter.Free;
+  FMatches.Free;
   FModel.Free;
   FSync.Free;
   FMeasurePainter := nil;
@@ -532,6 +566,28 @@ begin
   SchedulePreviewUpdate;
 end;
 
+procedure TMarkdownEditor.HighlightMatches(const Needle: string);
+begin
+  HighlightMatches(Needle, Default(TMarkdownFindOptions));
+end;
+
+procedure TMarkdownEditor.HighlightMatches(const Needle: string; const Options: TMarkdownFindOptions);
+begin
+  FMatches.SetNeedle(FModel, Needle, Options);
+  Invalidate;
+end;
+
+procedure TMarkdownEditor.ClearHighlights;
+begin
+  FMatches.Clear;
+  Invalidate;
+end;
+
+function TMarkdownEditor.HighlightCount: Integer;
+begin
+  Result := FMatches.Count;
+end;
+
 function TMarkdownEditor.FindMatchCount(const Needle: string): Integer;
 begin
   Result := FModel.FindText(Needle);
@@ -610,6 +666,8 @@ end;
 
 procedure TMarkdownEditor.HandleModelChange(const Sender: TObject; const Range: TEditorReplaceRange);
 begin
+  FMatches.Refresh(FModel);
+
   RebuildRows;
   UpdateScrollBar;
   ScrollCaretIntoView;
@@ -704,6 +762,7 @@ begin
       const IsVisible = (Top + LineHeight) > 0;
       if IsVisible then
       begin
+        DrawRowMatches(PainterLifetime, Row, TextLeft, Top);
         DrawRowSelection(PainterLifetime, Row, TextLeft, Top, TargetWidth);
         if FShowLineNumbers and Row.IsFirst then
           DrawGutterNumber(PainterLifetime, LineIndex, GutterWidth, Top);
@@ -746,6 +805,25 @@ begin
     RightX := TextLeft + Round(FMeasurePainter.MeasureText(Copy(RowStr, 1, SegEnd), CodeFont).Width);
 
   Painter.FillRect(TLayoutRectF.Create(LeftX, Top, Max(LeftX, RightX), Top + LineHeightPx), SelectionFillColor);
+end;
+
+procedure TMarkdownEditor.DrawRowMatches(const Painter: IPainter; const Row: TVisualRow;
+  const TextLeft, Top: Integer);
+begin
+  if not FMatches.IsActive then
+    Exit;
+
+  const RowStr = RowText(Row);
+
+  for var Span in FMatches.SpansWithin(Row.StartOffset, Row.EndOffset) do
+  begin
+    const LeftX = TextLeft + Round(FMeasurePainter.MeasureText(
+      Copy(RowStr, 1, Span.StartOffset - Row.StartOffset), CodeFont).Width);
+    const RightX = TextLeft + Round(FMeasurePainter.MeasureText(
+      Copy(RowStr, 1, Span.EndOffset - Row.StartOffset), CodeFont).Width);
+
+    Painter.FillRect(TLayoutRectF.Create(LeftX, Top, Max(LeftX, RightX), Top + LineHeightPx), MatchFillColor);
+  end;
 end;
 
 procedure TMarkdownEditor.DrawRowTokens(const Painter: IPainter; const Row: TVisualRow; const LineText: string;
@@ -980,6 +1058,116 @@ begin
     Painter.FillPolygon([TLayoutPointF.Create(CenterX - Half, CenterY - Half * 0.7),
       TLayoutPointF.Create(CenterX + Half, CenterY - Half * 0.7),
       TLayoutPointF.Create(CenterX, CenterY + Half * 0.9)], Color);
+end;
+
+function TMarkdownEditor.BeginSelectionDrag(const X, Y, Offset: Integer): Boolean;
+begin
+  // A press inside the selection may become a drag, so the selection is left
+  // untouched until the mouse either moves far enough or is released in place.
+  Result := FModel.OffsetInSelection(Offset);
+  if not Result then
+    Exit;
+
+  FDragPending := True;
+  FDraggingSelection := False;
+  FDragOrigin := TPoint.Create(X, Y);
+  FDragOffset := Offset;
+end;
+
+procedure TMarkdownEditor.UpdateSelectionDrag(const X, Y: Integer);
+begin
+  if FDragPending then
+  begin
+    const MovedFar = (Abs(X - FDragOrigin.X) > DragThresholdPx) or (Abs(Y - FDragOrigin.Y) > DragThresholdPx);
+    if not MovedFar then
+      Exit;
+
+    FDragPending := False;
+    FDraggingSelection := True;
+    Cursor := crDrag;
+  end;
+
+  UpdateAutoScroll(X, Y);
+end;
+
+function TMarkdownEditor.FinishSelectionDrag(const X, Y: Integer): Boolean;
+begin
+  Result := FDragPending or FDraggingSelection;
+  if not Result then
+    Exit;
+
+  const WasDragging = FDraggingSelection;
+
+  FDragPending := False;
+  FDraggingSelection := False;
+  Cursor := crIBeam;
+
+  if WasDragging then
+    FModel.MoveSelectionTo(OffsetFromPoint(X, Y))
+  else
+    FModel.CaretPosition := FDragOffset;
+
+  RefreshAfterEdit;
+  Invalidate;
+end;
+
+procedure TMarkdownEditor.ShowContextMenu(const X, Y: Integer);
+begin
+  // A menu assigned by the host wins; the built-in one is the fallback.
+  if PopupMenu <> nil then
+    Exit;
+
+  if FContextMenu = nil then
+    FContextMenu := TPopupMenu.Create(Self);
+
+  FContextMenu.Items.Clear;
+
+  for var Item in TMarkdownEditorContextMenu.Build(FModel, ClipboardHasText) do
+  begin
+    if Item.StartsGroup and (FContextMenu.Items.Count > 0) then
+    begin
+      var Separator := TMenuItem.Create(FContextMenu);
+      Separator.Caption := MenuSeparatorCaption;
+      FContextMenu.Items.Add(Separator);
+    end;
+
+    var Entry := TMenuItem.Create(FContextMenu);
+    Entry.Caption := Item.Caption;
+    Entry.Enabled := Item.Enabled;
+    Entry.Tag := Ord(Item.Command);
+    Entry.OnClick := HandleContextItemClick;
+    FContextMenu.Items.Add(Entry);
+  end;
+
+  const Origin = ClientToScreen(TPoint.Create(X, Y));
+  FContextMenu.Popup(Origin.X, Origin.Y);
+end;
+
+procedure TMarkdownEditor.HandleContextItemClick(Sender: TObject);
+begin
+  const Command = TEditorContextCommand((Sender as TMenuItem).Tag);
+
+  if TMarkdownEditorContextMenu.Execute(FModel, Command) then
+  begin
+    RefreshAfterEdit;
+    Exit;
+  end;
+
+  case Command of
+    TEditorContextCommand.Cut:
+      CutToClipboard;
+    TEditorContextCommand.Copy:
+      CopyToClipboard;
+    TEditorContextCommand.Paste:
+      PasteFromClipboard;
+  end;
+
+  RefreshAfterEdit;
+end;
+
+function TMarkdownEditor.ClipboardHasText: Boolean;
+begin
+  Result := Clipboard.HasFormat(CF_UNICODETEXT);
 end;
 
 function TMarkdownEditor.HandleFoldClick(const X, Y: Integer): Boolean;
@@ -1338,6 +1526,23 @@ procedure TMarkdownEditor.MouseDown(Button: TMouseButton; Shift: TShiftState; X,
 begin
   inherited MouseDown(Button, Shift, X, Y);
 
+  if Button = TMouseButton.mbRight then
+  begin
+    if CanFocus then
+      SetFocus;
+
+    const RightOffset = OffsetFromPoint(X, Y);
+    if not FModel.OffsetInSelection(RightOffset) then
+    begin
+      FModel.CaretPosition := RightOffset;
+      UpdateCaret;
+      Invalidate;
+    end;
+
+    ShowContextMenu(X, Y);
+    Exit;
+  end;
+
   if Button <> TMouseButton.mbLeft then
     Exit;
 
@@ -1349,6 +1554,9 @@ begin
     Exit;
 
   const Offset = OffsetFromPoint(X, Y);
+
+  if BeginSelectionDrag(X, Y, Offset) then
+    Exit;
 
   if ssShift in Shift then
   begin
@@ -1393,6 +1601,12 @@ procedure TMarkdownEditor.MouseMove(Shift: TShiftState; X, Y: Integer);
 begin
   inherited MouseMove(Shift, X, Y);
 
+  if FDragPending or FDraggingSelection then
+  begin
+    UpdateSelectionDrag(X, Y);
+    Exit;
+  end;
+
   if not FSelecting then
     Exit;
 
@@ -1405,6 +1619,9 @@ begin
   inherited MouseUp(Button, Shift, X, Y);
 
   if Button <> TMouseButton.mbLeft then
+    Exit;
+
+  if FinishSelectionDrag(X, Y) then
     Exit;
 
   FSelecting := False;
@@ -1481,116 +1698,63 @@ procedure TMarkdownEditor.KeyDown(var Key: Word; Shift: TShiftState);
 begin
   inherited KeyDown(Key, Shift);
 
-  const Extend = ssShift in Shift;
-  const Caret = FModel.CaretPosition;
-
-  if ssCtrl in Shift then
-  begin
-    case Key of
-      Ord('A'):
-        FModel.SelectAll;
-      Ord('C'):
-        CopyToClipboard;
-      Ord('X'):
-        CutToClipboard;
-      Ord('V'):
-        PasteFromClipboard;
-      Ord('Z'):
-        FModel.Undo;
-      Ord('Y'):
-        FModel.Redo;
-      Ord('B'):
-        FModel.ExecuteCommand(TEditorCommand.Bold);
-      Ord('I'):
-        FModel.ExecuteCommand(TEditorCommand.Italic);
-      Ord('K'):
-        FModel.ExecuteCommand(TEditorCommand.Link);
-      VK_LEFT:
-        begin
-          FModel.BreakUndoCoalescing;
-          FModel.MoveWordLeft(Extend);
-        end;
-      VK_RIGHT:
-        begin
-          FModel.BreakUndoCoalescing;
-          FModel.MoveWordRight(Extend);
-        end;
-      VK_HOME:
-        begin
-          FModel.BreakUndoCoalescing;
-          SetCaretTo(0, Extend);
-        end;
-      VK_END:
-        begin
-          FModel.BreakUndoCoalescing;
-          SetCaretTo(Length(FModel.Text), Extend);
-        end;
-      VK_BACK:
-        FModel.DeleteWordLeft;
-      VK_DELETE:
-        FModel.DeleteWordRight;
-    else
-      Exit;
-    end;
-
-    Key := 0;
-    RefreshAfterEdit;
+  if not ApplyKeyStroke(TMarkdownEditorKeymap.Resolve(Key, Shift)) then
     Exit;
-  end;
 
-  case Key of
-    VK_LEFT:
-      begin
-        FModel.BreakUndoCoalescing;
-        FModel.MoveCaret(-1, Extend);
-      end;
-    VK_RIGHT:
-      begin
-        FModel.BreakUndoCoalescing;
-        FModel.MoveCaret(1, Extend);
-      end;
-    VK_UP:
+  Key := 0;
+  RefreshAfterEdit;
+end;
+
+function TMarkdownEditor.ApplyKeyStroke(const Stroke: TEditorKeyStroke): Boolean;
+begin
+  if TMarkdownEditorKeyDispatch.Apply(FModel, Stroke, FIndentWidth) then
+    Exit(True);
+
+  // What is left needs the wrapped layout on screen or the host clipboard.
+  const Extend = Stroke.Extend;
+  const Caret = FModel.CaretPosition;
+  Result := True;
+
+  case Stroke.Action of
+    TEditorKeyAction.MoveUp:
       begin
         FModel.BreakUndoCoalescing;
         MoveVertical(-1, Extend);
       end;
-    VK_DOWN:
+    TEditorKeyAction.MoveDown:
       begin
         FModel.BreakUndoCoalescing;
         MoveVertical(1, Extend);
       end;
-    VK_HOME:
-      begin
-        FModel.BreakUndoCoalescing;
-        SetCaretTo(FRows[RowIndexOfOffset(Caret)].StartOffset, Extend);
-      end;
-    VK_END:
-      begin
-        FModel.BreakUndoCoalescing;
-        SetCaretTo(FRows[RowIndexOfOffset(Caret)].EndOffset, Extend);
-      end;
-    VK_PRIOR:
+    TEditorKeyAction.MovePageUp:
       begin
         FModel.BreakUndoCoalescing;
         MoveVertical(-VisibleLineCount, Extend);
       end;
-    VK_NEXT:
+    TEditorKeyAction.MovePageDown:
       begin
         FModel.BreakUndoCoalescing;
         MoveVertical(VisibleLineCount, Extend);
       end;
-    VK_BACK:
-      FModel.DeleteBackward;
-    VK_DELETE:
-      FModel.DeleteForward;
-    VK_RETURN:
-      FModel.Insert(LineFeed);
+    TEditorKeyAction.MoveLineStart:
+      begin
+        FModel.BreakUndoCoalescing;
+        SetCaretTo(FRows[RowIndexOfOffset(Caret)].StartOffset, Extend);
+      end;
+    TEditorKeyAction.MoveLineEnd:
+      begin
+        FModel.BreakUndoCoalescing;
+        SetCaretTo(FRows[RowIndexOfOffset(Caret)].EndOffset, Extend);
+      end;
+    TEditorKeyAction.Copy:
+      CopyToClipboard;
+    TEditorKeyAction.Cut:
+      CutToClipboard;
+    TEditorKeyAction.Paste:
+      PasteFromClipboard;
   else
-    Exit;
+    Result := False;
   end;
-
-  Key := 0;
-  RefreshAfterEdit;
 end;
 
 procedure TMarkdownEditor.KeyPress(var Key: Char);
@@ -1639,7 +1803,8 @@ end;
 
 procedure TMarkdownEditor.WMGetDlgCode(var Message: TWMGetDlgCode);
 begin
-  Message.Result := DLGC_WANTARROWS or DLGC_WANTCHARS;
+  // Tab indents here instead of moving focus, the way any code editor behaves.
+  Message.Result := DLGC_WANTARROWS or DLGC_WANTCHARS or DLGC_WANTTAB;
 end;
 
 procedure TMarkdownEditor.WMSetFocus(var Message: TWMSetFocus);

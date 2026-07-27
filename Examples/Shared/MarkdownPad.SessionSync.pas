@@ -104,8 +104,12 @@ begin
     const Document = Workspace.Documents[Index];
 
     var Caption := Document.DisplayName;
+
     if Document.DiskConflict then
       Caption := Caption + ConflictMarker;
+
+    if Document.DiskMissing then
+      Caption := Caption + MissingMarker;
 
     Captions := Captions + [Caption];
     Modified := Modified + [Document.Modified];

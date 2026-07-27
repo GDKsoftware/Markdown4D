@@ -22,6 +22,7 @@ type
     FFirstVisibleSourceLine: Integer;
     FFlushCount: Integer;
     FSwapDepth: Integer;
+    FHighlightedNeedle: string;
     function GetEditorText: string;
     procedure SetEditorText(const Value: string);
     function MergeEditorText(const Value: string): Boolean;
@@ -36,6 +37,9 @@ type
     procedure FlushPreview;
     procedure EditorFindNext(const Needle: string);
     function EditorFindMatchCount(const Needle: string): Integer;
+    procedure EditorHighlightMatches(const Needle: string);
+    function EditorReplaceCurrent(const Needle, Replacement: string): Boolean;
+    function EditorReplaceAll(const Needle, Replacement: string): Integer;
     procedure PreviewFindText(const Needle: string);
     procedure BeginSwap;
     procedure EndSwap;
@@ -44,6 +48,7 @@ type
     constructor Create;
     destructor Destroy; override;
     property FlushCount: Integer read FFlushCount;
+    property HighlightedNeedle: string read FHighlightedNeedle;
     property VisibleLine: Integer read FFirstVisibleSourceLine write FFirstVisibleSourceLine;
   end;
 
@@ -55,6 +60,9 @@ type
     FRebuildTabsCount: Integer;
     FConflictChoice: TPadConflictChoice;
     FConflictPromptCount: Integer;
+    FSaveErrorCount: Integer;
+    FFindNeedle: string;
+    FReplaceValue: string;
     FCloseChoice: TPadCloseChoice;
     procedure RebuildTabs;
     procedure SetDocumentTitle(const Name: string);
@@ -63,6 +71,7 @@ type
     procedure SetTocCaptions(const Captions: TArray<string>);
     procedure SetActiveTocIndex(const Index: Integer);
     function EditorFindNeedle: string;
+    function EditorReplaceValue: string;
     function PreviewFindNeedle: string;
     procedure SetFindCount(const Value: string);
     function SampleMarkdown: string;
@@ -75,6 +84,7 @@ type
     function ConfirmCloseDocument(const DocName: string): TPadCloseChoice;
     function ConfirmSaveOverChangedFile(const DocName: string): TPadConflictChoice;
     procedure ShowOpenError(const FileName, ErrorMessage: string);
+    procedure ShowSaveError(const FileName, ErrorMessage: string);
     procedure CopyHtmlToClipboard(const Fragment: string);
     procedure CloseApplication;
 
@@ -82,9 +92,12 @@ type
     constructor Create;
     property Title: string read FTitle;
     property RebuildTabsCount: Integer read FRebuildTabsCount;
+    property SaveErrorCount: Integer read FSaveErrorCount;
     property ConflictChoice: TPadConflictChoice read FConflictChoice write FConflictChoice;
     property ConflictPromptCount: Integer read FConflictPromptCount;
     property CloseChoice: TPadCloseChoice read FCloseChoice write FCloseChoice;
+    property FindNeedle: string read FFindNeedle write FFindNeedle;
+    property ReplaceValue: string read FReplaceValue write FReplaceValue;
   end;
 
   [TestFixture]
@@ -137,12 +150,37 @@ type
 
     [Test]
     procedure Reopen_SessionPositionFromEarlierRun_IsApplied;
+
+    [Test]
+    procedure Find_HighlightsEveryMatch;
+
+    [Test]
+    procedure Replace_ReplacesTheSelectedMatch;
+
+    [Test]
+    procedure ReplaceAll_ReplacesEveryMatch;
+
+    [Test]
+    procedure Save_CrlfDocument_KeepsCrlfOnDisk;
+
+    [Test]
+    procedure Save_Utf8WithoutBom_StaysWithoutBom;
+
+    [Test]
+    procedure Save_ReadOnlyFile_ReportsErrorAndKeepsDocumentModified;
+
+    [Test]
+    procedure DeletedFile_MarksDocumentAndKeepsBuffer;
+
+    [Test]
+    procedure DeletedFile_SaveRecreatesFileAndClearsFlag;
   end;
 
 implementation
 
 uses
   System.SysUtils,
+  System.Classes,
   System.IOUtils,
   System.DateUtils;
 
@@ -230,6 +268,21 @@ begin
   Result := FModel.FindText(Needle);
 end;
 
+procedure TFakeEditorView.EditorHighlightMatches(const Needle: string);
+begin
+  FHighlightedNeedle := Needle;
+end;
+
+function TFakeEditorView.EditorReplaceCurrent(const Needle, Replacement: string): Boolean;
+begin
+  Result := FModel.ReplaceCurrent(Needle, Replacement, Default(TMarkdownFindOptions));
+end;
+
+function TFakeEditorView.EditorReplaceAll(const Needle, Replacement: string): Integer;
+begin
+  Result := FModel.ReplaceAll(Needle, Replacement, Default(TMarkdownFindOptions));
+end;
+
 procedure TFakeEditorView.PreviewFindText(const Needle: string);
 begin
   // The preview is not part of these tests.
@@ -285,7 +338,12 @@ end;
 
 function TFakeShell.EditorFindNeedle: string;
 begin
-  Result := '';
+  Result := FFindNeedle;
+end;
+
+function TFakeShell.EditorReplaceValue: string;
+begin
+  Result := FReplaceValue;
 end;
 
 function TFakeShell.PreviewFindNeedle: string;
@@ -350,6 +408,11 @@ end;
 procedure TFakeShell.ShowOpenError(const FileName, ErrorMessage: string);
 begin
   // Open errors are not part of these tests.
+end;
+
+procedure TFakeShell.ShowSaveError(const FileName, ErrorMessage: string);
+begin
+  Inc(FSaveErrorCount);
 end;
 
 procedure TFakeShell.CopyHtmlToClipboard(const Fragment: string);
@@ -534,6 +597,116 @@ begin
 
   Assert.AreEqual(12, FView.EditorCaret);
   Assert.AreEqual(2, FEditorView.VisibleLine);
+end;
+
+procedure TPadControllerTests.Find_HighlightsEveryMatch;
+begin
+  OpenSampleFile;
+  FShell.FindNeedle := 'line';
+
+  FController.UpdateFindCount;
+
+  Assert.AreEqual('line', FEditorView.HighlightedNeedle);
+end;
+
+procedure TPadControllerTests.Replace_ReplacesTheSelectedMatch;
+begin
+  OpenSampleFile;
+  FShell.FindNeedle := 'second';
+  FShell.ReplaceValue := 'SECOND';
+
+  FController.FindInEditor;
+  FController.ReplaceInEditor;
+
+  Assert.AreEqual('first line'#10'SECOND line'#10'third line', FView.EditorText);
+end;
+
+procedure TPadControllerTests.ReplaceAll_ReplacesEveryMatch;
+begin
+  OpenSampleFile;
+  FShell.FindNeedle := 'line';
+  FShell.ReplaceValue := 'row';
+
+  FController.ReplaceAllInEditor;
+
+  Assert.AreEqual('first row'#10'second row'#10'third row', FView.EditorText);
+end;
+
+procedure TPadControllerTests.Save_CrlfDocument_KeepsCrlfOnDisk;
+begin
+  TFile.WriteAllBytes(FFileName, TEncoding.UTF8.GetBytes('first line'#13#10'second line'));
+
+  OpenSampleFile;
+  FView.EditorText := 'first line'#10'second line'#10'third line';
+  FController.NotifyEditorChanged;
+
+  Assert.IsTrue(FController.SaveActiveDocument);
+
+  const OnDisk = TEncoding.UTF8.GetString(TFile.ReadAllBytes(FFileName));
+  Assert.AreEqual('first line'#13#10'second line'#13#10'third line', OnDisk);
+end;
+
+procedure TPadControllerTests.Save_Utf8WithoutBom_StaysWithoutBom;
+begin
+  TFile.WriteAllBytes(FFileName, TEncoding.UTF8.GetBytes('caf'#$00E9));
+
+  OpenSampleFile;
+  Assert.AreEqual('caf'#$00E9, FView.EditorText);
+
+  FView.EditorText := 'caf'#$00E9' au lait';
+  FController.NotifyEditorChanged;
+  Assert.IsTrue(FController.SaveActiveDocument);
+
+  const Bytes = TFile.ReadAllBytes(FFileName);
+  Assert.AreNotEqual($EF, Integer(Bytes[0]));
+  Assert.AreEqual('caf'#$00E9' au lait', TEncoding.UTF8.GetString(Bytes));
+end;
+
+procedure TPadControllerTests.Save_ReadOnlyFile_ReportsErrorAndKeepsDocumentModified;
+begin
+  OpenSampleFile;
+  FView.EditorText := 'edited';
+  FController.NotifyEditorChanged;
+
+  // An exclusive lock stands in for the everyday cases: a sync client holding
+  // the file, an antivirus scan, or a read-only copy.
+  const Lock = TFileStream.Create(FFileName, fmOpenRead or fmShareExclusive);
+  try
+    Assert.IsFalse(FController.SaveActiveDocument);
+  finally
+    Lock.Free;
+  end;
+
+  Assert.AreEqual(1, FShell.SaveErrorCount);
+  Assert.IsTrue(FController.ActiveDocument.Modified);
+  Assert.AreEqual(OriginalText, TFile.ReadAllText(FFileName));
+end;
+
+procedure TPadControllerTests.DeletedFile_MarksDocumentAndKeepsBuffer;
+begin
+  OpenSampleFile;
+
+  TFile.Delete(FFileName);
+  FController.Tick;
+
+  Assert.IsTrue(FController.ActiveDocument.DiskMissing);
+  Assert.IsTrue(FController.ActiveDocument.Modified);
+  Assert.AreEqual(OriginalText, FView.EditorText);
+  Assert.IsTrue(FShell.Title.Contains('deleted'));
+end;
+
+procedure TPadControllerTests.DeletedFile_SaveRecreatesFileAndClearsFlag;
+begin
+  OpenSampleFile;
+
+  TFile.Delete(FFileName);
+  FController.Tick;
+
+  Assert.IsTrue(FController.SaveActiveDocument);
+
+  Assert.IsTrue(TFile.Exists(FFileName));
+  Assert.IsFalse(FController.ActiveDocument.DiskMissing);
+  Assert.IsFalse(FController.ActiveDocument.Modified);
 end;
 
 end.

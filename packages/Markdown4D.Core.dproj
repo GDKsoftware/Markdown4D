@@ -111,6 +111,7 @@
         <DCCReference Include="..\Source\Core\Markdown4D.Pipeline.Configuration.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Pipeline.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Renderer.Html.pas"/>
+        <DCCReference Include="..\Source\Core\Markdown4D.Text.FileFormat.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Text.Unescape.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Toc.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Writer.Emphasis.pas"/>
@@ -120,6 +121,10 @@
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Folding.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Highlighter.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Model.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Keys.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Actions.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Editor.ContextMenu.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Highlights.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Sync.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Extensions.Chart.BlockOverride.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Extensions.Chart.Layout.pas"/>
