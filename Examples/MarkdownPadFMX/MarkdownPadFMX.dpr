@@ -21,6 +21,7 @@ uses
   MarkdownPad.Outline in '..\Shared\MarkdownPad.Outline.pas',
   MarkdownPadFMX.Defines in 'MarkdownPadFMX.Defines.pas',
   MarkdownPad.Shell in '..\Shared\MarkdownPad.Shell.pas',
+  MarkdownPad.CommandLine in '..\Shared\MarkdownPad.CommandLine.pas',
   MarkdownPad.Controller in '..\Shared\MarkdownPad.Controller.pas';
 
 {$R *.res}

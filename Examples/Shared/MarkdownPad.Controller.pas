@@ -99,6 +99,7 @@ uses
   System.IOUtils,
   Markdown4D,
   Markdown4D.Defines,
+  MarkdownPad.CommandLine,
   MarkdownPad.Defines,
   MarkdownPad.Text,
   MarkdownPad.Outline,
@@ -287,7 +288,13 @@ end;
 
 procedure TPadController.RestoreSession;
 begin
-  if not TPadSessionSync.RestoreOpenFiles(FWorkspace, FSession) then
+  // A file passed on the command line (Explorer opening a .md with the pad) is
+  // added on top of the restored session and becomes the active tab. It also
+  // replaces the sample document: starting from Explorer should show the file,
+  // not the welcome text.
+  const StartupFile = TPadCommandLine.DocumentPath;
+
+  if not TPadSessionSync.RestoreOpenFiles(FWorkspace, FSession) and (StartupFile = '') then
   begin
     const Document = FWorkspace.NewDocument;
     Document.Text := FShell.SampleMarkdown;
@@ -300,6 +307,9 @@ begin
   SwitchToDocument(FWorkspace.ActiveIndex);
 
   FShell.ApplyRestoredViewMode(FSession.ViewMode);
+
+  if StartupFile <> '' then
+    OpenPath(StartupFile);
 end;
 
 procedure TPadController.SaveSession;

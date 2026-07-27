@@ -116,6 +116,7 @@
         <DCCReference Include="..\Shared\MarkdownPad.Outline.pas"/>
         <DCCReference Include="MarkdownPadVCL.Defines.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.Shell.pas"/>
+        <DCCReference Include="..\Shared\MarkdownPad.CommandLine.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.Controller.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
