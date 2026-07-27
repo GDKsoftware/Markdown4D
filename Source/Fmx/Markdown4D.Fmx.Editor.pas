@@ -17,6 +17,7 @@ uses
   Markdown4D.Theme,
   Markdown4D.Editor.Model,
   Markdown4D.Editor.Keys,
+  Markdown4D.Editor.Actions,
   Markdown4D.Editor.ContextMenu,
   Markdown4D.Editor.Highlights,
   Markdown4D.Editor.Highlighter,
@@ -210,6 +211,10 @@ type
     procedure ExecuteCommand(const Command: TEditorCommand);
     // Inserts Value at the caret, replacing the selection when there is one.
     procedure InsertText(const Value: string);
+    procedure SelectAll;
+    procedure Indent;
+    procedure Outdent;
+    procedure DeleteWordLeft;
     // Takes over Value as the new content through the smallest possible edit, so
     // undo history, caret and selection survive. Returns False when the text was
     // already identical.
@@ -392,6 +397,30 @@ end;
 procedure TMarkdownEditor.InsertText(const Value: string);
 begin
   FModel.Insert(Value);
+  RefreshAfterEdit;
+end;
+
+procedure TMarkdownEditor.SelectAll;
+begin
+  FModel.SelectAll;
+  RefreshAfterEdit;
+end;
+
+procedure TMarkdownEditor.Indent;
+begin
+  TMarkdownEditorActions.Indent(FModel, FIndentWidth);
+  RefreshAfterEdit;
+end;
+
+procedure TMarkdownEditor.Outdent;
+begin
+  TMarkdownEditorActions.Outdent(FModel, FIndentWidth);
+  RefreshAfterEdit;
+end;
+
+procedure TMarkdownEditor.DeleteWordLeft;
+begin
+  FModel.DeleteWordLeft;
   RefreshAfterEdit;
 end;
 

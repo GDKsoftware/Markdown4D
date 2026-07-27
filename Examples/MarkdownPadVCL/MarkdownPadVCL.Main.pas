@@ -72,6 +72,8 @@ type
       FCodeButton: TSpeedButton;
       FThemeButton: TSpeedButton;
       FTocButton: TSpeedButton;
+      FZenButton: TSpeedButton;
+      FCommandsButton: TSpeedButton;
       FFindButton: TSpeedButton;
       FFindEdit: TEdit;
       FIconButtons: TArray<TSpeedButton>;
@@ -159,6 +161,8 @@ type
     procedure CopyHtmlToClipboard(const Fragment: string);
     procedure HandleThemeClick(Sender: TObject);
     procedure HandleTocClick(Sender: TObject);
+    procedure HandleZenClick(Sender: TObject);
+    procedure HandleCommandsClick(Sender: TObject);
     procedure HandleFindClick(Sender: TObject);
     procedure HandleFindEditKeyPress(Sender: TObject; var Key: Char);
     procedure BuildTitleBar;
@@ -215,6 +219,7 @@ type
     procedure EnforceTopBarOrder;
     procedure EnforceLeftPaneOrder;
     procedure ShowFindBar;
+    procedure ShowReplaceBar;
     procedure CloseFindBar;
     procedure FindInEditor;
     procedure UpdateFindCount;
@@ -399,6 +404,8 @@ begin
 
   FThemeButton := AddIconButton(GlyphTheme, HintTheme, HandleThemeClick);
   FTocButton := AddIconButton(GlyphToc, HintToc, HandleTocClick);
+  FZenButton := AddIconButton(GlyphZen, HintZen, HandleZenClick);
+  FCommandsButton := AddIconButton(GlyphCommands, HintCommands, HandleCommandsClick);
 
   FFindEdit := TEdit.Create(Self);
   FFindEdit.Parent := pnlToolbar;
@@ -670,6 +677,11 @@ begin
         ShowFindBar;
         Key := 0;
       end;
+    Ord('H'):
+      begin
+        ShowReplaceBar;
+        Key := 0;
+      end;
     Ord('K'):
       begin
         ShowPalette;
@@ -878,6 +890,16 @@ procedure TMarkdownPadVCLForm.HandleThemeClick(Sender: TObject);
 begin
   FDarkThemeActive := not FDarkThemeActive;
   ApplyTheme;
+end;
+
+procedure TMarkdownPadVCLForm.HandleZenClick(Sender: TObject);
+begin
+  ToggleZen;
+end;
+
+procedure TMarkdownPadVCLForm.HandleCommandsClick(Sender: TObject);
+begin
+  ShowPalette;
 end;
 
 procedure TMarkdownPadVCLForm.HandleTocClick(Sender: TObject);
@@ -1609,7 +1631,14 @@ begin
   Result.ToggleTheme := procedure begin HandleThemeClick(nil); end;
   Result.ToggleToc := procedure begin HandleTocClick(nil); end;
   Result.ShowFind := procedure begin ShowFindBar; end;
+  Result.ShowReplace := procedure begin ShowReplaceBar; end;
   Result.FindInPreview := procedure begin ExecuteFind; end;
+  Result.Undo := procedure begin mdEditor.Undo; mdEditor.SetFocus; end;
+  Result.Redo := procedure begin mdEditor.Redo; mdEditor.SetFocus; end;
+  Result.SelectAll := procedure begin mdEditor.SelectAll; mdEditor.SetFocus; end;
+  Result.Indent := procedure begin mdEditor.Indent; mdEditor.SetFocus; end;
+  Result.Outdent := procedure begin mdEditor.Outdent; mdEditor.SetFocus; end;
+  Result.DeleteWordLeft := procedure begin mdEditor.DeleteWordLeft; mdEditor.SetFocus; end;
   Result.ExecuteFormat :=
     procedure(const Command: TEditorCommand)
     begin
@@ -1725,6 +1754,14 @@ begin
   edtEditorFind.SelectAll;
 
   UpdateFindCount;
+end;
+
+procedure TMarkdownPadVCLForm.ShowReplaceBar;
+begin
+  ShowFindBar;
+
+  FReplaceEdit.SetFocus;
+  FReplaceEdit.SelectAll;
 end;
 
 procedure TMarkdownPadVCLForm.CloseFindBar;

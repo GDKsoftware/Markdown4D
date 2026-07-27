@@ -26,6 +26,8 @@ const
   GlyphTheme = Char($E793);
   GlyphToc = Char($E8FD);
   GlyphFind = Char($E721);
+  GlyphZen = Char($E740);
+  GlyphCommands = Char($E712);
 
   // Toolbar hints
   HintNew = 'New (Ctrl+N)';
@@ -42,6 +44,8 @@ const
   HintTheme = 'Toggle theme';
   HintToc = 'Toggle contents';
   HintFind = 'Find in preview';
+  HintZen = 'Zen mode (F11)';
+  HintCommands = 'All commands (Ctrl+K)';
 
   // Layout metrics identical to both frameworks
   InitialClientHeight = 760;
@@ -121,8 +125,22 @@ const
   CmdZenShortcut = 'F11';
   CmdFindName = 'Find in editor';
   CmdFindShortcut = 'Ctrl+F';
+  CmdReplaceName = 'Find and replace';
+  CmdReplaceShortcut = 'Ctrl+H';
   CmdFindPreviewName = 'Find in preview';
   CmdFindPreviewShortcut = '';
+  CmdUndoName = 'Undo';
+  CmdUndoShortcut = 'Ctrl+Z';
+  CmdRedoName = 'Redo';
+  CmdRedoShortcut = 'Ctrl+Y';
+  CmdSelectAllName = 'Select all';
+  CmdSelectAllShortcut = 'Ctrl+A';
+  CmdIndentName = 'Indent lines';
+  CmdIndentShortcut = 'Tab';
+  CmdOutdentName = 'Outdent lines';
+  CmdOutdentShortcut = 'Shift+Tab';
+  CmdDeleteWordName = 'Delete word left';
+  CmdDeleteWordShortcut = 'Ctrl+Backspace';
   CmdBoldName = 'Bold';
   CmdBoldShortcut = 'Ctrl+B';
   CmdItalicName = 'Italic';

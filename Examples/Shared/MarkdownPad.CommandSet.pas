@@ -34,7 +34,14 @@ type
     ToggleTheme: TPadCommandAction;
     ToggleToc: TPadCommandAction;
     ShowFind: TPadCommandAction;
+    ShowReplace: TPadCommandAction;
     FindInPreview: TPadCommandAction;
+    Undo: TPadCommandAction;
+    Redo: TPadCommandAction;
+    SelectAll: TPadCommandAction;
+    Indent: TPadCommandAction;
+    Outdent: TPadCommandAction;
+    DeleteWordLeft: TPadCommandAction;
     ExecuteFormat: TPadFormatAction;
   end;
 
@@ -84,7 +91,14 @@ begin
   Registry.Register(CmdTocName, CatView, CmdTocShortcut, Actions.ToggleToc);
 
   Registry.Register(CmdFindName, CatEdit, CmdFindShortcut, Actions.ShowFind);
+  Registry.Register(CmdReplaceName, CatEdit, CmdReplaceShortcut, Actions.ShowReplace);
   Registry.Register(CmdFindPreviewName, CatEdit, CmdFindPreviewShortcut, Actions.FindInPreview);
+  Registry.Register(CmdUndoName, CatEdit, CmdUndoShortcut, Actions.Undo);
+  Registry.Register(CmdRedoName, CatEdit, CmdRedoShortcut, Actions.Redo);
+  Registry.Register(CmdSelectAllName, CatEdit, CmdSelectAllShortcut, Actions.SelectAll);
+  Registry.Register(CmdIndentName, CatEdit, CmdIndentShortcut, Actions.Indent);
+  Registry.Register(CmdOutdentName, CatEdit, CmdOutdentShortcut, Actions.Outdent);
+  Registry.Register(CmdDeleteWordName, CatEdit, CmdDeleteWordShortcut, Actions.DeleteWordLeft);
 
   RegisterFormat(CmdBoldName, CmdBoldShortcut, TEditorCommand.Bold);
   RegisterFormat(CmdItalicName, CmdItalicShortcut, TEditorCommand.Italic);

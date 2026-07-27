@@ -74,6 +74,8 @@ type
       FCodeButton: TRectangle;
       FThemeButton: TRectangle;
       FTocButton: TRectangle;
+      FZenButton: TRectangle;
+      FCommandsButton: TRectangle;
       FFindButton: TRectangle;
       FIconFontName: string;
       FIconButtons: TArray<TRectangle>;
@@ -188,6 +190,7 @@ type
     procedure SetViewMode(const Mode: TPadViewMode);
     procedure ApplyViewMode;
     procedure ShowFindBar;
+    procedure ShowReplaceBar;
     procedure CloseFindBar;
     procedure FindInEditor;
     procedure UpdateFindCount;
@@ -225,6 +228,8 @@ type
     procedure HandleCodeClick(Sender: TObject);
     procedure HandleThemeClick(Sender: TObject);
     procedure HandleTocClick(Sender: TObject);
+    procedure HandleZenClick(Sender: TObject);
+    procedure HandleCommandsClick(Sender: TObject);
     procedure HandleFindClick(Sender: TObject);
     procedure HandleFindEditKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar; Shift: TShiftState);
     procedure HandleEditorChange(Sender: TObject);
@@ -379,6 +384,8 @@ begin
   FToolbar.Stroke.Kind := TBrushKind.None;
   FToolbar.Fill.Kind := TBrushKind.Solid;
 
+  FCommandsButton := AddIconButton(GlyphCommands, HintCommands, HandleCommandsClick);
+  FZenButton := AddIconButton(GlyphZen, HintZen, HandleZenClick);
   FTocButton := AddIconButton(GlyphToc, HintToc, HandleTocClick);
   FThemeButton := AddIconButton(GlyphTheme, HintTheme, HandleThemeClick);
 
@@ -914,7 +921,14 @@ begin
   Result.ToggleTheme := procedure begin HandleThemeClick(nil); end;
   Result.ToggleToc := procedure begin HandleTocClick(nil); end;
   Result.ShowFind := procedure begin ShowFindBar; end;
+  Result.ShowReplace := procedure begin ShowReplaceBar; end;
   Result.FindInPreview := procedure begin ExecuteFind; end;
+  Result.Undo := procedure begin FEditor.Undo; FEditor.SetFocus; end;
+  Result.Redo := procedure begin FEditor.Redo; FEditor.SetFocus; end;
+  Result.SelectAll := procedure begin FEditor.SelectAll; FEditor.SetFocus; end;
+  Result.Indent := procedure begin FEditor.Indent; FEditor.SetFocus; end;
+  Result.Outdent := procedure begin FEditor.Outdent; FEditor.SetFocus; end;
+  Result.DeleteWordLeft := procedure begin FEditor.DeleteWordLeft; FEditor.SetFocus; end;
   Result.ExecuteFormat :=
     procedure(const Command: TEditorCommand)
     begin
@@ -1034,6 +1048,8 @@ begin
         SetViewMode(TPadViewMode.PreviewOnly);
       vkF:
         ShowFindBar;
+      vkH:
+        ShowReplaceBar;
       vkK:
         ShowPalette;
       vkN:
@@ -1160,6 +1176,14 @@ begin
   FEditorFindEdit.SelectAll;
 
   UpdateFindCount;
+end;
+
+procedure TMarkdownPadFMXForm.ShowReplaceBar;
+begin
+  ShowFindBar;
+
+  FEditorReplaceEdit.SetFocus;
+  FEditorReplaceEdit.SelectAll;
 end;
 
 procedure TMarkdownPadFMXForm.CloseFindBar;
@@ -1520,6 +1544,16 @@ procedure TMarkdownPadFMXForm.HandleThemeClick(Sender: TObject);
 begin
   FDarkThemeActive := not FDarkThemeActive;
   ApplyTheme;
+end;
+
+procedure TMarkdownPadFMXForm.HandleZenClick(Sender: TObject);
+begin
+  ToggleZen;
+end;
+
+procedure TMarkdownPadFMXForm.HandleCommandsClick(Sender: TObject);
+begin
+  ShowPalette;
 end;
 
 procedure TMarkdownPadFMXForm.HandleTocClick(Sender: TObject);
