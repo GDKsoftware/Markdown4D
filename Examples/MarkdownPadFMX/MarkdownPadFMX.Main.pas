@@ -140,7 +140,7 @@ type
     function PromptExportHtml(const SuggestedName: string; out FileName: string): Boolean;
     function ConfirmClose: TPadCloseChoice;
     function ConfirmCloseDocument(const DocName: string): TPadCloseChoice;
-    function ConfirmReload: Boolean;
+    function ConfirmSaveOverChangedFile(const DocName: string): TPadConflictChoice;
     procedure ShowOpenError(const FileName, ErrorMessage: string);
     procedure CopyHtmlToClipboard(const Fragment: string);
     procedure CloseApplication;
@@ -227,6 +227,7 @@ type
     procedure HandleTick(Sender: TObject);
     function GetEditorText: string;
     procedure SetEditorText(const Value: string);
+    function MergeEditorText(const Value: string): Boolean;
     function GetEditorCaret: Integer;
     procedure SetEditorCaret(const Value: Integer);
     function GetPreviewScrollOffset: Single;
@@ -1570,6 +1571,11 @@ begin
   FEditor.Text := Value;
 end;
 
+function TMarkdownPadFMXForm.MergeEditorText(const Value: string): Boolean;
+begin
+  Result := FEditor.MergeText(Value);
+end;
+
 function TMarkdownPadFMXForm.GetEditorCaret: Integer;
 begin
   Result := FEditor.CaretPosition;
@@ -1748,10 +1754,18 @@ begin
     Result := TPadCloseChoice.Discard;
 end;
 
-function TMarkdownPadFMXForm.ConfirmReload: Boolean;
+function TMarkdownPadFMXForm.ConfirmSaveOverChangedFile(const DocName: string): TPadConflictChoice;
 begin
-  Result := TDialogServiceSync.MessageDialog(ReloadPrompt, TMsgDlgType.mtConfirmation,
-    [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo], TMsgDlgBtn.mbNo, 0) = mrYes;
+  const Answer = TDialogServiceSync.MessageDialog(Format(ConflictPromptFormat, [DocName]),
+    TMsgDlgType.mtWarning, [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo, TMsgDlgBtn.mbCancel],
+    TMsgDlgBtn.mbCancel, 0);
+
+  if Answer = mrYes then
+    Result := TPadConflictChoice.Overwrite
+  else if Answer = mrNo then
+    Result := TPadConflictChoice.Reload
+  else
+    Result := TPadConflictChoice.Cancel;
 end;
 
 procedure TMarkdownPadFMXForm.ApplyTheme;

@@ -7,15 +7,29 @@ interface
 type
   TPadViewMode = (EditorOnly, Split, PreviewOnly);
 
+  // Where the user left off in a file: caret offset, the source line that was at
+  // the top of the editor, and the preview's scroll offset. Kept per path so
+  // reopening a file lands on the same spot, even across app restarts.
+  TPadFilePosition = record
+    FileName: string;
+    Caret: Integer;
+    EditorLine: Integer;
+    PreviewOffset: Single;
+    class function Create(const FileName: string; const Caret, EditorLine: Integer;
+      const PreviewOffset: Single): TPadFilePosition; static;
+  end;
+
   TPadSession = class
   strict private
     const
       MaxRecentFiles = 10;
+      MaxFilePositions = 50;
     var
       FFilePath: string;
       FOpenFiles: TArray<string>;
       FActiveIndex: Integer;
       FRecentFiles: TArray<string>;
+      FFilePositions: TArray<TPadFilePosition>;
       FDarkTheme: Boolean;
       FViewMode: TPadViewMode;
     class function ViewModeToText(const Mode: TPadViewMode): string; static;
@@ -29,7 +43,10 @@ type
     procedure Save;
     procedure AddRecentFile(const FileName: string);
     procedure SetOpenFiles(const Files: TArray<string>; const ActiveIndex: Integer);
+    procedure StoreFilePosition(const Position: TPadFilePosition);
+    function TryFilePosition(const FileName: string; out Position: TPadFilePosition): Boolean;
     property FilePath: string read FFilePath;
+    property FilePositions: TArray<TPadFilePosition> read FFilePositions;
     property OpenFiles: TArray<string> read FOpenFiles;
     property ActiveIndex: Integer read FActiveIndex write FActiveIndex;
     property RecentFiles: TArray<string> read FRecentFiles;
@@ -50,11 +67,25 @@ const
   OpenFilesKey = 'openFiles';
   ActiveIndexKey = 'activeIndex';
   RecentFilesKey = 'recentFiles';
+  FilePositionsKey = 'filePositions';
+  PositionPathKey = 'path';
+  PositionCaretKey = 'caret';
+  PositionLineKey = 'line';
+  PositionPreviewKey = 'preview';
   DarkThemeKey = 'darkTheme';
   ViewModeKey = 'viewMode';
   ViewModeEditorText = 'editor';
   ViewModeSplitText = 'split';
   ViewModePreviewText = 'preview';
+
+class function TPadFilePosition.Create(const FileName: string; const Caret, EditorLine: Integer;
+  const PreviewOffset: Single): TPadFilePosition;
+begin
+  Result.FileName := FileName;
+  Result.Caret := Caret;
+  Result.EditorLine := EditorLine;
+  Result.PreviewOffset := PreviewOffset;
+end;
 
 class function TPadSession.DefaultDirectory: string;
 begin
@@ -74,6 +105,7 @@ begin
   FOpenFiles := [];
   FActiveIndex := -1;
   FRecentFiles := [];
+  FFilePositions := [];
   FDarkTheme := False;
   FViewMode := TPadViewMode.Split;
 end;
@@ -117,6 +149,40 @@ begin
       end;
     end;
 
+    var PositionArray: TJSONArray := nil;
+    if Obj.TryGetValue<TJSONArray>(FilePositionsKey, PositionArray) then
+    begin
+      FFilePositions := [];
+
+      for var Element in PositionArray do
+      begin
+        if Length(FFilePositions) >= MaxFilePositions then
+          Break;
+
+        if not (Element is TJSONObject) then
+          Continue;
+
+        const Entry = TJSONObject(Element);
+
+        var Path: string;
+        if not Entry.TryGetValue<string>(PositionPathKey, Path) or (Path = '') then
+          Continue;
+
+        var Caret := 0;
+        Entry.TryGetValue<Integer>(PositionCaretKey, Caret);
+
+        var Line := 0;
+        Entry.TryGetValue<Integer>(PositionLineKey, Line);
+
+        var Preview := Single(0);
+        var PreviewNumber: TJSONNumber := nil;
+        if Entry.TryGetValue<TJSONNumber>(PositionPreviewKey, PreviewNumber) then
+          Preview := PreviewNumber.AsDouble;
+
+        FFilePositions := FFilePositions + [TPadFilePosition.Create(Path, Caret, Line, Preview)];
+      end;
+    end;
+
     var IndexValue: Integer;
     if Obj.TryGetValue<Integer>(ActiveIndexKey, IndexValue) then
       FActiveIndex := IndexValue;
@@ -157,6 +223,21 @@ begin
     end;
     Root.AddPair(RecentFilesKey, RecentArray);
 
+    var PositionArray: TJSONArray := TJSONArray.Create;
+    for var Position in FFilePositions do
+    begin
+      if PositionArray.Count >= MaxFilePositions then
+        Break;
+
+      var Entry: TJSONObject := TJSONObject.Create;
+      Entry.AddPair(PositionPathKey, Position.FileName);
+      Entry.AddPair(PositionCaretKey, TJSONNumber.Create(Position.Caret));
+      Entry.AddPair(PositionLineKey, TJSONNumber.Create(Position.EditorLine));
+      Entry.AddPair(PositionPreviewKey, TJSONNumber.Create(Position.PreviewOffset));
+      PositionArray.Add(Entry);
+    end;
+    Root.AddPair(FilePositionsKey, PositionArray);
+
     Root.AddPair(DarkThemeKey, TJSONBool.Create(FDarkTheme));
 
     Root.AddPair(ViewModeKey, ViewModeToText(FViewMode));
@@ -184,6 +265,40 @@ begin
   end;
 
   FRecentFiles := Updated;
+end;
+
+procedure TPadSession.StoreFilePosition(const Position: TPadFilePosition);
+begin
+  if Position.FileName = '' then
+    Exit;
+
+  var Updated: TArray<TPadFilePosition> := [Position];
+
+  for var Existing in FFilePositions do
+  begin
+    if Length(Updated) >= MaxFilePositions then
+      Break;
+
+    if not SameText(Existing.FileName, Position.FileName) then
+      Updated := Updated + [Existing];
+  end;
+
+  FFilePositions := Updated;
+end;
+
+function TPadSession.TryFilePosition(const FileName: string; out Position: TPadFilePosition): Boolean;
+begin
+  for var Existing in FFilePositions do
+  begin
+    if SameText(Existing.FileName, FileName) then
+    begin
+      Position := Existing;
+      Exit(True);
+    end;
+  end;
+
+  Position := Default(TPadFilePosition);
+  Result := False;
 end;
 
 procedure TPadSession.SetOpenFiles(const Files: TArray<string>; const ActiveIndex: Integer);

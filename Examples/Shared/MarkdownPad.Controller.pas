@@ -37,6 +37,12 @@ type
     procedure UpdateTitle;
     procedure UpdateStatusBar;
     procedure DoFileChanged(const Document: IPadDocument);
+    procedure MarkDiskConflict(const Document: IPadDocument);
+    procedure ApplyDiskText(const Document: IPadDocument; const NewText: string);
+    procedure ReloadActiveFromDisk;
+    function ResolveDiskConflict(const FileName: string): Boolean;
+    procedure RememberPosition(const Document: IPadDocument);
+    procedure ApplyRememberedPosition(const Document: IPadDocument);
   public
     constructor Create(const Editor: IPadEditorView; const Shell: IPadShell;
       const SessionFileName: string);
@@ -49,7 +55,7 @@ type
     procedure Save;
     procedure SaveAs;
     function SaveActiveDocument: Boolean;
-    procedure SaveToFile(const FileName: string);
+    function SaveToFile(const FileName: string): Boolean;
     procedure SwitchToDocument(const Index: Integer);
     procedure CloseActiveDocument;
     procedure CloseDocumentAt(const Index: Integer);
@@ -148,6 +154,8 @@ begin
   if not TFile.Exists(FileName) then
     Exit;
 
+  const WasOpen = FWorkspace.IndexOfFile(FileName) >= 0;
+
   var Document: IPadDocument;
   try
     Document := FWorkspace.OpenFile(FileName);
@@ -158,6 +166,11 @@ begin
       Exit;
     end;
   end;
+
+  // A tab that was already open keeps its live position; a freshly loaded file
+  // returns to where the user left it in an earlier session.
+  if not WasOpen then
+    ApplyRememberedPosition(Document);
 
   FWatcher.Reset(Document);
   FSession.AddRecentFile(FileName);
@@ -204,16 +217,18 @@ begin
     if not FShell.PromptSaveFile('', FileName) then
       Exit(False);
 
-    SaveToFile(FileName);
-  end
-  else
-    SaveToFile(FActiveDoc.FileName);
+    Exit(SaveToFile(FileName));
+  end;
 
-  Result := True;
+  Result := SaveToFile(FActiveDoc.FileName);
 end;
 
-procedure TPadController.SaveToFile(const FileName: string);
+function TPadController.SaveToFile(const FileName: string): Boolean;
 begin
+  Result := ResolveDiskConflict(FileName);
+  if not Result then
+    Exit;
+
   FActiveDoc.Text := FEditor.EditorText;
 
   TFile.WriteAllText(FileName, FActiveDoc.Text);
@@ -272,6 +287,8 @@ begin
       Exit;
   end;
 
+  RememberPosition(FActiveDoc);
+
   const ClosingIndex = FWorkspace.ActiveIndex;
   FActiveDoc := nil;
   FWorkspace.CloseDocument(ClosingIndex);
@@ -301,7 +318,12 @@ begin
   end;
 
   for var Index := 0 to FWorkspace.Count - 1 do
-    FWatcher.Reset(FWorkspace.Documents[Index]);
+  begin
+    const Document = FWorkspace.Documents[Index];
+
+    FWatcher.Reset(Document);
+    ApplyRememberedPosition(Document);
+  end;
 
   FShell.RebuildTabs;
   SwitchToDocument(FWorkspace.ActiveIndex);
@@ -316,6 +338,9 @@ procedure TPadController.SaveSession;
 begin
   if FActiveDoc <> nil then
     FActiveDoc.Text := FEditor.EditorText;
+
+  for var Index := 0 to FWorkspace.Count - 1 do
+    RememberPosition(FWorkspace.Documents[Index]);
 
   var FilteredActive: Integer;
   const Titled = TPadSessionSync.CollectOpenFiles(FWorkspace, FilteredActive);
@@ -378,8 +403,12 @@ begin
   if FActiveDoc <> nil then
   begin
     Name := FActiveDoc.DisplayName;
+
     if FActiveDoc.Modified then
       Name := Name + ModifiedMarker;
+
+    if FActiveDoc.DiskConflict then
+      Name := Name + ConflictMarker;
   end;
 
   FShell.SetDocumentTitle(Name);
@@ -553,12 +582,6 @@ end;
 
 procedure TPadController.DoFileChanged(const Document: IPadDocument);
 begin
-  if Document.Modified then
-  begin
-    if not FShell.ConfirmReload then
-      Exit;
-  end;
-
   var NewText: string;
   try
     NewText := TFile.ReadAllText(Document.FileName);
@@ -567,27 +590,122 @@ begin
     Exit;
   end;
 
-  Document.Text := NewText;
-  Document.Modified := False;
+  // Unsaved edits are never thrown away behind the user's back: the document is
+  // flagged instead, and saving asks what should win.
+  if Document.Modified then
+  begin
+    MarkDiskConflict(Document);
+    Exit;
+  end;
+
+  ApplyDiskText(Document, NewText);
+end;
+
+procedure TPadController.RememberPosition(const Document: IPadDocument);
+begin
+  if (Document = nil) or Document.IsUntitled then
+    Exit;
 
   if Document = FActiveDoc then
-  begin
-    FSwapping := True;
-    try
-      FEditor.EditorText := NewText;
-      FEditor.FlushPreview;
+    TPadDocumentSwitch.Capture(FEditor, Document);
 
-      if FEditor.EditorCaret > System.Length(NewText) then
-        FEditor.EditorCaret := System.Length(NewText);
-    finally
-      FSwapping := False;
-    end;
+  FSession.StoreFilePosition(TPadFilePosition.Create(Document.FileName, Document.CaretPosition,
+    Round(Document.EditorScrollOffset), Document.PreviewScrollOffset));
+end;
 
-    FMapDirty := True;
-  end;
+procedure TPadController.ApplyRememberedPosition(const Document: IPadDocument);
+begin
+  if (Document = nil) or Document.IsUntitled then
+    Exit;
+
+  var Position: TPadFilePosition;
+  if not FSession.TryFilePosition(Document.FileName, Position) then
+    Exit;
+
+  Document.CaretPosition := Position.Caret;
+  Document.EditorScrollOffset := Position.EditorLine;
+  Document.PreviewScrollOffset := Position.PreviewOffset;
+end;
+
+procedure TPadController.MarkDiskConflict(const Document: IPadDocument);
+begin
+  if Document.DiskConflict then
+    Exit;
+
+  Document.DiskConflict := True;
 
   FShell.RebuildTabs;
   UpdateTitle;
+end;
+
+procedure TPadController.ApplyDiskText(const Document: IPadDocument; const NewText: string);
+begin
+  Document.DiskConflict := False;
+
+  if Document <> FActiveDoc then
+  begin
+    Document.Text := NewText;
+    Document.Modified := False;
+    // The cached edit state still holds the pre-change buffer, so it has to go
+    // or switching back to this tab would resurrect the stale text.
+    Document.EditState := nil;
+
+    FShell.RebuildTabs;
+    Exit;
+  end;
+
+  const FirstLine = FEditor.FirstVisibleSourceLine;
+
+  FSwapping := True;
+  try
+    if FEditor.MergeEditorText(NewText) then
+    begin
+      FEditor.FlushPreview;
+      FEditor.ScrollToSourceLine(FirstLine);
+    end;
+  finally
+    FSwapping := False;
+  end;
+
+  Document.Text := FEditor.EditorText;
+  Document.Modified := False;
+  FMapDirty := True;
+
+  FShell.RebuildTabs;
+  UpdateTitle;
+end;
+
+procedure TPadController.ReloadActiveFromDisk;
+begin
+  if (FActiveDoc = nil) or FActiveDoc.IsUntitled then
+    Exit;
+
+  var NewText: string;
+  try
+    NewText := TFile.ReadAllText(FActiveDoc.FileName);
+  except
+    Exit;
+  end;
+
+  ApplyDiskText(FActiveDoc, NewText);
+  FWatcher.Reset(FActiveDoc);
+end;
+
+function TPadController.ResolveDiskConflict(const FileName: string): Boolean;
+begin
+  const OverwritesChangedFile = (FActiveDoc <> nil) and FActiveDoc.DiskConflict and
+    SameText(FileName, FActiveDoc.FileName);
+  if not OverwritesChangedFile then
+    Exit(True);
+
+  const Choice = FShell.ConfirmSaveOverChangedFile(FActiveDoc.DisplayName);
+
+  if Choice = TPadConflictChoice.Reload then
+    ReloadActiveFromDisk;
+
+  Result := Choice = TPadConflictChoice.Overwrite;
+  if Result then
+    FActiveDoc.DiskConflict := False;
 end;
 
 end.

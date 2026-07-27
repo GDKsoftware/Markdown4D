@@ -57,6 +57,7 @@ type
     FEditorScrollOffset: Single;
     FPreviewScrollOffset: Single;
     FDiskTimestampUtc: TDateTime;
+    FDiskConflict: Boolean;
     FEditState: IInterface;
     FUntitledNumber: Integer;
     function GetFileName: string;
@@ -73,6 +74,8 @@ type
     procedure SetPreviewScrollOffset(const Value: Single);
     function GetDiskTimestampUtc: TDateTime;
     procedure SetDiskTimestampUtc(const Value: TDateTime);
+    function GetDiskConflict: Boolean;
+    procedure SetDiskConflict(const Value: Boolean);
     function GetEditState: IInterface;
     procedure SetEditState(const Value: IInterface);
     function GetUntitledNumber: Integer;
@@ -313,6 +316,16 @@ end;
 procedure TPadDocument.SetDiskTimestampUtc(const Value: TDateTime);
 begin
   FDiskTimestampUtc := Value;
+end;
+
+function TPadDocument.GetDiskConflict: Boolean;
+begin
+  Result := FDiskConflict;
+end;
+
+procedure TPadDocument.SetDiskConflict(const Value: Boolean);
+begin
+  FDiskConflict := Value;
 end;
 
 function TPadDocument.GetEditState: IInterface;

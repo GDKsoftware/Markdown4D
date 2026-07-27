@@ -71,6 +71,27 @@ type
 
     [Test]
     procedure ResolvePath_UsesMarkdown4DAppDataSubfolder;
+
+    [Test]
+    procedure StoreFilePosition_RoundTripsThroughSaveAndLoad;
+
+    [Test]
+    procedure StoreFilePosition_SamePath_ReplacesEntry;
+
+    [Test]
+    procedure StoreFilePosition_CaseInsensitiveLookup;
+
+    [Test]
+    procedure StoreFilePosition_EmptyPathIgnored;
+
+    [Test]
+    procedure StoreFilePosition_CapsAtFifty;
+
+    [Test]
+    procedure TryFilePosition_UnknownPath_ReturnsFalse;
+
+    [Test]
+    procedure Load_MissingFilePositions_YieldsEmptyList;
   end;
 
 implementation
@@ -283,6 +304,84 @@ begin
 
   const AppData = GetEnvironmentVariable('APPDATA');
   Assert.IsTrue(Resolved.Contains(AppData));
+end;
+
+procedure TPadSessionTests.StoreFilePosition_RoundTripsThroughSaveAndLoad;
+begin
+  FSession.StoreFilePosition(TPadFilePosition.Create('C:\notes\a.md', 42, 7, 120.5));
+  FSession.Save;
+
+  const Loaded = TPadSession.Create(FPath);
+  try
+    Loaded.Load;
+
+    var Position: TPadFilePosition;
+    Assert.IsTrue(Loaded.TryFilePosition('C:\notes\a.md', Position));
+    Assert.AreEqual(42, Position.Caret);
+    Assert.AreEqual(7, Position.EditorLine);
+    Assert.AreEqual(120.5, Double(Position.PreviewOffset), 0.01);
+  finally
+    Loaded.Free;
+  end;
+end;
+
+procedure TPadSessionTests.StoreFilePosition_SamePath_ReplacesEntry;
+begin
+  FSession.StoreFilePosition(TPadFilePosition.Create('a.md', 1, 1, 1));
+  FSession.StoreFilePosition(TPadFilePosition.Create('a.md', 99, 12, 0));
+
+  Assert.AreEqual(1, Integer(Length(FSession.FilePositions)));
+
+  var Position: TPadFilePosition;
+  Assert.IsTrue(FSession.TryFilePosition('a.md', Position));
+  Assert.AreEqual(99, Position.Caret);
+  Assert.AreEqual(12, Position.EditorLine);
+end;
+
+procedure TPadSessionTests.StoreFilePosition_CaseInsensitiveLookup;
+begin
+  FSession.StoreFilePosition(TPadFilePosition.Create('C:\Notes\A.md', 5, 2, 0));
+
+  var Position: TPadFilePosition;
+  Assert.IsTrue(FSession.TryFilePosition('c:\notes\a.md', Position));
+  Assert.AreEqual(5, Position.Caret);
+end;
+
+procedure TPadSessionTests.StoreFilePosition_EmptyPathIgnored;
+begin
+  FSession.StoreFilePosition(TPadFilePosition.Create('', 5, 2, 0));
+
+  Assert.AreEqual(0, Integer(Length(FSession.FilePositions)));
+end;
+
+procedure TPadSessionTests.StoreFilePosition_CapsAtFifty;
+begin
+  for var Index := 1 to 60 do
+    FSession.StoreFilePosition(TPadFilePosition.Create(Format('file%d.md', [Index]), Index, 0, 0));
+
+  Assert.AreEqual(50, Integer(Length(FSession.FilePositions)));
+  Assert.AreEqual('file60.md', FSession.FilePositions[0].FileName);
+
+  var Position: TPadFilePosition;
+  Assert.IsFalse(FSession.TryFilePosition('file1.md', Position));
+end;
+
+procedure TPadSessionTests.TryFilePosition_UnknownPath_ReturnsFalse;
+begin
+  FSession.StoreFilePosition(TPadFilePosition.Create('a.md', 5, 2, 0));
+
+  var Position: TPadFilePosition;
+  Assert.IsFalse(FSession.TryFilePosition('b.md', Position));
+  Assert.AreEqual(0, Position.Caret);
+end;
+
+procedure TPadSessionTests.Load_MissingFilePositions_YieldsEmptyList;
+begin
+  TFile.WriteAllText(FPath, '{"darkTheme":true}');
+
+  FSession.Load;
+
+  Assert.AreEqual(0, Integer(Length(FSession.FilePositions)));
 end;
 
 end.

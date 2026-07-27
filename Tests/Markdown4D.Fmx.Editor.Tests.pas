@@ -34,10 +34,14 @@ type
     const
       HeadingMarkdown = '# Heading';
       MouseText = 'Hello world'#10'second';
+      WordPairText = 'foo bar';
+      DeleteKeyChar = #127;
       FarRight = 100000;
       FarDown = 100000;
       ShortHeight = 100;
       ManyLineCount = 40;
+      PreviewWidth = 400;
+      PreviewScrollTarget = 40;
     var
       FEditor: TMarkdownEditor;
       FSavedClipboard: IInterface;
@@ -128,6 +132,18 @@ type
 
     [Test]
     procedure CtrlWordArrows_MoveByWord;
+
+    [Test]
+    procedure EditWithUnlinkedPreview_KeepsPreviewScrollOffset;
+
+    [Test]
+    procedure MergeText_KeepsCaretAndUndoHistory;
+
+    [Test]
+    procedure CtrlBackspace_DeletesWordBeforeCaret;
+
+    [Test]
+    procedure CtrlDelete_DeletesWordAfterCaret;
 
     [Test]
     procedure CtrlHomeAndEnd_MoveToDocumentBounds;
@@ -600,7 +616,7 @@ procedure TMarkdownFmxEditorTests.CtrlWordArrows_MoveByWord;
 begin
   const Editor = TTestableFmxEditor.Create(nil);
   try
-    Editor.Text := 'foo bar';
+    Editor.Text := WordPairText;
     Editor.CaretPosition := 0;
     Editor.SimulateKeyDown(vkRight, #0, [ssCtrl]);
     Assert.IsTrue(Editor.CaretPosition >= 3,
@@ -609,6 +625,79 @@ begin
     Editor.SimulateKeyDown(vkLeft, #0, [ssCtrl]);
     Assert.IsTrue(Editor.CaretPosition < AfterRight,
       Format('Expected caret to move left of %d but got %d', [AfterRight, Editor.CaretPosition]));
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.EditWithUnlinkedPreview_KeepsPreviewScrollOffset;
+begin
+  const Editor = TTestableFmxEditor.Create(nil);
+  try
+    const Viewer = TMarkdownViewer.Create(nil);
+    try
+      Viewer.SetBounds(0, 0, PreviewWidth, ShortHeight);
+
+      Editor.SyncScroll := False;
+      Editor.Text := ManyLines(ManyLineCount);
+      Editor.AttachPreview(Viewer);
+      Editor.FlushPreview;
+
+      Viewer.ScrollOffset := PreviewScrollTarget;
+      const Before = Viewer.ScrollOffset;
+      Assert.IsTrue(Before > 0, 'Preview should be scrollable for this test');
+
+      Editor.CaretPosition := 0;
+      Editor.SimulateKeyDown(vkA, 'X', []);
+      Editor.FlushPreview;
+
+      Assert.AreEqual(Double(Before), Double(Viewer.ScrollOffset), 0.5);
+    finally
+      Editor.DetachPreview;
+      Viewer.Free;
+    end;
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.MergeText_KeepsCaretAndUndoHistory;
+begin
+  const Editor = TTestableFmxEditor.Create(nil);
+  try
+    Editor.Text := 'first line'#10'second line';
+    Editor.CaretPosition := 3;
+
+    Assert.IsTrue(Editor.MergeText('first line'#10'second line'#10'third line'));
+    Assert.AreEqual(3, Editor.CaretPosition);
+    Assert.IsTrue(Editor.CanUndo);
+    Assert.IsFalse(Editor.MergeText('first line'#10'second line'#10'third line'));
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.CtrlBackspace_DeletesWordBeforeCaret;
+begin
+  const Editor = TTestableFmxEditor.Create(nil);
+  try
+    Editor.Text := WordPairText;
+    Editor.CaretPosition := Length(WordPairText);
+    Editor.SimulateKeyDown(vkBack, DeleteKeyChar, [ssCtrl]);
+    Assert.AreEqual('foo ', Editor.Text);
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.CtrlDelete_DeletesWordAfterCaret;
+begin
+  const Editor = TTestableFmxEditor.Create(nil);
+  try
+    Editor.Text := WordPairText;
+    Editor.CaretPosition := 0;
+    Editor.SimulateKeyDown(vkDelete, #0, [ssCtrl]);
+    Assert.AreEqual('bar', Editor.Text);
   finally
     Editor.Free;
   end;

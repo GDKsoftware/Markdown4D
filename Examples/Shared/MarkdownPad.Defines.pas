@@ -66,6 +66,12 @@ const
   MarkdownFilter = 'Markdown files (*.md)|*.md|All files (*.*)|*.*';
   DefaultExtension = 'md';
   ModifiedMarker = ' *';
+  ConflictMarker = ' (!)';
+  ConflictPromptFormat =
+    '"%s" changed on disk after you opened it.'#10#10 +
+    'Yes: overwrite the file with your version.'#10 +
+    'No: discard your edits and load the version from disk.'#10 +
+    'Cancel: keep editing and decide later.';
   StatusPositionFormat = 'Ln %d, Col %d';
   StatusWordsFormat = '%d words';
   TitleFormat = '%s - %s';

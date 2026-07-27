@@ -125,7 +125,7 @@ type
     function PromptExportHtml(const SuggestedName: string; out FileName: string): Boolean;
     function ConfirmClose: TPadCloseChoice;
     function ConfirmCloseDocument(const DocName: string): TPadCloseChoice;
-    function ConfirmReload: Boolean;
+    function ConfirmSaveOverChangedFile(const DocName: string): TPadConflictChoice;
     procedure ShowOpenError(const FileName, ErrorMessage: string);
     procedure CloseApplication;
     procedure ConfigureControls;
@@ -174,6 +174,7 @@ type
     procedure OpenPath(const FileName: string);
     function GetEditorText: string;
     procedure SetEditorText(const Value: string);
+    function MergeEditorText(const Value: string): Boolean;
     function GetEditorCaret: Integer;
     procedure SetEditorCaret(const Value: Integer);
     function GetPreviewScrollOffset: Single;
@@ -1108,6 +1109,11 @@ begin
   mdEditor.Text := Value;
 end;
 
+function TMarkdownPadVCLForm.MergeEditorText(const Value: string): Boolean;
+begin
+  Result := mdEditor.MergeText(Value);
+end;
+
 function TMarkdownPadVCLForm.GetEditorCaret: Integer;
 begin
   Result := mdEditor.CaretPosition;
@@ -1459,9 +1465,17 @@ begin
     Result := TPadCloseChoice.Discard;
 end;
 
-function TMarkdownPadVCLForm.ConfirmReload: Boolean;
+function TMarkdownPadVCLForm.ConfirmSaveOverChangedFile(const DocName: string): TPadConflictChoice;
 begin
-  Result := MessageDlg(ReloadPrompt, mtConfirmation, [mbYes, mbNo], 0) = mrYes;
+  const Answer = MessageDlg(Format(ConflictPromptFormat, [DocName]), mtWarning,
+    [mbYes, mbNo, mbCancel], 0);
+
+  if Answer = mrYes then
+    Result := TPadConflictChoice.Overwrite
+  else if Answer = mrNo then
+    Result := TPadConflictChoice.Reload
+  else
+    Result := TPadConflictChoice.Cancel;
 end;
 
 procedure TMarkdownPadVCLForm.BuildPalette;

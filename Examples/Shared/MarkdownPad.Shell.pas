@@ -1,5 +1,7 @@
 unit MarkdownPad.Shell;
 
+{$SCOPEDENUMS ON}
+
 // Seam between the framework-agnostic TPadController and the concrete VCL/FMX
 // form. The form implements IPadShell; the controller drives the chrome, tab
 // strip, dialogs and per-app text through it without knowing the framework.
@@ -12,6 +14,10 @@ uses
 type
   // Outcome of the "save before closing?" prompt.
   TPadCloseChoice = (Save, Discard, Cancel);
+
+  // Outcome of the prompt shown when saving would overwrite a file that changed
+  // on disk after this buffer was loaded.
+  TPadConflictChoice = (Overwrite, Reload, Cancel);
 
   IPadShell = interface
     ['{2B7E4C10-9D3A-4F62-8E1C-1A6F0B5D7C34}']
@@ -42,7 +48,7 @@ type
     function PromptExportHtml(const SuggestedName: string; out FileName: string): Boolean;
     function ConfirmClose: TPadCloseChoice;
     function ConfirmCloseDocument(const DocName: string): TPadCloseChoice;
-    function ConfirmReload: Boolean;
+    function ConfirmSaveOverChangedFile(const DocName: string): TPadConflictChoice;
     procedure ShowOpenError(const FileName, ErrorMessage: string);
     // Clipboard mechanism differs per framework (Win32 CF_HTML vs IFMXClipboardService).
     procedure CopyHtmlToClipboard(const Fragment: string);

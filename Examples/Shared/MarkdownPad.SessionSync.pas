@@ -37,7 +37,8 @@ implementation
 
 uses
   System.SysUtils,
-  System.IOUtils;
+  System.IOUtils,
+  MarkdownPad.Defines;
 
 class function TPadSessionSync.RestoreOpenFiles(const Workspace: IPadWorkspace;
   const Session: TPadSession): Boolean;
@@ -101,7 +102,12 @@ begin
   for var Index := 0 to Workspace.Count - 1 do
   begin
     const Document = Workspace.Documents[Index];
-    Captions := Captions + [Document.DisplayName];
+
+    var Caption := Document.DisplayName;
+    if Document.DiskConflict then
+      Caption := Caption + ConflictMarker;
+
+    Captions := Captions + [Caption];
     Modified := Modified + [Document.Modified];
   end;
 end;

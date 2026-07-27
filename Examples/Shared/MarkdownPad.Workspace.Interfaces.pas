@@ -21,6 +21,8 @@ type
     procedure SetPreviewScrollOffset(const Value: Single);
     function GetDiskTimestampUtc: TDateTime;
     procedure SetDiskTimestampUtc(const Value: TDateTime);
+    function GetDiskConflict: Boolean;
+    procedure SetDiskConflict(const Value: Boolean);
     function GetEditState: IInterface;
     procedure SetEditState(const Value: IInterface);
     function GetUntitledNumber: Integer;
@@ -34,6 +36,9 @@ type
     property EditorScrollOffset: Single read GetEditorScrollOffset write SetEditorScrollOffset;
     property PreviewScrollOffset: Single read GetPreviewScrollOffset write SetPreviewScrollOffset;
     property DiskTimestampUtc: TDateTime read GetDiskTimestampUtc write SetDiskTimestampUtc;
+    // Set when the file changed on disk while this buffer held unsaved edits.
+    // Saving then asks the user before it overwrites the newer disk content.
+    property DiskConflict: Boolean read GetDiskConflict write SetDiskConflict;
     property EditState: IInterface read GetEditState write SetEditState;
     property UntitledNumber: Integer read GetUntitledNumber write SetUntitledNumber;
   end;

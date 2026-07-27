@@ -61,6 +61,13 @@ uses
   MarkdownPad.TabStrip in '..\Examples\Shared\MarkdownPad.TabStrip.pas',
   MarkdownPad.FileWatcher in '..\Examples\Shared\MarkdownPad.FileWatcher.pas',
   MarkdownPad.HtmlExport in '..\Examples\Shared\MarkdownPad.HtmlExport.pas',
+  MarkdownPad.Defines in '..\Examples\Shared\MarkdownPad.Defines.pas',
+  MarkdownPad.Text in '..\Examples\Shared\MarkdownPad.Text.pas',
+  MarkdownPad.Outline in '..\Examples\Shared\MarkdownPad.Outline.pas',
+  MarkdownPad.CommandLine in '..\Examples\Shared\MarkdownPad.CommandLine.pas',
+  MarkdownPad.Shell in '..\Examples\Shared\MarkdownPad.Shell.pas',
+  MarkdownPad.EditorView in '..\Examples\Shared\MarkdownPad.EditorView.pas',
+  MarkdownPad.Controller in '..\Examples\Shared\MarkdownPad.Controller.pas',
   StreamingMarkdown.Demo in '..\Examples\Shared\StreamingMarkdown.Demo.pas',
   MarkdownPad.Workspace.Tests in 'MarkdownPad.Workspace.Tests.pas',
   MarkdownPad.TabStrip.Tests in 'MarkdownPad.TabStrip.Tests.pas',
@@ -69,6 +76,7 @@ uses
   MarkdownPad.CommandSet.Tests in 'MarkdownPad.CommandSet.Tests.pas',
   MarkdownPad.SessionSync.Tests in 'MarkdownPad.SessionSync.Tests.pas',
   MarkdownPad.FileWatcher.Tests in 'MarkdownPad.FileWatcher.Tests.pas',
+  MarkdownPad.Controller.Tests in 'MarkdownPad.Controller.Tests.pas',
   MarkdownPad.HtmlExport.Tests in 'MarkdownPad.HtmlExport.Tests.pas',
   StreamingMarkdown.Demo.Tests in 'StreamingMarkdown.Demo.Tests.pas';
 

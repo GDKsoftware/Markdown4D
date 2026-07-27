@@ -35,7 +35,6 @@ const
   ZenPadDarkColor = TColor($0017110D); // matches the dark theme editor/preview background ($0D1117)
   SessionFileName = 'MarkdownPad.Vcl.json';
   CloseUnsavedPrompt = 'Save changes before closing this document?';
-  ReloadPrompt = 'File changed on disk. Reload and lose your changes?';
   PaletteTextMargin = 8;
 
 implementation

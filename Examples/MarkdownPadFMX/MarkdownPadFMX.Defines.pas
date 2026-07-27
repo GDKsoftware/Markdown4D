@@ -53,7 +53,6 @@ const
   SessionFileName = 'MarkdownPad.Fmx.json';
   OpenErrorFormat = 'Could not open the file:'#10'%s';
   CloseUnsavedPrompt = 'This document has unsaved changes. Save before closing?';
-  ReloadPrompt = 'This file changed on disk. Reload and lose your local changes?';
   PaletteListHeight = PaletteRowHeight * PaletteVisibleRows;
   PaletteEditHeight = 30;
   PaletteShortcutWidth = 120;

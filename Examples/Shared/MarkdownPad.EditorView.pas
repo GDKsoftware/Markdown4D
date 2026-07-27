@@ -19,6 +19,9 @@ type
     ['{8F2C1A7D-4B3E-4C9A-A1F6-2D5E7B9C0A34}']
     function GetEditorText: string;
     procedure SetEditorText(const Value: string);
+    // Takes over incoming disk content through the smallest possible edit, so
+    // undo history and caret survive. False means the text was already identical.
+    function MergeEditorText(const Value: string): Boolean;
     function GetEditorCaret: Integer;
     procedure SetEditorCaret(const Value: Integer);
     function GetPreviewScrollOffset: Single;
@@ -49,6 +52,10 @@ type
     // which case the caller should skip its tab/title refresh).
     class function Execute(const Workspace: IPadWorkspace; const View: IPadEditorView;
       const CurrentDocument: IPadDocument; const Index: Integer): IPadDocument; static;
+
+    // Copies the live editor/preview state onto the document without switching,
+    // so callers that persist or close a document store the current position.
+    class procedure Capture(const View: IPadEditorView; const Document: IPadDocument); static;
   end;
 
 implementation
@@ -61,13 +68,7 @@ class function TPadDocumentSwitch.Execute(const Workspace: IPadWorkspace;
   const Index: Integer): IPadDocument;
 begin
   if CurrentDocument <> nil then
-  begin
-    CurrentDocument.Text                := View.EditorText;
-    CurrentDocument.CaretPosition       := View.EditorCaret;
-    CurrentDocument.EditorScrollOffset  := View.FirstVisibleSourceLine;
-    CurrentDocument.PreviewScrollOffset := View.PreviewScrollOffset;
-    CurrentDocument.EditState           := View.SaveEditState;
-  end;
+    Capture(View, CurrentDocument);
 
   Workspace.Activate(Index);
   Result := Workspace.ActiveDocument;
@@ -90,6 +91,15 @@ begin
   finally
     View.EndSwap;
   end;
+end;
+
+class procedure TPadDocumentSwitch.Capture(const View: IPadEditorView; const Document: IPadDocument);
+begin
+  Document.Text                := View.EditorText;
+  Document.CaretPosition       := View.EditorCaret;
+  Document.EditorScrollOffset  := View.FirstVisibleSourceLine;
+  Document.PreviewScrollOffset := View.PreviewScrollOffset;
+  Document.EditState           := View.SaveEditState;
 end;
 
 end.

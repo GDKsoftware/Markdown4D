@@ -35,6 +35,7 @@ type
       SelectionFillColor = TLayoutColor($402F81F7);
       MinimumWrapWidthDips = 48;
       FoldMarkerWidthDips = 14;
+      DeleteChar = #127;
     type
       // One on-screen line from soft-wrapping a source line. Offsets are absolute
       // into the model text and the range excludes the trailing line break.
@@ -88,6 +89,7 @@ type
     procedure UnhookPreviewScroll;
     procedure HandleInternalPreviewScroll(Sender: TObject);
     procedure SyncPreviewToEditor;
+    procedure RestorePreviewScroll(const PreviousOffset: Single);
     procedure UpdateSync;
     procedure DoSyncScroll(const SourceLine: Integer);
     procedure RenderContent(const TargetCanvas: TCanvas; const TargetWidth, TargetHeight, PixelsPerInch,
@@ -172,6 +174,10 @@ type
     constructor Create(Owner: TComponent); override;
     destructor Destroy; override;
     procedure ExecuteCommand(const Command: TEditorCommand);
+    // Takes over Value as the new content through the smallest possible edit, so
+    // undo history, caret and selection survive. Returns False when the text was
+    // already identical.
+    function MergeText(const Value: string): Boolean;
     procedure Undo;
     procedure Redo;
     function CanUndo: Boolean;
@@ -299,6 +305,18 @@ begin
   RefreshAfterEdit;
 end;
 
+function TMarkdownEditor.MergeText(const Value: string): Boolean;
+begin
+  FDesignSampleActive := False;
+
+  Result := FModel.MergeText(Value);
+  if not Result then
+    Exit;
+
+  RebuildRows;
+  RefreshAfterEdit;
+end;
+
 procedure TMarkdownEditor.Undo;
 begin
   FModel.Undo;
@@ -391,6 +409,8 @@ begin
   if FPreview = nil then
     Exit;
 
+  const PreviousOffset = FPreview.ScrollOffset;
+
   FUpdatingPreview := True;
   try
     FPreview.Text := FModel.Text;
@@ -399,6 +419,21 @@ begin
   end;
 
   UpdateSync;
+  RestorePreviewScroll(PreviousOffset);
+end;
+
+procedure TMarkdownEditor.RestorePreviewScroll(const PreviousOffset: Single);
+begin
+  // Re-rendering the preview parks it back at the top, which would yank the
+  // reader away on every keystroke. Linked panes follow the editor; an unlinked
+  // preview keeps the offset it had.
+  if FSyncScroll then
+  begin
+    SyncPreviewToEditor;
+    Exit;
+  end;
+
+  FPreview.ScrollOffset := PreviousOffset;
 end;
 
 procedure TMarkdownEditor.UpdateSync;
@@ -1490,6 +1525,10 @@ begin
           FModel.BreakUndoCoalescing;
           SetCaretTo(Length(FModel.Text), Extend);
         end;
+      VK_BACK:
+        FModel.DeleteWordLeft;
+      VK_DELETE:
+        FModel.DeleteWordRight;
     else
       Exit;
     end;
@@ -1558,7 +1597,7 @@ procedure TMarkdownEditor.KeyPress(var Key: Char);
 begin
   inherited KeyPress(Key);
 
-  if Key < ' ' then
+  if (Key < ' ') or (Key = DeleteChar) then
     Exit;
 
   FModel.Insert(Key);

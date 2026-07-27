@@ -40,12 +40,15 @@ type
       HeadingMarkdown = '# Heading';
       EditText = ' appended body';
       MouseText = 'Hello world'#10'second';
+      WordPairText = 'foo bar';
+      DeleteKeyChar = #127;
       FarRight = 100000;
       FarDown = 100000;
       HostWidth = 400;
       ShortHostHeight = 100;
       ManyLineCount = 40;
       HighDpi = 192;
+      PreviewScrollTarget = 40;
     var
       FEditor: TMarkdownEditor;
       FHostForm: TForm;
@@ -113,6 +116,9 @@ type
     procedure KeyChar_InsertsPrintableCharacter;
 
     [Test]
+    procedure KeyChar_IgnoresDeleteControlChar;
+
+    [Test]
     procedure KeyBackspace_DeletesCharBeforeCaret;
 
     [Test]
@@ -135,6 +141,21 @@ type
 
     [Test]
     procedure CtrlWordArrows_MoveByWord;
+
+    [Test]
+    procedure EditWithUnlinkedPreview_KeepsPreviewScrollOffset;
+
+    [Test]
+    procedure EditWithLinkedPreview_LeavesPreviewOnEditorOffset;
+
+    [Test]
+    procedure MergeText_KeepsCaretAndUndoHistory;
+
+    [Test]
+    procedure CtrlBackspace_DeletesWordBeforeCaret;
+
+    [Test]
+    procedure CtrlDelete_DeletesWordAfterCaret;
 
     [Test]
     procedure CtrlHomeAndEnd_MoveToDocumentBounds;
@@ -511,6 +532,19 @@ begin
   end;
 end;
 
+procedure TMarkdownVclEditorTests.KeyChar_IgnoresDeleteControlChar;
+begin
+  const Editor = TTestableVclEditor.Create(nil);
+  try
+    Editor.Text := WordPairText;
+    Editor.CaretPosition := Length(WordPairText);
+    Editor.SimulateKeyChar(DeleteKeyChar);
+    Assert.AreEqual(WordPairText, Editor.Text);
+  finally
+    Editor.Free;
+  end;
+end;
+
 procedure TMarkdownVclEditorTests.KeyBackspace_DeletesCharBeforeCaret;
 begin
   const Editor = TTestableVclEditor.Create(nil);
@@ -615,7 +649,7 @@ procedure TMarkdownVclEditorTests.CtrlWordArrows_MoveByWord;
 begin
   const Editor = TTestableVclEditor.Create(nil);
   try
-    Editor.Text := 'foo bar';
+    Editor.Text := WordPairText;
     Editor.CaretPosition := 0;
     Editor.SimulateKeyDown(vkRight, [ssCtrl]);
     Assert.IsTrue(Editor.CaretPosition >= 3,
@@ -624,6 +658,94 @@ begin
     Editor.SimulateKeyDown(vkLeft, [ssCtrl]);
     Assert.IsTrue(Editor.CaretPosition < AfterRight,
       Format('Expected caret to move left of %d but got %d', [AfterRight, Editor.CaretPosition]));
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownVclEditorTests.EditWithUnlinkedPreview_KeepsPreviewScrollOffset;
+begin
+  const Editor = NewHostedEditor(ShortHostHeight);
+  const Viewer = TMarkdownViewer.Create(FHostForm);
+  Viewer.Parent := FHostForm;
+  Viewer.SetBounds(0, 0, HostWidth, ShortHostHeight);
+
+  Editor.SyncScroll := False;
+  Editor.Text := ManyLines(ManyLineCount);
+  Editor.AttachPreview(Viewer);
+  Editor.FlushPreview;
+
+  Viewer.ScrollOffset := PreviewScrollTarget;
+  const Before = Viewer.ScrollOffset;
+  Assert.IsTrue(Before > 0, 'Preview should be scrollable for this test');
+
+  Editor.CaretPosition := 0;
+  Editor.SimulateKeyChar('X');
+  Editor.FlushPreview;
+
+  Assert.AreEqual(Double(Before), Double(Viewer.ScrollOffset), 0.5);
+end;
+
+procedure TMarkdownVclEditorTests.EditWithLinkedPreview_LeavesPreviewOnEditorOffset;
+begin
+  const Editor = NewHostedEditor(ShortHostHeight);
+  const Viewer = TMarkdownViewer.Create(FHostForm);
+  Viewer.Parent := FHostForm;
+  Viewer.SetBounds(0, 0, HostWidth, ShortHostHeight);
+
+  Editor.Text := ManyLines(ManyLineCount);
+  Editor.AttachPreview(Viewer);
+  Editor.ScrollToSourceLine(ManyLineCount div 2);
+  Editor.FlushPreview;
+
+  // Linked panes track each other, so an edit must leave the preview on the
+  // offset the editor's position dictates instead of resetting it.
+  const Expected = Viewer.ScrollOffset;
+
+  Editor.CaretPosition := 0;
+  Editor.SimulateKeyChar('X');
+  Editor.FlushPreview;
+
+  Assert.AreEqual(Double(Expected), Double(Viewer.ScrollOffset), 0.5);
+end;
+
+procedure TMarkdownVclEditorTests.MergeText_KeepsCaretAndUndoHistory;
+begin
+  const Editor = TTestableVclEditor.Create(nil);
+  try
+    Editor.Text := 'first line'#10'second line';
+    Editor.CaretPosition := 3;
+
+    Assert.IsTrue(Editor.MergeText('first line'#10'second line'#10'third line'));
+    Assert.AreEqual(3, Editor.CaretPosition);
+    Assert.IsTrue(Editor.CanUndo);
+    Assert.IsFalse(Editor.MergeText('first line'#10'second line'#10'third line'));
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownVclEditorTests.CtrlBackspace_DeletesWordBeforeCaret;
+begin
+  const Editor = TTestableVclEditor.Create(nil);
+  try
+    Editor.Text := WordPairText;
+    Editor.CaretPosition := Length(WordPairText);
+    Editor.SimulateKeyDown(vkBack, [ssCtrl]);
+    Assert.AreEqual('foo ', Editor.Text);
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownVclEditorTests.CtrlDelete_DeletesWordAfterCaret;
+begin
+  const Editor = TTestableVclEditor.Create(nil);
+  try
+    Editor.Text := WordPairText;
+    Editor.CaretPosition := 0;
+    Editor.SimulateKeyDown(vkDelete, [ssCtrl]);
+    Assert.AreEqual('bar', Editor.Text);
   finally
     Editor.Free;
   end;

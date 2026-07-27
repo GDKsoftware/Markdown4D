@@ -14,6 +14,7 @@ type
   private
     const
       SampleText = 'Hello world';
+      PunctuatedText = 'foo, bar';
       MultiLineText = 'first line'#10'second line'#10'third line';
       SurrogateText = 'ab'#$D83D#$DE00'cd';
       TableSkeleton =
@@ -61,6 +62,45 @@ type
 
     [Test]
     procedure MoveWordRight_JumpsWholeWord;
+
+    [Test]
+    procedure MoveWordRight_OverPunctuation_StopsAtNextWord;
+
+    [Test]
+    procedure MoveWordLeft_OverPunctuation_StopsAtPreviousWordEnd;
+
+    [Test]
+    procedure DeleteWordLeft_RemovesWordBeforeCaret;
+
+    [Test]
+    procedure DeleteWordLeft_OnPunctuation_RemovesPunctuationRun;
+
+    [Test]
+    procedure DeleteWordLeft_WithSelection_RemovesSelectionOnly;
+
+    [Test]
+    procedure DeleteWordRight_RemovesWordAndTrailingSpace;
+
+    [Test]
+    procedure MergeText_IdenticalText_ReportsNoChange;
+
+    [Test]
+    procedure MergeText_NormalizedCrlf_ReportsNoChange;
+
+    [Test]
+    procedure MergeText_EditBeforeCaret_ShiftsCaretAlong;
+
+    [Test]
+    procedure MergeText_EditAfterCaret_LeavesCaretInPlace;
+
+    [Test]
+    procedure MergeText_CaretInsideReplacedRange_LandsAtEndOfEdit;
+
+    [Test]
+    procedure MergeText_KeepsUndoHistoryAndRestoresLocalEdit;
+
+    [Test]
+    procedure MergeText_EmitsRangeCoveringOnlyTheDifference;
 
     [Test]
     procedure SelectAll_SelectsEntireBuffer;
@@ -347,6 +387,124 @@ begin
   FModel.CaretPosition := 0;
   FModel.MoveWordRight(False);
   Assert.AreEqual(6, FModel.CaretPosition);
+end;
+
+procedure TMarkdownEditorModelTests.MoveWordRight_OverPunctuation_StopsAtNextWord;
+begin
+  FModel.LoadText(PunctuatedText);
+  FModel.CaretPosition := 3;
+  FModel.MoveWordRight(False);
+  Assert.AreEqual(5, FModel.CaretPosition);
+end;
+
+procedure TMarkdownEditorModelTests.MoveWordLeft_OverPunctuation_StopsAtPreviousWordEnd;
+begin
+  FModel.LoadText(PunctuatedText);
+  FModel.CaretPosition := 5;
+  FModel.MoveWordLeft(False);
+  Assert.AreEqual(3, FModel.CaretPosition);
+end;
+
+procedure TMarkdownEditorModelTests.DeleteWordLeft_RemovesWordBeforeCaret;
+begin
+  FModel.LoadText(SampleText);
+  FModel.CaretPosition := Length(SampleText);
+  FModel.DeleteWordLeft;
+  Assert.AreEqual('Hello ', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.DeleteWordLeft_OnPunctuation_RemovesPunctuationRun;
+begin
+  FModel.LoadText(PunctuatedText);
+  FModel.CaretPosition := 4;
+  FModel.DeleteWordLeft;
+  Assert.AreEqual('foo bar', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.DeleteWordLeft_WithSelection_RemovesSelectionOnly;
+begin
+  FModel.LoadText(SampleText);
+  FModel.SetSelection(2, 5);
+  FModel.DeleteWordLeft;
+  Assert.AreEqual('Heorld', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.DeleteWordRight_RemovesWordAndTrailingSpace;
+begin
+  FModel.LoadText(SampleText);
+  FModel.CaretPosition := 0;
+  FModel.DeleteWordRight;
+  Assert.AreEqual('world', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.MergeText_IdenticalText_ReportsNoChange;
+begin
+  FModel.LoadText(SampleText);
+  FModel.CaretPosition := 4;
+
+  Assert.IsFalse(FModel.MergeText(SampleText));
+  Assert.AreEqual(4, FModel.CaretPosition);
+end;
+
+procedure TMarkdownEditorModelTests.MergeText_NormalizedCrlf_ReportsNoChange;
+begin
+  FModel.LoadText('first'#10'second');
+
+  Assert.IsFalse(FModel.MergeText('first'#13#10'second'));
+end;
+
+procedure TMarkdownEditorModelTests.MergeText_EditBeforeCaret_ShiftsCaretAlong;
+begin
+  FModel.LoadText(SampleText);
+  FModel.CaretPosition := 11;
+
+  Assert.IsTrue(FModel.MergeText('Hello brave world'));
+  Assert.AreEqual('Hello brave world', FModel.Text);
+  Assert.AreEqual(17, FModel.CaretPosition);
+end;
+
+procedure TMarkdownEditorModelTests.MergeText_EditAfterCaret_LeavesCaretInPlace;
+begin
+  FModel.LoadText(SampleText);
+  FModel.CaretPosition := 3;
+
+  Assert.IsTrue(FModel.MergeText('Hello there'));
+  Assert.AreEqual(3, FModel.CaretPosition);
+end;
+
+procedure TMarkdownEditorModelTests.MergeText_CaretInsideReplacedRange_LandsAtEndOfEdit;
+begin
+  FModel.LoadText(SampleText);
+  FModel.CaretPosition := 8;
+
+  Assert.IsTrue(FModel.MergeText('Hello there'));
+  Assert.AreEqual(11, FModel.CaretPosition);
+end;
+
+procedure TMarkdownEditorModelTests.MergeText_KeepsUndoHistoryAndRestoresLocalEdit;
+begin
+  FModel.LoadText('Hello');
+  FModel.CaretPosition := 5;
+  FModel.Insert('!');
+
+  Assert.IsTrue(FModel.MergeText('Hello world!'));
+
+  FModel.Undo;
+  Assert.AreEqual('Hello!', FModel.Text);
+
+  FModel.Undo;
+  Assert.AreEqual('Hello', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.MergeText_EmitsRangeCoveringOnlyTheDifference;
+begin
+  FModel.LoadText(SampleText);
+  FMirror := FModel.Text;
+  FModel.OnChange := HandleChange;
+
+  Assert.IsTrue(FModel.MergeText('Hello brave world'));
+  Assert.AreEqual(1, FChangeCount);
+  Assert.AreEqual(FModel.Text, FMirror);
 end;
 
 procedure TMarkdownEditorModelTests.SelectAll_SelectsEntireBuffer;

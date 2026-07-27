@@ -57,6 +57,10 @@ type
       FFoldRegions: TArray<TFoldRegion>;
       FFoldRegionsDirty: Boolean;
     procedure NormalizeAndLoad(const Value: string);
+    class function NormalizeLineEndings(const Value: string): string; static;
+    class function CommonPrefixLength(const Left, Right: string): Integer; static;
+    class function CommonSuffixLength(const Left, Right: string; const PrefixLength: Integer): Integer; static;
+    class function OffsetAfterEdit(const Offset, Start, OldLength, Delta: Integer): Integer; static;
     procedure RebuildLineStarts;
     procedure UpdateLineStartsForEdit(const Start, OldLen: Integer; const Replacement: string);
     procedure DoReplace(const Start, OldLen: Integer; const Replacement: string);
@@ -72,6 +76,8 @@ type
     function MatchesAt(const Needle: string; const CandidateStart: Integer;
       const Options: TMarkdownFindOptions): Boolean;
     function CollectMatches(const Needle: string; const Options: TMarkdownFindOptions): TArray<Integer>;
+    function WordLeftOffset(const FromOffset: Integer): Integer;
+    function WordRightOffset(const FromOffset: Integer): Integer;
     function IsWordChar(const Ch: Char): Boolean;
     function CategoryOfChar(const Ch: Char): TCharCategory;
     function AllLines: TArray<string>;
@@ -103,6 +109,10 @@ type
   public
     constructor Create;
     procedure LoadText(const Value: string);
+    // Takes over Value as the new content through the smallest possible edit,
+    // so the undo history survives and the caret keeps its place in the text.
+    // Returns False when the normalized Value already matches the buffer.
+    function MergeText(const Value: string): Boolean;
     function CaptureState: IMarkdownEditorState;
     procedure RestoreState(const State: IMarkdownEditorState);
     function LineCount: Integer;
@@ -111,6 +121,8 @@ type
     procedure Insert(const Value: string);
     procedure DeleteBackward;
     procedure DeleteForward;
+    procedure DeleteWordLeft;
+    procedure DeleteWordRight;
     procedure ReplaceRange(const Start, Length: Integer; const Replacement: string);
     procedure MoveCaret(const Delta: Integer; const Extend: Boolean);
     procedure MoveWordLeft(const Extend: Boolean);
@@ -213,6 +225,32 @@ begin
   NormalizeAndLoad(Value);
 end;
 
+function TMarkdownEditorModel.MergeText(const Value: string): Boolean;
+begin
+  const Incoming = NormalizeLineEndings(Value);
+  if Incoming = FText then
+    Exit(False);
+
+  const Start = CommonPrefixLength(FText, Incoming);
+  const TailLength = CommonSuffixLength(FText, Incoming, Start);
+
+  const OldLength = System.Length(FText) - Start - TailLength;
+  const Replacement = Copy(Incoming, Start + 1, System.Length(Incoming) - Start - TailLength);
+
+  const PreviousCaret = FCaret;
+  const PreviousAnchor = FAnchor;
+
+  BreakUndoCoalescing;
+  ApplyReplace(Start, OldLength, Replacement, False);
+  BreakUndoCoalescing;
+
+  const Delta = System.Length(Replacement) - OldLength;
+  FCaret := SnapOffset(OffsetAfterEdit(PreviousCaret, Start, OldLength, Delta));
+  FAnchor := SnapOffset(OffsetAfterEdit(PreviousAnchor, Start, OldLength, Delta));
+
+  Result := True;
+end;
+
 function TMarkdownEditorModel.CaptureState: IMarkdownEditorState;
 begin
   const Snapshot = TMarkdownEditorStateObject.Create;
@@ -309,6 +347,36 @@ begin
   ApplyReplace(FCaret, Next - FCaret, '', False);
 end;
 
+procedure TMarkdownEditorModel.DeleteWordLeft;
+begin
+  if HasSelection then
+  begin
+    ApplyReplace(SelectionStart, SelectionLength, '', False);
+    Exit;
+  end;
+
+  if FCaret <= 0 then
+    Exit;
+
+  const Start = WordLeftOffset(FCaret);
+  ApplyReplace(Start, FCaret - Start, '', False);
+end;
+
+procedure TMarkdownEditorModel.DeleteWordRight;
+begin
+  if HasSelection then
+  begin
+    ApplyReplace(SelectionStart, SelectionLength, '', False);
+    Exit;
+  end;
+
+  if FCaret >= System.Length(FText) then
+    Exit;
+
+  const EndOffset = WordRightOffset(FCaret);
+  ApplyReplace(FCaret, EndOffset - FCaret, '', False);
+end;
+
 procedure TMarkdownEditorModel.ReplaceRange(const Start, Length: Integer; const Replacement: string);
 begin
   ApplyReplace(Start, Length, Replacement, False);
@@ -337,24 +405,12 @@ end;
 
 procedure TMarkdownEditorModel.MoveWordLeft(const Extend: Boolean);
 begin
-  var Offset := FCaret;
-  while (Offset > 0) and FText[Offset].IsWhiteSpace do
-    Dec(Offset);
-  while (Offset > 0) and IsWordChar(FText[Offset]) do
-    Dec(Offset);
-
-  ApplyCaretMove(Offset, Extend);
+  ApplyCaretMove(WordLeftOffset(FCaret), Extend);
 end;
 
 procedure TMarkdownEditorModel.MoveWordRight(const Extend: Boolean);
 begin
-  var Offset := FCaret;
-  while (Offset < System.Length(FText)) and IsWordChar(FText[Offset + 1]) do
-    Inc(Offset);
-  while (Offset < System.Length(FText)) and FText[Offset + 1].IsWhiteSpace do
-    Inc(Offset);
-
-  ApplyCaretMove(Offset, Extend);
+  ApplyCaretMove(WordRightOffset(FCaret), Extend);
 end;
 
 procedure TMarkdownEditorModel.SelectAll;
@@ -740,10 +796,7 @@ end;
 
 procedure TMarkdownEditorModel.NormalizeAndLoad(const Value: string);
 begin
-  var Normalized := StringReplace(Value, #13#10, #10, [rfReplaceAll]);
-  Normalized := StringReplace(Normalized, #13, #10, [rfReplaceAll]);
-
-  FText := Normalized;
+  FText := NormalizeLineEndings(Value);
   RebuildLineStarts;
   FCaret := 0;
   FAnchor := 0;
@@ -752,6 +805,53 @@ begin
   FCoalesceBroken := False;
   FCollapsedFolds := nil;
   FFoldRegionsDirty := True;
+end;
+
+class function TMarkdownEditorModel.NormalizeLineEndings(const Value: string): string;
+begin
+  Result := StringReplace(Value, CarriageReturn + LineFeed, LineFeed, [rfReplaceAll]);
+  Result := StringReplace(Result, CarriageReturn, LineFeed, [rfReplaceAll]);
+end;
+
+class function TMarkdownEditorModel.CommonPrefixLength(const Left, Right: string): Integer;
+begin
+  const Limit = Min(System.Length(Left), System.Length(Right));
+
+  Result := 0;
+  while (Result < Limit) and (Left[Result + 1] = Right[Result + 1]) do
+    Inc(Result);
+
+  const SplitsPair = (Result > 0) and Left[Result].IsHighSurrogate;
+  if SplitsPair then
+    Dec(Result);
+end;
+
+class function TMarkdownEditorModel.CommonSuffixLength(const Left, Right: string;
+  const PrefixLength: Integer): Integer;
+begin
+  const Limit = Min(System.Length(Left), System.Length(Right)) - PrefixLength;
+
+  Result := 0;
+  while (Result < Limit) and
+    (Left[System.Length(Left) - Result] = Right[System.Length(Right) - Result]) do
+  begin
+    Inc(Result);
+  end;
+
+  const SplitsPair = (Result > 0) and Left[System.Length(Left) - Result + 1].IsLowSurrogate;
+  if SplitsPair then
+    Dec(Result);
+end;
+
+class function TMarkdownEditorModel.OffsetAfterEdit(const Offset, Start, OldLength, Delta: Integer): Integer;
+begin
+  if Offset <= Start then
+    Exit(Offset);
+
+  if Offset >= Start + OldLength then
+    Exit(Offset + Delta);
+
+  Result := Start + OldLength + Delta;
 end;
 
 procedure TMarkdownEditorModel.RebuildLineStarts;
@@ -959,6 +1059,41 @@ begin
     Cursor := Hit + System.Length(Needle);
     Hit := IndexOfNeedle(Needle, Cursor, Options);
   end;
+end;
+
+function TMarkdownEditorModel.WordLeftOffset(const FromOffset: Integer): Integer;
+begin
+  var Offset := ClampOffset(FromOffset);
+
+  while (Offset > 0) and FText[Offset].IsWhiteSpace do
+    Dec(Offset);
+
+  if Offset = 0 then
+    Exit(0);
+
+  const Category = CategoryOfChar(FText[Offset]);
+  while (Offset > 0) and (CategoryOfChar(FText[Offset]) = Category) do
+    Dec(Offset);
+
+  Result := Offset;
+end;
+
+function TMarkdownEditorModel.WordRightOffset(const FromOffset: Integer): Integer;
+begin
+  const Limit = System.Length(FText);
+  var Offset := ClampOffset(FromOffset);
+
+  if (Offset < Limit) and not FText[Offset + 1].IsWhiteSpace then
+  begin
+    const Category = CategoryOfChar(FText[Offset + 1]);
+    while (Offset < Limit) and (CategoryOfChar(FText[Offset + 1]) = Category) do
+      Inc(Offset);
+  end;
+
+  while (Offset < Limit) and FText[Offset + 1].IsWhiteSpace do
+    Inc(Offset);
+
+  Result := Offset;
 end;
 
 function TMarkdownEditorModel.IsWordChar(const Ch: Char): Boolean;
