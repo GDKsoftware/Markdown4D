@@ -4,6 +4,65 @@ All notable changes to Markdown4D are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **`TMarkdown.ToHtml` is now safe by default.** Raw HTML is replaced by
+  `<!-- raw HTML omitted -->`, and link and image destinations using
+  `javascript:`, `vbscript:`, `file:` or a non-image `data:` scheme are emptied.
+  The previous behaviour is available under the new name `TMarkdown.ToUnsafeHtml`
+  and through the pipeline builder. This mirrors cmark, which has had safe
+  rendering as its default since 0.29.
+- **Destination filtering** (unit `Markdown4D.Text.UrlSafety`) — judged after
+  entity decoding and ignoring whitespace and control characters, so
+  `&#106;avascript:`, `JaVaScRiPt:` and a leading space are all recognised.
+  `data:image/png`, `gif`, `jpeg` and `webp` are kept.
+- **The MarkdownPad examples no longer hand document links to the shell
+  unchecked.** `TPadLinkPolicy` (unit `MarkdownPad.LinkPolicy`) opens `http`,
+  `https` and `mailto`; every other destination, including `file:` URLs, UNC
+  paths and local executables, is refused with a message naming the target.
+  Since the pad can be registered as the handler for `.md`, a downloaded
+  document could otherwise launch a program on a single click.
+- **A link to a neighbouring markdown file is opened by the pad itself**, in a
+  tab, instead of being handed to the shell. Only a relative path to an existing
+  `.md` file qualifies; an absolute, drive-relative or UNC path does not, because
+  reaching for someone else's share is what hands over the credentials Windows
+  offers it. A trailing `#anchor` is dropped: the file opens at the top.
+
+### Fixed
+
+- **Quadratic block parsing on lines carrying many list markers.** A line such as
+  `- - - - …` opens one list per marker, and the loose-list check walked the
+  whole nested chain for each of them. Whether a block trails a blank line is
+  now settled once, when the block is finalized. A 200 KB document of this shape
+  went from 116 seconds to 0.15 seconds; parsing is linear in the input again.
+- `TMarkdownImageDownloader` reports a result even when the fetch fails in a way
+  `TryFetch` does not handle, so the download queue can no longer stall. The
+  fetch itself now catches `ENetException` rather than every exception.
+- Local image paths are canonicalised, so a destination with `..` segments
+  resolves to one spelling of the file.
+
+### Added
+
+- `IMarkdownPipelineBuilder.UnsafeLinks` — the destination half of the previous
+  rendering behaviour, separate from `UnsafeHtml`.
+- **Viewer image settings** (unit `Markdown4D.Viewer.ImageSettings`, shared by
+  the VCL and FMX viewers and republished by both):
+  - `AllowRemote` (default `True`) — whether `http(s)` destinations may be
+    fetched. Opening a document otherwise tells every host it names that the
+    document was read.
+  - `MaxBytes` (default 8 MB) — upper bound on one downloaded image, enforced
+    against both the announced length and what actually arrives. A response
+    claiming to be an image could previously grow until memory ran out.
+  - `RestrictToDocumentFolder` (default `False`) — keeps a relative image path
+    inside the document's own folder.
+- **`TMarkdownViewer.OnRemoteImageRequest`** — vetoes or permits one remote
+  image, starting from `Images.AllowRemote`, so an application can allow only
+  the hosts it knows.
+- Performance budget tests covering nested list markers, including a scaling
+  ratio that fails if parsing turns quadratic again.
+
 ## [1.1.0]
 
 A plumbing and extension-API release. End-user rendering is unchanged — the same

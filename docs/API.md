@@ -29,6 +29,8 @@ type
     class function Version: string;
     class function ToHtml(const Source: string;
       const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): string;
+    class function ToUnsafeHtml(const Source: string;
+      const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): string;
     class function Parse(const Source: string;
       const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): IMarkdownDocument;
     class function ToMarkdown(const Document: IMarkdownDocument): string;
@@ -41,8 +43,20 @@ type
 `Markdown4DVersion` in unit `Markdown4D.Version`).
 
 `TMarkdownDialect` (unit `Markdown4D.Defines`) is `(CommonMark, Gfm)`. The
-facade caches one pipeline per dialect and renders with raw HTML enabled (the
-spec default). For finer control build your own pipeline.
+facade caches one pipeline per dialect and rendering mode.
+
+`ToHtml` renders safely: raw HTML becomes `<!-- raw HTML omitted -->`, and a
+link or image destination using `javascript:`, `vbscript:`, `file:` or a
+non-image `data:` scheme is emptied. Use it for any document the application did
+not produce itself.
+
+`ToUnsafeHtml` renders what the CommonMark and GFM specifications prescribe:
+raw HTML and every destination reach the output untouched. It is the right
+choice for trusted input, or when the result passes through an HTML sanitizer
+afterwards. The conformance suites are checked against this method.
+
+For finer control build your own pipeline; `UnsafeHtml` and `UnsafeLinks` on the
+builder correspond to the two halves of `ToUnsafeHtml`.
 
 ```pascal
 uses
@@ -72,6 +86,7 @@ type
     function Use(const Extension: IMarkdownExtension): IMarkdownPipelineBuilder;
     function XhtmlOutput: IMarkdownPipelineBuilder;
     function UnsafeHtml: IMarkdownPipelineBuilder;
+    function UnsafeLinks: IMarkdownPipelineBuilder;
     function TagFilter: IMarkdownPipelineBuilder;
     function RegisterBlockParser(const Parser: IMarkdownBlockParser;
       const TriggerCharacters: string; const Priority: Integer): IMarkdownPipelineBuilder;
@@ -100,6 +115,7 @@ type
 | `UseGfm` | `UseCommonMark` plus tables, task lists, strikethrough, autolinks, tag filter |
 | `Use(ext)` | Installs a custom `IMarkdownExtension` |
 | `UnsafeHtml` | Allows raw HTML in the rendered output (CommonMark spec behaviour) |
+| `UnsafeLinks` | Writes every link and image destination out, including `javascript:`, `vbscript:`, `file:` and non-image `data:` (spec behaviour). Without it those destinations are emptied |
 | `XhtmlOutput` | Emits self-closing XHTML tags |
 | `TagFilter` | Applies the GFM tag filter to raw HTML |
 | `Register*` | Adds a single parser, processor or hook at a given priority |
@@ -323,7 +339,7 @@ same.
 |----------|------|-------|
 | `Text` | `string` | The whole markdown document as one value |
 | `ThemePreset` | `TMarkdownThemePreset` | `Light` / `Dark`, editable in the Object Inspector |
-| `Images` | `TMarkdownViewerImageSettings` | `BaseUrl` for resolving relative image sources |
+| `Images` | `TMarkdownViewerImageSettings` | How image destinations are resolved and fetched (see below) |
 
 ### Public members
 
@@ -346,6 +362,7 @@ same.
 | `OnLinkClick` | `(const Sender: TObject; const Url: string)` | A link is clicked |
 | `OnLinkHover` | `(const Sender: TObject; const Url: string)` | The hovered link changes (`''` on leave) |
 | `OnResolveImage` | `(const Sender: TObject; const Url: string; const Picture/Bitmap; var Handled: Boolean)` | An image needs resolving; set `Handled` to supply it yourself |
+| `OnRemoteImageRequest` | `(const Sender: TObject; const Url: string; var Allow: Boolean)` | About to fetch a remote image. `Allow` arrives holding `Images.AllowRemote`; clear it to refuse this address |
 | `OnScroll` | `TNotifyEvent` | The scroll position changes |
 
 The viewer loads `http(s)` images asynchronously and local images relative to
@@ -353,6 +370,30 @@ The viewer loads `http(s)` images asynchronously and local images relative to
 `sql`, `json` or `xml` are syntax-highlighted; `chart` blocks render as
 graphics when the chart block override is registered (see
 [EXTENSIONS.md](EXTENSIONS.md)).
+
+### Image settings
+
+Unit `Markdown4D.Viewer.ImageSettings`, republished by both viewer units.
+
+| Property | Default | Notes |
+|----------|---------|-------|
+| `BaseUrl` | `''` | Resolves relative image destinations |
+| `AllowRemote` | `True` | Whether `http(s)` destinations may be fetched at all |
+| `MaxBytes` | 8 MB | Upper bound on one downloaded image; `0` removes the bound |
+| `RestrictToDocumentFolder` | `False` | Keeps a relative path inside the document's own folder |
+
+Opening a document fetches every remote image it names, which tells those hosts
+that the document was read. An application showing documents it did not write
+should decide what it wants here: clear `AllowRemote` to fetch nothing, or leave
+it on and refuse individual addresses through `OnRemoteImageRequest`.
+
+```pascal
+procedure TMainForm.ViewerRemoteImageRequest(const Sender: TObject; const Url: string;
+  var Allow: Boolean);
+begin
+  Allow := Url.StartsWith('https://cdn.example.com/', True);
+end;
+```
 
 ```pascal
 uses

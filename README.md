@@ -59,6 +59,10 @@ uses
 const Html = TMarkdown.ToHtml('# Hello *world*');
 ```
 
+`ToHtml` renders safely: raw HTML is omitted and scripting destinations such as
+`javascript:` are emptied. For byte-for-byte specification output on input you
+trust, use `TMarkdown.ToUnsafeHtml`.
+
 **Configure a pipeline** (GFM, raw HTML allowed):
 
 ```pascal

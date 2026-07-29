@@ -13,6 +13,7 @@ uses
   MarkdownPad.Fmx.WinFrame in '..\Shared\MarkdownPad.Fmx.WinFrame.pas',
   MarkdownPad.FileWatcher in '..\Shared\MarkdownPad.FileWatcher.pas',
   MarkdownPad.HtmlExport in '..\Shared\MarkdownPad.HtmlExport.pas',
+  MarkdownPad.LinkPolicy in '..\Shared\MarkdownPad.LinkPolicy.pas',
   MarkdownPad.CommandSet in '..\Shared\MarkdownPad.CommandSet.pas',
   MarkdownPad.SessionSync in '..\Shared\MarkdownPad.SessionSync.pas',
   MarkdownPadFMX.Main in 'MarkdownPadFMX.Main.pas',

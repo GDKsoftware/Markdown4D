@@ -1,4 +1,4 @@
-﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
         <ProjectGuid>{8F3B6E29-4D71-4A5C-B0E8-2C9D1A7F0B36}</ProjectGuid>
         <ProjectVersion>20.3</ProjectVersion>
@@ -109,6 +109,7 @@ $(PostBuildEvent)]]></PostBuildEvent>
         <DCCReference Include="..\Shared\MarkdownPad.Fmx.WinFrame.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.FileWatcher.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.HtmlExport.pas"/>
+        <DCCReference Include="..\Shared\MarkdownPad.LinkPolicy.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.CommandSet.pas"/>
         <DCCReference Include="..\Shared\MarkdownPad.SessionSync.pas"/>
         <DCCReference Include="MarkdownPadFMX.Main.pas"/>

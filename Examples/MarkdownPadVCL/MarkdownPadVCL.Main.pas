@@ -178,6 +178,7 @@ type
     procedure HandleEditorChange(Sender: TObject);
     procedure HandleSyncScroll(Sender: TObject; const SourceLine: Integer);
     procedure HandlePreviewLinkClick(const Sender: TObject; const Url: string);
+    function ActiveDocumentFolder: string;
     procedure HandleTocListClick(Sender: TObject);
     procedure HandleTick(Sender: TObject);
     procedure OpenPath(const FileName: string);
@@ -272,6 +273,7 @@ uses
   MarkdownPad.Text,
   MarkdownPad.Outline,
   MarkdownPad.Workspace,
+  MarkdownPad.LinkPolicy,
   MarkdownPad.HtmlExport;
 
 {$R *.dfm}
@@ -1099,7 +1101,31 @@ end;
 
 procedure TMarkdownPadVCLForm.HandlePreviewLinkClick(const Sender: TObject; const Url: string);
 begin
+  var FileName: string;
+  if TPadLinkPolicy.TryResolveDocument(Url, ActiveDocumentFolder, FileName) then
+  begin
+    OpenPath(FileName);
+    Exit;
+  end;
+
+  if not TPadLinkPolicy.MayOpen(Url) then
+  begin
+    MessageDlg(TPadLinkPolicy.RefusalMessage(Url), mtWarning, [mbOK], 0);
+    Exit;
+  end;
+
   ShellExecute(0, nil, PChar(Url), nil, nil, SW_SHOWNORMAL);
+end;
+
+// Empty while the active document has never been saved, which is exactly when a
+// relative link has nothing to resolve against.
+function TMarkdownPadVCLForm.ActiveDocumentFolder: string;
+begin
+  const Document = FController.ActiveDocument;
+  if (Document = nil) or Document.IsUntitled then
+    Exit('');
+
+  Result := TPath.GetDirectoryName(Document.FileName);
 end;
 
 procedure TMarkdownPadVCLForm.HandleTocListClick(Sender: TObject);

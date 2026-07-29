@@ -72,6 +72,7 @@ uses
   MarkdownPad.TabStrip in '..\Examples\Shared\MarkdownPad.TabStrip.pas',
   MarkdownPad.FileWatcher in '..\Examples\Shared\MarkdownPad.FileWatcher.pas',
   MarkdownPad.HtmlExport in '..\Examples\Shared\MarkdownPad.HtmlExport.pas',
+  MarkdownPad.LinkPolicy in '..\Examples\Shared\MarkdownPad.LinkPolicy.pas',
   MarkdownPad.Defines in '..\Examples\Shared\MarkdownPad.Defines.pas',
   MarkdownPad.Text in '..\Examples\Shared\MarkdownPad.Text.pas',
   MarkdownPad.Outline in '..\Examples\Shared\MarkdownPad.Outline.pas',
@@ -89,6 +90,9 @@ uses
   MarkdownPad.FileWatcher.Tests in 'MarkdownPad.FileWatcher.Tests.pas',
   MarkdownPad.Controller.Tests in 'MarkdownPad.Controller.Tests.pas',
   MarkdownPad.HtmlExport.Tests in 'MarkdownPad.HtmlExport.Tests.pas',
+  MarkdownPad.LinkPolicy.Tests in 'MarkdownPad.LinkPolicy.Tests.pas',
+  Markdown4D.Text.UrlSafety.Tests in 'Markdown4D.Text.UrlSafety.Tests.pas',
+  Markdown4D.Viewer.ImageSettings.Tests in 'Markdown4D.Viewer.ImageSettings.Tests.pas',
   StreamingMarkdown.Demo.Tests in 'StreamingMarkdown.Demo.Tests.pas';
 
 const
