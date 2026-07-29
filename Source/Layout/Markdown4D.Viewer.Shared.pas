@@ -15,7 +15,12 @@ type
     class function FontStylesOf(const Font: TMarkdownFontStyle): TFontStyles;
     class function TryResolveGenericFamily(const FamilyName: string; out Resolved: string): Boolean;
     class function IsHttpUrl(const Url: string): Boolean;
-    class function TryResolveImageUrl(const Source, BaseUrl, DocumentFolder: string; out Url: string): Boolean;
+    class function TryResolveImageUrl(const Source, BaseUrl, DocumentFolder: string;
+      out Url: string): Boolean; overload;
+    class function TryResolveImageUrl(const Source, BaseUrl, DocumentFolder: string;
+      const RestrictToDocumentFolder: Boolean; out Url: string): Boolean; overload;
+    class function NormalizedLocalPath(const Value: string): string;
+    class function IsInsideFolder(const Path, Folder: string): Boolean;
     class procedure RegisterDefaultHighlighters;
   end;
 
@@ -75,6 +80,12 @@ end;
 class function TMarkdownViewerShared.TryResolveImageUrl(const Source, BaseUrl, DocumentFolder: string;
   out Url: string): Boolean;
 begin
+  Result := TryResolveImageUrl(Source, BaseUrl, DocumentFolder, False, Url);
+end;
+
+class function TMarkdownViewerShared.TryResolveImageUrl(const Source, BaseUrl, DocumentFolder: string;
+  const RestrictToDocumentFolder: Boolean; out Url: string): Boolean;
+begin
   Url := Source;
   try
     if Source.Contains(UrlSchemeSeparator) then
@@ -85,19 +96,52 @@ begin
       if BaseUrl.Contains(UrlSchemeSeparator) then
         Url := BaseUrl + Source
       else
-        Url := TPath.Combine(BaseUrl, Source);
+        Url := NormalizedLocalPath(TPath.Combine(BaseUrl, Source));
       Exit(True);
     end;
 
     const UsesDocumentFolder = (DocumentFolder <> '') and not TPath.IsPathRooted(Source);
     if UsesDocumentFolder then
-      Url := TPath.Combine(DocumentFolder, Source);
+      Url := NormalizedLocalPath(TPath.Combine(DocumentFolder, Source));
+
+    const EscapesDocumentFolder = RestrictToDocumentFolder and (DocumentFolder <> '') and
+      (not IsInsideFolder(Url, DocumentFolder));
+    if EscapesDocumentFolder then
+    begin
+      Url := '';
+      Exit(False);
+    end;
 
     Result := True;
   except
-    on Exception do
+    on EArgumentException do
+      Result := False;
+    on EInOutError do
       Result := False;
   end;
+end;
+
+// Compares canonical paths, so neither "..", a doubled separator nor a differing
+// case decides the outcome. The separator guard keeps "C:\docs-private" from
+// counting as a child of "C:\docs".
+class function TMarkdownViewerShared.IsInsideFolder(const Path, Folder: string): Boolean;
+begin
+  const FullPath = NormalizedLocalPath(Path);
+  const Root = IncludeTrailingPathDelimiter(NormalizedLocalPath(Folder));
+
+  Result := FullPath.StartsWith(Root, True);
+end;
+
+// Resolves the ".." segments a document can put in an image path, so callers
+// compare, cache and open one canonical path instead of several spellings of
+// the same file. Relative results are left alone: they carry no root to resolve
+// against and would otherwise be bound to the process working directory.
+class function TMarkdownViewerShared.NormalizedLocalPath(const Value: string): string;
+begin
+  if not TPath.IsPathRooted(Value) then
+    Exit(Value);
+
+  Result := TPath.GetFullPath(Value);
 end;
 
 class procedure TMarkdownViewerShared.RegisterDefaultHighlighters;

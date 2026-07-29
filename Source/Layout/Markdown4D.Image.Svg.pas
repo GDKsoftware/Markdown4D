@@ -79,7 +79,11 @@ begin
   try
     Result := FRasterizer(Svg, MaxWidth, MaxHeight, Raster);
   except
-    Result := False;
+    // Deliberately broad: the bytes come from the document, the rasterizer is a
+    // third-party engine that signals every failure with a plain Exception, and
+    // an unrenderable image must never take the viewer down with it.
+    on Exception do
+      Result := False;
   end;
 
   const HasPixels = (Raster.Width > 0) and (Raster.Height > 0) and

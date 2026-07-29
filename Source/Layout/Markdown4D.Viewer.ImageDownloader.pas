@@ -25,6 +25,7 @@ type
       TPendingDownload = record
         Source: string;
         Url: string;
+        MaxBytes: Integer;
       end;
     var
       FLifetime: IMarkdownViewerLifetime;
@@ -35,8 +36,8 @@ type
       FOnFailed: TMarkdownImageDownloadFailed;
     procedure PumpQueue;
     procedure BeginDownload(const Pending: TPendingDownload);
-    class function TryFetch(const Url: string; const Lifetime: IMarkdownViewerLifetime;
-      out Data: TBytes): Boolean;
+    class function TryFetch(const Url: string; const MaxBytes: Integer;
+      const Lifetime: IMarkdownViewerLifetime; out Data: TBytes): Boolean;
     procedure HandleDownloadResult(const Generation: Integer; const Source: string; const Data: TBytes;
       const Succeeded: Boolean);
 
@@ -44,7 +45,7 @@ type
     constructor Create(const OnCompleted: TMarkdownImageDownloadCompleted;
       const OnFailed: TMarkdownImageDownloadFailed);
     destructor Destroy; override;
-    procedure Download(const Source, Url: string);
+    procedure Download(const Source, Url: string; const MaxBytes: Integer = 0);
     procedure CancelPending;
   end;
 
@@ -53,6 +54,7 @@ implementation
 uses
   System.Classes,
   System.Threading,
+  System.Net.URLClient,
   System.Net.HttpClient;
 
 constructor TMarkdownImageDownloader.Create(const OnCompleted: TMarkdownImageDownloadCompleted;
@@ -74,11 +76,12 @@ begin
   inherited Destroy;
 end;
 
-procedure TMarkdownImageDownloader.Download(const Source, Url: string);
+procedure TMarkdownImageDownloader.Download(const Source, Url: string; const MaxBytes: Integer);
 begin
   var Pending := Default(TPendingDownload);
   Pending.Source := Source;
   Pending.Url := Url;
+  Pending.MaxBytes := MaxBytes;
   FQueue.Enqueue(Pending);
 
   PumpQueue;
@@ -106,22 +109,29 @@ begin
   const Generation = FGeneration;
   const Source = Pending.Source;
   const Url = Pending.Url;
+  const MaxBytes = Pending.MaxBytes;
   TTask.Run(
     procedure
     begin
       var Data: TBytes := nil;
-      const Succeeded = TryFetch(Url, Lifetime, Data);
-
-      TThread.Queue(nil,
-        procedure
-        begin
-          if Lifetime.IsAlive then
-            HandleDownloadResult(Generation, Source, Data, Succeeded);
-        end);
+      var Succeeded := False;
+      try
+        Succeeded := TryFetch(Url, MaxBytes, Lifetime, Data);
+      finally
+        // The result has to be reported even when the fetch failed in a way
+        // TryFetch does not handle, otherwise the active count never drops and
+        // the queue stalls for the lifetime of the viewer.
+        TThread.Queue(nil,
+          procedure
+          begin
+            if Lifetime.IsAlive then
+              HandleDownloadResult(Generation, Source, Data, Succeeded);
+          end);
+      end;
     end);
 end;
 
-class function TMarkdownImageDownloader.TryFetch(const Url: string;
+class function TMarkdownImageDownloader.TryFetch(const Url: string; const MaxBytes: Integer;
   const Lifetime: IMarkdownViewerLifetime; out Data: TBytes): Boolean;
 begin
   Data := nil;
@@ -133,13 +143,19 @@ begin
       Client.ReceiveDataCallback :=
         procedure(const Sender: TObject; ContentLength, ReadCount: Int64; var ShouldAbort: Boolean)
         begin
-          ShouldAbort := not Lifetime.IsAlive;
+          // A response is free to lie about its length or to declare none at
+          // all, so both the announced size and what actually arrived are held
+          // against the bound.
+          const ExceedsBound = (MaxBytes > 0) and ((ContentLength > MaxBytes) or (ReadCount > MaxBytes));
+
+          ShouldAbort := ExceedsBound or (not Lifetime.IsAlive);
         end;
 
       const Content = TBytesStream.Create;
       try
         const Response = Client.Get(Url, Content);
-        const IsUsable = (Response.StatusCode = HttpStatusOk) and (Content.Size > 0);
+        const WithinBound = (MaxBytes <= 0) or (Content.Size <= MaxBytes);
+        const IsUsable = (Response.StatusCode = HttpStatusOk) and (Content.Size > 0) and WithinBound;
         if not IsUsable then
           Exit(False);
 
@@ -152,7 +168,7 @@ begin
       Client.Free;
     end;
   except
-    on E: Exception do
+    on ENetException do
       Result := False;
   end;
 end;

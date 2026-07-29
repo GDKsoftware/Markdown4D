@@ -19,6 +19,7 @@ uses
   Markdown4D.Theme,
   Markdown4D.Viewer.Model,
   Markdown4D.Viewer.ImageDownloader,
+  Markdown4D.Viewer.ImageSettings,
   Markdown4D.Viewer.Lifetime,
   Markdown4D.Image.Svg,
   Markdown4D.Vcl.Painter;
@@ -31,16 +32,15 @@ type
   TMarkdownResolveImageEvent = procedure(const Sender: TObject; const Url: string; const Picture: TPicture;
     var Handled: Boolean) of object;
 
-  TMarkdownViewerImageSettings = class(TPersistent)
-  private
-    FBaseUrl: string;
+  // Republished from the shared layer so existing code keeps finding the type
+  // through this unit.
+  TMarkdownViewerImageSettings = Markdown4D.Viewer.ImageSettings.TMarkdownViewerImageSettings;
 
-  public
-    procedure Assign(Source: TPersistent); override;
-
-  published
-    property BaseUrl: string read FBaseUrl write FBaseUrl;
-  end;
+  // Vetoes or permits one remote image, starting from Images.AllowRemote. Use it
+  // to decide per address, for instance to allow only hosts the application
+  // knows.
+  TMarkdownRemoteImageEvent = procedure(const Sender: TObject; const Url: string;
+    var Allow: Boolean) of object;
 
   TMarkdownViewer = class(TCustomControl)
   private
@@ -87,12 +87,14 @@ type
       FOnLinkClick: TMarkdownLinkClickEvent;
       FOnLinkHover: TMarkdownLinkHoverEvent;
       FOnResolveImage: TMarkdownResolveImageEvent;
+      FOnRemoteImageRequest: TMarkdownRemoteImageEvent;
       FOnScroll: TNotifyEvent;
     function InvokeOnMainThread(const Action: TThreadProcedure): Boolean;
     procedure HandleFlushTimer(Sender: TObject);
     procedure ResolvePendingImages;
     procedure ResolvePendingImage(const Source: string);
     function TryResolveImageThroughEvent(const Source, Url: string): Boolean;
+    function AllowsRemoteImage(const Url: string): Boolean;
     procedure LoadLocalImage(const Source, FilePath: string);
     procedure HandleImageDataArrived(const Source: string; const Data: TBytes);
     procedure HandleImageDownloadFailed(const Source: string);
@@ -178,6 +180,8 @@ type
     property OnLinkClick: TMarkdownLinkClickEvent read FOnLinkClick write FOnLinkClick;
     property OnLinkHover: TMarkdownLinkHoverEvent read FOnLinkHover write FOnLinkHover;
     property OnResolveImage: TMarkdownResolveImageEvent read FOnResolveImage write FOnResolveImage;
+    property OnRemoteImageRequest: TMarkdownRemoteImageEvent read FOnRemoteImageRequest
+      write FOnRemoteImageRequest;
     property OnScroll: TNotifyEvent read FOnScroll write FOnScroll;
   end;
 
@@ -199,13 +203,6 @@ uses
   Markdown4D.Layout.Renderer,
   Markdown4D.Viewer.Shared;
 
-procedure TMarkdownViewerImageSettings.Assign(Source: TPersistent);
-begin
-  if Source is TMarkdownViewerImageSettings then
-    FBaseUrl := TMarkdownViewerImageSettings(Source).FBaseUrl
-  else
-    inherited Assign(Source);
-end;
 
 constructor TMarkdownViewer.Create(Owner: TComponent);
 begin
@@ -816,7 +813,9 @@ begin
     Exit;
 
   var Url: string;
-  if not TMarkdownViewerShared.TryResolveImageUrl(Source, FImages.BaseUrl, FDocumentFolder, Url) then
+  const Resolved = TMarkdownViewerShared.TryResolveImageUrl(Source, FImages.BaseUrl, FDocumentFolder,
+    FImages.RestrictToDocumentFolder, Url);
+  if not Resolved then
   begin
     ApplyFailedImage(Source);
     Exit;
@@ -827,12 +826,28 @@ begin
 
   if TMarkdownViewerShared.IsHttpUrl(Url) then
   begin
+    if not AllowsRemoteImage(Url) then
+    begin
+      ApplyFailedImage(Source);
+      Exit;
+    end;
+
     FRequestedImageSources.Add(Source, True);
-    FImageDownloader.Download(Source, Url);
+    FImageDownloader.Download(Source, Url, FImages.MaxBytes);
     Exit;
   end;
 
   LoadLocalImage(Source, Url);
+end;
+
+// Starts from the setting and lets the application narrow or widen it per
+// address, which is the point of having the event at all.
+function TMarkdownViewer.AllowsRemoteImage(const Url: string): Boolean;
+begin
+  Result := FImages.AllowRemote;
+
+  if Assigned(FOnRemoteImageRequest) then
+    FOnRemoteImageRequest(Self, Url, Result);
 end;
 
 function TMarkdownViewer.TryResolveImageThroughEvent(const Source, Url: string): Boolean;
