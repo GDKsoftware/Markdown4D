@@ -126,6 +126,7 @@ type
     function Use(const Extension: IMarkdownExtension): IMarkdownPipelineBuilder;
     function XhtmlOutput: IMarkdownPipelineBuilder;
     function UnsafeHtml: IMarkdownPipelineBuilder;
+    function UnsafeLinks: IMarkdownPipelineBuilder;
     function TagFilter: IMarkdownPipelineBuilder;
     function RegisterBlockParser(const Parser: IMarkdownBlockParser; const TriggerCharacters: string; const Priority: Integer): IMarkdownPipelineBuilder;
     function RegisterInlineParser(const Parser: IMarkdownInlineParser; const TriggerCharacters: string; const Priority: Integer): IMarkdownPipelineBuilder;

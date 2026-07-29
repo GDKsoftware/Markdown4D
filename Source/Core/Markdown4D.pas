@@ -13,19 +13,30 @@ uses
 type
   TMarkdown = class
   private
+    type
+      // Safe drops raw HTML and scripting destinations, which is what a caller
+      // rendering someone else's document needs. Unsafe reproduces the
+      // specification byte for byte and trusts the input.
+      TRenderMode = (Safe, Unsafe);
     class var
-      FDefaultPipeline: IMarkdownPipeline;
-      FGfmPipeline: IMarkdownPipeline;
+      FPipelines: array[TMarkdownDialect, TRenderMode] of IMarkdownPipeline;
       FLock: TObject;
-    class function PipelineFor(const Dialect: TMarkdownDialect): IMarkdownPipeline;
-    class function DefaultPipeline: IMarkdownPipeline;
-    class function GfmPipeline: IMarkdownPipeline;
+    class function PipelineFor(const Dialect: TMarkdownDialect; const Mode: TRenderMode): IMarkdownPipeline;
+    class function BuildPipeline(const Dialect: TMarkdownDialect; const Mode: TRenderMode): IMarkdownPipeline;
 
   public
     class constructor Create;
     class destructor Destroy;
     class function Version: string;
+    // Renders with raw HTML omitted and javascript:, vbscript:, file: and
+    // non-image data: destinations emptied. Use this for anything that did not
+    // come from the application itself.
     class function ToHtml(const Source: string; const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): string;
+    // Renders exactly what the CommonMark and GFM specifications prescribe:
+    // raw HTML and every destination reach the output untouched. Only safe for
+    // documents the application trusts, or when the result passes through an
+    // HTML sanitizer afterwards.
+    class function ToUnsafeHtml(const Source: string; const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): string;
     class function Parse(const Source: string; const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): IMarkdownDocument;
     class function ToMarkdown(const Document: IMarkdownDocument): string;
     class function CreateIncrementalParser(const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): IMarkdownIncrementalParser;
@@ -56,53 +67,48 @@ end;
 
 class function TMarkdown.ToHtml(const Source: string; const Dialect: TMarkdownDialect): string;
 begin
-  Result := PipelineFor(Dialect).ToHtml(Source);
+  Result := PipelineFor(Dialect, TRenderMode.Safe).ToHtml(Source);
+end;
+
+class function TMarkdown.ToUnsafeHtml(const Source: string; const Dialect: TMarkdownDialect): string;
+begin
+  Result := PipelineFor(Dialect, TRenderMode.Unsafe).ToHtml(Source);
 end;
 
 class function TMarkdown.Parse(const Source: string; const Dialect: TMarkdownDialect): IMarkdownDocument;
 begin
-  Result := PipelineFor(Dialect).Parse(Source);
+  Result := PipelineFor(Dialect, TRenderMode.Safe).Parse(Source);
 end;
 
-class function TMarkdown.PipelineFor(const Dialect: TMarkdownDialect): IMarkdownPipeline;
+class function TMarkdown.PipelineFor(const Dialect: TMarkdownDialect; const Mode: TRenderMode): IMarkdownPipeline;
 begin
+  if FPipelines[Dialect, Mode] = nil then
+  begin
+    TMonitor.Enter(FLock);
+    try
+      if FPipelines[Dialect, Mode] = nil then
+        FPipelines[Dialect, Mode] := BuildPipeline(Dialect, Mode);
+    finally
+      TMonitor.Exit(FLock);
+    end;
+  end;
+
+  Result := FPipelines[Dialect, Mode];
+end;
+
+class function TMarkdown.BuildPipeline(const Dialect: TMarkdownDialect; const Mode: TRenderMode): IMarkdownPipeline;
+begin
+  var Builder := TMarkdownPipeline.Create.UseCommonMark;
+
   const IsGfmDialect = (Dialect = TMarkdownDialect.Gfm);
   if IsGfmDialect then
-    Exit(GfmPipeline);
+    Builder := Builder.UseGfm;
 
-  Result := DefaultPipeline;
-end;
+  const IsUnsafe = (Mode = TRenderMode.Unsafe);
+  if IsUnsafe then
+    Builder := Builder.UnsafeHtml.UnsafeLinks;
 
-class function TMarkdown.DefaultPipeline: IMarkdownPipeline;
-begin
-  if FDefaultPipeline = nil then
-  begin
-    TMonitor.Enter(FLock);
-    try
-      if FDefaultPipeline = nil then
-        FDefaultPipeline := TMarkdownPipeline.Create.UseCommonMark.UnsafeHtml.Build;
-    finally
-      TMonitor.Exit(FLock);
-    end;
-  end;
-
-  Result := FDefaultPipeline;
-end;
-
-class function TMarkdown.GfmPipeline: IMarkdownPipeline;
-begin
-  if FGfmPipeline = nil then
-  begin
-    TMonitor.Enter(FLock);
-    try
-      if FGfmPipeline = nil then
-        FGfmPipeline := TMarkdownPipeline.Create.UseGfm.UnsafeHtml.Build;
-    finally
-      TMonitor.Exit(FLock);
-    end;
-  end;
-
-  Result := FGfmPipeline;
+  Result := Builder.Build;
 end;
 
 class function TMarkdown.ToMarkdown(const Document: IMarkdownDocument): string;
@@ -115,7 +121,7 @@ end;
 
 class function TMarkdown.CreateIncrementalParser(const Dialect: TMarkdownDialect): IMarkdownIncrementalParser;
 begin
-  Result := TMarkdownIncrementalParser.CreateParser(PipelineFor(Dialect));
+  Result := TMarkdownIncrementalParser.CreateParser(PipelineFor(Dialect, TRenderMode.Safe));
 end;
 
 end.

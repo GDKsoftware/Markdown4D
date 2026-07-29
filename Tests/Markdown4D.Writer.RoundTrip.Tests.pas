@@ -121,7 +121,7 @@ begin
   FailureDetail := '';
 
   try
-    const DirectHtml = TSpecCorpus.NormalizeLineEndings(TMarkdown.ToHtml(Example.Markdown, Dialect));
+    const DirectHtml = TSpecCorpus.NormalizeLineEndings(TMarkdown.ToUnsafeHtml(Example.Markdown, Dialect));
     const SpecHtml = TSpecCorpus.NormalizeLineEndings(Example.ExpectedHtml);
     const MatchesSpec = (DirectHtml = SpecHtml);
     if not MatchesSpec then
@@ -132,7 +132,7 @@ begin
 
     const Document = TMarkdown.Parse(Example.Markdown, Dialect);
     const Rewritten = TMarkdown.ToMarkdown(Document);
-    const RoundTripHtml = TSpecCorpus.NormalizeLineEndings(TMarkdown.ToHtml(Rewritten, Dialect));
+    const RoundTripHtml = TSpecCorpus.NormalizeLineEndings(TMarkdown.ToUnsafeHtml(Rewritten, Dialect));
     Result := (RoundTripHtml = DirectHtml);
     if not Result then
       FailureDetail := Format('round-trip HTML differs from direct HTML. Rewritten markdown: <%s>, direct HTML: <%s>, round-trip HTML: <%s>',

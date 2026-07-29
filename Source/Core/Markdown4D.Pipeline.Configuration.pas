@@ -14,7 +14,13 @@ type
     AllowRawHtml: Boolean;
     ApplyTagFilter: Boolean;
     XhtmlOutput: Boolean;
+    // When False, link and image destinations carrying a scripting scheme are
+    // emptied instead of written out. See Markdown4D.Text.UrlSafety.
+    AllowUnsafeLinks: Boolean;
     class function SafeDefaults: TMarkdownRendererOptions; static;
+    // What the CommonMark and GFM specifications describe: raw HTML and every
+    // destination pass through untouched. Only appropriate for trusted input;
+    // the conformance suites are the intended caller.
     class function SpecDefaults: TMarkdownRendererOptions; static;
   end;
 
@@ -122,6 +128,7 @@ class function TMarkdownRendererOptions.SpecDefaults: TMarkdownRendererOptions;
 begin
   Result := Default(TMarkdownRendererOptions);
   Result.AllowRawHtml := True;
+  Result.AllowUnsafeLinks := True;
 end;
 
 constructor TMarkdownPipelineConfiguration.Create(const BlockParsers: TList<TMarkdownBlockParserRegistration>;

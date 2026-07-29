@@ -35,6 +35,7 @@ type
     class function TryStreamingExample(const Example: TSpecExample; const Dialect: TMarkdownDialect; out FailureDetail: string): Boolean;
     class function TryMutationExample(const Example: TSpecExample; const Dialect: TMarkdownDialect; out FailureDetail: string): Boolean;
     class function CheckFullParseMatchesSpec(const Example: TSpecExample; const Dialect: TMarkdownDialect; out FullParseHtml: string; out FailureDetail: string): Boolean;
+    class function CreateSpecParser(const Dialect: TMarkdownDialect): IMarkdownIncrementalParser;
     class procedure AppendInChunks(const Parser: IMarkdownIncrementalParser; const Source: string; const Seed: Cardinal);
     class function DeleteSlice(const Parser: IMarkdownIncrementalParser; const State: TMutationState): TMutationState;
     class function InsertMarker(const Parser: IMarkdownIncrementalParser; const State: TMutationState): TMutationState;
@@ -130,7 +131,9 @@ uses
   System.SysUtils,
   System.Math,
   System.Generics.Collections,
-  Markdown4D;
+  Markdown4D,
+  Markdown4D.Pipeline,
+  Markdown4D.Parser.Incremental;
 
 procedure TIncrementalEquivalenceTests.SetupFixture;
 begin
@@ -214,7 +217,7 @@ begin
     if not FullParseMatchesSpec then
       Exit(False);
 
-    const Parser = TMarkdown.CreateIncrementalParser(Dialect);
+    const Parser = CreateSpecParser(Dialect);
     AppendInChunks(Parser, Example.Markdown, SeedForExample(Example.Number));
 
     const StreamedHtml = TSpecCorpus.NormalizeLineEndings(Parser.ToHtml);
@@ -240,7 +243,7 @@ begin
     if not FullParseMatchesSpec then
       Exit(False);
 
-    const Parser = TMarkdown.CreateIncrementalParser(Dialect);
+    const Parser = CreateSpecParser(Dialect);
     Parser.Append(Example.Markdown);
 
     var State: TMutationState;
@@ -272,12 +275,25 @@ end;
 class function TIncrementalEquivalenceTests.CheckFullParseMatchesSpec(const Example: TSpecExample; const Dialect: TMarkdownDialect; out FullParseHtml: string; out FailureDetail: string): Boolean;
 begin
   FailureDetail := '';
-  FullParseHtml := TSpecCorpus.NormalizeLineEndings(TMarkdown.ToHtml(Example.Markdown, Dialect));
+  FullParseHtml := TSpecCorpus.NormalizeLineEndings(TMarkdown.ToUnsafeHtml(Example.Markdown, Dialect));
 
   const SpecHtml = TSpecCorpus.NormalizeLineEndings(Example.ExpectedHtml);
   Result := (FullParseHtml = SpecHtml);
   if not Result then
     FailureDetail := Format('full-parse HTML differs from the spec expected HTML. Expected: <%s>, full-parse: <%s>', [SpecHtml, FullParseHtml]);
+end;
+
+// The conformance corpus expects the specification output, so the streamed
+// parser has to run the same unsafe pipeline the full parse is compared against.
+class function TIncrementalEquivalenceTests.CreateSpecParser(const Dialect: TMarkdownDialect): IMarkdownIncrementalParser;
+begin
+  var Builder := TMarkdownPipeline.Create.UseCommonMark;
+
+  const IsGfmDialect = (Dialect = TMarkdownDialect.Gfm);
+  if IsGfmDialect then
+    Builder := Builder.UseGfm;
+
+  Result := TMarkdownIncrementalParser.CreateParser(Builder.UnsafeHtml.UnsafeLinks.Build);
 end;
 
 class procedure TIncrementalEquivalenceTests.AppendInChunks(const Parser: IMarkdownIncrementalParser; const Source: string; const Seed: Cardinal);
@@ -341,7 +357,7 @@ class function TIncrementalEquivalenceTests.TryVerifyMutation(const Parser: IMar
 begin
   FailureDetail := '';
 
-  const ExpectedHtml = TSpecCorpus.NormalizeLineEndings(TMarkdown.ToHtml(Content, Dialect));
+  const ExpectedHtml = TSpecCorpus.NormalizeLineEndings(TMarkdown.ToUnsafeHtml(Content, Dialect));
   const IncrementalHtml = TSpecCorpus.NormalizeLineEndings(Parser.ToHtml);
   Result := (IncrementalHtml = ExpectedHtml);
   if not Result then

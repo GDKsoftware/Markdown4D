@@ -97,7 +97,7 @@ procedure TRendererOptionsTests.UnsafeHtml_RawHtml_MatchesFacadeOutput;
 begin
   const Source = '<div>'#10'*raw*'#10'</div>';
 
-  Assert.AreEqual(TMarkdown.ToHtml(Source), RenderUnsafe(Source));
+  Assert.AreEqual(TMarkdown.ToUnsafeHtml(Source), RenderUnsafe(Source));
 end;
 
 procedure TRendererOptionsTests.TagFilter_FilteredTags_EscapesLeadingBracket;

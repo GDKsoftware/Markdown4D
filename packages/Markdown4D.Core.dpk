@@ -66,6 +66,7 @@ contains
   Markdown4D.Renderer.Html in '..\Source\Core\Markdown4D.Renderer.Html.pas',
   Markdown4D.Text.FileFormat in '..\Source\Core\Markdown4D.Text.FileFormat.pas',
   Markdown4D.Text.Unescape in '..\Source\Core\Markdown4D.Text.Unescape.pas',
+  Markdown4D.Text.UrlSafety in '..\Source\Core\Markdown4D.Text.UrlSafety.pas',
   Markdown4D.Toc in '..\Source\Core\Markdown4D.Toc.pas',
   Markdown4D.Writer.Emphasis in '..\Source\Core\Markdown4D.Writer.Emphasis.pas',
   Markdown4D.Writer.Markdown in '..\Source\Core\Markdown4D.Writer.Markdown.pas',
@@ -115,6 +116,7 @@ contains
   Clipper.Minkowski in '..\ThirdParty\Image32\source\Clipper2\Clipper.Minkowski.pas',
   Markdown4D.Theme in '..\Source\Layout\Markdown4D.Theme.pas',
   Markdown4D.Viewer.ImageDownloader in '..\Source\Layout\Markdown4D.Viewer.ImageDownloader.pas',
+  Markdown4D.Viewer.ImageSettings in '..\Source\Layout\Markdown4D.Viewer.ImageSettings.pas',
   Markdown4D.Viewer.Lifetime in '..\Source\Layout\Markdown4D.Viewer.Lifetime.pas',
   Markdown4D.Viewer.Model in '..\Source\Layout\Markdown4D.Viewer.Model.pas',
   Markdown4D.Viewer.Shared in '..\Source\Layout\Markdown4D.Viewer.Shared.pas';

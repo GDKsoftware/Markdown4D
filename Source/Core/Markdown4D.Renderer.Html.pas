@@ -84,6 +84,7 @@ type
     procedure WriteCodeSpan(const Node: IMarkdownText);
     procedure EnterAnchor(const Node: IMarkdownLink);
     procedure WriteImage(const Node: IMarkdownLink);
+    function DestinationOutput(const Destination: string): string;
     procedure AppendAltText(const Node: IMarkdownNode);
     class procedure PushChildrenReversed(const Pending: TStack<IMarkdownNode>; const Node: IMarkdownNode);
     procedure WriteHardBreak;
@@ -113,7 +114,8 @@ type
 implementation
 
 uses
-  Markdown4D.Defines;
+  Markdown4D.Defines,
+  Markdown4D.Text.UrlSafety;
 
 type
   TRendererHtmlWriter = class(TInterfacedObject, IMarkdownHtmlWriter)
@@ -461,7 +463,7 @@ end;
 
 procedure TMarkdownHtmlRenderer.EnterAnchor(const Node: IMarkdownLink);
 begin
-  FOutput.Append(Format(AnchorOpenFormat, [EscapeHtml(Node.Destination)]));
+  FOutput.Append(Format(AnchorOpenFormat, [EscapeHtml(DestinationOutput(Node.Destination))]));
 
   const HasTitle = (Node.Title <> '');
   if HasTitle then
@@ -474,7 +476,7 @@ end;
 
 procedure TMarkdownHtmlRenderer.WriteImage(const Node: IMarkdownLink);
 begin
-  FOutput.Append(Format(ImageOpenFormat, [EscapeHtml(Node.Destination)]));
+  FOutput.Append(Format(ImageOpenFormat, [EscapeHtml(DestinationOutput(Node.Destination))]));
 
   AppendAltText(Node);
   FOutput.Append('"');
@@ -484,6 +486,14 @@ begin
     FOutput.Append(Format(TitleAttributeFormat, [EscapeHtml(Node.Title)]));
 
   FOutput.Append(' />');
+end;
+
+function TMarkdownHtmlRenderer.DestinationOutput(const Destination: string): string;
+begin
+  if FOptions.AllowUnsafeLinks then
+    Exit(Destination);
+
+  Result := TMarkdownUrlSafety.Sanitized(Destination);
 end;
 
 procedure TMarkdownHtmlRenderer.AppendAltText(const Node: IMarkdownNode);

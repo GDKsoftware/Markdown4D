@@ -98,6 +98,7 @@ type
     function Use(const Extension: IMarkdownExtension): IMarkdownPipelineBuilder;
     function XhtmlOutput: IMarkdownPipelineBuilder;
     function UnsafeHtml: IMarkdownPipelineBuilder;
+    function UnsafeLinks: IMarkdownPipelineBuilder;
     function TagFilter: IMarkdownPipelineBuilder;
     function RegisterBlockParser(const Parser: IMarkdownBlockParser; const TriggerCharacters: string;
                                  const Priority: Integer): IMarkdownPipelineBuilder;
@@ -267,6 +268,13 @@ end;
 function TMarkdownPipelineBuilder.UnsafeHtml: IMarkdownPipelineBuilder;
 begin
   FOptions.AllowRawHtml := True;
+
+  Result := Self;
+end;
+
+function TMarkdownPipelineBuilder.UnsafeLinks: IMarkdownPipelineBuilder;
+begin
+  FOptions.AllowUnsafeLinks := True;
 
   Result := Self;
 end;

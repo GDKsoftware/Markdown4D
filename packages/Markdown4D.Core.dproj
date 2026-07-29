@@ -1,4 +1,4 @@
-﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
         <ProjectGuid>{B1C2D3E4-0001-4A10-9C20-1A2B3C4D5E60}</ProjectGuid>
         <MainSource>Markdown4D.Core.dpk</MainSource>
@@ -113,6 +113,7 @@
         <DCCReference Include="..\Source\Core\Markdown4D.Renderer.Html.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Text.FileFormat.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Text.Unescape.pas"/>
+        <DCCReference Include="..\Source\Core\Markdown4D.Text.UrlSafety.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Toc.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Writer.Emphasis.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Writer.Markdown.pas"/>
@@ -162,6 +163,7 @@
         <DCCReference Include="..\ThirdParty\Image32\source\Clipper2\Clipper.Minkowski.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Theme.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.ImageDownloader.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.ImageSettings.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.Lifetime.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.Model.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.Shared.pas"/>

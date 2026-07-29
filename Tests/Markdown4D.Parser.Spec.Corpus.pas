@@ -178,7 +178,10 @@ begin
   Detail := '';
 
   try
-    const ActualHtml = NormalizeLineEndings(TMarkdown.ToHtml(Example.Markdown, Dialect));
+    // The conformance suites describe what the specification prescribes, which
+    // includes raw HTML and destinations the safe renderer strips, so they are
+    // checked against the unsafe rendering path on purpose.
+    const ActualHtml = NormalizeLineEndings(TMarkdown.ToUnsafeHtml(Example.Markdown, Dialect));
     const ExpectedHtml = NormalizeLineEndings(Example.ExpectedHtml);
     Result := (ActualHtml = ExpectedHtml);
     if not Result then

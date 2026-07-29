@@ -504,7 +504,7 @@ class function TMarkdownAstBuilderTests.RoundTripHtml(const Document: IMarkdownD
 begin
   const Rewritten = TMarkdown.ToMarkdown(Document);
 
-  Result := TSpecCorpus.NormalizeLineEndings(TMarkdown.ToHtml(Rewritten, Dialect));
+  Result := TSpecCorpus.NormalizeLineEndings(TMarkdown.ToUnsafeHtml(Rewritten, Dialect));
 end;
 
 end.
