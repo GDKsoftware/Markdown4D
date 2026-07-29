@@ -40,12 +40,14 @@ type
     FListData: TListData;
     FTableAlignments: TArray<TMarkdownTableColumnAlignment>;
     FLastLineBlank: Boolean;
+    FEndsWithBlankLine: Boolean;
     FHadStrippedReferences: Boolean;
     FStartLine: Integer;
     FStartOffset: Integer;
     FEndOffset: Integer;
     procedure FreeDescendantsIteratively;
     procedure MoveChildrenTo(const Pending: TStack<TStagingBlock>);
+    procedure SetLastLineBlank(const Value: Boolean);
 
   public
     constructor Create(const Kind: TMarkdownNodeKind; const Parent: TStagingBlock);
@@ -66,7 +68,13 @@ type
     property HtmlKind: THtmlBlockKind read FHtmlKind write FHtmlKind;
     property ListData: TListData read FListData write FListData;
     property TableAlignments: TArray<TMarkdownTableColumnAlignment> read FTableAlignments write FTableAlignments;
-    property LastLineBlank: Boolean read FLastLineBlank write FLastLineBlank;
+    property LastLineBlank: Boolean read FLastLineBlank write SetLastLineBlank;
+    // Whether this block, or the innermost list level underneath it, ended on a
+    // blank line. Held as a value rather than answered by walking down the
+    // last-child chain: a document nesting thousands of lists would otherwise
+    // make the loose-list check quadratic. TBlockParser refreshes it when a
+    // block is finalized, by which time its children are already final.
+    property EndsWithBlankLine: Boolean read FEndsWithBlankLine write FEndsWithBlankLine;
     property HadStrippedReferences: Boolean read FHadStrippedReferences write FHadStrippedReferences;
     property StartLine: Integer read FStartLine write FStartLine;
     property StartOffset: Integer read FStartOffset write FStartOffset;
@@ -107,6 +115,16 @@ begin
     Exit(nil);
 
   Result := FChildren[FChildren.Count - 1];
+end;
+
+procedure TStagingBlock.SetLastLineBlank(const Value: Boolean);
+begin
+  FLastLineBlank := Value;
+
+  // A block ending on a blank line ends on a blank line whatever its children
+  // say, so this stays right even for a block that was already finalized.
+  if Value then
+    FEndsWithBlankLine := True;
 end;
 
 procedure TStagingBlock.FreeDescendantsIteratively;

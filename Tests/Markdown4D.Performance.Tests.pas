@@ -22,6 +22,10 @@ type
       ReplaceMedianBudgetMilliseconds = 10.0;
       ReplaceScalingRatioBudget = 2.5;
       EmphasisBudgetMilliseconds = 500.0;
+      NestedListMarkerCount = 10000;
+      NestedListMarkerScalingCount = 20000;
+      NestedListBudgetMilliseconds = 500.0;
+      NestedListScalingRatioBudget = 3.0;
     var
       FHundredKilobyteDocument: string;
       FFourHundredKilobyteDocument: string;
@@ -44,6 +48,12 @@ type
 
     [Test]
     procedure Parse_UnclosedEmphasisOpeners_StaysUnderBudget;
+
+    [Test]
+    procedure Parse_NestedListMarkers_StaysUnderBudget;
+
+    [Test]
+    procedure Parse_NestedListMarkers_ScalingRatioStaysUnderBudget;
   end;
 
 implementation
@@ -101,6 +111,30 @@ begin
   const ElapsedMilliseconds = TBenchmarkScenarios.MeasureFullParseMedian(Source, TMarkdownDialect.CommonMark, SingleRun);
   const WithinBudget = (ElapsedMilliseconds < EmphasisBudgetMilliseconds);
   Assert.IsTrue(WithinBudget, Format('Parsing %d unclosed emphasis openers took %.3f ms which exceeds the %.1f ms budget', [EmphasisDelimiterCount, ElapsedMilliseconds, EmphasisBudgetMilliseconds]));
+end;
+
+procedure TPerformanceBudgetTests.Parse_NestedListMarkers_StaysUnderBudget;
+begin
+  const Source = TBenchmarkScenarios.BuildNestedListMarkers(NestedListMarkerCount);
+
+  const ElapsedMilliseconds = TBenchmarkScenarios.MeasureFullParseMedian(Source, TMarkdownDialect.CommonMark, SingleRun);
+  const WithinBudget = (ElapsedMilliseconds < NestedListBudgetMilliseconds);
+  Assert.IsTrue(WithinBudget, Format('Parsing %d nested list markers took %.3f ms which exceeds the %.1f ms budget', [NestedListMarkerCount, ElapsedMilliseconds, NestedListBudgetMilliseconds]));
+end;
+
+// Guards the shape rather than the clock: doubling the markers on one line may
+// double the work, not quadruple it.
+procedure TPerformanceBudgetTests.Parse_NestedListMarkers_ScalingRatioStaysUnderBudget;
+begin
+  const SmallSource = TBenchmarkScenarios.BuildNestedListMarkers(NestedListMarkerCount);
+  const LargeSource = TBenchmarkScenarios.BuildNestedListMarkers(NestedListMarkerScalingCount);
+
+  const SmallMedian = TBenchmarkScenarios.MeasureFullParseMedian(SmallSource, TMarkdownDialect.CommonMark, SingleRun);
+  const LargeMedian = TBenchmarkScenarios.MeasureFullParseMedian(LargeSource, TMarkdownDialect.CommonMark, SingleRun);
+
+  const Ratio = TBenchmarkScenarios.ScalingRatio(SmallMedian, LargeMedian);
+  const WithinBudget = (Ratio < NestedListScalingRatioBudget);
+  Assert.IsTrue(WithinBudget, Format('Nested list marker scaling ratio of %.3f (%d markers %.3f ms, %d markers %.3f ms) exceeds the %.1f budget', [Ratio, NestedListMarkerCount, SmallMedian, NestedListMarkerScalingCount, LargeMedian, NestedListScalingRatioBudget]));
 end;
 
 end.

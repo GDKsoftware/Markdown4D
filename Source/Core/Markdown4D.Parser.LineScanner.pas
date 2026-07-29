@@ -37,6 +37,7 @@ type
     procedure AdvanceToLineEnd;
     function RestOfLine: string;
     function TextFrom(const Index: Integer): string;
+    function IsBlankFrom(const Index: Integer): Boolean;
     function SaveState: TLineScannerState;
     procedure RestoreState(const State: TLineScannerState);
     property Line: string read FLine;
@@ -160,6 +161,20 @@ end;
 function TLineScanner.TextFrom(const Index: Integer): string;
 begin
   Result := Copy(FLine, Index, MaxInt);
+end;
+
+// Answers what TextFrom(Index).Trim = '' answers, without copying the tail of
+// the line. A single line can open thousands of nested list items, and one copy
+// per item turns parsing into quadratic work.
+function TLineScanner.IsBlankFrom(const Index: Integer): Boolean;
+begin
+  for var Position := Index to Length(FLine) do
+  begin
+    if not IsSpaceOrTab(FLine[Position]) then
+      Exit(False);
+  end;
+
+  Result := True;
 end;
 
 function TLineScanner.SaveState: TLineScannerState;

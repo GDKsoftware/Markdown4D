@@ -31,6 +31,13 @@ type
         Staging: TStagingBlock;
         AstParent: TMarkdownAstNode;
       end;
+      // Where the current line stops being a run of one thematic break marker.
+      // Cached per line so a line carrying many markers does not rescan its own
+      // tail once per marker.
+      TThematicBreakScan = record
+        Marker: Char;
+        LastForeignIndex: Integer;
+      end;
     const
       CodeIndent = 4;
       MinThematicMarkers = 3;
@@ -74,6 +81,7 @@ type
       FBlank: Boolean;
       FLineNumber: Integer;
       FCurrentLine: TSourceLine;
+      FThematicBreakScan: TThematicBreakScan;
     procedure ProcessLine(const Line: TSourceLine);
     function MatchContinuations: TContinuationMatch;
     function ContinueBlock(const Block: TStagingBlock): TContinueResult;
@@ -105,6 +113,7 @@ type
     class function SplitTableRow(const Line: string): TArray<string>;
     function TryStartThematicBreak: TMarkdownBlockStart;
     function IsThematicBreakLine: Boolean;
+    function ScanThematicBreak(const Marker: Char): TThematicBreakScan;
     function TryStartListItem(const Container: TStagingBlock): TMarkdownBlockStart;
     function TryParseListMarker(const Container: TStagingBlock; out MarkerData: TListData): Boolean;
     function TryMatchListMarker(const Container: TStagingBlock; out MarkerData: TListData;
@@ -129,7 +138,6 @@ type
     class function StripTrailingBlankLines(const Value: string; const KeepFinalLineBreak: Boolean): string;
     procedure FinalizeList(const Block: TStagingBlock);
     class function ListIsLoose(const Block: TStagingBlock): Boolean;
-    class function EndsWithBlankLine(const Block: TStagingBlock): Boolean;
     function BuildDocument(const SourceLength: Integer): IMarkdownDocument;
     procedure AppendChildren(const Staging: TStagingBlock; const AstParent: TMarkdownAstNode);
     class procedure PushChildFrames(const Pending: TStack<TBuildFrame>; const Staging: TStagingBlock;
@@ -271,6 +279,7 @@ procedure TBlockParser.ProcessLine(const Line: TSourceLine);
 begin
   Inc(FLineNumber);
   FCurrentLine := Line;
+  FThematicBreakScan := Default(TThematicBreakScan);
   FScanner.Reset(Line.Text);
   FBlank := FScanner.IsBlank;
   FOldTip := FTip;
@@ -968,20 +977,48 @@ begin
   if not IsMarker then
     Exit(False);
 
+  const IsScanCurrent = (FThematicBreakScan.Marker = Marker);
+  if not IsScanCurrent then
+    FThematicBreakScan := ScanThematicBreak(Marker);
+
+  // Something other than the marker follows, so no starting point left of it can
+  // be a thematic break either. This is the answer for every marker on a line
+  // such as "- - - - x", and it costs nothing after the first scan.
+  const RunIsBroken = (FThematicBreakScan.LastForeignIndex >= FScanner.NextNonSpaceIndex);
+  if RunIsBroken then
+    Exit(False);
+
   var MarkerCount := 0;
   const Line = FScanner.Line;
 
   for var Index := FScanner.NextNonSpaceIndex to Length(Line) do
   begin
-    const Current = Line[Index];
-
-    if Current = Marker then
-      Inc(MarkerCount)
-    else if not TLineScanner.IsSpaceOrTab(Current) then
-      Exit(False);
+    if Line[Index] = Marker then
+      Inc(MarkerCount);
   end;
 
   Result := (MarkerCount >= MinThematicMarkers);
+end;
+
+// Reports the rightmost position holding something that is neither the marker
+// nor a space or tab, or zero when the line has no such character.
+function TBlockParser.ScanThematicBreak(const Marker: Char): TThematicBreakScan;
+begin
+  Result.Marker := Marker;
+  Result.LastForeignIndex := 0;
+
+  const Line = FScanner.Line;
+
+  for var Index := Length(Line) downto 1 do
+  begin
+    const Current = Line[Index];
+    const IsForeign = (Current <> Marker) and (not TLineScanner.IsSpaceOrTab(Current));
+    if IsForeign then
+    begin
+      Result.LastForeignIndex := Index;
+      Exit;
+    end;
+  end;
 end;
 
 function TBlockParser.TryStartListItem(const Container: TStagingBlock): TMarkdownBlockStart;
@@ -1025,9 +1062,8 @@ begin
   if not HasValidTerminator then
     Exit(False);
 
-  const RestAfterMarker = FScanner.TextFrom(FScanner.NextNonSpaceIndex + MarkerLength);
   const InterruptsParagraphWithBlank = (Container.Kind = TMarkdownNodeKind.Paragraph) and
-    (RestAfterMarker.Trim(TrimChars) = '');
+    FScanner.IsBlankFrom(FScanner.NextNonSpaceIndex + MarkerLength);
   if InterruptsParagraphWithBlank then
     Exit(False);
 
@@ -1289,6 +1325,12 @@ begin
     ;
   end;
 
+  // Every descendant is final by now, so the block can settle whether it trails
+  // a blank line once instead of being asked again for each enclosing list.
+  const IsListLevel = (Block.Kind = TMarkdownNodeKind.List) or (Block.Kind = TMarkdownNodeKind.ListItem);
+  const InnermostTrailsBlank = IsListLevel and (Block.LastChild <> nil) and Block.LastChild.EndsWithBlankLine;
+  Block.EndsWithBlankLine := Block.LastLineBlank or InnermostTrailsBlank;
+
   FTip := Parent;
 
   if ShouldUnlink then
@@ -1412,7 +1454,7 @@ begin
     const Item = Block.Children[ItemIndex];
     const HasNextItem = (ItemIndex < ItemCount - 1);
 
-    if EndsWithBlankLine(Item) and HasNextItem then
+    if Item.EndsWithBlankLine and HasNextItem then
       Exit(True);
 
     const SubCount = Item.Children.Count;
@@ -1422,28 +1464,9 @@ begin
       const SubItem = Item.Children[SubIndex];
       const HasNextBlock = HasNextItem or (SubIndex < SubCount - 1);
 
-      if EndsWithBlankLine(SubItem) and HasNextBlock then
+      if SubItem.EndsWithBlankLine and HasNextBlock then
         Exit(True);
     end;
-  end;
-
-  Result := False;
-end;
-
-class function TBlockParser.EndsWithBlankLine(const Block: TStagingBlock): Boolean;
-begin
-  var Current := Block;
-
-  while Current <> nil do
-  begin
-    if Current.LastLineBlank then
-      Exit(True);
-
-    const IsListLevel = (Current.Kind = TMarkdownNodeKind.List) or (Current.Kind = TMarkdownNodeKind.ListItem);
-    if not IsListLevel then
-      Break;
-
-    Current := Current.LastChild;
   end;
 
   Result := False;

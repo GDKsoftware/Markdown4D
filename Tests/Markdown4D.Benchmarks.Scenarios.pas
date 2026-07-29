@@ -46,6 +46,7 @@ type
       ClosedEmphasisDelimiterCount = 10000;
       UnclosedEmphasisOpenerCount = 5000;
       AlternatingEmphasisUnit = '*a*';
+      NestedListMarkerUnit = '- ';
       UnclosedEmphasisUnit = '**a';
       ReplacementText = '0123456789';
       ReplacedCharacterCount = 10;
@@ -73,6 +74,7 @@ type
     class function GenerateDocument(const TargetLength: Integer): string;
     class function BuildAlternatingEmphasis(const DelimiterCount: Integer): string;
     class function BuildUnclosedEmphasis(const OpenerCount: Integer): string;
+    class function BuildNestedListMarkers(const MarkerCount: Integer): string;
     class function MeasureFullParseMedian(const Source: string; const Dialect: TMarkdownDialect; const Runs: Integer): Double;
     class function MeasureAppendChunkMedian(const Source: string; const Dialect: TMarkdownDialect; const ChunkLength: Integer): Double;
     class function MeasureReplaceMedian(const Source: string; const Dialect: TMarkdownDialect; const PositionCount: Integer): Double;
@@ -246,6 +248,13 @@ end;
 class function TBenchmarkScenarios.BuildUnclosedEmphasis(const OpenerCount: Integer): string;
 begin
   Result := DupeString(UnclosedEmphasisUnit, OpenerCount);
+end;
+
+// A single line of list markers opens one list per marker, which is the shape
+// that used to make block parsing quadratic in the length of the line.
+class function TBenchmarkScenarios.BuildNestedListMarkers(const MarkerCount: Integer): string;
+begin
+  Result := DupeString(NestedListMarkerUnit, MarkerCount) + 'x';
 end;
 
 class function TBenchmarkScenarios.ScalingRatio(const SmallMedian, LargeMedian: Double): Double;
