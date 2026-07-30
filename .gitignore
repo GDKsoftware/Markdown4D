@@ -2,6 +2,9 @@
 PLAN.md
 PLAN-MarkdownPad.md
 
+# Local tooling configuration
+.claude/
+
 # Delphi build output
 __history/
 __recovery/
