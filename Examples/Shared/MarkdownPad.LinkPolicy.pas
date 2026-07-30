@@ -26,14 +26,16 @@ type
       BackSlash = '\';
     class function WithoutFragment(const Url: string): string;
     class function LooksLikeDocumentPath(const Value: string): Boolean;
+    class function IsInsideFolder(const Path, Folder: string): Boolean;
 
   public
     class function MayOpen(const Url: string): Boolean;
     // A link to a markdown file next to the current document is opened by the
-    // pad itself instead of by the shell. Only a relative path qualifies: an
-    // absolute or UNC path would let a document point at a server of someone
-    // else's choosing, and reaching for that share hands over the credentials
-    // Windows offers it.
+    // pad itself instead of by the shell. Only a relative path that stays
+    // inside the document's own folder qualifies: an absolute or UNC path would
+    // let a document point at a server of someone else's choosing, and reaching
+    // for that share hands over the credentials Windows offers it, while ".."
+    // segments would turn a link into a reader for any file on this machine.
     class function TryResolveDocument(const Url, DocumentFolder: string; out FileName: string): Boolean;
     class function RefusalMessage(const Url: string): string;
   end;
@@ -80,6 +82,9 @@ begin
   try
     const FullPath = TPath.GetFullPath(TPath.Combine(DocumentFolder, Candidate));
 
+    if not IsInsideFolder(FullPath, DocumentFolder) then
+      Exit(False);
+
     if not SameText(TPath.GetExtension(FullPath), DocumentExtension) then
       Exit(False);
 
@@ -125,6 +130,16 @@ begin
     Exit(False);
 
   Result := not TPath.IsPathRooted(Value);
+end;
+
+// Compares canonical paths, so neither "..", a doubled separator nor a
+// differing case decides the outcome. The separator guard keeps a sibling
+// folder whose name merely starts with the same text from counting as a child.
+class function TPadLinkPolicy.IsInsideFolder(const Path, Folder: string): Boolean;
+begin
+  const Root = IncludeTrailingPathDelimiter(TPath.GetFullPath(Folder));
+
+  Result := TPath.GetFullPath(Path).StartsWith(Root, True);
 end;
 
 class function TPadLinkPolicy.RefusalMessage(const Url: string): string;

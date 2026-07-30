@@ -78,6 +78,9 @@ type
 
     [Test]
     procedure TryResolveDocument_WithoutDocumentFolder_Fails;
+
+    [Test]
+    procedure TryResolveDocument_ParentSegmentsLeavingTheFolder_Fails;
   end;
 
 implementation
@@ -187,6 +190,24 @@ begin
   var FileName: string;
 
   Assert.IsFalse(TPadLinkPolicy.TryResolveDocument(NeighbourFileName, '', FileName));
+end;
+
+// The file exists and ends in .md, so only the folder boundary stands between
+// the link and a reader for any document on this machine.
+procedure TPadLinkPolicyTests.TryResolveDocument_ParentSegmentsLeavingTheFolder_Fails;
+begin
+  const OutsideName = TPath.GetGUIDFileName + '.md';
+  const OutsidePath = TPath.Combine(TPath.GetDirectoryName(FDocumentFolder), OutsideName);
+  TFile.WriteAllText(OutsidePath, '# heading');
+  try
+    var FileName: string;
+    const Link = '../' + OutsideName;
+
+    Assert.IsFalse(TPadLinkPolicy.TryResolveDocument(Link, FDocumentFolder, FileName),
+      Format('<%s> must not resolve outside the document folder', [Link]));
+  finally
+    TFile.Delete(OutsidePath);
+  end;
 end;
 
 end.
