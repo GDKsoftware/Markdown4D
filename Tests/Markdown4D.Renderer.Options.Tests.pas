@@ -52,6 +52,18 @@ type
 
     [Test]
     procedure TagFilter_AllowedTag_PassesRawHtmlThrough;
+
+    [Test]
+    procedure AltText_InlineHtml_IsEscapedInSafeMode;
+
+    [Test]
+    procedure AltText_InlineHtml_IsEscapedInUnsafeMode;
+
+    [Test]
+    procedure AltText_QuoteInInlineHtml_CannotEndTheAttribute;
+
+    [Test]
+    procedure AltText_SoftLineBreak_BecomesSpace;
   end;
 
 implementation
@@ -123,6 +135,30 @@ end;
 procedure TRendererOptionsTests.TagFilter_AllowedTag_PassesRawHtmlThrough;
 begin
   Assert.AreEqual('<p>x <strong></p>'#10, RenderTagFiltered('x <strong>'));
+end;
+
+procedure TRendererOptionsTests.AltText_InlineHtml_IsEscapedInSafeMode;
+begin
+  Assert.AreEqual('<p><img src="/u.png" alt="a&lt;b&gt;c" /></p>'#10, RenderDefault('![a<b>c](/u.png)'));
+end;
+
+// Alt text is an attribute value, so raw HTML is escaped there even when the
+// renderer is allowed to pass it through everywhere else.
+procedure TRendererOptionsTests.AltText_InlineHtml_IsEscapedInUnsafeMode;
+begin
+  Assert.AreEqual('<p><img src="/u.png" alt="a&lt;b&gt;c" /></p>'#10, RenderUnsafe('![a<b>c](/u.png)'));
+end;
+
+procedure TRendererOptionsTests.AltText_QuoteInInlineHtml_CannotEndTheAttribute;
+begin
+  const Rendered = RenderUnsafe('![a<b title=">">c](/u.png)');
+
+  Assert.AreEqual('<p><img src="/u.png" alt="a&lt;b title=&quot;&gt;&quot;&gt;c" /></p>'#10, Rendered);
+end;
+
+procedure TRendererOptionsTests.AltText_SoftLineBreak_BecomesSpace;
+begin
+  Assert.AreEqual('<p><img src="/u.png" alt="a b" /></p>'#10, RenderDefault('![a'#10'b](/u.png)'));
 end;
 
 class function TRendererOptionsTests.RenderDefault(const Source: string): string;

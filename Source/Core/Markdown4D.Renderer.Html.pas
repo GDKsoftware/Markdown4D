@@ -507,12 +507,14 @@ begin
       const Current = Pending.Pop;
 
       case Current.Kind of
-        TMarkdownNodeKind.Text, TMarkdownNodeKind.CodeSpan:
+        // Alt text is the value of an attribute, so everything landing here is
+        // plain text: markup is escaped whatever the raw HTML option says,
+        // because an unescaped quote would end the attribute, and a line break
+        // becomes a space because an attribute carries no lines.
+        TMarkdownNodeKind.Text, TMarkdownNodeKind.CodeSpan, TMarkdownNodeKind.InlineHtml:
           FOutput.Append(EscapeHtml((Current as IMarkdownText).Literal));
-        TMarkdownNodeKind.InlineHtml:
-          FOutput.Append(RawHtmlOutput((Current as IMarkdownText).Literal));
         TMarkdownNodeKind.SoftLineBreak, TMarkdownNodeKind.HardLineBreak:
-          FOutput.Append(LineFeed);
+          FOutput.Append(Space);
       else
         PushChildrenReversed(Pending, Current);
       end;
