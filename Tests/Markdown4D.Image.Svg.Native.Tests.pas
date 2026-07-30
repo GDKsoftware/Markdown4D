@@ -66,6 +66,12 @@ type
     procedure Rasterize_DropShadowFilter_PutsInkBesideTheShape;
 
     [Test]
+    procedure Rasterize_Use_DrawsWhatItPointsAtWhereItStands;
+
+    [Test]
+    procedure Rasterize_Mask_LetsThroughWhatIsBrightInIt;
+
+    [Test]
     procedure Rasterize_Text_PutsInkOnTheBaseline;
 
     [Test]
@@ -285,6 +291,32 @@ begin
   Assert.AreEqual(255, AlphaAt(Raster, 35, 35), 'The shape itself is still solid');
   Assert.IsTrue(AlphaAt(Raster, 54, 54) > 0, 'The shadow falls below and to the right');
   Assert.AreEqual(0, AlphaAt(Raster, 5, 5), 'Away from both, nothing is drawn');
+end;
+
+procedure TNativeSvgRasterizerTests.Rasterize_Use_DrawsWhatItPointsAtWhereItStands;
+begin
+  const Raster = Rasterize('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40" viewBox="0 0 80 40">' +
+    '<defs><rect id="box" x="0" y="0" width="10" height="10" fill="#ff0000"/></defs>' +
+    '<use href="#box" x="5" y="5"/><use href="#box" x="50" y="20"/></svg>');
+
+  Assert.AreEqual(255, AlphaAt(Raster, 10, 10), 'The first copy stands where it was placed');
+  Assert.AreEqual(255, AlphaAt(Raster, 55, 25), 'And so does the second');
+  Assert.AreEqual(0, AlphaAt(Raster, 30, 30), 'Between them nothing is drawn');
+end;
+
+// A mask is drawn like any other picture; how bright it is decides how much of
+// what it masks survives.
+procedure TNativeSvgRasterizerTests.Rasterize_Mask_LetsThroughWhatIsBrightInIt;
+begin
+  const Raster = Rasterize('<svg xmlns="http://www.w3.org/2000/svg" width="60" height="40" viewBox="0 0 60 40">' +
+    '<defs><mask id="m">' +
+    '<rect x="0" y="0" width="30" height="40" fill="#000000"/>' +
+    '<rect x="30" y="0" width="30" height="40" fill="#ffffff"/>' +
+    '</mask></defs>' +
+    '<rect x="0" y="0" width="60" height="40" fill="#ff0000" mask="url(#m)"/></svg>');
+
+  Assert.AreEqual(0, AlphaAt(Raster, 10, 20), 'Where the mask is black nothing comes through');
+  Assert.AreEqual(255, AlphaAt(Raster, 50, 20), 'Where it is white everything does');
 end;
 
 procedure TNativeSvgRasterizerTests.Rasterize_Text_PutsInkOnTheBaseline;

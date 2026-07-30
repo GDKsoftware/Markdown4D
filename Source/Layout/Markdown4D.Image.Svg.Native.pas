@@ -128,15 +128,22 @@ type
       // Past this ratio of miter length to stroke width a sharp corner grows a
       // spike, which is where the specification says to cut it off square.
       MiterLimit = 4.0;
+      // A reference pointing back at what already contains it would go on for
+      // ever, so the nesting is bounded.
+      MaxFragmentDepth = 8;
       RadiansPerDegree = Pi / 180;
       OpaqueAlpha = $FF000000;
       SkippedElements: array[0..5] of string = ('defs', 'clippath', 'mask', 'marker', 'filter', 'style');
-      UnsupportedElements: array[0..1] of string = ('image', 'use');
+      UnsupportedElements: array[0..0] of string = ('image');
     var
       FRaster: TMarkdownPixelRaster;
       FGradients: TDictionary<string, TSvgGradient>;
       FClipPaths: TDictionary<string, TArray<TSvgSubPath>>;
       FFilters: TDictionary<string, TSvgFilter>;
+      // The markup of every element carrying an id, so a reference to it can be
+      // drawn again wherever it is pointed at.
+      FDefinitions: TDictionary<string, string>;
+      FFragmentDepth: Integer;
       // Layers a filtered element is drawn into, and the filter waiting to be
       // applied to each of them when it closes.
       FLayers: TArray<TMarkdownPixelRaster>;
@@ -171,6 +178,11 @@ type
       const Contours: TArray<TArray<TLayoutPointF>>; const Matrix: TSvgMatrix): TMarkdownPaint;
     function ClipMaskFor(const Reference: string; const Matrix: TSvgMatrix;
       const Parent: TMarkdownClipMask): TMarkdownClipMask;
+    procedure DrawFragment(const Svg: string);
+    procedure DrawUse(const Element: TSvgXmlElement);
+    function MaskFor(const Reference: string; const Parent: TMarkdownClipMask): TMarkdownClipMask;
+    procedure CollectMarkup(const Svg: string);
+    class function InnerMarkup(const Markup: string): string; static;
     procedure BeginLayer(const Filter: TSvgFilter);
     procedure EndLayer;
     function ApplyFilter(const Filter: TSvgFilter; const Source: TMarkdownPixelRaster): TMarkdownPixelRaster;
@@ -627,10 +639,12 @@ begin
   FGradients := TDictionary<string, TSvgGradient>.Create;
   FClipPaths := TDictionary<string, TArray<TSvgSubPath>>.Create;
   FFilters := TDictionary<string, TSvgFilter>.Create;
+  FDefinitions := TDictionary<string, string>.Create;
 end;
 
 destructor TNativeSvgRenderer.Destroy;
 begin
+  FDefinitions.Free;
   FFilters.Free;
   FClipPaths.Free;
   FGradients.Free;
@@ -653,6 +667,14 @@ begin
   var Reference := '';
   if TryParseReference(PresentationValue(Element, 'clip-path'), Reference) then
     Next.Mask := ClipMaskFor(Reference, Next.Matrix, Next.Mask);
+
+  FStack := FStack + [Next];
+  try
+    if TryParseReference(PresentationValue(Element, 'mask'), Reference) then
+      Next.Mask := MaskFor(Reference, Next.Mask);
+  finally
+    Pop;
+  end;
 
   FStack := FStack + [Next];
 end;
@@ -1244,6 +1266,259 @@ begin
   Result := Combined;
 end;
 
+// Walks a piece of markup and draws it, starting from whatever frame is on the
+// stack. The document body is one such piece, and so is anything a reference
+// points at.
+procedure TNativeSvgRenderer.DrawFragment(const Svg: string);
+begin
+  if FFragmentDepth >= MaxFragmentDepth then
+    raise ESvgUnsupported.Create('nested references');
+
+  Inc(FFragmentDepth);
+  const Scanner = TSvgXmlScanner.Create(Svg);
+  try
+    const BaseDepth = FDepth;
+    var Element: TSvgXmlElement;
+    while Scanner.ReadElement(Element) do
+    begin
+      const Name = Element.Name.ToLowerInvariant;
+
+      if Element.IsClosing then
+      begin
+        Dec(FDepth);
+
+        // An element that was skipped never pushed a frame, so its closing tag
+        // must not pop one either: doing so would unwind the styles of
+        // everything around it.
+        if FSkipping then
+        begin
+          if FDepth < FSkipUntilDepth then
+            FSkipping := False;
+        end
+        else
+        begin
+          const ClosesLayer = (Length(FLayerDepths) > 0) and (FDepth < FLayerDepths[High(FLayerDepths)]);
+          if ClosesLayer then
+            EndLayer;
+
+          Pop;
+        end;
+
+        if SameText(Name, 'svg') or (FDepth < BaseDepth) then
+          Break;
+
+        Continue;
+      end;
+
+      Inc(FDepth);
+
+      if FSkipping then
+      begin
+        if Element.IsSelfClosing then
+          Dec(FDepth);
+        Continue;
+      end;
+
+      if MatchStr(Name, SkippedElements) then
+      begin
+        if Element.IsSelfClosing then
+          Dec(FDepth)
+        else
+        begin
+          FSkipping := True;
+          FSkipUntilDepth := FDepth;
+        end;
+        Continue;
+      end;
+
+      if Name = 'use' then
+      begin
+        Push(Element);
+        DrawUse(Element);
+        if Element.IsSelfClosing then
+        begin
+          Pop;
+          Dec(FDepth);
+        end;
+        Continue;
+      end;
+
+      if MatchStr(Name, UnsupportedElements) then
+        raise ESvgUnsupported.Create(Name);
+
+      // A filtered element is drawn on a layer of its own, which the filter is
+      // applied to when the element closes.
+      var Reference := '';
+      var Filter: TSvgFilter := nil;
+      const IsFiltered = TryParseReference(PresentationValue(Element, 'filter'), Reference) and
+        FFilters.TryGetValue(Reference, Filter);
+      if IsFiltered then
+        BeginLayer(Filter);
+
+      Push(Element);
+      DrawElement(Element);
+
+      if Element.IsSelfClosing then
+      begin
+        if IsFiltered then
+          EndLayer;
+
+        Pop;
+        Dec(FDepth);
+      end;
+    end;
+  finally
+    Scanner.Free;
+    Dec(FFragmentDepth);
+  end;
+end;
+
+// A use element draws what it points at, moved to where it was put.
+procedure TNativeSvgRenderer.DrawUse(const Element: TSvgXmlElement);
+begin
+  var Reference := Element.Attribute('href');
+  if Reference = '' then
+    Reference := Element.Attribute('xlink:href');
+
+  Reference := Reference.Trim;
+  if Reference.StartsWith('#') then
+    Reference := Copy(Reference, 2, MaxInt);
+
+  var Markup := '';
+  if (Reference = '') or (not FDefinitions.TryGetValue(Reference, Markup)) then
+    Exit;
+
+  var Left: Single;
+  var Top: Single;
+  if not TryParseLength(Element.Attribute('x', '0'), Left) then
+    Left := 0;
+  if not TryParseLength(Element.Attribute('y', '0'), Top) then
+    Top := 0;
+
+  var Moved := Frame;
+  Moved.Matrix := TSvgMatrix.Translation(Left, Top).Multiply(Moved.Matrix);
+  FStack := FStack + [Moved];
+  try
+    DrawFragment(Markup);
+  finally
+    Pop;
+  end;
+end;
+
+// What a definition holds, without the element wrapping it. A mask or a
+// pattern is drawn from its contents; the wrapper itself is not a shape and is
+// stepped over by the drawing loop.
+class function TNativeSvgRenderer.InnerMarkup(const Markup: string): string;
+begin
+  const Opening = Pos('>', Markup);
+  const Closing = Markup.LastIndexOf('<') + 1;
+
+  if (Opening = 0) or (Closing <= Opening) then
+    Exit('');
+
+  Result := Copy(Markup, Opening + 1, Closing - Opening - 1);
+end;
+
+// A mask is a drawing of its own: how bright it is at each pixel decides how
+// much of what it masks survives there.
+function TNativeSvgRenderer.MaskFor(const Reference: string; const Parent: TMarkdownClipMask): TMarkdownClipMask;
+begin
+  Result := Parent;
+
+  var Definition := '';
+  if not FDefinitions.TryGetValue(Reference, Definition) then
+    Exit;
+
+  const Markup = InnerMarkup(Definition);
+  if Markup = '' then
+    Exit;
+
+  const Beneath = FRaster;
+  FRaster := TMarkdownPixelRaster.Create(Beneath.Width, Beneath.Height);
+  var Painted: TMarkdownPixelRaster;
+  try
+    var Frameless := Frame;
+    Frameless.Mask := nil;
+    FStack := FStack + [Frameless];
+    try
+      DrawFragment(Markup);
+    finally
+      Pop;
+    end;
+  finally
+    Painted := FRaster;
+    FRaster := Beneath;
+  end;
+
+  const Coverage = TMarkdownRasterFilters.LuminanceMask(Painted);
+
+  if Length(Parent) <> Length(Coverage) then
+    Exit(Coverage);
+
+  var Combined: TMarkdownClipMask;
+  SetLength(Combined, Length(Coverage));
+  for var Index := 0 to High(Combined) do
+  begin
+    Combined[Index] := Parent[Index] * Coverage[Index] div 255;
+  end;
+
+  Result := Combined;
+end;
+
+// Every element carrying an id is remembered whole, because a reference to it
+// may appear before or after the definition itself.
+procedure TNativeSvgRenderer.CollectMarkup(const Svg: string);
+begin
+  const Scanner = TSvgXmlScanner.Create(Svg);
+  try
+    var Pending: TArray<string> := nil;
+    var Starts: TArray<Integer> := nil;
+    var Depths: TArray<Integer> := nil;
+    var Depth := 0;
+
+    var Element: TSvgXmlElement;
+    while Scanner.ReadElement(Element) do
+    begin
+      if Element.IsClosing then
+      begin
+        Dec(Depth);
+
+        while (Length(Depths) > 0) and (Depths[High(Depths)] > Depth) do
+        begin
+          FDefinitions.AddOrSetValue(Pending[High(Pending)],
+            Copy(Svg, Starts[High(Starts)], Element.Stop - Starts[High(Starts)]));
+
+          SetLength(Pending, Length(Pending) - 1);
+          SetLength(Starts, Length(Starts) - 1);
+          SetLength(Depths, Length(Depths) - 1);
+        end;
+
+        Continue;
+      end;
+
+      Inc(Depth);
+
+      const Identifier = Element.Attribute('id');
+      if Identifier <> '' then
+      begin
+        if Element.IsSelfClosing then
+          FDefinitions.AddOrSetValue(Identifier, Copy(Svg, Element.Start, Element.Stop - Element.Start))
+        else
+        begin
+          Pending := Pending + [Identifier];
+          Starts := Starts + [Element.Start];
+          Depths := Depths + [Depth];
+        end;
+      end;
+
+      if Element.IsSelfClosing then
+        Dec(Depth);
+    end;
+  finally
+    Scanner.Free;
+  end;
+end;
+
 // A filtered element is drawn on a layer of its own, so the filter has
 // something to work on that holds nothing but that element.
 procedure TNativeSvgRenderer.BeginLayer(const Filter: TSvgFilter);
@@ -1611,6 +1886,7 @@ begin
 
     FRaster := TMarkdownPixelRaster.Create(PixelWidth, PixelHeight);
     CollectDefinitions(Svg);
+    CollectMarkup(Svg);
 
     // viewBox to device: shift the box to the origin, then scale it onto the
     // pixels asked for.
@@ -1627,84 +1903,7 @@ begin
     if Root.IsSelfClosing then
       Exit;
 
-    var Element: TSvgXmlElement;
-    while Scanner.ReadElement(Element) do
-    begin
-      const Name = Element.Name.ToLowerInvariant;
-
-      if Element.IsClosing then
-      begin
-        Dec(FDepth);
-
-        // An element that was skipped never pushed a frame, so its closing tag
-        // must not pop one either: doing so would unwind the styles of
-        // everything around it.
-        if FSkipping then
-        begin
-          if FDepth < FSkipUntilDepth then
-            FSkipping := False;
-        end
-        else
-        begin
-          const ClosesLayer = (Length(FLayerDepths) > 0) and (FDepth < FLayerDepths[High(FLayerDepths)]);
-          if ClosesLayer then
-            EndLayer;
-
-          Pop;
-        end;
-
-        if SameText(Name, 'svg') then
-          Break;
-
-        Continue;
-      end;
-
-      Inc(FDepth);
-
-      if FSkipping then
-      begin
-        if Element.IsSelfClosing then
-          Dec(FDepth);
-        Continue;
-      end;
-
-      if MatchStr(Name, SkippedElements) then
-      begin
-        if Element.IsSelfClosing then
-          Dec(FDepth)
-        else
-        begin
-          FSkipping := True;
-          FSkipUntilDepth := FDepth;
-        end;
-        Continue;
-      end;
-
-      if MatchStr(Name, UnsupportedElements) then
-        raise ESvgUnsupported.Create(Name);
-
-      // A filtered element is drawn on a layer of its own, which the filter is
-      // applied to when the element closes.
-      var Reference := '';
-      var Filter: TSvgFilter := nil;
-      const IsFiltered = TryParseReference(PresentationValue(Element, 'filter'), Reference) and
-        FFilters.TryGetValue(Reference, Filter);
-      if IsFiltered then
-        BeginLayer(Filter);
-
-      Push(Element);
-      DrawElement(Element);
-
-      if Element.IsSelfClosing then
-      begin
-        if IsFiltered then
-          EndLayer;
-
-        Pop;
-        Dec(FDepth);
-      end;
-    end;
-
+    DrawFragment(Copy(Svg, Root.Stop, MaxInt));
     Result.Width := FRaster.Width;
     Result.Height := FRaster.Height;
     Result.Pixels := FRaster.Pixels;

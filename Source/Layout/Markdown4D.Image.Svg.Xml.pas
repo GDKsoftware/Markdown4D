@@ -29,6 +29,10 @@ type
     // The character data that follows the opening tag, which is where the
     // words of a text element live.
     Text: string;
+    // Where the tag began and where it ended, so a caller can lift a whole
+    // element back out of the document it came from.
+    Start: Integer;
+    Stop: Integer;
     IsClosing: Boolean;
     IsSelfClosing: Boolean;
     function TryAttribute(const AttributeName: string; out Value: string): Boolean;
@@ -238,6 +242,7 @@ begin
       Exit(False);
     end;
 
+    Element.Start := Position;
     FIndex := Position + 1;
     if AtEnd then
       Exit(False);
@@ -270,6 +275,7 @@ begin
       Element.Name := ReadName;
       Element.IsClosing := True;
       SkipUntil(TagClose);
+      Element.Stop := FIndex;
       Exit(True);
     end;
 
@@ -288,6 +294,8 @@ begin
 
     if (not AtEnd) and (FText[FIndex] = TagClose) then
       Inc(FIndex);
+
+    Element.Stop := FIndex;
 
     if not Element.IsSelfClosing then
       Element.Text := ReadContentText;
