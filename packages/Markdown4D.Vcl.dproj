@@ -39,7 +39,7 @@
         <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
         <DCC_BplOutput>$(BDSCOMMONDIR)\Bpl</DCC_BplOutput>
         <DCC_DcpOutput>.\dcp\$(Platform)\$(Config)</DCC_DcpOutput>
-        <DCC_UnitSearchPath>.\dcp\$(Platform)\$(Config);.\$(Platform)\$(Config);..\ThirdParty\Image32\source;..\ThirdParty\Image32\source\Clipper2;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>.\dcp\$(Platform)\$(Config);.\$(Platform)\$(Config);$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;System.Win;Winapi;Xml;Data;Datasnap;Web;Soap;Vcl;Vcl.Imaging;$(DCC_Namespace)</DCC_Namespace>
         <DCC_ImageBase>00400000</DCC_ImageBase>
         <GenDll>true</GenDll>

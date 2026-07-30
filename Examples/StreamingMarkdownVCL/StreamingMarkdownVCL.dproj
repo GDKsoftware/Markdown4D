@@ -51,7 +51,7 @@
         <SanitizedProjectName>StreamingMarkdownVCL</SanitizedProjectName>
         <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
         <DCC_ExeOutput>.\$(Platform)\$(Config)</DCC_ExeOutput>
-        <DCC_UnitSearchPath>..\..\Source\Core;..\..\Source\Layout;..\..\Source\Vcl;..\..\ThirdParty\Image32\source;..\..\ThirdParty\Image32\source\Clipper2;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\..\Source\Core;..\..\Source\Layout;..\..\Source\Vcl;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>Winapi;System.Win;Data.Win;Datasnap.Win;Web.Win;Soap.Win;Vcl;Vcl.Imaging;Vcl.Touch;Vcl.Samples;Vcl.Shell;System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
         <DCC_E>false</DCC_E>
         <DCC_N>false</DCC_N>

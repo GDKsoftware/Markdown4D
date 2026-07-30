@@ -6,31 +6,43 @@ unit Markdown4D.Image.Svg.Native;
 // this project, so a plain drawing needs no graphics library underneath it.
 //
 // What it covers: the shape elements, groups, transforms, the viewBox, solid
-// fills and strokes, opacity, and both fill rules. What it does not: text,
-// gradients, patterns, filters, clip paths, masks, embedded images and <use>.
-// A document reaching for any of those is handed to the fallback rasterizer
-// rather than drawn wrong, because half a drawing is worse than none.
+// fills, gradients, strokes with miter and round joins, opacity, both fill
+// rules, clip paths, and text through the glyph seam. What it does not:
+// patterns, filters, masks, embedded images and <use>. A document reaching for
+// one of those is refused whole rather than drawn wrong, because half a
+// drawing is worse than none.
 
 interface
 
 uses
+  System.SysUtils,
   Markdown4D.Image.Svg;
 
-// Takes over the viewer's SVG hook, keeping whatever was registered before as
-// the fallback for documents this engine will not draw.
+// Takes this engine into the viewer's SVG hook.
 procedure RegisterNativeSvgRasterizer;
+
+// Draws with this engine alone, reporting False for anything it will not draw
+// rather than passing it on. For a host that wants no fallback, and for tests
+// that need to know which engine answered.
+function TryRasterizeSvgNatively(const Svg: TBytes; const MaxWidth, MaxHeight: Single;
+  out Raster: TMarkdownSvgRaster): Boolean;
 
 implementation
 
 uses
-  System.SysUtils,
   System.StrUtils,
   System.Math,
+  System.Generics.Collections,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Image.Rasterizer,
+  Markdown4D.Image.Glyphs,
   Markdown4D.Image.Svg.Xml,
   Markdown4D.Image.Svg.Path,
-  Markdown4D.Image.Svg.Image32;
+  Markdown4D.Image.Glyphs.Gdi;
+
+const
+  // What a document without a font size of its own is drawn at.
+  DefaultFontSize = 16.0;
 
 type
   TSvgMatrix = record
@@ -46,10 +58,23 @@ type
     function AverageScale: Single;
   end;
 
+  TSvgGradient = record
+    Kind: TMarkdownPaintKind;
+    // The four numbers of a linear gradient, or the centre and radius of a
+    // radial one, in the units the definition asked for.
+    First: TLayoutPointF;
+    Second: TLayoutPointF;
+    Radius: Single;
+    OnBoundingBox: Boolean;
+    Stops: TArray<TMarkdownGradientStop>;
+  end;
+
   TSvgStyle = record
     FillColor: TLayoutColor;
+    FillPaintId: string;
     HasFill: Boolean;
     StrokeColor: TLayoutColor;
+    StrokePaintId: string;
     HasStroke: Boolean;
     StrokeWidth: Single;
     FillRule: TMarkdownFillRule;
@@ -58,12 +83,18 @@ type
     StrokeOpacity: Single;
     RoundCaps: Boolean;
     RoundJoins: Boolean;
+    FontFamily: string;
+    FontSize: Single;
+    Bold: Boolean;
+    Italic: Boolean;
+    Anchor: string;
     class function Initial: TSvgStyle; static;
   end;
 
   TSvgFrame = record
     Matrix: TSvgMatrix;
     Style: TSvgStyle;
+    Mask: TMarkdownClipMask;
     Depth: Integer;
   end;
 
@@ -80,11 +111,12 @@ type
       MiterLimit = 4.0;
       RadiansPerDegree = Pi / 180;
       OpaqueAlpha = $FF000000;
-      SkippedElements: array[0..3] of string = ('defs', 'clippath', 'mask', 'marker');
-      UnsupportedElements: array[0..5] of string = ('text', 'image', 'use', 'filter', 'lineargradient',
-        'radialgradient');
+      SkippedElements: array[0..5] of string = ('defs', 'clippath', 'mask', 'marker', 'filter', 'style');
+      UnsupportedElements: array[0..1] of string = ('image', 'use');
     var
       FRaster: TMarkdownPixelRaster;
+      FGradients: TDictionary<string, TSvgGradient>;
+      FClipPaths: TDictionary<string, TArray<TSvgSubPath>>;
       FStack: TArray<TSvgFrame>;
       FDepth: Integer;
       FSkipUntilDepth: Integer;
@@ -93,6 +125,7 @@ type
     procedure Push(const Element: TSvgXmlElement);
     procedure Pop;
     procedure DrawElement(const Element: TSvgXmlElement);
+    procedure DrawText(const Element: TSvgXmlElement);
     procedure DrawSubPaths(const SubPaths: TArray<TSvgSubPath>; const Style: TSvgStyle; const Matrix: TSvgMatrix);
     procedure FillSubPaths(const SubPaths: TArray<TSvgSubPath>; const Style: TSvgStyle; const Matrix: TSvgMatrix);
     procedure StrokeSubPaths(const SubPaths: TArray<TSvgSubPath>; const Style: TSvgStyle; const Matrix: TSvgMatrix);
@@ -106,13 +139,19 @@ type
     class function RectanglePath(const Left, Top, Width, Height, RadiusX, RadiusY: Single): TArray<TSvgSubPath>; static;
     class function EllipsePath(const CentreX, CentreY, RadiusX, RadiusY: Single): TArray<TSvgSubPath>; static;
     class function PointsPath(const Data: string; const Closed: Boolean): TArray<TSvgSubPath>; static;
+    class function SubPathsFor(const Element: TSvgXmlElement): TArray<TSvgSubPath>; static;
+    class function BoundsOf(const Contours: TArray<TArray<TLayoutPointF>>): TLayoutRectF; static;
+    procedure CollectDefinitions(const Svg: string);
+    function PaintFor(const PaintId: string; const Color: TLayoutColor; const Opacity: Single;
+      const Contours: TArray<TArray<TLayoutPointF>>; const Matrix: TSvgMatrix): TMarkdownPaint;
+    function ClipMaskFor(const Reference: string; const Matrix: TSvgMatrix;
+      const Parent: TMarkdownClipMask): TMarkdownClipMask;
 
   public
+    constructor Create;
+    destructor Destroy; override;
     function Render(const Svg: string; const MaxWidth, MaxHeight: Single): TMarkdownSvgRaster;
   end;
-
-var
-  FallbackRasterizer: TMarkdownSvgRasterizer;
 
 class function TSvgMatrix.Identity: TSvgMatrix;
 begin
@@ -161,15 +200,17 @@ begin
   Result.B := Tan(Degrees * Pi / 180);
 end;
 
-// Self first, then Other, which is the order a transform list applies in.
+// Self first, then Other: a point goes through this matrix and then through
+// the one handed in, which is how a shape reaches its group and its group
+// reaches the page.
 function TSvgMatrix.Multiply(const Other: TSvgMatrix): TSvgMatrix;
 begin
-  Result.A := A * Other.A + C * Other.B;
-  Result.B := B * Other.A + D * Other.B;
-  Result.C := A * Other.C + C * Other.D;
-  Result.D := B * Other.C + D * Other.D;
-  Result.E := A * Other.E + C * Other.F + E;
-  Result.F := B * Other.E + D * Other.F + F;
+  Result.A := A * Other.A + B * Other.C;
+  Result.B := A * Other.B + B * Other.D;
+  Result.C := C * Other.A + D * Other.C;
+  Result.D := C * Other.B + D * Other.D;
+  Result.E := E * Other.A + F * Other.C + Other.E;
+  Result.F := E * Other.B + F * Other.D + Other.F;
 end;
 
 function TSvgMatrix.Apply(const Point: TLayoutPointF): TLayoutPointF;
@@ -187,8 +228,10 @@ end;
 class function TSvgStyle.Initial: TSvgStyle;
 begin
   Result.FillColor := $FF000000;
+  Result.FillPaintId := '';
   Result.HasFill := True;
   Result.StrokeColor := $FF000000;
+  Result.StrokePaintId := '';
   Result.HasStroke := False;
   Result.StrokeWidth := 1;
   Result.FillRule := TMarkdownFillRule.NonZero;
@@ -197,6 +240,11 @@ begin
   Result.StrokeOpacity := 1;
   Result.RoundCaps := False;
   Result.RoundJoins := False;
+  Result.FontFamily := '';
+  Result.FontSize := DefaultFontSize;
+  Result.Bold := False;
+  Result.Italic := False;
+  Result.Anchor := '';
 end;
 
 function TryParseLength(const Text: string; out Value: Single): Boolean;
@@ -214,6 +262,24 @@ begin
       Trimmed := Copy(Trimmed, 1, Length(Trimmed) - Length(Suffix)).Trim;
       Break;
     end;
+  end;
+
+  Result := TryStrToFloat(Trimmed, Value, TFormatSettings.Invariant);
+end;
+
+function TryParseFraction(const Text: string; out Value: Single): Boolean;
+begin
+  Value := 0;
+
+  const Trimmed = Text.Trim;
+  if Trimmed = '' then
+    Exit(False);
+
+  if Trimmed.EndsWith('%') then
+  begin
+    Result := TryStrToFloat(Copy(Trimmed, 1, Length(Trimmed) - 1).Trim, Value, TFormatSettings.Invariant);
+    Value := Value / 100;
+    Exit;
   end;
 
   Result := TryStrToFloat(Trimmed, Value, TFormatSettings.Invariant);
@@ -284,6 +350,44 @@ begin
   end;
 
   Result := False;
+end;
+
+// "url(#name)" points at a definition elsewhere in the document.
+function TryParseReference(const Text: string; out Reference: string): Boolean;
+begin
+  Reference := '';
+
+  const Trimmed = Text.Trim;
+  if not (Trimmed.StartsWith('url(', True) and Trimmed.EndsWith(')')) then
+    Exit(False);
+
+  var Inner := Copy(Trimmed, 5, Length(Trimmed) - 5).Trim;
+  if Inner.StartsWith('#') then
+    Inner := Copy(Inner, 2, MaxInt);
+
+  Reference := Inner.Trim(['''', '"']);
+  Result := Reference <> '';
+end;
+
+function FirstFamilyName(const Families: string): string;
+begin
+  for var Family in Families.Split([',']) do
+  begin
+    const Trimmed = Family.Trim.Trim(['''', '"']);
+    if Trimmed = '' then
+      Continue;
+
+    if SameText(Trimmed, 'sans-serif') then
+      Exit('Segoe UI');
+    if SameText(Trimmed, 'serif') then
+      Exit('Times New Roman');
+    if SameText(Trimmed, 'monospace') then
+      Exit('Consolas');
+
+    Exit(Trimmed);
+  end;
+
+  Result := 'Segoe UI';
 end;
 
 function StyleValue(const Style, Name: string): string;
@@ -359,10 +463,12 @@ begin
     end
     else if (Name = 'rotate') and (Length(Values) >= 1) then
     begin
+      // Rotating about a point means moving that point to the origin first and
+      // putting it back afterwards.
       if Length(Values) >= 3 then
-        Step := TSvgMatrix.Translation(Values[1], Values[2])
+        Step := TSvgMatrix.Translation(-Values[1], -Values[2])
           .Multiply(TSvgMatrix.Rotation(Values[0]))
-          .Multiply(TSvgMatrix.Translation(-Values[1], -Values[2]))
+          .Multiply(TSvgMatrix.Translation(Values[1], Values[2]))
       else
         Step := TSvgMatrix.Rotation(Values[0]);
     end
@@ -380,7 +486,9 @@ begin
       Step.F := Values[5];
     end;
 
-    Result := Result.Multiply(Step);
+    // The list reads outermost first, so each transform runs before the ones
+    // already collected to its left.
+    Result := Step.Multiply(Result);
     Index := Close + 1;
   end;
 end;
@@ -392,10 +500,19 @@ begin
   const Fill = PresentationValue(Element, 'fill');
   if Fill <> '' then
   begin
+    var Reference := '';
     if SameText(Fill.Trim, 'none') then
       Result.HasFill := False
+    else if TryParseReference(Fill, Reference) then
+    begin
+      Result.FillPaintId := Reference;
+      Result.HasFill := True;
+    end
     else if TryParseColor(Fill, Result.FillColor) then
-      Result.HasFill := True
+    begin
+      Result.FillPaintId := '';
+      Result.HasFill := True;
+    end
     else if not SameText(Fill.Trim, 'currentcolor') then
       raise ESvgUnsupported.CreateFmt('fill "%s"', [Fill]);
   end;
@@ -403,10 +520,19 @@ begin
   const Stroke = PresentationValue(Element, 'stroke');
   if Stroke <> '' then
   begin
+    var Reference := '';
     if SameText(Stroke.Trim, 'none') then
       Result.HasStroke := False
+    else if TryParseReference(Stroke, Reference) then
+    begin
+      Result.StrokePaintId := Reference;
+      Result.HasStroke := True;
+    end
     else if TryParseColor(Stroke, Result.StrokeColor) then
-      Result.HasStroke := True
+    begin
+      Result.StrokePaintId := '';
+      Result.HasStroke := True;
+    end
     else if not SameText(Stroke.Trim, 'currentcolor') then
       raise ESvgUnsupported.CreateFmt('stroke "%s"', [Stroke]);
   end;
@@ -434,6 +560,28 @@ begin
   const Join = PresentationValue(Element, 'stroke-linejoin').Trim;
   if Join <> '' then
     Result.RoundJoins := SameText(Join, 'round');
+
+  // Font properties are inherited, and a document that sets them on a group
+  // expects the text inside it to pick them up.
+  const Family = PresentationValue(Element, 'font-family');
+  if Family <> '' then
+    Result.FontFamily := Family;
+
+  if TryParseLength(PresentationValue(Element, 'font-size'), Value) then
+    Result.FontSize := Value;
+
+  const Weight = PresentationValue(Element, 'font-weight').Trim;
+  if Weight <> '' then
+    Result.Bold := SameText(Weight, 'bold') or SameText(Weight, 'bolder') or (Weight = '700') or
+      (Weight = '800') or (Weight = '900');
+
+  const Slant = PresentationValue(Element, 'font-style').Trim;
+  if Slant <> '' then
+    Result.Italic := SameText(Slant, 'italic') or SameText(Slant, 'oblique');
+
+  const Anchor = PresentationValue(Element, 'text-anchor').Trim;
+  if Anchor <> '' then
+    Result.Anchor := Anchor;
 end;
 
 function WithOpacity(const Color: TLayoutColor; const Opacity: Single): TLayoutColor;
@@ -441,6 +589,22 @@ begin
   const Alpha = Round((Color shr 24) * EnsureRange(Opacity, 0, 1));
 
   Result := TLayoutColor((Color and $00FFFFFF) or (Cardinal(Alpha) shl 24));
+end;
+
+constructor TNativeSvgRenderer.Create;
+begin
+  inherited Create;
+
+  FGradients := TDictionary<string, TSvgGradient>.Create;
+  FClipPaths := TDictionary<string, TArray<TSvgSubPath>>.Create;
+end;
+
+destructor TNativeSvgRenderer.Destroy;
+begin
+  FClipPaths.Free;
+  FGradients.Free;
+
+  inherited Destroy;
 end;
 
 function TNativeSvgRenderer.Frame: TSvgFrame;
@@ -454,6 +618,10 @@ begin
   Next.Depth := FDepth;
   Next.Style := ReadStyle(Element, Next.Style);
   Next.Matrix := ParseTransform(Element.Attribute('transform')).Multiply(Next.Matrix);
+
+  var Reference := '';
+  if TryParseReference(PresentationValue(Element, 'clip-path'), Reference) then
+    Next.Mask := ClipMaskFor(Reference, Next.Matrix, Next.Mask);
 
   FStack := FStack + [Next];
 end;
@@ -655,9 +823,10 @@ begin
   if Length(Contours) = 0 then
     Exit;
 
-  const Color = WithOpacity(Style.FillColor, Style.Opacity * Style.FillOpacity);
+  const Paint = PaintFor(Style.FillPaintId, Style.FillColor, Style.Opacity * Style.FillOpacity,
+    Contours, Matrix);
 
-  TMarkdownPolygonRasterizer.FillContoursInto(FRaster, Contours, Color, Style.FillRule);
+  TMarkdownPolygonRasterizer.FillPaintedContoursInto(FRaster, Contours, Paint, Style.FillRule, Frame.Mask);
 end;
 
 procedure TNativeSvgRenderer.StrokeSubPaths(const SubPaths: TArray<TSvgSubPath>; const Style: TSvgStyle;
@@ -675,9 +844,11 @@ begin
   if Length(Contours) = 0 then
     Exit;
 
-  const Color = WithOpacity(Style.StrokeColor, Style.Opacity * Style.StrokeOpacity);
+  const Paint = PaintFor(Style.StrokePaintId, Style.StrokeColor, Style.Opacity * Style.StrokeOpacity,
+    Contours, Matrix);
 
-  TMarkdownPolygonRasterizer.FillContoursInto(FRaster, Contours, Color, TMarkdownFillRule.NonZero);
+  TMarkdownPolygonRasterizer.FillPaintedContoursInto(FRaster, Contours, Paint, TMarkdownFillRule.NonZero,
+    Frame.Mask);
 end;
 
 procedure TNativeSvgRenderer.DrawSubPaths(const SubPaths: TArray<TSvgSubPath>; const Style: TSvgStyle;
@@ -771,11 +942,11 @@ begin
   Result := [SubPath];
 end;
 
-procedure TNativeSvgRenderer.DrawElement(const Element: TSvgXmlElement);
+class function TNativeSvgRenderer.SubPathsFor(const Element: TSvgXmlElement): TArray<TSvgSubPath>;
 begin
+  Result := nil;
+
   const Name = Element.Name.ToLowerInvariant;
-  const Style = Frame.Style;
-  const Matrix = Frame.Matrix;
 
   var Left: Single;
   var Top: Single;
@@ -783,14 +954,16 @@ begin
   var Height: Single;
 
   if Name = 'path' then
-    DrawSubPaths(TSvgPathParser.Parse(Element.Attribute('d')), Style, Matrix)
-  else if Name = 'rect' then
+    Exit(TSvgPathParser.Parse(Element.Attribute('d')));
+
+  if Name = 'rect' then
   begin
     if not TryParseLength(Element.Attribute('x', '0'), Left) then
       Left := 0;
     if not TryParseLength(Element.Attribute('y', '0'), Top) then
       Top := 0;
-    if not (TryParseLength(Element.Attribute('width'), Width) and TryParseLength(Element.Attribute('height'), Height)) then
+    if not (TryParseLength(Element.Attribute('width'), Width) and
+      TryParseLength(Element.Attribute('height'), Height)) then
       Exit;
 
     var RadiusX: Single := 0;
@@ -803,9 +976,10 @@ begin
     if RadiusX = 0 then
       RadiusX := RadiusY;
 
-    DrawSubPaths(RectanglePath(Left, Top, Width, Height, RadiusX, RadiusY), Style, Matrix);
-  end
-  else if Name = 'circle' then
+    Exit(RectanglePath(Left, Top, Width, Height, RadiusX, RadiusY));
+  end;
+
+  if Name = 'circle' then
   begin
     var Radius: Single;
     if not TryParseLength(Element.Attribute('r'), Radius) then
@@ -815,44 +989,337 @@ begin
     if not TryParseLength(Element.Attribute('cy', '0'), Top) then
       Top := 0;
 
-    DrawSubPaths(EllipsePath(Left, Top, Radius, Radius), Style, Matrix);
-  end
-  else if Name = 'ellipse' then
+    Exit(EllipsePath(Left, Top, Radius, Radius));
+  end;
+
+  if Name = 'ellipse' then
   begin
     var RadiusX: Single;
     var RadiusY: Single;
-    if not (TryParseLength(Element.Attribute('rx'), RadiusX) and TryParseLength(Element.Attribute('ry'), RadiusY)) then
+    if not (TryParseLength(Element.Attribute('rx'), RadiusX) and
+      TryParseLength(Element.Attribute('ry'), RadiusY)) then
       Exit;
     if not TryParseLength(Element.Attribute('cx', '0'), Left) then
       Left := 0;
     if not TryParseLength(Element.Attribute('cy', '0'), Top) then
       Top := 0;
 
-    DrawSubPaths(EllipsePath(Left, Top, RadiusX, RadiusY), Style, Matrix);
-  end
-  else if Name = 'line' then
+    Exit(EllipsePath(Left, Top, RadiusX, RadiusY));
+  end;
+
+  if Name = 'line' then
   begin
-    if not (TryParseLength(Element.Attribute('x1', '0'), Left) and TryParseLength(Element.Attribute('y1', '0'), Top) and
-      TryParseLength(Element.Attribute('x2', '0'), Width) and TryParseLength(Element.Attribute('y2', '0'), Height)) then
+    if not (TryParseLength(Element.Attribute('x1', '0'), Left) and
+      TryParseLength(Element.Attribute('y1', '0'), Top) and
+      TryParseLength(Element.Attribute('x2', '0'), Width) and
+      TryParseLength(Element.Attribute('y2', '0'), Height)) then
       Exit;
 
     var SubPath: TSvgSubPath;
     SubPath.Points := [TLayoutPointF.Create(Left, Top), TLayoutPointF.Create(Width, Height)];
     SubPath.IsClosed := False;
 
-    var LineStyle := Style;
-    LineStyle.HasFill := False;
-    DrawSubPaths([SubPath], LineStyle, Matrix);
-  end
-  else if Name = 'polyline' then
-  begin
-    var PolylineStyle := Style;
-    PolylineStyle.HasFill := False;
-    DrawSubPaths(PointsPath(Element.Attribute('points'), False), PolylineStyle, Matrix);
-  end
-  else if Name = 'polygon' then
-    DrawSubPaths(PointsPath(Element.Attribute('points'), True), Style, Matrix);
+    Result := [SubPath];
+    Exit;
+  end;
+
+  if Name = 'polyline' then
+    Exit(PointsPath(Element.Attribute('points'), False));
+
+  if Name = 'polygon' then
+    Exit(PointsPath(Element.Attribute('points'), True));
 end;
+
+procedure TNativeSvgRenderer.DrawElement(const Element: TSvgXmlElement);
+begin
+  if SameText(Element.Name, 'text') then
+  begin
+    DrawText(Element);
+    Exit;
+  end;
+
+  const SubPaths = SubPathsFor(Element);
+  if Length(SubPaths) = 0 then
+    Exit;
+
+  var Style := Frame.Style;
+
+  // A line or an open polyline has no inside to fill, whatever the style says.
+  const Name = Element.Name.ToLowerInvariant;
+  if (Name = 'line') or (Name = 'polyline') then
+    Style.HasFill := False;
+
+  DrawSubPaths(SubPaths, Style, Frame.Matrix);
+end;
+
+// A text element is drawn from its own outlines: the system hands over the
+// curves of the letters, and from there it is a fill like any other.
+procedure TNativeSvgRenderer.DrawText(const Element: TSvgXmlElement);
+begin
+  const Content = Element.Text.Trim;
+  if Content = '' then
+    Exit;
+
+  const Style = Frame.Style;
+  const Family = FirstFamilyName(Style.FontFamily);
+
+  var Run: TMarkdownGlyphRun;
+  if not TMarkdownGlyphSupport.TryOutline(Family, Style.FontSize, Style.Bold, Style.Italic, Content, Run) then
+    raise ESvgUnsupported.Create('text outlines');
+
+  var Left: Single;
+  var Baseline: Single;
+  if not TryParseLength(Element.Attribute('x', '0'), Left) then
+    Left := 0;
+  if not TryParseLength(Element.Attribute('y', '0'), Baseline) then
+    Baseline := 0;
+
+  // A run asked to occupy a given width is stretched to it, which is how a
+  // badge keeps its text inside its own box whatever font is installed.
+  var Stretch: Single := 1;
+  var Wanted: Single;
+  if TryParseLength(Element.Attribute('textLength'), Wanted) and (Run.Advance > 0) then
+    Stretch := Wanted / Run.Advance;
+
+  const Width = Run.Advance * Stretch;
+  const Anchor = Style.Anchor;
+  if SameText(Anchor, 'middle') then
+    Left := Left - Width / 2
+  else if SameText(Anchor, 'end') then
+    Left := Left - Width;
+
+  const Placement = TSvgMatrix.Scaling(Stretch, 1)
+    .Multiply(TSvgMatrix.Translation(Left, Baseline))
+    .Multiply(Frame.Matrix);
+
+
+  var Contours: TArray<TArray<TLayoutPointF>> := nil;
+  for var Contour in Run.Contours do
+  begin
+    Contours := Contours + [Transformed(Contour, Placement)];
+  end;
+
+  if Length(Contours) = 0 then
+    Exit;
+
+  const Paint = PaintFor(Style.FillPaintId, Style.FillColor, Style.Opacity * Style.FillOpacity,
+    Contours, Placement);
+
+  TMarkdownPolygonRasterizer.FillPaintedContoursInto(FRaster, Contours, Paint, TMarkdownFillRule.NonZero,
+    Frame.Mask);
+end;
+
+// The box a shape occupies, which is what a gradient in bounding box units is
+// measured against.
+class function TNativeSvgRenderer.BoundsOf(const Contours: TArray<TArray<TLayoutPointF>>): TLayoutRectF;
+begin
+  Result := TLayoutRectF.Create(0, 0, 0, 0);
+
+  var Started := False;
+  for var Contour in Contours do
+  begin
+    for var Point in Contour do
+    begin
+      if not Started then
+      begin
+        Result := TLayoutRectF.Create(Point.X, Point.Y, Point.X, Point.Y);
+        Started := True;
+        Continue;
+      end;
+
+      Result.Left := Min(Result.Left, Point.X);
+      Result.Top := Min(Result.Top, Point.Y);
+      Result.Right := Max(Result.Right, Point.X);
+      Result.Bottom := Max(Result.Bottom, Point.Y);
+    end;
+  end;
+end;
+
+function TNativeSvgRenderer.PaintFor(const PaintId: string; const Color: TLayoutColor; const Opacity: Single;
+  const Contours: TArray<TArray<TLayoutPointF>>; const Matrix: TSvgMatrix): TMarkdownPaint;
+begin
+  var Gradient: TSvgGradient;
+  if (PaintId = '') or (not FGradients.TryGetValue(PaintId, Gradient)) then
+    Exit(TMarkdownPaint.SolidColor(WithOpacity(Color, Opacity)));
+
+  var Stops := Gradient.Stops;
+  for var Index := 0 to High(Stops) do
+  begin
+    Stops[Index].Color := WithOpacity(Stops[Index].Color, Opacity);
+  end;
+
+  // In bounding box units the numbers are fractions of the shape itself, so
+  // they only become positions once the shape is known.
+  var First := Gradient.First;
+  var Second := Gradient.Second;
+  var Radius := Gradient.Radius;
+
+  if Gradient.OnBoundingBox then
+  begin
+    const Bounds = BoundsOf(Contours);
+    const Width = Bounds.Right - Bounds.Left;
+    const Height = Bounds.Bottom - Bounds.Top;
+
+    First := TLayoutPointF.Create(Bounds.Left + First.X * Width, Bounds.Top + First.Y * Height);
+    Second := TLayoutPointF.Create(Bounds.Left + Second.X * Width, Bounds.Top + Second.Y * Height);
+    Radius := Radius * Max(Width, Height);
+  end
+  else
+  begin
+    First := Matrix.Apply(First);
+    Second := Matrix.Apply(Second);
+    Radius := Radius * Matrix.AverageScale;
+  end;
+
+  if Gradient.Kind = TMarkdownPaintKind.RadialGradient then
+    Exit(TMarkdownPaint.Radial(First, Radius, Stops));
+
+  Result := TMarkdownPaint.Linear(First, Second, Stops);
+end;
+
+function TNativeSvgRenderer.ClipMaskFor(const Reference: string; const Matrix: TSvgMatrix;
+  const Parent: TMarkdownClipMask): TMarkdownClipMask;
+begin
+  Result := Parent;
+
+  var SubPaths: TArray<TSvgSubPath>;
+  if not FClipPaths.TryGetValue(Reference, SubPaths) then
+    Exit;
+
+  var Contours: TArray<TArray<TLayoutPointF>> := nil;
+  for var SubPath in SubPaths do
+  begin
+    if Length(SubPath.Points) >= 3 then
+      Contours := Contours + [Transformed(SubPath.Points, Matrix)];
+  end;
+
+  if Length(Contours) = 0 then
+    Exit;
+
+  const Coverage = TMarkdownPolygonRasterizer.CoverageOf(Contours, FRaster.Width, FRaster.Height,
+    TMarkdownFillRule.NonZero);
+
+  if Length(Parent) <> Length(Coverage) then
+    Exit(Coverage);
+
+  // Two clips in force at once hold a shape to what they have in common.
+  var Combined: TMarkdownClipMask;
+  SetLength(Combined, Length(Coverage));
+  for var Index := 0 to High(Combined) do
+  begin
+    Combined[Index] := Parent[Index] * Coverage[Index] div 255;
+  end;
+
+  Result := Combined;
+end;
+
+// Definitions are read first, because a shape may point at a gradient or a clip
+// path written further down the document.
+procedure TNativeSvgRenderer.CollectDefinitions(const Svg: string);
+begin
+  const Scanner = TSvgXmlScanner.Create(Svg);
+  try
+    var Gradient := Default(TSvgGradient);
+    var GradientId := '';
+    var ClipId := '';
+    var ClipPaths: TArray<TSvgSubPath> := nil;
+
+    var Element: TSvgXmlElement;
+    while Scanner.ReadElement(Element) do
+    begin
+      const Name = Element.Name.ToLowerInvariant;
+
+      if Element.IsClosing then
+      begin
+        if (Name = 'lineargradient') or (Name = 'radialgradient') then
+        begin
+          if (GradientId <> '') and (Length(Gradient.Stops) > 0) then
+            FGradients.AddOrSetValue(GradientId, Gradient);
+          GradientId := '';
+        end
+        else if Name = 'clippath' then
+        begin
+          if (ClipId <> '') and (Length(ClipPaths) > 0) then
+            FClipPaths.AddOrSetValue(ClipId, ClipPaths);
+          ClipId := '';
+          ClipPaths := nil;
+        end;
+
+        Continue;
+      end;
+
+      if (Name = 'lineargradient') or (Name = 'radialgradient') then
+      begin
+        Gradient := Default(TSvgGradient);
+        GradientId := Element.Attribute('id');
+        Gradient.OnBoundingBox := not SameText(Element.Attribute('gradientUnits', 'objectBoundingBox'),
+          'userSpaceOnUse');
+
+        var Value: Single;
+        if Name = 'lineargradient' then
+        begin
+          Gradient.Kind := TMarkdownPaintKind.LinearGradient;
+          Gradient.First := TLayoutPointF.Create(0, 0);
+          Gradient.Second := TLayoutPointF.Create(1, 0);
+          if TryParseFraction(Element.Attribute('x1'), Value) then
+            Gradient.First.X := Value;
+          if TryParseFraction(Element.Attribute('y1'), Value) then
+            Gradient.First.Y := Value;
+          if TryParseFraction(Element.Attribute('x2'), Value) then
+            Gradient.Second.X := Value;
+          if TryParseFraction(Element.Attribute('y2'), Value) then
+            Gradient.Second.Y := Value;
+        end
+        else
+        begin
+          Gradient.Kind := TMarkdownPaintKind.RadialGradient;
+          Gradient.First := TLayoutPointF.Create(0.5, 0.5);
+          Gradient.Radius := 0.5;
+          if TryParseFraction(Element.Attribute('cx'), Value) then
+            Gradient.First.X := Value;
+          if TryParseFraction(Element.Attribute('cy'), Value) then
+            Gradient.First.Y := Value;
+          if TryParseFraction(Element.Attribute('r'), Value) then
+            Gradient.Radius := Value;
+        end;
+
+        Continue;
+      end;
+
+      if (Name = 'stop') and (GradientId <> '') then
+      begin
+        var Stop := Default(TMarkdownGradientStop);
+        var Value: Single;
+        if TryParseFraction(PresentationValue(Element, 'offset'), Value) then
+          Stop.Offset := EnsureRange(Value, 0, 1);
+
+        var Color: TLayoutColor := $FF000000;
+        TryParseColor(PresentationValue(Element, 'stop-color'), Color);
+
+        var Alpha: Single := 1;
+        if TryParseLength(PresentationValue(Element, 'stop-opacity'), Alpha) then
+          Color := WithOpacity(Color, EnsureRange(Alpha, 0, 1));
+
+        Stop.Color := Color;
+        Gradient.Stops := Gradient.Stops + [Stop];
+        Continue;
+      end;
+
+      if Name = 'clippath' then
+      begin
+        ClipId := Element.Attribute('id');
+        ClipPaths := nil;
+        Continue;
+      end;
+
+      if ClipId <> '' then
+        ClipPaths := ClipPaths + SubPathsFor(Element);
+    end;
+  finally
+    Scanner.Free;
+  end;
+end;
+
 
 function TNativeSvgRenderer.Render(const Svg: string; const MaxWidth, MaxHeight: Single): TMarkdownSvgRaster;
 begin
@@ -921,6 +1388,7 @@ begin
     const PixelHeight = Max(1, Round(TargetHeight * Scale));
 
     FRaster := TMarkdownPixelRaster.Create(PixelWidth, PixelHeight);
+    CollectDefinitions(Svg);
 
     // viewBox to device: shift the box to the origin, then scale it onto the
     // pixels asked for.
@@ -944,11 +1412,17 @@ begin
 
       if Element.IsClosing then
       begin
-        if FSkipping and (FDepth <= FSkipUntilDepth) then
-          FSkipping := False;
-
         Dec(FDepth);
-        if not FSkipping then
+
+        // An element that was skipped never pushed a frame, so its closing tag
+        // must not pop one either: doing so would unwind the styles of
+        // everything around it.
+        if FSkipping then
+        begin
+          if FDepth < FSkipUntilDepth then
+            FSkipping := False;
+        end
+        else
           Pop;
 
         if SameText(Name, 'svg') then
@@ -981,6 +1455,23 @@ begin
       if MatchStr(Name, UnsupportedElements) then
         raise ESvgUnsupported.Create(Name);
 
+      // A filter changes how a shape looks in ways this engine cannot draw, and
+      // what it is usually asked for is a shadow, so the shape is left out
+      // rather than drawn as a hard copy of itself.
+      var Ignored := '';
+      const IsFiltered = TryParseReference(PresentationValue(Element, 'filter'), Ignored);
+      if IsFiltered then
+      begin
+        if Element.IsSelfClosing then
+          Dec(FDepth)
+        else
+        begin
+          FSkipping := True;
+          FSkipUntilDepth := FDepth;
+        end;
+        Continue;
+      end;
+
       Push(Element);
       DrawElement(Element);
 
@@ -999,7 +1490,7 @@ begin
   end;
 end;
 
-function RasterizeNative(const Svg: TBytes; const MaxWidth, MaxHeight: Single;
+function TryRasterizeSvgNatively(const Svg: TBytes; const MaxWidth, MaxHeight: Single;
   out Raster: TMarkdownSvgRaster): Boolean;
 begin
   Raster := Default(TMarkdownSvgRaster);
@@ -1019,22 +1510,11 @@ begin
     on Exception do
       Result := False;
   end;
-
-  if Result then
-    Exit;
-
-  if Assigned(FallbackRasterizer) then
-    Result := FallbackRasterizer(Svg, MaxWidth, MaxHeight, Raster);
 end;
 
 procedure RegisterNativeSvgRasterizer;
 begin
-  // The parentheses are load-bearing: assigning to a procedural type without
-  // them hands over the function itself rather than what it returns.
-  if not Assigned(FallbackRasterizer) then
-    FallbackRasterizer := TMarkdownSvgSupport.CurrentRasterizer();
-
-  TMarkdownSvgSupport.RegisterRasterizer(RasterizeNative);
+  TMarkdownSvgSupport.RegisterRasterizer(TryRasterizeSvgNatively);
 end;
 
 initialization

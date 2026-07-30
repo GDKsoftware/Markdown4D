@@ -49,12 +49,31 @@ type
 
     [Test]
     procedure Rasterize_Circle_IsRoundAtItsEdges;
+
+    [Test]
+    procedure Rasterize_LinearGradient_RunsFromOneStopToTheOther;
+
+    [Test]
+    procedure Rasterize_RadialGradient_IsBrightestAtItsCentre;
+
+    [Test]
+    procedure Rasterize_ClipPath_HoldsTheShapeInside;
+
+    [Test]
+    procedure Rasterize_FilteredElement_IsLeftOut;
+
+    [Test]
+    procedure Rasterize_Text_PutsInkOnTheBaseline;
+
+    [Test]
+    procedure Rasterize_TextInheritingFromItsGroup_IsDrawnAtThatSize;
   end;
 
 implementation
 
 uses
   System.SysUtils,
+  Markdown4D.Image.Glyphs,
   Markdown4D.Image.Svg.Native;
 
 procedure TNativeSvgRasterizerTests.SetupFixture;
@@ -183,6 +202,115 @@ begin
   Assert.IsTrue(Partial > 20, Format('Expected an anti-aliased edge but found %d partial pixels', [Partial]));
   Assert.AreEqual(255, AlphaAt(Raster, 20, 20), 'The middle is solid');
   Assert.AreEqual(0, AlphaAt(Raster, 2, 2), 'The corner is outside the circle');
+end;
+
+// The ends of the ramp carry the stop colours, and the middle sits between
+// them, which is all a gradient has to promise.
+procedure TNativeSvgRasterizerTests.Rasterize_LinearGradient_RunsFromOneStopToTheOther;
+begin
+  const Raster = Rasterize('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">' +
+    '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/>' +
+    '</linearGradient></defs>' +
+    '<rect x="0" y="0" width="40" height="40" fill="url(#g)"/></svg>');
+
+  const Top = ColorAt(Raster, 20, 1);
+  const Bottom = ColorAt(Raster, 20, 38);
+  const Middle = ColorAt(Raster, 20, 20);
+
+  Assert.IsTrue((Top shr 16) and $FF > 200, 'The top is the first stop');
+  Assert.IsTrue(Bottom and $FF > 200, 'The bottom is the second stop');
+  Assert.IsTrue(((Middle shr 16) and $FF > 60) and (Middle and $FF > 60), 'The middle mixes the two');
+end;
+
+procedure TNativeSvgRasterizerTests.Rasterize_RadialGradient_IsBrightestAtItsCentre;
+begin
+  const Raster = Rasterize('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">' +
+    '<defs><radialGradient id="g" cx="0.5" cy="0.5" r="0.5">' +
+    '<stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#000000"/>' +
+    '</radialGradient></defs>' +
+    '<rect x="0" y="0" width="40" height="40" fill="url(#g)"/></svg>');
+
+  const Centre = ColorAt(Raster, 20, 20) and $FF;
+  const Edge = ColorAt(Raster, 20, 38) and $FF;
+
+  Assert.IsTrue(Centre > Edge + 100, Format('The centre (%d) must be far brighter than the edge (%d)',
+    [Centre, Edge]));
+end;
+
+procedure TNativeSvgRasterizerTests.Rasterize_ClipPath_HoldsTheShapeInside;
+begin
+  const Raster = Rasterize('<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60">' +
+    '<defs><clipPath id="c"><rect x="10" y="10" width="20" height="20"/></clipPath></defs>' +
+    '<g clip-path="url(#c)"><rect x="0" y="0" width="60" height="60" fill="#ff0000"/></g></svg>');
+
+  Assert.AreEqual(255, AlphaAt(Raster, 20, 20), 'Inside the clip the fill stands');
+  Assert.AreEqual(0, AlphaAt(Raster, 45, 45), 'Outside the clip nothing is drawn');
+end;
+
+// A filter is usually asked for to cast a shadow. Drawing the shape without it
+// would put a hard copy of itself on the page, so it is left out instead.
+procedure TNativeSvgRasterizerTests.Rasterize_FilteredElement_IsLeftOut;
+begin
+  const Raster = Rasterize('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">' +
+    '<defs><filter id="f"><feGaussianBlur stdDeviation="2"/></filter></defs>' +
+    '<rect x="5" y="5" width="10" height="10" fill="#ff0000" filter="url(#f)"/>' +
+    '<rect x="25" y="25" width="10" height="10" fill="#ff0000"/></svg>');
+
+  Assert.AreEqual(0, AlphaAt(Raster, 10, 10), 'The filtered shape is left out');
+  Assert.AreEqual(255, AlphaAt(Raster, 30, 30), 'Its neighbour is drawn as usual');
+end;
+
+procedure TNativeSvgRasterizerTests.Rasterize_Text_PutsInkOnTheBaseline;
+begin
+  if not TMarkdownGlyphSupport.IsAvailable then
+    Assert.Pass('No glyph outliner on this platform');
+
+  const Raster = Rasterize('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40" viewBox="0 0 120 40">' +
+    '<text x="10" y="30" font-family="Verdana" font-size="24" fill="#ff0000">Hi</text></svg>');
+
+  var Ink := 0;
+  for var Y := 0 to Raster.Height - 1 do
+  begin
+    for var X := 0 to Raster.Width - 1 do
+    begin
+      if AlphaAt(Raster, X, Y) > 0 then
+        Inc(Ink);
+    end;
+  end;
+
+  Assert.IsTrue(Ink > 40, Format('Expected letters to leave ink but found %d covered pixels', [Ink]));
+  Assert.AreEqual(0, AlphaAt(Raster, 110, 5), 'Beyond the text nothing is drawn');
+end;
+
+// Font properties are inherited, and a badge sets them on the group around its
+// text rather than on the text itself.
+procedure TNativeSvgRasterizerTests.Rasterize_TextInheritingFromItsGroup_IsDrawnAtThatSize;
+begin
+  if not TMarkdownGlyphSupport.IsAvailable then
+    Assert.Pass('No glyph outliner on this platform');
+
+  const Small = Rasterize('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60" viewBox="0 0 120 60">' +
+    '<g font-family="Verdana" font-size="10" fill="#000000"><text x="10" y="40">Hi</text></g></svg>');
+  const Large = Rasterize('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60" viewBox="0 0 120 60">' +
+    '<g font-family="Verdana" font-size="30" fill="#000000"><text x="10" y="40">Hi</text></g></svg>');
+
+  var SmallInk := 0;
+  var LargeInk := 0;
+  for var Y := 0 to Small.Height - 1 do
+  begin
+    for var X := 0 to Small.Width - 1 do
+    begin
+      if AlphaAt(Small, X, Y) > 0 then
+        Inc(SmallInk);
+      if AlphaAt(Large, X, Y) > 0 then
+        Inc(LargeInk);
+    end;
+  end;
+
+  Assert.IsTrue(SmallInk > 0, 'The inherited size still draws');
+  Assert.IsTrue(LargeInk > SmallInk * 2, Format('Three times the size must cover far more than %d pixels',
+    [SmallInk]));
 end;
 
 end.

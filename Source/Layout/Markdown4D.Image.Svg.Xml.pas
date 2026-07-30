@@ -7,9 +7,10 @@ unit Markdown4D.Image.Svg.Xml;
 // enough to stay in the framework-neutral layer, where the RTL's XML document
 // cannot go because it reaches for a platform parser.
 //
-// Text content, processing instructions, comments, doctypes and CDATA are
-// stepped over rather than reported: nothing in the shape of a drawing lives
-// there.
+// Processing instructions, comments, doctypes and CDATA are stepped over
+// rather than reported: nothing in the shape of a drawing lives there. The
+// characters between an opening tag and whatever follows it are reported with
+// the element, because a text element carries its words there.
 
 interface
 
@@ -25,6 +26,9 @@ type
   TSvgXmlElement = record
     Name: string;
     Attributes: TArray<TSvgXmlAttribute>;
+    // The character data that follows the opening tag, which is where the
+    // words of a text element live.
+    Text: string;
     IsClosing: Boolean;
     IsSelfClosing: Boolean;
     function TryAttribute(const AttributeName: string; out Value: string): Boolean;
@@ -58,6 +62,7 @@ type
     function ReadName: string;
     function ReadAttributeValue: string;
     function ReadAttributes: TArray<TSvgXmlAttribute>;
+    function ReadContentText: string;
     class function DecodeEntities(const Value: string): string;
     class function TryDecodeEntity(const Entity: string; out Decoded: string): Boolean;
 
@@ -206,6 +211,20 @@ begin
   end;
 end;
 
+// Everything up to the next tag, left where it is so the caller reading the
+// following element sees it unchanged.
+function TSvgXmlScanner.ReadContentText: string;
+begin
+  const Start = FIndex;
+
+  while (not AtEnd) and (FText[FIndex] <> TagOpen) do
+  begin
+    Inc(FIndex);
+  end;
+
+  Result := DecodeEntities(Copy(FText, Start, FIndex - Start));
+end;
+
 function TSvgXmlScanner.ReadElement(out Element: TSvgXmlElement): Boolean;
 begin
   Element := Default(TSvgXmlElement);
@@ -269,6 +288,9 @@ begin
 
     if (not AtEnd) and (FText[FIndex] = TagClose) then
       Inc(FIndex);
+
+    if not Element.IsSelfClosing then
+      Element.Text := ReadContentText;
 
     Exit(True);
   end;
