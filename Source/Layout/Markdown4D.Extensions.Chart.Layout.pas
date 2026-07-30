@@ -58,6 +58,10 @@ type
       EntryGap = 12.0;
       AxisGap = 6.0;
       TargetTickCount = 5;
+      // A tick count beyond this says the spacing does not fit the range, in
+      // which case the axis falls back to its two ends.
+      MaxTickCount = 64;
+      TickTolerance = 0.001;
       GridStrokeWidth = 1.0;
       LineStrokeWidth = 2.0;
       MinLabelSweepDegrees = 18.0;
@@ -119,6 +123,12 @@ type
     procedure EmitFilledPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor);
     class function Translucent(const Color: TLayoutColor; const Factor: Single): TLayoutColor; static;
     function NiceNum(const Value: Double; const RoundResult: Boolean): Double;
+    // Rounding a value down or up to a whole number of steps stays in floating
+    // point: Floor and Ceil return an integer, and a large value over a small
+    // spacing is a quotient no integer holds, which would silently wrap and put
+    // the axis somewhere else entirely.
+    class function FloorToStep(const Value, Step: Double): Double; static;
+    class function CeilToStep(const Value, Step: Double): Double; static;
     function BuildValueAxis(const Range: TChartValueRange): TChartValueAxis;
     function CollectValueRange: TChartValueRange;
     function CollectStackedRange(var HasValue: Boolean): TChartValueRange;
@@ -511,6 +521,24 @@ begin
   Result := NiceFraction * PowerOfTen;
 end;
 
+class function TChartLayoutBuilder.FloorToStep(const Value, Step: Double): Double;
+begin
+  var Steps := Int(Value / Step);
+  if Steps * Step > Value then
+    Steps := Steps - 1;
+
+  Result := Steps * Step;
+end;
+
+class function TChartLayoutBuilder.CeilToStep(const Value, Step: Double): Double;
+begin
+  var Steps := Int(Value / Step);
+  if Steps * Step < Value then
+    Steps := Steps + 1;
+
+  Result := Steps * Step;
+end;
+
 function TChartLayoutBuilder.BuildValueAxis(const Range: TChartValueRange): TChartValueAxis;
 begin
   var Low := Range.Minimum;
@@ -530,20 +558,27 @@ begin
   if FModel.HasScaleMin then
     Result.Minimum := FModel.ScaleMin
   else
-    Result.Minimum := Floor(Low / Spacing) * Spacing;
+    Result.Minimum := FloorToStep(Low, Spacing);
 
   if FModel.HasScaleMax then
     Result.Maximum := FModel.ScaleMax
   else
-    Result.Maximum := Ceil(High / Spacing) * Spacing;
+    Result.Maximum := CeilToStep(High, Spacing);
 
   const Collected = TList<Double>.Create;
   try
-    var Tick := Ceil(Result.Minimum / Spacing) * Spacing;
-    while Tick <= Result.Maximum + Spacing * 0.001 do
+    // Each tick is computed from its index rather than added to the previous
+    // one, so a long axis cannot drift away from its spacing.
+    const FirstTick = CeilToStep(Result.Minimum, Spacing);
+    const RawStepCount = (Result.Maximum - FirstTick) / Spacing + TickTolerance;
+    const Fits = (RawStepCount >= 0) and (RawStepCount <= MaxTickCount);
+
+    if Fits then
     begin
-      Collected.Add(Tick);
-      Tick := Tick + Spacing;
+      for var Index := 0 to Trunc(RawStepCount) do
+      begin
+        Collected.Add(FirstTick + Index * Spacing);
+      end;
     end;
 
     if Collected.Count = 0 then

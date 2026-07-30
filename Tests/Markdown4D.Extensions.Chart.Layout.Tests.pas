@@ -23,6 +23,7 @@ type
       FMeasurer: ITextMeasurer;
       FCorpus: TChartCorpus;
     function ModelItems(const CaseName: string): TArray<IDisplayItem>;
+    function MarkdownItems(const Markdown: string): TArray<IDisplayItem>;
 
   public
     [SetupFixture]
@@ -75,6 +76,9 @@ type
 
     [Test]
     procedure Scatter_ProducesMarkerPerPoint;
+
+    [Test]
+    procedure Axis_LargeValuesInNarrowRange_LabelsStayWithTheData;
   end;
 
 implementation
@@ -156,6 +160,20 @@ begin
   Result := TChartLayouter.BuildDisplayItems(Model, Bounds, FTheme, FMeasurer, Code);
 end;
 
+function TChartLayoutTests.MarkdownItems(const Markdown: string): TArray<IDisplayItem>;
+begin
+  const Document = ChartPipeline.Parse(Markdown);
+
+  var Code: IMarkdownCodeBlock;
+  Assert.IsTrue(FindFirstCodeBlock(Document, Code), 'The markdown must expose a code block');
+
+  var Model: IChartModel;
+  Assert.IsTrue(TChartExtension.TryParse(Code, Model), 'The code block must parse into a chart model');
+
+  const Bounds = TLayoutRectF.Create(0, 0, ChartWidth, ChartHeight);
+  Result := TChartLayouter.BuildDisplayItems(Model, Bounds, FTheme, FMeasurer, Code);
+end;
+
 procedure TChartLayoutTests.Bar_PlotRect_ExcludesTitleLegendAndAxisLabels;
 begin
   const Items = ModelItems('title-on');
@@ -224,6 +242,38 @@ procedure TChartLayoutTests.Legend_ProducesSwatchAndLabelRows;
 begin
   const Items = ModelItems('legend-position-right');
   Assert.IsTrue(Length(Items) > 0, 'A chart with a legend must emit swatch and label items');
+end;
+
+// Values far from zero divided by a small tick spacing give a quotient no
+// integer holds, and an axis rounded through one lands somewhere else entirely.
+procedure TChartLayoutTests.Axis_LargeValuesInNarrowRange_LabelsStayWithTheData;
+const
+  Markdown =
+    '```chart'#10 +
+    '{"type":"chart","data":{"type":"line","data":{"labels":["A","B"],' +
+    '"datasets":[{"label":"Counter","data":[1000000000,1000000001]}]}}}'#10 +
+    '```';
+  Lowest = 999999999.0;
+  Highest = 1000000002.0;
+begin
+  const Items = MarkdownItems(Markdown);
+
+  var NumericLabels := 0;
+  for var Item in Items do
+  begin
+    if Item.Kind <> TDisplayItemKind.TextRun then
+      Continue;
+
+    var Value: Double;
+    if not TryStrToFloat((Item as IDisplayTextRun).Text, Value) then
+      Continue;
+
+    Inc(NumericLabels);
+    Assert.IsTrue((Value >= Lowest) and (Value <= Highest),
+      Format('Tick label %s lies outside the data range', [(Item as IDisplayTextRun).Text]));
+  end;
+
+  Assert.IsTrue(NumericLabels >= 2, Format('Expected at least two tick labels but found %d', [NumericLabels]));
 end;
 
 procedure TChartLayoutTests.Axis_ProducesTickLabels;
