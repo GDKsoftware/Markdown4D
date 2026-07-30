@@ -82,18 +82,25 @@ end;
 
 class function TMarkdown.PipelineFor(const Dialect: TMarkdownDialect; const Mode: TRenderMode): IMarkdownPipeline;
 begin
-  if FPipelines[Dialect, Mode] = nil then
-  begin
-    TMonitor.Enter(FLock);
-    try
-      if FPipelines[Dialect, Mode] = nil then
-        FPipelines[Dialect, Mode] := BuildPipeline(Dialect, Mode);
-    finally
-      TMonitor.Exit(FLock);
-    end;
-  end;
+  // The fast path reads the reference without holding the lock, so it carries a
+  // barrier of its own: on a weakly ordered processor a thread could otherwise
+  // see the reference before the object it points at is fully written. Leaving
+  // the lock below publishes the write side.
+  const Existing = FPipelines[Dialect, Mode];
+  MemoryBarrier;
 
-  Result := FPipelines[Dialect, Mode];
+  if Existing <> nil then
+    Exit(Existing);
+
+  TMonitor.Enter(FLock);
+  try
+    if FPipelines[Dialect, Mode] = nil then
+      FPipelines[Dialect, Mode] := BuildPipeline(Dialect, Mode);
+
+    Result := FPipelines[Dialect, Mode];
+  finally
+    TMonitor.Exit(FLock);
+  end;
 end;
 
 class function TMarkdown.BuildPipeline(const Dialect: TMarkdownDialect; const Mode: TRenderMode): IMarkdownPipeline;
