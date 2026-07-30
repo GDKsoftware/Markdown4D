@@ -94,6 +94,7 @@ contains
   Markdown4D.Layout.Primitives in '..\Source\Layout\Markdown4D.Layout.Primitives.pas',
   Markdown4D.Layout.Renderer in '..\Source\Layout\Markdown4D.Layout.Renderer.pas',
   Markdown4D.Image.Rasterizer in '..\Source\Layout\Markdown4D.Image.Rasterizer.pas',
+  Markdown4D.Image.Filters in '..\Source\Layout\Markdown4D.Image.Filters.pas',
   Markdown4D.Image.Svg.Xml in '..\Source\Layout\Markdown4D.Image.Svg.Xml.pas',
   Markdown4D.Image.Svg.Path in '..\Source\Layout\Markdown4D.Image.Svg.Path.pas',
   Markdown4D.Image.Svg.Native in '..\Source\Layout\Markdown4D.Image.Svg.Native.pas',

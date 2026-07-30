@@ -35,6 +35,7 @@ uses
   System.Generics.Collections,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Image.Rasterizer,
+  Markdown4D.Image.Filters,
   Markdown4D.Image.Glyphs,
   Markdown4D.Image.Svg.Xml,
   Markdown4D.Image.Svg.Path,
@@ -68,6 +69,24 @@ type
     OnBoundingBox: Boolean;
     Stops: TArray<TMarkdownGradientStop>;
   end;
+
+  TSvgFilterKind = (Blur, Offset, Flood, Composite, Merge);
+
+  TSvgFilterStep = record
+    Kind: TSvgFilterKind;
+    Input: string;
+    SecondInput: string;
+    ResultName: string;
+    DeviationX: Single;
+    DeviationY: Single;
+    DeltaX: Single;
+    DeltaY: Single;
+    Color: TLayoutColor;
+    Operation: string;
+    MergeInputs: TArray<string>;
+  end;
+
+  TSvgFilter = TArray<TSvgFilterStep>;
 
   TSvgStyle = record
     FillColor: TLayoutColor;
@@ -117,6 +136,12 @@ type
       FRaster: TMarkdownPixelRaster;
       FGradients: TDictionary<string, TSvgGradient>;
       FClipPaths: TDictionary<string, TArray<TSvgSubPath>>;
+      FFilters: TDictionary<string, TSvgFilter>;
+      // Layers a filtered element is drawn into, and the filter waiting to be
+      // applied to each of them when it closes.
+      FLayers: TArray<TMarkdownPixelRaster>;
+      FPendingFilters: TArray<TSvgFilter>;
+      FLayerDepths: TArray<Integer>;
       FStack: TArray<TSvgFrame>;
       FDepth: Integer;
       FSkipUntilDepth: Integer;
@@ -146,6 +171,10 @@ type
       const Contours: TArray<TArray<TLayoutPointF>>; const Matrix: TSvgMatrix): TMarkdownPaint;
     function ClipMaskFor(const Reference: string; const Matrix: TSvgMatrix;
       const Parent: TMarkdownClipMask): TMarkdownClipMask;
+    procedure BeginLayer(const Filter: TSvgFilter);
+    procedure EndLayer;
+    function ApplyFilter(const Filter: TSvgFilter; const Source: TMarkdownPixelRaster): TMarkdownPixelRaster;
+    class function SourceAlphaOf(const Source: TMarkdownPixelRaster): TMarkdownPixelRaster; static;
 
   public
     constructor Create;
@@ -597,10 +626,12 @@ begin
 
   FGradients := TDictionary<string, TSvgGradient>.Create;
   FClipPaths := TDictionary<string, TArray<TSvgSubPath>>.Create;
+  FFilters := TDictionary<string, TSvgFilter>.Create;
 end;
 
 destructor TNativeSvgRenderer.Destroy;
 begin
+  FFilters.Free;
   FClipPaths.Free;
   FGradients.Free;
 
@@ -1213,8 +1244,109 @@ begin
   Result := Combined;
 end;
 
-// Definitions are read first, because a shape may point at a gradient or a clip
-// path written further down the document.
+// A filtered element is drawn on a layer of its own, so the filter has
+// something to work on that holds nothing but that element.
+procedure TNativeSvgRenderer.BeginLayer(const Filter: TSvgFilter);
+begin
+  FLayers := FLayers + [FRaster];
+  FPendingFilters := FPendingFilters + [Filter];
+  FLayerDepths := FLayerDepths + [FDepth];
+
+  FRaster := TMarkdownPixelRaster.Create(FRaster.Width, FRaster.Height);
+end;
+
+procedure TNativeSvgRenderer.EndLayer;
+begin
+  if Length(FLayers) = 0 then
+    Exit;
+
+  const Filtered = ApplyFilter(FPendingFilters[High(FPendingFilters)], FRaster);
+  const Beneath = FLayers[High(FLayers)];
+
+  SetLength(FLayers, Length(FLayers) - 1);
+  SetLength(FPendingFilters, Length(FPendingFilters) - 1);
+  SetLength(FLayerDepths, Length(FLayerDepths) - 1);
+
+  FRaster := TMarkdownRasterFilters.Over(Filtered, Beneath);
+end;
+
+// The shape of the source without its colours, which is what a drop shadow is
+// built from.
+class function TNativeSvgRenderer.SourceAlphaOf(const Source: TMarkdownPixelRaster): TMarkdownPixelRaster;
+begin
+  Result := TMarkdownPixelRaster.Create(Source.Width, Source.Height);
+
+  for var Index := 0 to High(Result.Pixels) div 4 do
+  begin
+    Result.Pixels[Index * 4 + 3] := Source.Pixels[Index * 4 + 3];
+  end;
+end;
+
+function TNativeSvgRenderer.ApplyFilter(const Filter: TSvgFilter;
+  const Source: TMarkdownPixelRaster): TMarkdownPixelRaster;
+begin
+  Result := Source;
+  if Length(Filter) = 0 then
+    Exit;
+
+  const Named = TDictionary<string, TMarkdownPixelRaster>.Create;
+  try
+    Named.AddOrSetValue('SourceGraphic', Source);
+    Named.AddOrSetValue('SourceAlpha', SourceAlphaOf(Source));
+
+    var Current := Source;
+
+    for var Step in Filter do
+    begin
+      var Input := Current;
+      if (Step.Input <> '') and (not Named.TryGetValue(Step.Input, Input)) then
+        Input := Current;
+
+      case Step.Kind of
+        TSvgFilterKind.Blur:
+          Current := TMarkdownRasterFilters.Blurred(Input, Step.DeviationX, Step.DeviationY);
+        TSvgFilterKind.Offset:
+          Current := TMarkdownRasterFilters.Offset(Input, Round(Step.DeltaX), Round(Step.DeltaY));
+        TSvgFilterKind.Flood:
+          Current := TMarkdownRasterFilters.Flooded(Source.Width, Source.Height, Step.Color);
+        TSvgFilterKind.Composite:
+          begin
+            var Second := Source;
+            if (Step.SecondInput <> '') and (not Named.TryGetValue(Step.SecondInput, Second)) then
+              Second := Source;
+
+            if SameText(Step.Operation, 'in') then
+              Current := TMarkdownRasterFilters.InsideOf(Input, Second)
+            else
+              Current := TMarkdownRasterFilters.Over(Input, Second);
+          end;
+        TSvgFilterKind.Merge:
+          begin
+            var Merged := TMarkdownPixelRaster.Create(Source.Width, Source.Height);
+            for var Name in Step.MergeInputs do
+            begin
+              var Layer := Source;
+              if Named.TryGetValue(Name, Layer) or (Name = '') then
+                Merged := TMarkdownRasterFilters.Over(Layer, Merged);
+            end;
+
+            Current := Merged;
+          end;
+      else
+      end;
+
+      if Step.ResultName <> '' then
+        Named.AddOrSetValue(Step.ResultName, Current);
+    end;
+
+    Result := Current;
+  finally
+    Named.Free;
+  end;
+end;
+
+// Definitions are read first, because a shape may point at a gradient, a clip
+// path or a filter written further down the document.
 procedure TNativeSvgRenderer.CollectDefinitions(const Svg: string);
 begin
   const Scanner = TSvgXmlScanner.Create(Svg);
@@ -1223,6 +1355,10 @@ begin
     var GradientId := '';
     var ClipId := '';
     var ClipPaths: TArray<TSvgSubPath> := nil;
+    var FilterId := '';
+    var Filter: TSvgFilter := nil;
+    var MergeInputs: TArray<string> := nil;
+    var InMerge := False;
 
     var Element: TSvgXmlElement;
     while Scanner.ReadElement(Element) do
@@ -1243,6 +1379,22 @@ begin
             FClipPaths.AddOrSetValue(ClipId, ClipPaths);
           ClipId := '';
           ClipPaths := nil;
+        end
+        else if Name = 'filter' then
+        begin
+          if (FilterId <> '') and (Length(Filter) > 0) then
+            FFilters.AddOrSetValue(FilterId, Filter);
+          FilterId := '';
+          Filter := nil;
+        end
+        else if Name = 'femerge' then
+        begin
+          var Step := Default(TSvgFilterStep);
+          Step.Kind := TSvgFilterKind.Merge;
+          Step.MergeInputs := MergeInputs;
+          Filter := Filter + [Step];
+          MergeInputs := nil;
+          InMerge := False;
         end;
 
         Continue;
@@ -1309,6 +1461,76 @@ begin
       begin
         ClipId := Element.Attribute('id');
         ClipPaths := nil;
+        Continue;
+      end;
+
+      if Name = 'filter' then
+      begin
+        FilterId := Element.Attribute('id');
+        Filter := nil;
+        Continue;
+      end;
+
+      if FilterId <> '' then
+      begin
+        if Name = 'femerge' then
+        begin
+          InMerge := True;
+          MergeInputs := nil;
+          Continue;
+        end;
+
+        if (Name = 'femergenode') and InMerge then
+        begin
+          MergeInputs := MergeInputs + [Element.Attribute('in')];
+          Continue;
+        end;
+
+        var Step := Default(TSvgFilterStep);
+        Step.Input := Element.Attribute('in');
+        Step.SecondInput := Element.Attribute('in2');
+        Step.ResultName := Element.Attribute('result');
+
+        var Value: Single;
+
+        if Name = 'fegaussianblur' then
+        begin
+          Step.Kind := TSvgFilterKind.Blur;
+
+          var Deviations := TSvgNumberReader.Create(Element.Attribute('stdDeviation', '0'));
+          Step.DeviationX := Deviations.ReadNumber;
+          if Deviations.TryReadNumber(Value) then
+            Step.DeviationY := Value
+          else
+            Step.DeviationY := Step.DeviationX;
+        end
+        else if Name = 'feoffset' then
+        begin
+          Step.Kind := TSvgFilterKind.Offset;
+          if TryParseLength(Element.Attribute('dx', '0'), Value) then
+            Step.DeltaX := Value;
+          if TryParseLength(Element.Attribute('dy', '0'), Value) then
+            Step.DeltaY := Value;
+        end
+        else if Name = 'feflood' then
+        begin
+          Step.Kind := TSvgFilterKind.Flood;
+          Step.Color := $FF000000;
+          TryParseColor(PresentationValue(Element, 'flood-color'), Step.Color);
+          if TryParseLength(PresentationValue(Element, 'flood-opacity'), Value) then
+            Step.Color := WithOpacity(Step.Color, EnsureRange(Value, 0, 1));
+        end
+        else if Name = 'fecomposite' then
+        begin
+          Step.Kind := TSvgFilterKind.Composite;
+          Step.Operation := Element.Attribute('operator', 'over');
+        end
+        else
+          // A primitive this engine has no answer for would quietly change the
+          // result, so the whole document goes back rather than half a filter.
+          raise ESvgUnsupported.Create(Name);
+
+        Filter := Filter + [Step];
         Continue;
       end;
 
@@ -1423,7 +1645,13 @@ begin
             FSkipping := False;
         end
         else
+        begin
+          const ClosesLayer = (Length(FLayerDepths) > 0) and (FDepth < FLayerDepths[High(FLayerDepths)]);
+          if ClosesLayer then
+            EndLayer;
+
           Pop;
+        end;
 
         if SameText(Name, 'svg') then
           Break;
@@ -1455,28 +1683,23 @@ begin
       if MatchStr(Name, UnsupportedElements) then
         raise ESvgUnsupported.Create(Name);
 
-      // A filter changes how a shape looks in ways this engine cannot draw, and
-      // what it is usually asked for is a shadow, so the shape is left out
-      // rather than drawn as a hard copy of itself.
-      var Ignored := '';
-      const IsFiltered = TryParseReference(PresentationValue(Element, 'filter'), Ignored);
+      // A filtered element is drawn on a layer of its own, which the filter is
+      // applied to when the element closes.
+      var Reference := '';
+      var Filter: TSvgFilter := nil;
+      const IsFiltered = TryParseReference(PresentationValue(Element, 'filter'), Reference) and
+        FFilters.TryGetValue(Reference, Filter);
       if IsFiltered then
-      begin
-        if Element.IsSelfClosing then
-          Dec(FDepth)
-        else
-        begin
-          FSkipping := True;
-          FSkipUntilDepth := FDepth;
-        end;
-        Continue;
-      end;
+        BeginLayer(Filter);
 
       Push(Element);
       DrawElement(Element);
 
       if Element.IsSelfClosing then
       begin
+        if IsFiltered then
+          EndLayer;
+
         Pop;
         Dec(FDepth);
       end;

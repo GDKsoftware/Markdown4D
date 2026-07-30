@@ -60,7 +60,10 @@ type
     procedure Rasterize_ClipPath_HoldsTheShapeInside;
 
     [Test]
-    procedure Rasterize_FilteredElement_IsLeftOut;
+    procedure Rasterize_BlurFilter_SoftensTheEdge;
+
+    [Test]
+    procedure Rasterize_DropShadowFilter_PutsInkBesideTheShape;
 
     [Test]
     procedure Rasterize_Text_PutsInkOnTheBaseline;
@@ -248,17 +251,40 @@ begin
   Assert.AreEqual(0, AlphaAt(Raster, 45, 45), 'Outside the clip nothing is drawn');
 end;
 
-// A filter is usually asked for to cast a shadow. Drawing the shape without it
-// would put a hard copy of itself on the page, so it is left out instead.
-procedure TNativeSvgRasterizerTests.Rasterize_FilteredElement_IsLeftOut;
+// A blur spreads coverage past the edge of the shape and softens what is left
+// behind, which is exactly what a sharp fill never does.
+procedure TNativeSvgRasterizerTests.Rasterize_BlurFilter_SoftensTheEdge;
 begin
-  const Raster = Rasterize('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">' +
-    '<defs><filter id="f"><feGaussianBlur stdDeviation="2"/></filter></defs>' +
-    '<rect x="5" y="5" width="10" height="10" fill="#ff0000" filter="url(#f)"/>' +
-    '<rect x="25" y="25" width="10" height="10" fill="#ff0000"/></svg>');
+  const Sharp = Rasterize('<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60">' +
+    '<rect x="20" y="20" width="20" height="20" fill="#ff0000"/></svg>');
+  const Soft = Rasterize('<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60">' +
+    '<defs><filter id="b"><feGaussianBlur stdDeviation="3"/></filter></defs>' +
+    '<rect x="20" y="20" width="20" height="20" fill="#ff0000" filter="url(#b)"/></svg>');
 
-  Assert.AreEqual(0, AlphaAt(Raster, 10, 10), 'The filtered shape is left out');
-  Assert.AreEqual(255, AlphaAt(Raster, 30, 30), 'Its neighbour is drawn as usual');
+  Assert.AreEqual(0, AlphaAt(Sharp, 16, 30), 'A sharp fill stops at its edge');
+  Assert.IsTrue(AlphaAt(Soft, 16, 30) > 0, 'A blur reaches past the edge');
+  Assert.IsTrue(AlphaAt(Soft, 21, 30) < 255,
+    'And thins out the edge it used to cover solidly');
+  Assert.AreEqual(255, AlphaAt(Sharp, 21, 30), 'Where the sharp fill is still solid');
+end;
+
+// Blur the shape, move it, colour it, put the original back on top: the
+// standard way a document asks for a drop shadow.
+procedure TNativeSvgRasterizerTests.Rasterize_DropShadowFilter_PutsInkBesideTheShape;
+begin
+  const Raster = Rasterize('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">' +
+    '<defs><filter id="s">' +
+    '<feGaussianBlur in="SourceAlpha" stdDeviation="2" result="blurred"/>' +
+    '<feOffset in="blurred" dx="6" dy="6" result="moved"/>' +
+    '<feFlood flood-color="#000000" flood-opacity="0.6" result="colour"/>' +
+    '<feComposite in="colour" in2="moved" operator="in" result="shadow"/>' +
+    '<feMerge><feMergeNode in="shadow"/><feMergeNode in="SourceGraphic"/></feMerge>' +
+    '</filter></defs>' +
+    '<rect x="20" y="20" width="30" height="30" fill="#ff0000" filter="url(#s)"/></svg>');
+
+  Assert.AreEqual(255, AlphaAt(Raster, 35, 35), 'The shape itself is still solid');
+  Assert.IsTrue(AlphaAt(Raster, 54, 54) > 0, 'The shadow falls below and to the right');
+  Assert.AreEqual(0, AlphaAt(Raster, 5, 5), 'Away from both, nothing is drawn');
 end;
 
 procedure TNativeSvgRasterizerTests.Rasterize_Text_PutsInkOnTheBaseline;
