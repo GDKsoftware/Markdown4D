@@ -219,6 +219,7 @@ begin
   FLoadedImages := TObjectDictionary<string, TBitmap>.Create([doOwnsValues]);
   FRequestedImageSources := TDictionary<string, Boolean>.Create;
   FImageDownloader := TMarkdownImageDownloader.Create(HandleImageDataArrived, HandleImageDownloadFailed);
+  FImageDownloader.OnAddressAllowed := AllowsRemoteImage;
 
   FMeasureBitmap := TBitmap.Create(1, 1);
   FMeasurePainter := TMarkdownFmxPainter.Create(FMeasureBitmap.Canvas);

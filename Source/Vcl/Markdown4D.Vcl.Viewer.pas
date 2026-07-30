@@ -221,6 +221,7 @@ begin
   FLoadedImages := TObjectDictionary<string, TGraphic>.Create([doOwnsValues]);
   FRequestedImageSources := TDictionary<string, Boolean>.Create;
   FImageDownloader := TMarkdownImageDownloader.Create(HandleImageDataArrived, HandleImageDownloadFailed);
+  FImageDownloader.OnAddressAllowed := AllowsRemoteImage;
 
   FMeasureBitmap := TBitmap.Create;
   FMeasureBitmap.SetSize(1, 1);

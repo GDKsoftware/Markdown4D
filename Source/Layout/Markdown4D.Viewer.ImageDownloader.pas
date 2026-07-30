@@ -14,18 +14,36 @@ type
 
   TMarkdownImageDownloadFailed = reference to procedure(const Source: string);
 
+  // Decides whether one address may be fetched. Every hop of a redirect chain
+  // is offered here, so a destination reached through a redirect faces the same
+  // judgement as the one written in the document.
+  TMarkdownImageAddressAllowed = reference to function(const Url: string): Boolean;
+
   TMarkdownImageDownloader = class
   private
     const
       MaxConcurrentDownloads = 4;
+      MaxRedirects = 5;
       ConnectionTimeoutMilliseconds = 10000;
       ResponseTimeoutMilliseconds = 30000;
       HttpStatusOk = 200;
+      RedirectStatusCodes: array[0..4] of Integer = (301, 302, 303, 307, 308);
+      LocationHeaderName = 'Location';
+      SchemeSeparator = '://';
+      SchemeRelativePrefix = '//';
+      PathSeparator = '/';
     type
+      TFetchStatus = (Succeeded, Failed, Redirected);
+      TFetchResult = record
+        Status: TFetchStatus;
+        Data: TBytes;
+        Location: string;
+      end;
       TPendingDownload = record
         Source: string;
         Url: string;
         MaxBytes: Integer;
+        HopsLeft: Integer;
       end;
     var
       FLifetime: IMarkdownViewerLifetime;
@@ -34,12 +52,17 @@ type
       FQueue: TQueue<TPendingDownload>;
       FOnCompleted: TMarkdownImageDownloadCompleted;
       FOnFailed: TMarkdownImageDownloadFailed;
+      FOnAddressAllowed: TMarkdownImageAddressAllowed;
     procedure PumpQueue;
     procedure BeginDownload(const Pending: TPendingDownload);
     class function TryFetch(const Url: string; const MaxBytes: Integer;
-      const Lifetime: IMarkdownViewerLifetime; out Data: TBytes): Boolean;
-    procedure HandleDownloadResult(const Generation: Integer; const Source: string; const Data: TBytes;
-      const Succeeded: Boolean);
+      const Lifetime: IMarkdownViewerLifetime): TFetchResult;
+    class function IsRedirect(const StatusCode: Integer): Boolean;
+    class function IsHttpAddress(const Url: string): Boolean;
+    class function ResolvedLocation(const BaseUrl, Location: string): string;
+    procedure HandleDownloadResult(const Generation: Integer; const Pending: TPendingDownload;
+      const Fetch: TFetchResult);
+    procedure FollowRedirect(const Pending: TPendingDownload; const Location: string);
 
   public
     constructor Create(const OnCompleted: TMarkdownImageDownloadCompleted;
@@ -47,6 +70,9 @@ type
     destructor Destroy; override;
     procedure Download(const Source, Url: string; const MaxBytes: Integer = 0);
     procedure CancelPending;
+    // Left unassigned, a redirect is followed as long as it stays on http or
+    // https. Assign it to keep the host's own judgement in charge of every hop.
+    property OnAddressAllowed: TMarkdownImageAddressAllowed read FOnAddressAllowed write FOnAddressAllowed;
   end;
 
 implementation
@@ -55,7 +81,8 @@ uses
   System.Classes,
   System.Threading,
   System.Net.URLClient,
-  System.Net.HttpClient;
+  System.Net.HttpClient,
+  Markdown4D.Defines;
 
 constructor TMarkdownImageDownloader.Create(const OnCompleted: TMarkdownImageDownloadCompleted;
   const OnFailed: TMarkdownImageDownloadFailed);
@@ -82,6 +109,7 @@ begin
   Pending.Source := Source;
   Pending.Url := Url;
   Pending.MaxBytes := MaxBytes;
+  Pending.HopsLeft := MaxRedirects;
   FQueue.Enqueue(Pending);
 
   PumpQueue;
@@ -107,16 +135,14 @@ begin
 
   const Lifetime = FLifetime;
   const Generation = FGeneration;
-  const Source = Pending.Source;
-  const Url = Pending.Url;
-  const MaxBytes = Pending.MaxBytes;
+  const Request = Pending;
   TTask.Run(
     procedure
     begin
-      var Data: TBytes := nil;
-      var Succeeded := False;
+      var Fetch := Default(TFetchResult);
+      Fetch.Status := TFetchStatus.Failed;
       try
-        Succeeded := TryFetch(Url, MaxBytes, Lifetime, Data);
+        Fetch := TryFetch(Request.Url, Request.MaxBytes, Lifetime);
       finally
         // The result has to be reported even when the fetch failed in a way
         // TryFetch does not handle, otherwise the active count never drops and
@@ -125,21 +151,26 @@ begin
           procedure
           begin
             if Lifetime.IsAlive then
-              HandleDownloadResult(Generation, Source, Data, Succeeded);
+              HandleDownloadResult(Generation, Request, Fetch);
           end);
       end;
     end);
 end;
 
 class function TMarkdownImageDownloader.TryFetch(const Url: string; const MaxBytes: Integer;
-  const Lifetime: IMarkdownViewerLifetime; out Data: TBytes): Boolean;
+  const Lifetime: IMarkdownViewerLifetime): TFetchResult;
 begin
-  Data := nil;
+  Result := Default(TFetchResult);
+  Result.Status := TFetchStatus.Failed;
+
   try
     const Client = THTTPClient.Create;
     try
       Client.ConnectionTimeout := ConnectionTimeoutMilliseconds;
       Client.ResponseTimeout := ResponseTimeoutMilliseconds;
+      // Redirects are followed by the caller instead, so the address policy
+      // gets to judge every hop rather than only the first.
+      Client.HandleRedirects := False;
       Client.ReceiveDataCallback :=
         procedure(const Sender: TObject; ContentLength, ReadCount: Int64; var ShouldAbort: Boolean)
         begin
@@ -154,13 +185,22 @@ begin
       const Content = TBytesStream.Create;
       try
         const Response = Client.Get(Url, Content);
+
+        if IsRedirect(Response.StatusCode) then
+        begin
+          Result.Location := Response.HeaderValue[LocationHeaderName];
+          if Result.Location <> '' then
+            Result.Status := TFetchStatus.Redirected;
+          Exit;
+        end;
+
         const WithinBound = (MaxBytes <= 0) or (Content.Size <= MaxBytes);
         const IsUsable = (Response.StatusCode = HttpStatusOk) and (Content.Size > 0) and WithinBound;
         if not IsUsable then
-          Exit(False);
+          Exit;
 
-        Data := Copy(Content.Bytes, 0, Content.Size);
-        Result := True;
+        Result.Data := Copy(Content.Bytes, 0, Content.Size);
+        Result.Status := TFetchStatus.Succeeded;
       finally
         Content.Free;
       end;
@@ -168,26 +208,102 @@ begin
       Client.Free;
     end;
   except
-    on ENetException do
-      Result := False;
+    // An address out of a document is an outside boundary: whatever the network
+    // stack, the stream or the decoder raises here is one failed image, never a
+    // lost background task.
+    on Exception do
+    begin
+      Result.Data := nil;
+      Result.Status := TFetchStatus.Failed;
+    end;
   end;
 end;
 
-procedure TMarkdownImageDownloader.HandleDownloadResult(const Generation: Integer; const Source: string;
-  const Data: TBytes; const Succeeded: Boolean);
+class function TMarkdownImageDownloader.IsRedirect(const StatusCode: Integer): Boolean;
+begin
+  for var Code in RedirectStatusCodes do
+  begin
+    if Code = StatusCode then
+      Exit(True);
+  end;
+
+  Result := False;
+end;
+
+class function TMarkdownImageDownloader.IsHttpAddress(const Url: string): Boolean;
+begin
+  Result := Url.StartsWith(HttpSchemePrefix, True) or Url.StartsWith(HttpsSchemePrefix, True);
+end;
+
+// Resolves what a Location header may abbreviate: a full address, one that
+// borrows the scheme, one rooted at the host, or one relative to the folder of
+// the address just requested.
+class function TMarkdownImageDownloader.ResolvedLocation(const BaseUrl, Location: string): string;
+begin
+  if Location.Contains(SchemeSeparator) then
+    Exit(Location);
+
+  const SchemeEnd = BaseUrl.IndexOf(SchemeSeparator);
+  if SchemeEnd < 0 then
+    Exit('');
+
+  if Location.StartsWith(SchemeRelativePrefix) then
+    Exit(BaseUrl.Substring(0, SchemeEnd + 1) + Location);
+
+  const HostStart = SchemeEnd + Length(SchemeSeparator);
+  var HostEnd := BaseUrl.IndexOf(PathSeparator, HostStart);
+  if HostEnd < 0 then
+    HostEnd := BaseUrl.Length;
+
+  if Location.StartsWith(PathSeparator) then
+    Exit(BaseUrl.Substring(0, HostEnd) + Location);
+
+  const LastSeparator = BaseUrl.LastIndexOf(PathSeparator);
+  if LastSeparator < HostEnd then
+    Exit(BaseUrl.Substring(0, HostEnd) + PathSeparator + Location);
+
+  Result := BaseUrl.Substring(0, LastSeparator + 1) + Location;
+end;
+
+procedure TMarkdownImageDownloader.HandleDownloadResult(const Generation: Integer;
+  const Pending: TPendingDownload; const Fetch: TFetchResult);
 begin
   Dec(FActiveCount);
 
   const IsCurrent = (Generation = FGeneration);
   if IsCurrent then
   begin
-    if Succeeded then
-      FOnCompleted(Source, Data)
+    case Fetch.Status of
+      TFetchStatus.Succeeded:
+        FOnCompleted(Pending.Source, Fetch.Data);
+      TFetchStatus.Redirected:
+        FollowRedirect(Pending, Fetch.Location);
     else
-      FOnFailed(Source);
+      FOnFailed(Pending.Source);
+    end;
   end;
 
   PumpQueue;
+end;
+
+// Runs on the thread that started the download, so the host's own judgement is
+// asked where it expects to be asked.
+procedure TMarkdownImageDownloader.FollowRedirect(const Pending: TPendingDownload; const Location: string);
+begin
+  const Target = ResolvedLocation(Pending.Url, Location);
+
+  const Refused = (Pending.HopsLeft <= 0) or (not IsHttpAddress(Target)) or
+    (Assigned(FOnAddressAllowed) and not FOnAddressAllowed(Target));
+  if Refused then
+  begin
+    FOnFailed(Pending.Source);
+    Exit;
+  end;
+
+  var Next := Pending;
+  Next.Url := Target;
+  Next.HopsLeft := Pending.HopsLeft - 1;
+  FQueue.Enqueue(Next);
 end;
 
 end.
