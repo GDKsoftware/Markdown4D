@@ -10,6 +10,7 @@ uses
   System.Generics.Collections,
   Winapi.Windows,
   Vcl.Graphics,
+  Markdown4D.Image.Rasterizer,
   Markdown4D.Layout.Defaults,
   Markdown4D.Layout.Interfaces;
 
@@ -25,6 +26,8 @@ type
       PlaceholderBorderColor = TLayoutColor($FF9E9E9E);
       PlaceholderStrokeWidth = 1.0;
       BrokenImageCrossColor = TLayoutColor($FFC0392B);
+      // Room around a wedge for the pixels its anti-aliased edge reaches into.
+      WedgeBufferMargin = 2;
     var
       FCanvas: TCanvas;
       FPixelsPerInch: Integer;
@@ -46,6 +49,7 @@ type
     procedure FillRectBlended(const Bounds: TLayoutRectF; const Color: TLayoutColor);
     procedure DrawResolvedImage(const Bounds: TLayoutRectF; const Graphic: TGraphic; const SourceRect: TLayoutRectF);
     procedure BlitBitmap(const Bounds: TLayoutRectF; const Bitmap: TBitmap; const SourceRect: TLayoutRectF);
+    procedure BlendRaster(const Raster: TMarkdownPixelRaster; const Left, Top: Integer);
     procedure DrawImagePlaceholder(const Bounds: TLayoutRectF);
     procedure DrawBrokenImagePlaceholder(const Bounds: TLayoutRectF);
     procedure FillDevicePolygonOpaque(const Points: TArray<TPoint>; const Color: TLayoutColor);
@@ -85,16 +89,13 @@ implementation
 uses
   System.Math,
   Vcl.Forms,
-  Img32,
-  Img32.Draw,
-  Img32.Vector,
   Markdown4D.Defines,
   Markdown4D.Viewer.Shared;
 
 // Builds an anti-aliasable float path for a pie slice or doughnut sector, using
 // a 0deg-at-3-o'clock clockwise polar convention that matches the chart labels.
-function WedgePathD(const Center: TLayoutPointF;
-  const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single): TPathD; forward;
+function WedgePath(const Center: TLayoutPointF;
+  const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single): TArray<TLayoutPointF>; forward;
 
 constructor TMarkdownVclPainter.Create(const Canvas: TCanvas; const PixelsPerInch: Integer);
 begin
@@ -305,13 +306,13 @@ begin
   if (Alpha = 0) or (OuterRadius <= 0) or (SweepAngle = 0) then
     Exit;
 
-  const Path = WedgePathD(Center, OuterRadius, InnerRadius, StartAngle, SweepAngle);
+  const Path = WedgePath(Center, OuterRadius, InnerRadius, StartAngle, SweepAngle);
   if Length(Path) < 3 then
     Exit;
 
-  // GDI has no anti-aliasing, which leaves pie/doughnut arcs jagged. Render the
-  // wedge with Image32's anti-aliased rasteriser onto a small transparent buffer
-  // and alpha-blend it onto the canvas. Drawing wedges in order keeps shared
+  // GDI has no anti-aliasing, which leaves pie and doughnut arcs jagged. Fill
+  // the wedge into a small transparent buffer with coverage of its own and
+  // alpha-blend that onto the canvas. Drawing wedges in order keeps shared
   // radial edges seam-free: a later wedge blends over its neighbour, not the gap.
   var MinX := Path[0].X;
   var MinY := Path[0].Y;
@@ -325,30 +326,81 @@ begin
     MaxY := Max(MaxY, Path[Index].Y);
   end;
 
-  const Margin = 2;
-  const Left = Floor(MinX) - Margin;
-  const Top = Floor(MinY) - Margin;
-  const BufferWidth = Ceil(MaxX) - Left + Margin;
-  const BufferHeight = Ceil(MaxY) - Top + Margin;
+  const Left = Floor(MinX) - WedgeBufferMargin;
+  const Top = Floor(MinY) - WedgeBufferMargin;
+  const BufferWidth = Ceil(MaxX) - Left + WedgeBufferMargin;
+  const BufferHeight = Ceil(MaxY) - Top + WedgeBufferMargin;
   if (BufferWidth <= 0) or (BufferHeight <= 0) then
     Exit;
 
-  var Local: TPathD;
+  var Local: TArray<TLayoutPointF>;
   SetLength(Local, Length(Path));
   for var Index := 0 to High(Path) do
-    Local[Index] := PointD(Path[Index].X - Left, Path[Index].Y - Top);
+  begin
+    Local[Index] := TLayoutPointF.Create(Path[Index].X - Left, Path[Index].Y - Top);
+  end;
 
-  const Image = TImage32.Create(BufferWidth, BufferHeight);
+  const Raster = TMarkdownPolygonRasterizer.Fill(Local, Color, BufferWidth, BufferHeight);
+
+  BlendRaster(Raster, Left, Top);
+end;
+
+// Hands a premultiplied BGRA buffer to GDI through a top-down DIB section,
+// which is the one path that blends per-pixel alpha onto a device context.
+procedure TMarkdownVclPainter.BlendRaster(const Raster: TMarkdownPixelRaster; const Left, Top: Integer);
+begin
+  if Raster.IsEmpty then
+    Exit;
+
+  var Info: TBitmapInfo;
+  FillChar(Info, SizeOf(Info), 0);
+  Info.bmiHeader.biSize := SizeOf(TBitmapInfoHeader);
+  Info.bmiHeader.biWidth := Raster.Width;
+  Info.bmiHeader.biHeight := -Raster.Height;
+  Info.bmiHeader.biPlanes := 1;
+  Info.bmiHeader.biBitCount := 32;
+  Info.bmiHeader.biCompression := BI_RGB;
+
+  var Bits: Pointer := nil;
+  const Section = CreateDIBSection(FCanvas.Handle, Info, DIB_RGB_COLORS, Bits, 0, 0);
+  if (Section = 0) or (Bits = nil) then
+  begin
+    if Section <> 0 then
+      DeleteObject(Section);
+    Exit;
+  end;
+
   try
-    DrawPolygon(Image, Local, frNonZero, TColor32(Color));
-    Image.CopyToDc(FCanvas.Handle, Left, Top, True);
+    Move(Raster.Pixels[0], Bits^, Length(Raster.Pixels));
+
+    const Memory = CreateCompatibleDC(FCanvas.Handle);
+    if Memory = 0 then
+      Exit;
+
+    try
+      const Previous = SelectObject(Memory, Section);
+      try
+        var Blend: TBlendFunction;
+        Blend.BlendOp := AC_SRC_OVER;
+        Blend.BlendFlags := 0;
+        Blend.SourceConstantAlpha := OpaqueAlpha;
+        Blend.AlphaFormat := AC_SRC_ALPHA;
+
+        AlphaBlend(FCanvas.Handle, Left, Top, Raster.Width, Raster.Height,
+          Memory, 0, 0, Raster.Width, Raster.Height, Blend);
+      finally
+        SelectObject(Memory, Previous);
+      end;
+    finally
+      DeleteDC(Memory);
+    end;
   finally
-    Image.Free;
+    DeleteObject(Section);
   end;
 end;
 
-function WedgePathD(const Center: TLayoutPointF;
-  const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single): TPathD;
+function WedgePath(const Center: TLayoutPointF;
+  const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single): TArray<TLayoutPointF>;
 const
   DegreesToRadians = Pi / 180;
   SegmentDegrees = 1.5;
@@ -368,7 +420,7 @@ begin
   for var Step := 0 to Steps do
   begin
     const Angle = (StartAngle + SweepAngle * Step / Steps) * DegreesToRadians;
-    Result[Index] := PointD(Center.X + OuterRadius * Cos(Angle), Center.Y + OuterRadius * Sin(Angle));
+    Result[Index] := TLayoutPointF.Create(Center.X + OuterRadius * Cos(Angle), Center.Y + OuterRadius * Sin(Angle));
     Inc(Index);
   end;
 
@@ -377,13 +429,13 @@ begin
     for var Step := Steps downto 0 do
     begin
       const Angle = (StartAngle + SweepAngle * Step / Steps) * DegreesToRadians;
-      Result[Index] := PointD(Center.X + InnerRadius * Cos(Angle), Center.Y + InnerRadius * Sin(Angle));
+      Result[Index] := TLayoutPointF.Create(Center.X + InnerRadius * Cos(Angle), Center.Y + InnerRadius * Sin(Angle));
       Inc(Index);
     end;
   end
   else
   begin
-    Result[Index] := PointD(Center.X, Center.Y);
+    Result[Index] := TLayoutPointF.Create(Center.X, Center.Y);
   end;
 end;
 

@@ -49,6 +49,8 @@ type
       ManyLineCount = 40;
       HighDpi = 192;
       PreviewScrollTarget = 40;
+      ClipboardAttempts = 20;
+      ClipboardPauseMilliseconds = 25;
     var
       FEditor: TMarkdownEditor;
       FHostForm: TForm;
@@ -56,6 +58,8 @@ type
     class function ManyLines(const Count: Integer): string; static;
     class function OneWrappedLine: string; static;
     class function ClipboardIsAccessible: Boolean; static;
+    class function TrySetClipboardText(const Value: string): Boolean; static;
+    class function TryGetClipboardText(out Value: string): Boolean; static;
 
   public
     [Setup]
@@ -336,15 +340,57 @@ begin
   Result := Builder;
 end;
 
+// Any process on the machine may hold the clipboard for a moment, and a test
+// that loses that race says nothing about the editor, so it waits its turn.
 class function TMarkdownVclEditorTests.ClipboardIsAccessible: Boolean;
 begin
-  Result := True;
-  try
-    Clipboard.Open;
-    Clipboard.Close;
-  except
-    Result := False;
+  for var Attempt := 1 to ClipboardAttempts do
+  begin
+    try
+      Clipboard.Open;
+      Clipboard.Close;
+      Exit(True);
+    except
+      on EClipboardException do
+        Sleep(ClipboardPauseMilliseconds);
+    end;
   end;
+
+  Result := False;
+end;
+
+class function TMarkdownVclEditorTests.TryGetClipboardText(out Value: string): Boolean;
+begin
+  Value := '';
+
+  for var Attempt := 1 to ClipboardAttempts do
+  begin
+    try
+      Value := Clipboard.AsText;
+      Exit(True);
+    except
+      on EClipboardException do
+        Sleep(ClipboardPauseMilliseconds);
+    end;
+  end;
+
+  Result := False;
+end;
+
+class function TMarkdownVclEditorTests.TrySetClipboardText(const Value: string): Boolean;
+begin
+  for var Attempt := 1 to ClipboardAttempts do
+  begin
+    try
+      Clipboard.AsText := Value;
+      Exit(True);
+    except
+      on EClipboardException do
+        Sleep(ClipboardPauseMilliseconds);
+    end;
+  end;
+
+  Result := False;
 end;
 
 procedure TMarkdownVclEditorTests.NewEditor_ConstructsWithoutForm;
@@ -839,16 +885,23 @@ begin
   if not ClipboardIsAccessible then
     Assert.Pass('Clipboard service unavailable in this test session');
 
-  const Saved = Clipboard.AsText;
+  var Saved: string;
+  TryGetClipboardText(Saved);
+
   const Editor = TTestableVclEditor.Create(nil);
   try
     Editor.Text := 'copy target';
     Editor.SimulateKeyDown(Ord('A'), [ssCtrl]);
     Editor.SimulateKeyDown(Ord('C'), [ssCtrl]);
-    Assert.AreEqual('copy target', Clipboard.AsText);
+
+    var Copied: string;
+    if not TryGetClipboardText(Copied) then
+      Assert.Pass('Clipboard held by another process throughout this test');
+
+    Assert.AreEqual('copy target', Copied);
   finally
     Editor.Free;
-    Clipboard.AsText := Saved;
+    TrySetClipboardText(Saved);
   end;
 end;
 
@@ -857,17 +910,24 @@ begin
   if not ClipboardIsAccessible then
     Assert.Pass('Clipboard service unavailable in this test session');
 
-  const Saved = Clipboard.AsText;
+  var Saved: string;
+  TryGetClipboardText(Saved);
+
   const Editor = TTestableVclEditor.Create(nil);
   try
     Editor.Text := 'cut target';
     Editor.SimulateKeyDown(Ord('A'), [ssCtrl]);
     Editor.SimulateKeyDown(Ord('X'), [ssCtrl]);
-    Assert.AreEqual('cut target', Clipboard.AsText);
+
+    var Cut: string;
+    if not TryGetClipboardText(Cut) then
+      Assert.Pass('Clipboard held by another process throughout this test');
+
+    Assert.AreEqual('cut target', Cut);
     Assert.AreEqual('', Editor.Text);
   finally
     Editor.Free;
-    Clipboard.AsText := Saved;
+    TrySetClipboardText(Saved);
   end;
 end;
 
@@ -876,17 +936,21 @@ begin
   if not ClipboardIsAccessible then
     Assert.Pass('Clipboard service unavailable in this test session');
 
-  const Saved = Clipboard.AsText;
+  var Saved: string;
+  TryGetClipboardText(Saved);
+
   const Editor = TTestableVclEditor.Create(nil);
   try
-    Clipboard.AsText := 'pasted';
+    if not TrySetClipboardText('pasted') then
+      Assert.Pass('Clipboard held by another process throughout this test');
+
     Editor.Text := '';
     Editor.CaretPosition := 0;
     Editor.SimulateKeyDown(Ord('V'), [ssCtrl]);
     Assert.AreEqual('pasted', Editor.Text);
   finally
     Editor.Free;
-    Clipboard.AsText := Saved;
+    TrySetClipboardText(Saved);
   end;
 end;
 

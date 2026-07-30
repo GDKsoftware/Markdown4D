@@ -4,6 +4,29 @@ All notable changes to Markdown4D are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Markdown4D no longer bundles any third-party code.** Image32 drew the SVG
+  images and the anti-aliased chart wedges; both are now done by units written
+  for this project, and `ThirdParty/` is gone. Nothing about installing or
+  building changes except that two search paths fall away.
+
+### Added
+
+- `Markdown4D.Image.Rasterizer` fills polygons with anti-aliasing, exactly
+  horizontally and over four sub-scanlines vertically, with the non-zero and
+  even-odd rules, gradient paints, clip masks and source-over compositing.
+- `Markdown4D.Image.Svg.Xml`, `.Path` and `.Native` draw an SVG: the shape
+  elements, groups, transforms, the viewBox, solid and gradient fills, strokes
+  with miter and round joins, opacity, both fill rules, clip paths and text.
+  Patterns, filters, masks, embedded images and `<use>` are refused whole, so a
+  document is never drawn half right.
+- `Markdown4D.Image.Glyphs` is the seam text outlines come from, with a Windows
+  implementation in `Markdown4D.Image.Glyphs.Gdi` that asks the system font
+  engine. Text in an SVG now renders, which the bundled engine never did here.
+
 ## [2.0.0] - 2026-07-30
 
 ### Security

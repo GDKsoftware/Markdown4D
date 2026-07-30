@@ -196,7 +196,7 @@ uses
   Vcl.Imaging.pngimage,
   Vcl.Imaging.jpeg,
   Vcl.Imaging.GIFImg,
-  Markdown4D.Image.Svg.Image32,
+  Markdown4D.Image.Svg.Native,
   Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Defaults,
   Markdown4D.Layout.HitTest,

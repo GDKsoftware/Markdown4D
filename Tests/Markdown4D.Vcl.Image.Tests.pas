@@ -72,7 +72,7 @@ type
     procedure SvgImage_ViaRegisteredRasterizer_DrawsRasterizedPixels;
 
     [Test]
-    procedure SvgImage_ViaImage32Rasterizer_RendersRealSvg;
+    procedure SvgImage_ViaNativeRasterizer_RendersRealSvg;
   end;
 
 implementation
@@ -84,7 +84,7 @@ uses
   System.IOUtils,
   Vcl.Imaging.pngimage,
   Markdown4D.Image.Svg,
-  Markdown4D.Image.Svg.Image32,
+  Markdown4D.Image.Svg.Native,
   Markdown4D.Highlighter.Interfaces;
 
 procedure TMarkdownVclImageTests.Setup;
@@ -165,9 +165,9 @@ begin
     Format('Expected at least %d rasterized SVG pixels but found %d', [MinimumImagePixels, Measurement.MatchCount]));
 end;
 
-procedure TMarkdownVclImageTests.SvgImage_ViaImage32Rasterizer_RendersRealSvg;
+procedure TMarkdownVclImageTests.SvgImage_ViaNativeRasterizer_RendersRealSvg;
 begin
-  RegisterImage32SvgRasterizer;
+  RegisterNativeSvgRasterizer;
   WriteFilledRedSvgFile;
   FViewer.Images.BaseUrl := FTempFolder;
   FViewer.Text := SvgMarkdown;
@@ -175,7 +175,7 @@ begin
   const Measurement = MeasureMatchingPixels(IsRed);
 
   Assert.IsTrue(Measurement.MatchCount >= MinimumImagePixels,
-    Format('Expected at least %d Image32-rendered SVG pixels but found %d', [MinimumImagePixels, Measurement.MatchCount]));
+    Format('Expected at least %d rendered SVG pixels but found %d', [MinimumImagePixels, Measurement.MatchCount]));
 end;
 
 procedure TMarkdownVclImageTests.WriteRedSvgFile;

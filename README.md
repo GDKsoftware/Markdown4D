@@ -27,10 +27,10 @@ runtime DLL, no package manager.
 - **Native UI, both frameworks.** Custom-drawn `TMarkdownViewer` and
   `TMarkdownEditor` for VCL and FMX, with theming, images, selection, search,
   syntax-highlighted code, live charts, mermaid diagrams and design-time preview.
-- **Nothing to install.** Parser, renderer, writer and layout engine are pure
-  RTL. SVG images are rendered by [Image32](#third-party-code), a pure Object
-  Pascal library bundled in this repository. No DLL, no package manager, no
-  build step. MIT licensed. Delphi 12 Athens and Delphi 13.
+- **Nothing to install, nothing bundled.** Parser, renderer, writer, layout
+  engine, anti-aliased rasterizer and SVG engine are all written for this
+  project and use only the RTL. No DLL, no package manager, no build step.
+  MIT licensed. Delphi 12 Athens and Delphi 13.
 
 ## Features
 
@@ -49,6 +49,7 @@ runtime DLL, no package manager.
 | Mermaid extension | `mermaid` fences rendered natively as flowchart / sequence / pie diagrams, with code-block fallback |
 | VCL & FMX viewer | Themed rendering, async images, selection, copy, find, links |
 | VCL & FMX editor | Syntax-highlighted source editing with an attachable live preview |
+| SVG images | Shapes, groups, transforms, gradients, clip paths, strokes and text, drawn by our own engine |
 | Design-time | Live sample render on the form designer; components on the **Markdown4D** palette |
 
 ## Quick start
@@ -114,17 +115,14 @@ folders to your project's search path:
 
 ```
 Source\Core     framework-neutral parser, AST, renderer, writer, extensions
-Source\Layout   framework-neutral layout engine, theme, viewer/editor models
+Source\Layout   framework-neutral layout engine, theme, viewer/editor models,
+                rasterizer, SVG engine
 Source\Vcl      VCL painter, viewer, editor
 Source\Fmx      FMX painter, viewer, editor
-
-ThirdParty\Image32\source            bundled SVG rasterizer and polygon renderer
-ThirdParty\Image32\source\Clipper2   its geometry library
 ```
 
-The two `ThirdParty` folders are needed by the viewer components. The parser,
-the AST, the HTML renderer and the markdown writer use only the RTL, so a
-project that renders to HTML instead of to a control can leave them out.
+A project that renders to HTML instead of to a control needs only
+`Source\Core`.
 
 For a component-palette install, build the runtime and design-time packages in
 `packages\` and install the two design packages in the IDE. `{$LIBSUFFIX AUTO}`
@@ -223,17 +221,8 @@ and every package, and regenerates the conformance dashboard above.
 
 ## Third-party code
 
-Everything under `Source\` is written for this project. One library is bundled
-alongside it:
-
-| Library | Where | What it does | Licence |
-|---------|-------|--------------|---------|
-| [Image32](https://github.com/AngusJohnson/Image32) by Angus Johnson, including Clipper2 | `ThirdParty\Image32` | Rasterizes SVG images and fills anti-aliased chart wedges | [Boost Software License 1.0](ThirdParty/Image32/LICENSE.txt) |
-
-Image32 is pure Object Pascal and is compiled in its console mode, so it pulls
-in neither the VCL nor FMX and needs no runtime DLL. It is reached through one
-adapter unit, `Markdown4D.Image.Svg.Image32`, which registers itself with the
-viewer's SVG hook.
+None. Every line under `Source\` is written for this project, including the
+anti-aliased polygon rasterizer and the SVG engine behind the viewers.
 
 The specification corpora under `Tests\specs` come from the CommonMark and GFM
 specifications; see [Tests/specs/README.md](Tests/specs/README.md) for their
