@@ -193,7 +193,7 @@ uses
   System.IOUtils,
   System.Math.Vectors,
   FMX.Platform,
-  Markdown4D.Image.Svg.Image32,
+  Markdown4D.Image.Svg.Native,
   Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Defaults,
   Markdown4D.Layout.HitTest,

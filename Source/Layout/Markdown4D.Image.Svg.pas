@@ -32,6 +32,9 @@ type
     class var FRasterizer: TMarkdownSvgRasterizer;
   public
     class procedure RegisterRasterizer(const Rasterizer: TMarkdownSvgRasterizer); static;
+    // The rasterizer in place, so an engine that only handles part of the
+    // format can take over and hand back what it cannot draw.
+    class function CurrentRasterizer: TMarkdownSvgRasterizer; static;
     class function IsAvailable: Boolean; static;
     class function LooksLikeSvg(const Data: TBytes): Boolean; static;
     class function TryRasterize(const Svg: TBytes; const MaxWidth, MaxHeight: Single;
@@ -47,6 +50,11 @@ const
 class procedure TMarkdownSvgSupport.RegisterRasterizer(const Rasterizer: TMarkdownSvgRasterizer);
 begin
   FRasterizer := Rasterizer;
+end;
+
+class function TMarkdownSvgSupport.CurrentRasterizer: TMarkdownSvgRasterizer;
+begin
+  Result := FRasterizer;
 end;
 
 class function TMarkdownSvgSupport.IsAvailable: Boolean;

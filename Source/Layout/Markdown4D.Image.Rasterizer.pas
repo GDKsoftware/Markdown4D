@@ -46,17 +46,29 @@ type
         X: Single;
         Direction: Integer;
       end;
-    class function CollectCrossings(const Points: TArray<TLayoutPointF>; const SampleY: Single;
+    class function CollectCrossings(const Contours: TArray<TArray<TLayoutPointF>>; const SampleY: Single;
       var Crossings: TArray<TEdgeCrossing>): Integer; static;
+    class function CrossingCapacity(const Contours: TArray<TArray<TLayoutPointF>>): Integer; static;
     class procedure SortCrossings(var Crossings: TArray<TEdgeCrossing>; const Count: Integer); static;
     class procedure AddSpan(var Coverage: TArray<Single>; const Left, Right, Weight: Single); static;
     class function SpanIsInside(const Crossing: TEdgeCrossing; const Rule: TMarkdownFillRule;
       var Winding: Integer): Boolean; static;
 
   public
+    // Fills into a fresh buffer of the given size.
     class function Fill(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor;
       const Width, Height: Integer;
       const Rule: TMarkdownFillRule = TMarkdownFillRule.NonZero): TMarkdownPixelRaster; static;
+    // Composites onto what the buffer already holds, so a drawing built from
+    // many shapes ends up as one image with its overlaps blended.
+    class procedure FillInto(var Raster: TMarkdownPixelRaster; const Points: TArray<TLayoutPointF>;
+      const Color: TLayoutColor; const Rule: TMarkdownFillRule = TMarkdownFillRule.NonZero); static;
+    // Fills several contours as one shape, which is how a ring, a letter with a
+    // counter, or a stroke built from many pieces stays a single figure: the
+    // fill rule decides between them, and an overlap is covered once.
+    class procedure FillContoursInto(var Raster: TMarkdownPixelRaster;
+      const Contours: TArray<TArray<TLayoutPointF>>; const Color: TLayoutColor;
+      const Rule: TMarkdownFillRule = TMarkdownFillRule.NonZero); static;
   end;
 
 implementation
@@ -80,35 +92,48 @@ end;
 // the direction it was crossed in so the non-zero rule can tell a hole from a
 // second shape. An edge is treated as closed at its top and open at its bottom,
 // so a vertex shared by two edges is counted once.
-class function TMarkdownPolygonRasterizer.CollectCrossings(const Points: TArray<TLayoutPointF>;
+class function TMarkdownPolygonRasterizer.CollectCrossings(const Contours: TArray<TArray<TLayoutPointF>>;
   const SampleY: Single; var Crossings: TArray<TEdgeCrossing>): Integer;
 begin
   Result := 0;
 
-  for var Index := 0 to High(Points) do
+  for var Contour in Contours do
   begin
-    const Current = Points[Index];
-    var NextIndex := Index + 1;
-    if NextIndex > High(Points) then
-      NextIndex := 0;
-    const Next = Points[NextIndex];
+    for var Index := 0 to High(Contour) do
+    begin
+      const Current = Contour[Index];
+      var NextIndex := Index + 1;
+      if NextIndex > High(Contour) then
+        NextIndex := 0;
+      const Next = Contour[NextIndex];
 
-    const Rises = (Current.Y <= SampleY) and (Next.Y > SampleY);
-    const Falls = (Next.Y <= SampleY) and (Current.Y > SampleY);
-    if not (Rises or Falls) then
-      Continue;
+      const Rises = (Current.Y <= SampleY) and (Next.Y > SampleY);
+      const Falls = (Next.Y <= SampleY) and (Current.Y > SampleY);
+      if not (Rises or Falls) then
+        Continue;
 
-    const Span = Next.Y - Current.Y;
-    if Span = 0 then
-      Continue;
+      const Span = Next.Y - Current.Y;
+      if Span = 0 then
+        Continue;
 
-    Crossings[Result].X := Current.X + (SampleY - Current.Y) / Span * (Next.X - Current.X);
-    if Rises then
-      Crossings[Result].Direction := 1
-    else
-      Crossings[Result].Direction := -1;
+      Crossings[Result].X := Current.X + (SampleY - Current.Y) / Span * (Next.X - Current.X);
+      if Rises then
+        Crossings[Result].Direction := 1
+      else
+        Crossings[Result].Direction := -1;
 
-    Inc(Result);
+      Inc(Result);
+    end;
+  end;
+end;
+
+class function TMarkdownPolygonRasterizer.CrossingCapacity(const Contours: TArray<TArray<TLayoutPointF>>): Integer;
+begin
+  Result := 1;
+
+  for var Contour in Contours do
+  begin
+    Inc(Result, Length(Contour));
   end;
 end;
 
@@ -184,7 +209,22 @@ class function TMarkdownPolygonRasterizer.Fill(const Points: TArray<TLayoutPoint
   const Color: TLayoutColor; const Width, Height: Integer; const Rule: TMarkdownFillRule): TMarkdownPixelRaster;
 begin
   Result := TMarkdownPixelRaster.Create(Width, Height);
-  if Result.IsEmpty or (Length(Points) < 3) then
+  if Length(Points) < 3 then
+    Exit;
+
+  FillInto(Result, Points, Color, Rule);
+end;
+
+class procedure TMarkdownPolygonRasterizer.FillInto(var Raster: TMarkdownPixelRaster;
+  const Points: TArray<TLayoutPointF>; const Color: TLayoutColor; const Rule: TMarkdownFillRule);
+begin
+  FillContoursInto(Raster, [Points], Color, Rule);
+end;
+
+class procedure TMarkdownPolygonRasterizer.FillContoursInto(var Raster: TMarkdownPixelRaster;
+  const Contours: TArray<TArray<TLayoutPointF>>; const Color: TLayoutColor; const Rule: TMarkdownFillRule);
+begin
+  if Raster.IsEmpty or (Length(Contours) = 0) then
     Exit;
 
   const Alpha = Color shr 24;
@@ -198,19 +238,19 @@ begin
   const SampleWeight = FullCoverage / SubScanlines;
 
   var Crossings: TArray<TEdgeCrossing>;
-  SetLength(Crossings, Length(Points) + 1);
+  SetLength(Crossings, CrossingCapacity(Contours));
 
   var Coverage: TArray<Single>;
-  SetLength(Coverage, Result.Width);
+  SetLength(Coverage, Raster.Width);
 
-  for var Row := 0 to Result.Height - 1 do
+  for var Row := 0 to Raster.Height - 1 do
   begin
     FillChar(Coverage[0], Length(Coverage) * SizeOf(Single), 0);
 
     for var Sample := 0 to SubScanlines - 1 do
     begin
       const SampleY = Row + (Sample + 0.5) / SubScanlines;
-      const Count = CollectCrossings(Points, SampleY, Crossings);
+      const Count = CollectCrossings(Contours, SampleY, Crossings);
       if Count < 2 then
         Continue;
 
@@ -224,18 +264,20 @@ begin
       end;
     end;
 
-    var Offset := Row * Result.Width * BytesPerPixel;
-    for var Column := 0 to Result.Width - 1 do
+    var Offset := Row * Raster.Width * BytesPerPixel;
+    for var Column := 0 to Raster.Width - 1 do
     begin
       const Covered = Min(FullCoverage, Max(0.0, Coverage[Column])) * AlphaFactor;
       if Covered > 0 then
       begin
-        // Premultiplied: the colour channels carry the coverage they were drawn
-        // with, which is what an alpha blend expects to receive.
-        Result.Pixels[Offset] := Round(Blue * Covered);
-        Result.Pixels[Offset + 1] := Round(Green * Covered);
-        Result.Pixels[Offset + 2] := Round(Red * Covered);
-        Result.Pixels[Offset + 3] := Round(OpaqueAlpha * Covered);
+        // Source-over on premultiplied pixels: what arrives keeps the coverage
+        // it was drawn with, and what was already there survives in proportion
+        // to the transparency left over.
+        const Remaining = FullCoverage - Covered;
+        Raster.Pixels[Offset] := Round(Blue * Covered + Raster.Pixels[Offset] * Remaining);
+        Raster.Pixels[Offset + 1] := Round(Green * Covered + Raster.Pixels[Offset + 1] * Remaining);
+        Raster.Pixels[Offset + 2] := Round(Red * Covered + Raster.Pixels[Offset + 2] * Remaining);
+        Raster.Pixels[Offset + 3] := Round(OpaqueAlpha * Covered + Raster.Pixels[Offset + 3] * Remaining);
       end;
 
       Inc(Offset, BytesPerPixel);
