@@ -21,7 +21,7 @@ uses
 type
   TMarkdownFillRule = (NonZero, EvenOdd);
 
-  TMarkdownPaintKind = (Solid, LinearGradient, RadialGradient);
+  TMarkdownPaintKind = (Solid, LinearGradient, RadialGradient, Tile);
 
   TMarkdownGradientStop = record
     Offset: Single;
@@ -38,11 +38,18 @@ type
     StopPoint: TLayoutPointF;
     Radius: Single;
     Stops: TArray<TMarkdownGradientStop>;
+    // A tile is repeated from its origin in both directions, which is what a
+    // pattern fill is.
+    TilePixels: TBytes;
+    TileWidth: Integer;
+    TileHeight: Integer;
     class function SolidColor(const Color: TLayoutColor): TMarkdownPaint; static;
     class function Linear(const StartPoint, StopPoint: TLayoutPointF;
       const Stops: TArray<TMarkdownGradientStop>): TMarkdownPaint; static;
     class function Radial(const Centre: TLayoutPointF; const Radius: Single;
       const Stops: TArray<TMarkdownGradientStop>): TMarkdownPaint; static;
+    class function Tiled(const Origin: TLayoutPointF; const Width, Height: Integer;
+      const Pixels: TBytes): TMarkdownPaint; static;
     function ColorAt(const X, Y: Single): TLayoutColor;
   end;
 
@@ -139,10 +146,48 @@ begin
   Result.Stops := Stops;
 end;
 
+class function TMarkdownPaint.Tiled(const Origin: TLayoutPointF; const Width, Height: Integer;
+  const Pixels: TBytes): TMarkdownPaint;
+begin
+  Result := Default(TMarkdownPaint);
+  Result.Kind := TMarkdownPaintKind.Tile;
+  Result.StartPoint := Origin;
+  Result.TileWidth := Width;
+  Result.TileHeight := Height;
+  Result.TilePixels := Pixels;
+end;
+
 // Where the pixel falls along the gradient, and the colour the stops give at
 // that distance. Beyond either end the nearest stop simply carries on.
 function TMarkdownPaint.ColorAt(const X, Y: Single): TLayoutColor;
 begin
+  if Kind = TMarkdownPaintKind.Tile then
+  begin
+    if (TileWidth <= 0) or (TileHeight <= 0) then
+      Exit(0);
+
+    var Column := Trunc(X - StartPoint.X) mod TileWidth;
+    if Column < 0 then
+      Column := Column + TileWidth;
+    var Row := Trunc(Y - StartPoint.Y) mod TileHeight;
+    if Row < 0 then
+      Row := Row + TileHeight;
+
+    const Offset = (Row * TileWidth + Column) * 4;
+    const Alpha = TilePixels[Offset + 3];
+    if Alpha = 0 then
+      Exit(0);
+
+    // The tile is premultiplied and a paint hands back plain colours, so the
+    // coverage baked into the channels is taken back out here.
+    const Scale = 255 / Alpha;
+
+    Exit(TLayoutColor((Cardinal(Alpha) shl 24) or
+      (Cardinal(Min(255, Round(TilePixels[Offset + 2] * Scale))) shl 16) or
+      (Cardinal(Min(255, Round(TilePixels[Offset + 1] * Scale))) shl 8) or
+      Cardinal(Min(255, Round(TilePixels[Offset] * Scale)))));
+  end;
+
   if (Kind = TMarkdownPaintKind.Solid) or (Length(Stops) = 0) then
     Exit(Color);
 

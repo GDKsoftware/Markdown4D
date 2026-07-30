@@ -133,7 +133,8 @@ type
       MaxFragmentDepth = 8;
       RadiansPerDegree = Pi / 180;
       OpaqueAlpha = $FF000000;
-      SkippedElements: array[0..5] of string = ('defs', 'clippath', 'mask', 'marker', 'filter', 'style');
+      SkippedElements: array[0..6] of string = ('defs', 'clippath', 'mask', 'marker', 'filter', 'style',
+        'pattern');
       UnsupportedElements: array[0..0] of string = ('image');
     var
       FRaster: TMarkdownPixelRaster;
@@ -181,6 +182,8 @@ type
     procedure DrawFragment(const Svg: string);
     procedure DrawUse(const Element: TSvgXmlElement);
     function MaskFor(const Reference: string; const Parent: TMarkdownClipMask): TMarkdownClipMask;
+    function TryTilePaint(const Reference: string; const Contours: TArray<TArray<TLayoutPointF>>;
+      const Matrix: TSvgMatrix; out Paint: TMarkdownPaint): Boolean;
     procedure CollectMarkup(const Svg: string);
     class function InnerMarkup(const Markup: string): string; static;
     procedure BeginLayer(const Filter: TSvgFilter);
@@ -1188,9 +1191,106 @@ begin
   end;
 end;
 
+// A pattern is a small drawing repeated over the shape. It is rendered once at
+// the size it occupies on the page, and the rasterizer repeats it from there.
+function TNativeSvgRenderer.TryTilePaint(const Reference: string;
+  const Contours: TArray<TArray<TLayoutPointF>>; const Matrix: TSvgMatrix; out Paint: TMarkdownPaint): Boolean;
+begin
+  Paint := Default(TMarkdownPaint);
+
+  var Definition := '';
+  if not FDefinitions.TryGetValue(Reference, Definition) then
+    Exit(False);
+
+  const Scanner = TSvgXmlScanner.Create(Definition);
+  var Wrapper: TSvgXmlElement;
+  try
+    if not Scanner.ReadElement(Wrapper) then
+      Exit(False);
+  finally
+    Scanner.Free;
+  end;
+
+  if not SameText(Wrapper.Name, 'pattern') then
+    Exit(False);
+
+  var Left: Single := 0;
+  var Top: Single := 0;
+  var Width: Single := 0;
+  var Height: Single := 0;
+  TryParseFraction(Wrapper.Attribute('x', '0'), Left);
+  TryParseFraction(Wrapper.Attribute('y', '0'), Top);
+  if not (TryParseFraction(Wrapper.Attribute('width'), Width) and
+    TryParseFraction(Wrapper.Attribute('height'), Height)) then
+    Exit(False);
+
+  const OnBoundingBox = not SameText(Wrapper.Attribute('patternUnits', 'objectBoundingBox'), 'userSpaceOnUse');
+  const Bounds = BoundsOf(Contours);
+
+  var TileWidth: Single;
+  var TileHeight: Single;
+  var OriginX: Single;
+  var OriginY: Single;
+
+  if OnBoundingBox then
+  begin
+    TileWidth := Width * (Bounds.Right - Bounds.Left);
+    TileHeight := Height * (Bounds.Bottom - Bounds.Top);
+    OriginX := Bounds.Left + Left * (Bounds.Right - Bounds.Left);
+    OriginY := Bounds.Top + Top * (Bounds.Bottom - Bounds.Top);
+  end
+  else
+  begin
+    const Scale = Matrix.AverageScale;
+    TileWidth := Width * Scale;
+    TileHeight := Height * Scale;
+    const Placed = Matrix.Apply(TLayoutPointF.Create(Left, Top));
+    OriginX := Placed.X;
+    OriginY := Placed.Y;
+  end;
+
+  const PixelWidth = Round(TileWidth);
+  const PixelHeight = Round(TileHeight);
+  if (PixelWidth <= 0) or (PixelHeight <= 0) then
+    Exit(False);
+
+  const Markup = InnerMarkup(Definition);
+  if Markup = '' then
+    Exit(False);
+
+  const Beneath = FRaster;
+  FRaster := TMarkdownPixelRaster.Create(PixelWidth, PixelHeight);
+  var Tile: TMarkdownPixelRaster;
+  try
+    var Cell := Default(TSvgFrame);
+    Cell.Style := Frame.Style;
+    Cell.Style.FillPaintId := '';
+    Cell.Matrix := TSvgMatrix.Scaling(PixelWidth / Width, PixelHeight / Height);
+    FStack := FStack + [Cell];
+    try
+      DrawFragment(Markup);
+    finally
+      Pop;
+    end;
+  finally
+    Tile := FRaster;
+    FRaster := Beneath;
+  end;
+
+  Paint := TMarkdownPaint.Tiled(TLayoutPointF.Create(OriginX, OriginY), PixelWidth, PixelHeight, Tile.Pixels);
+  Result := True;
+end;
+
 function TNativeSvgRenderer.PaintFor(const PaintId: string; const Color: TLayoutColor; const Opacity: Single;
   const Contours: TArray<TArray<TLayoutPointF>>; const Matrix: TSvgMatrix): TMarkdownPaint;
 begin
+  if PaintId <> '' then
+  begin
+    var Tile: TMarkdownPaint;
+    if TryTilePaint(PaintId, Contours, Matrix, Tile) then
+      Exit(Tile);
+  end;
+
   var Gradient: TSvgGradient;
   if (PaintId = '') or (not FGradients.TryGetValue(PaintId, Gradient)) then
     Exit(TMarkdownPaint.SolidColor(WithOpacity(Color, Opacity)));

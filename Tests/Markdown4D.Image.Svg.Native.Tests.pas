@@ -72,6 +72,9 @@ type
     procedure Rasterize_Mask_LetsThroughWhatIsBrightInIt;
 
     [Test]
+    procedure Rasterize_Pattern_RepeatsItsTileAcrossTheShape;
+
+    [Test]
     procedure Rasterize_Text_PutsInkOnTheBaseline;
 
     [Test]
@@ -317,6 +320,23 @@ begin
 
   Assert.AreEqual(0, AlphaAt(Raster, 10, 20), 'Where the mask is black nothing comes through');
   Assert.AreEqual(255, AlphaAt(Raster, 50, 20), 'Where it is white everything does');
+end;
+
+// The tile is drawn once and repeated, so the same place in every cell holds
+// the same colour while the cells themselves sit side by side.
+procedure TNativeSvgRasterizerTests.Rasterize_Pattern_RepeatsItsTileAcrossTheShape;
+begin
+  const Raster = Rasterize('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40" viewBox="0 0 80 40">' +
+    '<defs><pattern id="p" patternUnits="userSpaceOnUse" width="20" height="20">' +
+    '<rect width="10" height="20" fill="#ff0000"/>' +
+    '<rect x="10" width="10" height="20" fill="#00ff00"/>' +
+    '</pattern></defs>' +
+    '<rect x="0" y="0" width="80" height="40" fill="url(#p)"/></svg>');
+
+  Assert.AreEqual(Cardinal(Red), ColorAt(Raster, 5, 10), 'The first half of the tile');
+  Assert.AreEqual(Cardinal(Green), ColorAt(Raster, 15, 10), 'And the second');
+  Assert.AreEqual(Cardinal(Red), ColorAt(Raster, 25, 10), 'The tile starts over one cell along');
+  Assert.AreEqual(Cardinal(Green), ColorAt(Raster, 75, 30), 'And keeps repeating to the far corner');
 end;
 
 procedure TNativeSvgRasterizerTests.Rasterize_Text_PutsInkOnTheBaseline;
