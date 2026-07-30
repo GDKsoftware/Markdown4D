@@ -85,6 +85,7 @@
         <DCCReference Include="vclimg.dcp"/>
         <DCCReference Include="Markdown4D.Core.dcp"/>
         <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.Painter.pas"/>
+        <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.ImageDecoder.pas"/>
         <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.Viewer.pas"/>
         <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.Editor.pas"/>
         <BuildConfiguration Include="Base">

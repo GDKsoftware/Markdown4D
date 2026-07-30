@@ -146,7 +146,10 @@
         <DCCReference Include="..\Source\Layout\Markdown4D.Image.Svg.Path.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Image.Svg.Native.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Image.Glyphs.pas"/>
-        <DCCReference Include="..\Source\Layout\Markdown4D.Image.Glyphs.Gdi.pas"/>        
+        <DCCReference Include="..\Source\Layout\Markdown4D.Image.Glyphs.Gdi.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Image.Glyphs.Skia.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Image.Decoder.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Image.Decoder.Skia.pas"/>        
         <DCCReference Include="..\Source\Layout\Markdown4D.Image.Svg.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Theme.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.ImageDownloader.pas"/>

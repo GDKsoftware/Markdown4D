@@ -32,14 +32,20 @@ implementation
 uses
   System.StrUtils,
   System.Math,
+  System.NetEncoding,
   System.Generics.Collections,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Image.Rasterizer,
   Markdown4D.Image.Filters,
+  Markdown4D.Image.Decoder,
+  Markdown4D.Image.Decoder.Skia,
   Markdown4D.Image.Glyphs,
   Markdown4D.Image.Svg.Xml,
   Markdown4D.Image.Svg.Path,
-  Markdown4D.Image.Glyphs.Gdi;
+  // The Windows font engine first, because it needs no library beside it;
+  // Skia elsewhere, which is what carries text to the other platforms.
+  Markdown4D.Image.Glyphs.Gdi,
+  Markdown4D.Image.Glyphs.Skia;
 
 const
   // What a document without a font size of its own is drawn at.
@@ -135,7 +141,7 @@ type
       OpaqueAlpha = $FF000000;
       SkippedElements: array[0..6] of string = ('defs', 'clippath', 'mask', 'marker', 'filter', 'style',
         'pattern');
-      UnsupportedElements: array[0..0] of string = ('image');
+      UnsupportedElements: array[0..0] of string = ('foreignobject');
     var
       FRaster: TMarkdownPixelRaster;
       FGradients: TDictionary<string, TSvgGradient>;
@@ -159,6 +165,8 @@ type
     procedure Pop;
     procedure DrawElement(const Element: TSvgXmlElement);
     procedure DrawText(const Element: TSvgXmlElement);
+    procedure DrawImage(const Element: TSvgXmlElement);
+    class function TryDecodeDataUri(const Reference: string; out Data: TBytes): Boolean; static;
     procedure DrawSubPaths(const SubPaths: TArray<TSvgSubPath>; const Style: TSvgStyle; const Matrix: TSvgMatrix);
     procedure FillSubPaths(const SubPaths: TArray<TSvgSubPath>; const Style: TSvgStyle; const Matrix: TSvgMatrix);
     procedure StrokeSubPaths(const SubPaths: TArray<TSvgSubPath>; const Style: TSvgStyle; const Matrix: TSvgMatrix);
@@ -1094,6 +1102,12 @@ begin
     Exit;
   end;
 
+  if SameText(Element.Name, 'image') then
+  begin
+    DrawImage(Element);
+    Exit;
+  end;
+
   const SubPaths = SubPathsFor(Element);
   if Length(SubPaths) = 0 then
     Exit;
@@ -1163,6 +1177,130 @@ begin
 
   TMarkdownPolygonRasterizer.FillPaintedContoursInto(FRaster, Contours, Paint, TMarkdownFillRule.NonZero,
     Frame.Mask);
+end;
+
+// An image is carried inside the document as a data URI. Anything else points
+// outside it, which is the host's business rather than this engine's.
+class function TNativeSvgRenderer.TryDecodeDataUri(const Reference: string; out Data: TBytes): Boolean;
+begin
+  Data := nil;
+
+  const Trimmed = Reference.Trim;
+  if not Trimmed.StartsWith('data:', True) then
+    Exit(False);
+
+  const Separator = Pos(',', Trimmed);
+  if Separator = 0 then
+    Exit(False);
+
+  const Header = Copy(Trimmed, 1, Separator - 1);
+  if not Header.ToLowerInvariant.Contains('base64') then
+    Exit(False);
+
+  try
+    Data := TNetEncoding.Base64.DecodeStringToBytes(Copy(Trimmed, Separator + 1, MaxInt));
+    Result := Length(Data) > 0;
+  except
+    on Exception do
+      Result := False;
+  end;
+end;
+
+// Walks the pixels the image lands on and asks, for each of them, which pixel
+// of the image it came from. That way a rotated or scaled image needs no
+// special case: the matrix is simply read backwards.
+procedure TNativeSvgRenderer.DrawImage(const Element: TSvgXmlElement);
+begin
+  var Reference := Element.Attribute('href');
+  if Reference = '' then
+    Reference := Element.Attribute('xlink:href');
+
+  var Data: TBytes;
+  if not TryDecodeDataUri(Reference, Data) then
+    raise ESvgUnsupported.Create('image source');
+
+  var Source: TMarkdownPixelRaster;
+  if not TMarkdownImageDecoding.TryDecode(Data, Source) then
+    raise ESvgUnsupported.Create('image format');
+
+  var Left: Single;
+  var Top: Single;
+  var Width: Single;
+  var Height: Single;
+  if not TryParseLength(Element.Attribute('x', '0'), Left) then
+    Left := 0;
+  if not TryParseLength(Element.Attribute('y', '0'), Top) then
+    Top := 0;
+  if not TryParseLength(Element.Attribute('width'), Width) then
+    Width := Source.Width;
+  if not TryParseLength(Element.Attribute('height'), Height) then
+    Height := Source.Height;
+
+  if (Width <= 0) or (Height <= 0) then
+    Exit;
+
+  const Style = Frame.Style;
+  const Placement = TSvgMatrix.Scaling(Width / Source.Width, Height / Source.Height)
+    .Multiply(TSvgMatrix.Translation(Left, Top))
+    .Multiply(Frame.Matrix);
+
+  const Determinant = Placement.A * Placement.D - Placement.B * Placement.C;
+  if Abs(Determinant) < 0.000001 then
+    Exit;
+
+  var Backwards := Default(TSvgMatrix);
+  Backwards.A := Placement.D / Determinant;
+  Backwards.B := -Placement.B / Determinant;
+  Backwards.C := -Placement.C / Determinant;
+  Backwards.D := Placement.A / Determinant;
+  Backwards.E := (Placement.C * Placement.F - Placement.D * Placement.E) / Determinant;
+  Backwards.F := (Placement.B * Placement.E - Placement.A * Placement.F) / Determinant;
+
+  const Corners: TArray<TLayoutPointF> = [Placement.Apply(TLayoutPointF.Create(0, 0)),
+    Placement.Apply(TLayoutPointF.Create(Source.Width, 0)),
+    Placement.Apply(TLayoutPointF.Create(Source.Width, Source.Height)),
+    Placement.Apply(TLayoutPointF.Create(0, Source.Height))];
+
+  const Bounds = BoundsOf([Corners]);
+  const FirstColumn = Max(0, Floor(Bounds.Left));
+  const LastColumn = Min(FRaster.Width - 1, Ceil(Bounds.Right));
+  const FirstRow = Max(0, Floor(Bounds.Top));
+  const LastRow = Min(FRaster.Height - 1, Ceil(Bounds.Bottom));
+
+  const Opacity = EnsureRange(Style.Opacity, 0, 1);
+  const HasMask = Length(Frame.Mask) = FRaster.Width * FRaster.Height;
+
+  for var Row := FirstRow to LastRow do
+  begin
+    for var Column := FirstColumn to LastColumn do
+    begin
+      const Origin = Backwards.Apply(TLayoutPointF.Create(Column + 0.5, Row + 0.5));
+      const SourceColumn = Trunc(Origin.X);
+      const SourceRow = Trunc(Origin.Y);
+
+      const Outside = (Origin.X < 0) or (Origin.Y < 0) or (SourceColumn >= Source.Width) or
+        (SourceRow >= Source.Height);
+      if Outside then
+        Continue;
+
+      const From = (SourceRow * Source.Width + SourceColumn) * 4;
+      var Weight := Opacity;
+      if HasMask then
+        Weight := Weight * Frame.Mask[Row * FRaster.Width + Column] / 255;
+
+      const Arriving = Source.Pixels[From + 3] / 255 * Weight;
+      if Arriving <= 0 then
+        Continue;
+
+      const Onto = (Row * FRaster.Width + Column) * 4;
+      const Remaining = 1 - Arriving;
+      for var Channel := 0 to 3 do
+      begin
+        FRaster.Pixels[Onto + Channel] :=
+          Round(Source.Pixels[From + Channel] * Weight + FRaster.Pixels[Onto + Channel] * Remaining);
+      end;
+    end;
+  end;
 end;
 
 // The box a shape occupies, which is what a gradient in bounding box units is

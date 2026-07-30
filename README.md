@@ -49,7 +49,7 @@ runtime DLL, no package manager.
 | Mermaid extension | `mermaid` fences rendered natively as flowchart / sequence / pie diagrams, with code-block fallback |
 | VCL & FMX viewer | Themed rendering, async images, selection, copy, find, links |
 | VCL & FMX editor | Syntax-highlighted source editing with an attachable live preview |
-| SVG images | Shapes, groups, transforms, gradients, clip paths, strokes and text, drawn by our own engine |
+| SVG images | Shapes, groups, transforms, gradients, patterns, clip paths, masks, filters, `use`, embedded images and text, drawn by our own engine |
 | Design-time | Live sample render on the form designer; components on the **Markdown4D** palette |
 
 ## Quick start
@@ -223,6 +223,13 @@ and every package, and regenerates the conformance dashboard above.
 
 None. Every line under `Source\` is written for this project, including the
 anti-aliased polygon rasterizer and the SVG engine behind the viewers.
+
+Two things an SVG needs from the machine it runs on, glyph outlines and image
+decoding, are reached through seams. On Windows the system font engine and the
+VCL picture classes answer them, so nothing has to be deployed beside the
+application. On the platforms FMX reaches beyond Windows, Skia answers, which
+ships with RAD Studio; it is compiled in only there, because its objects load
+their library as the program starts rather than when first asked.
 
 The specification corpora under `Tests\specs` come from the CommonMark and GFM
 specifications; see [Tests/specs/README.md](Tests/specs/README.md) for their
