@@ -39,7 +39,7 @@ type
   end;
 ```
 
-`Version` returns the library version string (`'1.1.0'`, defined as
+`Version` returns the library version string (`'2.0.0'`, defined as
 `Markdown4DVersion` in unit `Markdown4D.Version`).
 
 `TMarkdownDialect` (unit `Markdown4D.Defines`) is `(CommonMark, Gfm)`. The

@@ -4,7 +4,7 @@ All notable changes to Markdown4D are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0] - 2026-07-30
 
 ### Security
 
@@ -29,6 +29,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `.md` file qualifies; an absolute, drive-relative or UNC path does not, because
   reaching for someone else's share is what hands over the credentials Windows
   offers it. A trailing `#anchor` is dropped: the file opens at the top.
+- **Every hop of an image redirect faces the address policy.** The viewers
+  follow redirects themselves instead of letting the HTTP client do it, so
+  `Images.AllowRemote` and `OnRemoteImageRequest` judge each destination in a
+  chain. A permitted address could otherwise redirect to one the host would have
+  refused. A chain is limited to five hops and must stay on `http` or `https`.
+- **Raw HTML in image alt text is always escaped**, in unsafe rendering as well.
+  Alt text is an attribute value, so an unescaped quote inside inline HTML could
+  end the attribute and inject markup of the document's choosing. A line break
+  in alt text now renders as a space, which is what an attribute can carry. Both
+  match cmark.
+- **`Images.BaseUrl` no longer switches off `RestrictToDocumentFolder`.** A base
+  naming a local folder is resolved and then held against the restriction like
+  any other path; a base carrying a scheme names a server and is left alone.
 
 ### Fixed
 
@@ -38,10 +51,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   now settled once, when the block is finalized. A 200 KB document of this shape
   went from 116 seconds to 0.15 seconds; parsing is linear in the input again.
 - `TMarkdownImageDownloader` reports a result even when the fetch fails in a way
-  `TryFetch` does not handle, so the download queue can no longer stall. The
-  fetch itself now catches `ENetException` rather than every exception.
+  `TryFetch` does not handle, so the download queue can no longer stall. An
+  address out of a document is an outside boundary, so the fetch treats whatever
+  the network stack, the stream or the decoder raises as one failed image rather
+  than as a background task that dies unobserved.
 - Local image paths are canonicalised, so a destination with `..` segments
   resolves to one spelling of the file.
+- **Quadratic inline parsing on paragraphs carrying many `<` characters.** Each
+  bracket had the remainder of the paragraph copied before the autolink and tag
+  patterns were tried. The patterns are anchored with `\G` and matched in place,
+  so a paragraph of brackets costs time proportional to its length.
+- The lazily built pipelines behind `TMarkdown` carry a memory barrier on the
+  unsynchronised read, so the double-checked initialisation also holds on a
+  weakly ordered processor.
+- A link to a neighbouring markdown file may no longer leave the document's own
+  folder through `..` segments. The file is opened by the pad rather than by the
+  shell, but any `.md` on the machine was previously reachable.
 
 ### Added
 
@@ -60,8 +85,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`TMarkdownViewer.OnRemoteImageRequest`** — vetoes or permits one remote
   image, starting from `Images.AllowRemote`, so an application can allow only
   the hosts it knows.
-- Performance budget tests covering nested list markers, including a scaling
-  ratio that fails if parsing turns quadratic again.
+- Performance budget tests covering nested list markers and runs of `<`
+  characters, each including a scaling ratio that fails if parsing turns
+  quadratic again.
+- `TMarkdownImageDownloader.OnAddressAllowed`, the seam through which the
+  viewers judge every address in a redirect chain.
 
 ## [1.1.0]
 
@@ -198,5 +226,6 @@ component set with no external dependencies.
 
 - Delphi 12 Athens or later. Pure RTL — zero external dependencies. MIT licensed.
 
+[2.0.0]: https://github.com/gdksoftware/Markdown4D/releases/tag/v2.0.0
 [1.1.0]: https://github.com/gdksoftware/Markdown4D/releases/tag/v1.1.0
 [1.0.0]: https://github.com/gdksoftware/Markdown4D/releases/tag/v1.0.0

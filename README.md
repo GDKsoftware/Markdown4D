@@ -2,12 +2,12 @@
 
 A native Delphi CommonMark / GFM markdown library with a public AST, an
 incremental streaming parser, an HTML renderer, a lossless markdown writer, and
-custom-drawn VCL & FMX viewer and editor components — no embedded browser, no
-external dependencies.
+custom-drawn VCL & FMX viewer and editor components. No embedded browser, no
+runtime DLL, no package manager.
 
 <!-- badges -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Version 1.1.0](https://img.shields.io/badge/version-1.1.0-blue.svg)](CHANGELOG.md)
+[![Version 2.0.0](https://img.shields.io/badge/version-2.0.0-blue.svg)](CHANGELOG.md)
 [![Delphi 12+](https://img.shields.io/badge/Delphi-12%2B-e62329.svg)](https://www.embarcadero.com/products/delphi)
 [![CommonMark 0.31.2](https://img.shields.io/badge/CommonMark-0.31.2%20652%2F652-1f6feb.svg)](https://spec.commonmark.org/0.31.2/)
 
@@ -27,7 +27,10 @@ external dependencies.
 - **Native UI, both frameworks.** Custom-drawn `TMarkdownViewer` and
   `TMarkdownEditor` for VCL and FMX, with theming, images, selection, search,
   syntax-highlighted code, live charts, mermaid diagrams and design-time preview.
-- **Zero dependencies.** Pure RTL. MIT licensed. Delphi 12 Athens and Delphi 13.
+- **Nothing to install.** Parser, renderer, writer and layout engine are pure
+  RTL. SVG images are rendered by [Image32](#third-party-code), a pure Object
+  Pascal library bundled in this repository. No DLL, no package manager, no
+  build step. MIT licensed. Delphi 12 Athens and Delphi 13.
 
 ## Features
 
@@ -106,7 +109,7 @@ thread for you. See [docs/STREAMING.md](docs/STREAMING.md).
 
 ## Installation
 
-Markdown4D is source-only and has no external dependencies. Add the source
+Markdown4D is source-only: nothing to install, nothing to fetch. Add the source
 folders to your project's search path:
 
 ```
@@ -114,7 +117,14 @@ Source\Core     framework-neutral parser, AST, renderer, writer, extensions
 Source\Layout   framework-neutral layout engine, theme, viewer/editor models
 Source\Vcl      VCL painter, viewer, editor
 Source\Fmx      FMX painter, viewer, editor
+
+ThirdParty\Image32\source            bundled SVG rasterizer and polygon renderer
+ThirdParty\Image32\source\Clipper2   its geometry library
 ```
+
+The two `ThirdParty` folders are needed by the viewer components. The parser,
+the AST, the HTML renderer and the markdown writer use only the RTL, so a
+project that renders to HTML instead of to a control can leave them out.
 
 For a component-palette install, build the runtime and design-time packages in
 `packages\` and install the two design packages in the IDE. `{$LIBSUFFIX AUTO}`
@@ -210,6 +220,24 @@ and every package, and regenerates the conformance dashboard above.
   guide: `AppendMarkdown`, debounce, threading, charts and `Text` semantics.
 - [packages/INSTALL.md](packages/INSTALL.md) — package build and IDE install.
 - [CHANGELOG.md](CHANGELOG.md) — release history.
+
+## Third-party code
+
+Everything under `Source\` is written for this project. One library is bundled
+alongside it:
+
+| Library | Where | What it does | Licence |
+|---------|-------|--------------|---------|
+| [Image32](https://github.com/AngusJohnson/Image32) by Angus Johnson, including Clipper2 | `ThirdParty\Image32` | Rasterizes SVG images and fills anti-aliased chart wedges | [Boost Software License 1.0](ThirdParty/Image32/LICENSE.txt) |
+
+Image32 is pure Object Pascal and is compiled in its console mode, so it pulls
+in neither the VCL nor FMX and needs no runtime DLL. It is reached through one
+adapter unit, `Markdown4D.Image.Svg.Image32`, which registers itself with the
+viewer's SVG hook.
+
+The specification corpora under `Tests\specs` come from the CommonMark and GFM
+specifications; see [Tests/specs/README.md](Tests/specs/README.md) for their
+origin and licence.
 
 ## License
 
