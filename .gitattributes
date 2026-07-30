@@ -1,0 +1,28 @@
+# Normalise line endings so a checkout on another machine does not report every
+# file as modified. Delphi sources are text and are checked out with CRLF on
+# Windows, which is what the IDE writes.
+* text=auto
+
+*.pas     text eol=crlf
+*.dpr     text eol=crlf
+*.dpk     text eol=crlf
+*.inc     text eol=crlf
+*.dfm     text eol=crlf
+*.fmx     text eol=crlf
+*.dproj   text eol=crlf
+*.groupproj text eol=crlf
+*.rc      text eol=crlf
+*.bat     text eol=crlf
+*.ps1     text eol=crlf
+
+*.md      text eol=lf
+*.json    text eol=lf
+*.yml     text eol=lf
+
+# Binary resources: never touch these.
+*.bmp     binary
+*.ico     binary
+*.dcr     binary
+*.res     binary
+*.png     binary
+*.jpg     binary

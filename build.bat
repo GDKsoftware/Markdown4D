@@ -2,7 +2,19 @@
 setlocal
 
 set ROOT=%~dp0
-set RSVARS=C:\Program Files (x86)\Embarcadero\Studio\37.0\bin\rsvars.bat
+rem The install root carries brackets, so every expansion of it stays quoted.
+if not defined STUDIO_ROOT set "STUDIO_ROOT=C:\Program Files (x86)\Embarcadero\Studio"
+
+rem Newest supported Delphi first: 37.0 is Delphi 13, 23.0 is Delphi 12 Athens.
+rem Set MARKDOWN4D_STUDIO to a version number to force one of them.
+if defined MARKDOWN4D_STUDIO (
+    set "RSVARS=%STUDIO_ROOT%\%MARKDOWN4D_STUDIO%\bin\rsvars.bat"
+) else (
+    for %%V in (37.0 23.0) do (
+        if not defined RSVARS if exist "%STUDIO_ROOT%\%%V\bin\rsvars.bat" set "RSVARS=%STUDIO_ROOT%\%%V\bin\rsvars.bat"
+    )
+)
+
 set TEST_PROJECT=%ROOT%Tests\Markdown4D.Tests.dproj
 set TEST_EXE=%ROOT%Tests\Win32\Debug\Markdown4D.Tests.exe
 set FMX_TEST_PROJECT=%ROOT%Tests\Markdown4D.Fmx.Tests.dproj
@@ -11,10 +23,19 @@ set RESULTS_DIR=%ROOT%Tests\results
 set RESULTS_XML=%RESULTS_DIR%\dunitx-results.xml
 set FMX_RESULTS_XML=%RESULTS_DIR%\dunitx-fmx-results.xml
 
+if not defined RSVARS (
+    echo [build] No supported Delphi found under "%STUDIO_ROOT%".
+    echo [build] Looked for 37.0 ^(Delphi 13^) and 23.0 ^(Delphi 12 Athens^).
+    echo [build] Set MARKDOWN4D_STUDIO to a version number, or STUDIO_ROOT to another install root.
+    exit /b 1
+)
+
 if not exist "%RSVARS%" (
     echo [build] rsvars.bat not found at "%RSVARS%".
     exit /b 1
 )
+
+echo [build] Using "%RSVARS%"
 
 call "%RSVARS%"
 
