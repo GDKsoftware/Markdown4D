@@ -93,16 +93,22 @@ begin
 
     if BaseUrl <> '' then
     begin
+      // A base carrying a scheme names a server rather than a folder on this
+      // machine, so a folder restriction has nothing to compare against.
       if BaseUrl.Contains(UrlSchemeSeparator) then
-        Url := BaseUrl + Source
-      else
-        Url := NormalizedLocalPath(TPath.Combine(BaseUrl, Source));
-      Exit(True);
-    end;
+      begin
+        Url := BaseUrl + Source;
+        Exit(True);
+      end;
 
-    const UsesDocumentFolder = (DocumentFolder <> '') and not TPath.IsPathRooted(Source);
-    if UsesDocumentFolder then
-      Url := NormalizedLocalPath(TPath.Combine(DocumentFolder, Source));
+      Url := NormalizedLocalPath(TPath.Combine(BaseUrl, Source));
+    end
+    else
+    begin
+      const UsesDocumentFolder = (DocumentFolder <> '') and not TPath.IsPathRooted(Source);
+      if UsesDocumentFolder then
+        Url := NormalizedLocalPath(TPath.Combine(DocumentFolder, Source));
+    end;
 
     const EscapesDocumentFolder = RestrictToDocumentFolder and (DocumentFolder <> '') and
       (not IsInsideFolder(Url, DocumentFolder));

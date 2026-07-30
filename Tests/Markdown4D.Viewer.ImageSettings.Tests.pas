@@ -42,6 +42,15 @@ type
 
     [Test]
     procedure ResolveImageUrl_RemoteSource_IsLeftAlone;
+
+    [Test]
+    procedure ResolveImageUrl_LocalBaseUrlEscapingWhileRestricted_Fails;
+
+    [Test]
+    procedure ResolveImageUrl_LocalBaseUrlInsideFolderWhileRestricted_Succeeds;
+
+    [Test]
+    procedure ResolveImageUrl_RemoteBaseUrlWhileRestricted_IsLeftAlone;
   end;
 
 implementation
@@ -154,6 +163,37 @@ begin
 
   Assert.IsTrue(Resolved);
   Assert.AreEqual(Remote, Url);
+end;
+
+// A base that names a folder resolves to a path like any other, so the document
+// folder restriction applies to the result.
+procedure TViewerImageSettingsTests.ResolveImageUrl_LocalBaseUrlEscapingWhileRestricted_Fails;
+begin
+  var Url: string;
+  const Resolved = TMarkdownViewerShared.TryResolveImageUrl('logo.png', 'C:\elsewhere', DocumentFolder, True, Url);
+
+  Assert.IsFalse(Resolved, Format('A base outside the document folder must not resolve, got <%s>', [Url]));
+  Assert.AreEqual('', Url);
+end;
+
+procedure TViewerImageSettingsTests.ResolveImageUrl_LocalBaseUrlInsideFolderWhileRestricted_Succeeds;
+begin
+  var Url: string;
+  const Resolved = TMarkdownViewerShared.TryResolveImageUrl('logo.png', DocumentFolder + '\images',
+    DocumentFolder, True, Url);
+
+  Assert.IsTrue(Resolved);
+  Assert.AreEqual(TPath.Combine(DocumentFolder, 'images\logo.png'), Url);
+end;
+
+procedure TViewerImageSettingsTests.ResolveImageUrl_RemoteBaseUrlWhileRestricted_IsLeftAlone;
+begin
+  var Url: string;
+  const Resolved = TMarkdownViewerShared.TryResolveImageUrl('logo.png', 'https://example.com/img/',
+    DocumentFolder, True, Url);
+
+  Assert.IsTrue(Resolved);
+  Assert.AreEqual('https://example.com/img/logo.png', Url);
 end;
 
 end.
