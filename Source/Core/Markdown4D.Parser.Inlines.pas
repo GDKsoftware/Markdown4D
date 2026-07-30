@@ -98,10 +98,13 @@ type
       TaskMarkerLength = 3;
       RuleOfThreeDivisor = 3;
       OpenersBottomBucketsPerChar = 6;
-      UriAutolinkPattern = '^<[A-Za-z][A-Za-z0-9.+-]{1,31}:[^<>\x00-\x20]*>';
-      EmailAutolinkPattern = '^<([a-zA-Z0-9.!#$%&''*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?'
+      // Anchored with \G instead of ^ so each pattern can be matched in place at
+      // the current index. Copying the remainder of the content first would cost
+      // a full copy per '<', which is quadratic on a paragraph carrying many.
+      UriAutolinkPattern = '\G<[A-Za-z][A-Za-z0-9.+-]{1,31}:[^<>\x00-\x20]*>';
+      EmailAutolinkPattern = '\G<([a-zA-Z0-9.!#$%&''*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?'
         + '(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*)>';
-      HtmlTagPattern = '^(?:' + THtmlBlockScanner.OpenTag + '|' + THtmlBlockScanner.CloseTag
+      HtmlTagPattern = '\G(?:' + THtmlBlockScanner.OpenTag + '|' + THtmlBlockScanner.CloseTag
         + '|<!-->|<!--->|<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<![A-Za-z][^>]*>|<!\[CDATA\[[\s\S]*?\]\]>)';
     var
       FConfiguration: TMarkdownPipelineConfiguration;
@@ -511,9 +514,7 @@ end;
 
 procedure TInlineParser.HandleLessThan;
 begin
-  const Rest = Copy(FContent, FIndex, MaxInt);
-
-  const UriMatch = FUriAutolinkRegex.Match(Rest);
+  const UriMatch = FUriAutolinkRegex.Match(FContent, FIndex);
   if UriMatch.Success then
   begin
     const Uri = Copy(UriMatch.Value, 2, UriMatch.Length - 2);
@@ -522,7 +523,7 @@ begin
     Exit;
   end;
 
-  const EmailMatch = FEmailAutolinkRegex.Match(Rest);
+  const EmailMatch = FEmailAutolinkRegex.Match(FContent, FIndex);
   if EmailMatch.Success then
   begin
     const Email = Copy(EmailMatch.Value, 2, EmailMatch.Length - 2);
@@ -531,7 +532,7 @@ begin
     Exit;
   end;
 
-  const TagMatch = FHtmlTagRegex.Match(Rest);
+  const TagMatch = FHtmlTagRegex.Match(FContent, FIndex);
   if TagMatch.Success then
   begin
     FlushText;

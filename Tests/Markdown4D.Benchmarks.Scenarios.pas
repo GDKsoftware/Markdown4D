@@ -47,6 +47,7 @@ type
       UnclosedEmphasisOpenerCount = 5000;
       AlternatingEmphasisUnit = '*a*';
       NestedListMarkerUnit = '- ';
+      AngleBracketUnit = '<';
       UnclosedEmphasisUnit = '**a';
       ReplacementText = '0123456789';
       ReplacedCharacterCount = 10;
@@ -75,6 +76,7 @@ type
     class function BuildAlternatingEmphasis(const DelimiterCount: Integer): string;
     class function BuildUnclosedEmphasis(const OpenerCount: Integer): string;
     class function BuildNestedListMarkers(const MarkerCount: Integer): string;
+    class function BuildAngleBracketRun(const BracketCount: Integer): string;
     class function MeasureFullParseMedian(const Source: string; const Dialect: TMarkdownDialect; const Runs: Integer): Double;
     class function MeasureAppendChunkMedian(const Source: string; const Dialect: TMarkdownDialect; const ChunkLength: Integer): Double;
     class function MeasureReplaceMedian(const Source: string; const Dialect: TMarkdownDialect; const PositionCount: Integer): Double;
@@ -255,6 +257,14 @@ end;
 class function TBenchmarkScenarios.BuildNestedListMarkers(const MarkerCount: Integer): string;
 begin
   Result := DupeString(NestedListMarkerUnit, MarkerCount) + 'x';
+end;
+
+// One paragraph of '<' characters, none of which starts an autolink or a tag,
+// so every bracket reaches the inline parser's angle bracket handler. Catches
+// per-bracket work that is proportional to the rest of the paragraph.
+class function TBenchmarkScenarios.BuildAngleBracketRun(const BracketCount: Integer): string;
+begin
+  Result := DupeString(AngleBracketUnit, BracketCount) + 'x';
 end;
 
 class function TBenchmarkScenarios.ScalingRatio(const SmallMedian, LargeMedian: Double): Double;
