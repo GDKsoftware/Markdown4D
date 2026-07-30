@@ -140,6 +140,7 @@
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.Interfaces.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.Primitives.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.Renderer.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Image.Rasterizer.pas"/>        
         <DCCReference Include="..\Source\Layout\Markdown4D.Image.Svg.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Image.Svg.Image32.pas"/>
         <DCCReference Include="..\ThirdParty\Image32\source\Img32.pas"/>
