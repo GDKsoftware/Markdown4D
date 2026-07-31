@@ -51,6 +51,7 @@ type
       CodeSpanChipPaddingValue = 3.0;
       BlockQuoteBarColorValue = $FFC0C0C0;
       TableHeaderBackgroundColorValue = $FFE8E8E8;
+      TableBorderColorValue = $FFD4D4D4;
       ThematicBreakColorValue = $FFB0B0B0;
       DefaultWidth = 300.0;
       SingleTolerance = 0.05;
@@ -76,6 +77,8 @@ type
     class function IndexOfFirstRunWithPrefix(const DisplayList: IMarkdownDisplayList; const Prefix: string): Integer;
     class function FirstImageOf(const DisplayList: IMarkdownDisplayList): IDisplayImage;
     class function FirstLineOf(const DisplayList: IMarkdownDisplayList): IDisplayLine;
+    class function LinesWithColor(const DisplayList: IMarkdownDisplayList;
+      const Color: TLayoutColor): TArray<IDisplayLine>;
     class function CheckboxesOf(const DisplayList: IMarkdownDisplayList): TArray<IDisplayCheckbox>;
     class function BuildLargeDocumentSource: string;
     class function BuildUniformParagraphs: TArray<string>;
@@ -122,6 +125,9 @@ type
 
     [Test]
     procedure Layout_Table_ComputesColumnWidthsWithMinClampAndAlignment;
+
+    [Test]
+    procedure Layout_Table_ClosesEveryCellWithTheThemeBorder;
 
     [Test]
     procedure Layout_Table_ClampsColumnToMaxWidthAndWrapsCell;
@@ -180,6 +186,7 @@ implementation
 uses
   System.SysUtils,
   System.Diagnostics,
+  System.Math,
   Markdown4D,
   Markdown4D.Defines,
   Markdown4D.Ast.Interfaces,
@@ -433,6 +440,45 @@ begin
   const RightCell = FindRunByPrefix(Runs, 'dd');
   Assert.IsNotNull(RightCell);
   AssertSingle(FirstColumnWidth + SecondColumnWidth - TableCellPaddingValue - 2 * BaseCharWidth, RightCell.Bounds.Left);
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_Table_ClosesEveryCellWithTheThemeBorder;
+begin
+  const DisplayList = LayoutMarkdown('| a | b |'#10'|---|---|'#10'| 1 | 2 |'#10'| 3 | 4 |', DefaultWidth);
+
+  const Lines = LinesWithColor(DisplayList, TableBorderColorValue);
+
+  var Horizontal := 0;
+  var Vertical := 0;
+  var Right := 0.0;
+  var Bottom := 0.0;
+  for var Line in Lines do
+  begin
+    if Line.StartPoint.Y = Line.EndPoint.Y then
+      Inc(Horizontal)
+    else
+      Inc(Vertical);
+
+    Right := Max(Right, Line.EndPoint.X);
+    Bottom := Max(Bottom, Line.EndPoint.Y);
+  end;
+
+  // Three rows need a rule above the first and below each one, two columns a
+  // rule left of the first and right of each.
+  Assert.AreEqual(4, Horizontal, 'A three-row table must be ruled above and below every row');
+  Assert.AreEqual(3, Vertical, 'A two-column table must be ruled left and right of every column');
+
+  const Header = FirstRectangleWithFill(DisplayList, TableHeaderBackgroundColorValue);
+  Assert.IsNotNull(Header, 'The header band must still be there');
+  AssertSingle(Header.Bounds.Right, Right);
+  AssertSingle(0, Header.Bounds.Top);
+
+  for var Line in Lines do
+  begin
+    const IsClosed = (Line.StartPoint.X <= Right) and (Line.StartPoint.Y <= Bottom) and (Line.StartPoint.X >= 0) and
+      (Line.StartPoint.Y >= 0);
+    Assert.IsTrue(IsClosed, 'Every rule must stay inside the table it belongs to');
+  end;
 end;
 
 procedure TMarkdownLayoutEngineTests.Layout_Table_ClampsColumnToMaxWidthAndWrapsCell;
@@ -805,6 +851,7 @@ begin
   Result.CodeBackgroundColor := CodeBackgroundColorValue;
   Result.BlockQuoteBarColor := BlockQuoteBarColorValue;
   Result.TableHeaderBackgroundColor := TableHeaderBackgroundColorValue;
+  Result.TableBorderColor := TableBorderColorValue;
   Result.ThematicBreakColor := ThematicBreakColorValue;
   Result.CodeSpanBackgroundColor := CodeSpanBackgroundColorValue;
   Result.ContentPadding := 0;
@@ -965,6 +1012,19 @@ begin
   end;
 
   Result := nil;
+end;
+
+class function TMarkdownLayoutEngineTests.LinesWithColor(const DisplayList: IMarkdownDisplayList;
+  const Color: TLayoutColor): TArray<IDisplayLine>;
+begin
+  Result := [];
+
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    var Line: IDisplayLine;
+    if Supports(DisplayList.Items[Index], IDisplayLine, Line) and (Line.Color = Color) then
+      Result := Result + [Line];
+  end;
 end;
 
 class function TMarkdownLayoutEngineTests.FirstLineOf(const DisplayList: IMarkdownDisplayList): IDisplayLine;

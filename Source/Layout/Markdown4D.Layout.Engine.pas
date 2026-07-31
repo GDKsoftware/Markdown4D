@@ -199,6 +199,7 @@ type
   private
     const
       LineEpsilon = 0.01;
+      GridThickness = 1.0;
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
@@ -213,6 +214,9 @@ type
       const Cells: TObjectList<TList<TInlineAtom>>; const ColumnWidths: TArray<Single>);
     procedure PlaceTableRow(const Command: TLayoutCommand; const RowIndex, ColumnCount: Integer;
       const Cells: TObjectList<TList<TInlineAtom>>; const ColumnWidths: TArray<Single>; const TableWidth: Single);
+    procedure EmitTableGrid(const Node: IMarkdownNode; const Left, Top: Single;
+      const RowBottoms, ColumnWidths: TArray<Single>; const TableWidth: Single);
+    procedure EmitGridLine(const Node: IMarkdownNode; const StartPoint, EndPoint: TLayoutPointF);
     function PlaceTableCell(const Row: IMarkdownNode; const ColumnIndex: Integer; const Atoms: TList<TInlineAtom>;
       const CellLeft, RowTop, ColumnWidth: Single; const RowFont: TMarkdownFontStyle): Single;
     procedure AlignCellItems(const FirstIndex, LastIndex: Integer; const Alignment: TMarkdownTableColumnAlignment;
@@ -1083,10 +1087,51 @@ begin
     TableWidth := TableWidth + Width;
   end;
 
+  const TableTop = FCurrentY;
+  var RowBottoms: TArray<Single> := nil;
+
   for var RowIndex := 0 to Command.Node.ChildCount - 1 do
   begin
     PlaceTableRow(Command, RowIndex, ColumnCount, Cells, ColumnWidths, TableWidth);
+    RowBottoms := RowBottoms + [FCurrentY];
   end;
+
+  EmitTableGrid(Command.Node, Command.X, TableTop, RowBottoms, ColumnWidths, TableWidth);
+end;
+
+// The grid goes in last so it sits over the header band, and it closes on all
+// four sides: a row of cells with nothing between them reads as one run of
+// text rather than as a table.
+procedure TTableLayout.EmitTableGrid(const Node: IMarkdownNode; const Left, Top: Single;
+  const RowBottoms, ColumnWidths: TArray<Single>; const TableWidth: Single);
+begin
+  if Length(RowBottoms) = 0 then
+    Exit;
+
+  const Right = Left + TableWidth;
+  const Bottom = RowBottoms[High(RowBottoms)];
+
+  EmitGridLine(Node, TLayoutPointF.Create(Left, Top), TLayoutPointF.Create(Right, Top));
+  for var RowBottom in RowBottoms do
+  begin
+    EmitGridLine(Node, TLayoutPointF.Create(Left, RowBottom), TLayoutPointF.Create(Right, RowBottom));
+  end;
+
+  var ColumnLeft := Left;
+  EmitGridLine(Node, TLayoutPointF.Create(ColumnLeft, Top), TLayoutPointF.Create(ColumnLeft, Bottom));
+  for var ColumnWidth in ColumnWidths do
+  begin
+    ColumnLeft := ColumnLeft + ColumnWidth;
+    EmitGridLine(Node, TLayoutPointF.Create(ColumnLeft, Top), TLayoutPointF.Create(ColumnLeft, Bottom));
+  end;
+end;
+
+procedure TTableLayout.EmitGridLine(const Node: IMarkdownNode; const StartPoint, EndPoint: TLayoutPointF);
+begin
+  const Bounds = TLayoutRectF.Create(StartPoint.X, StartPoint.Y, Max(EndPoint.X, StartPoint.X + GridThickness),
+    Max(EndPoint.Y, StartPoint.Y + GridThickness));
+
+  FItems.Add(TDisplayLine.Create(Bounds, Node, StartPoint, EndPoint, FTheme.TableBorderColor, GridThickness));
 end;
 
 procedure TTableLayout.PlaceTableRow(const Command: TLayoutCommand; const RowIndex, ColumnCount: Integer;
