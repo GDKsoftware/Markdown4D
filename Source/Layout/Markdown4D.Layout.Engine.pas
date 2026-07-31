@@ -1719,8 +1719,23 @@ procedure TInlineWrapper.EmitLineAtom(const Atom: TInlineAtom);
 begin
   case Atom.Kind of
     TInlineAtomKind.SpaceToken:
+      // A space at the start of a wrapped line is dropped. One that follows a
+      // run it does not belong to, the space after a link or a strikethrough,
+      // starts its own run: drawn inside the other it would carry that run's
+      // underline or its line through, and answer for it when asked what sits
+      // under the pointer.
       if FGroupOpen then
-        AppendToGroup(Atom);
+      begin
+        if SameRunStyle(Atom) then
+        begin
+          AppendToGroup(Atom);
+        end
+        else
+        begin
+          CloseGroup;
+          OpenGroup(Atom);
+        end;
+      end;
     TInlineAtomKind.WordToken:
       begin
         const Joins = FGroupOpen and SameRunStyle(Atom);

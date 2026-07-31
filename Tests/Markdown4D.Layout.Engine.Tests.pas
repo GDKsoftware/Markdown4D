@@ -103,6 +103,9 @@ type
     procedure Layout_Paragraphs_AppliesBlockSpacingBetweenBlocks;
 
     [Test]
+    procedure Layout_SpaceAfterStyledRun_StaysOutsideIt;
+
+    [Test]
     procedure Layout_Heading_UsesThemeFontAndSpacing;
 
     [Test]
@@ -281,6 +284,23 @@ begin
   AssertSingle(0, Runs[0].Bounds.Top);
   AssertSingle(BaseLineHeight + ParagraphSpacingValue, Runs[1].Bounds.Top);
   AssertSingle(2 * BaseLineHeight + ParagraphSpacingValue, DisplayList.Height);
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_SpaceAfterStyledRun_StaysOutsideIt;
+begin
+  const DisplayList = LayoutMarkdown('a [link](https://example.org) and ~~gone~~ too', DefaultWidth);
+
+  const Runs = TextRunsOf(DisplayList);
+
+  const Link = FindRunByPrefix(Runs, 'link');
+  Assert.IsNotNull(Link, 'The link must produce a run of its own');
+  Assert.AreEqual('link', Link.Text, 'The space after a link is not part of it, so it must not be underlined with it');
+  Assert.IsTrue(Link.Font.Underline, 'A link run stays underlined');
+
+  const Struck = FindRunByPrefix(Runs, 'gone');
+  Assert.IsNotNull(Struck, 'The strikethrough must produce a run of its own');
+  Assert.AreEqual('gone', Struck.Text, 'The space after a strikethrough must not carry its line through');
+  Assert.IsTrue(Struck.Font.Strikeout, 'A strikethrough run stays struck through');
 end;
 
 procedure TMarkdownLayoutEngineTests.Layout_Heading_UsesThemeFontAndSpacing;
