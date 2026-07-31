@@ -57,6 +57,11 @@ type
     TotalCross: Single;
   end;
 
+  // A node's place in a single depth-first walk of the flowchart's original
+  // edges: still on the call stack (InProgress) is what tells a back edge apart
+  // from an edge into an already-finished subtree.
+  TMermaidDfsState = (Unvisited, InProgress, Done);
+
   TMermaidBuilderBase = class
   protected
     const
@@ -128,7 +133,10 @@ type
     function WrapCaption(const Caption: string): TArray<string>;
     procedure MeasureNodes;
     procedure BuildAdjacency;
-    function TryRank(out MaxRank: Integer): Boolean;
+    function FindBackEdges(const IsEdgeValid: TArray<Boolean>): TArray<Boolean>;
+    procedure MarkBackEdges(const NodeIndex: Integer; const SuccessorEdges: TArray<TList<Integer>>;
+      const State: TArray<TMermaidDfsState>; const IsBackEdge: TArray<Boolean>);
+    procedure RankNodes(out MaxRank: Integer);
     procedure LayoutLayered(const MaxRank: Integer);
     function BuildRankMembers(const Members: TObjectList<TList<Integer>>;
       const MaxRank: Integer): TArray<TList<Integer>>;
@@ -146,7 +154,6 @@ type
     function BuildReferencePositions(const Reference: TList<Integer>): TArray<Integer>;
     function ComputeBarycenterKeys(const Current: TList<Integer>; const ReferencePosition: TArray<Integer>;
       const UsePredecessors: Boolean): TArray<TMermaidBaryKey>;
-    procedure LayoutGrid;
     procedure EmitNodes;
     procedure EmitNodeShape(const Index: Integer);
     procedure EmitRectangleNode(const Box: TMermaidNodeBox);
@@ -479,10 +486,8 @@ begin
   BuildAdjacency;
 
   var MaxRank: Integer;
-  if TryRank(MaxRank) then
-    LayoutLayered(MaxRank)
-  else
-    LayoutGrid;
+  RankNodes(MaxRank);
+  LayoutLayered(MaxRank);
 
   EmitNodes;
   EmitEdges;
@@ -623,9 +628,27 @@ begin
   end;
 end;
 
+// The ranking pass needs an acyclic graph to run a topological sort over, but a
+// flowchart is free to loop back to an earlier node (a "no, try again" edge is
+// what most decisions are for). A back edge found by depth-first search is
+// treated as reversed for ranking only, so the cycle it closes cannot stop the
+// sort; EmitEdges still reads FModel.Edges directly and draws every edge,
+// back edges included, exactly the way its author pointed it.
 procedure TMermaidFlowchartBuilder.BuildAdjacency;
 begin
   const NodeCount = FModel.NodeCount;
+
+  var IsEdgeValid: TArray<Boolean>;
+  SetLength(IsEdgeValid, FModel.EdgeCount);
+  for var Index := 0 to FModel.EdgeCount - 1 do
+  begin
+    const Edge = FModel.Edges[Index];
+    IsEdgeValid[Index] := (Edge.SourceIndex >= 0) and (Edge.SourceIndex < NodeCount) and
+      (Edge.TargetIndex >= 0) and (Edge.TargetIndex < NodeCount) and (Edge.SourceIndex <> Edge.TargetIndex);
+  end;
+
+  const IsBackEdge = FindBackEdges(IsEdgeValid);
+
   const SuccessorLists = TObjectList<TList<Integer>>.Create(True);
   const PredecessorLists = TObjectList<TList<Integer>>.Create(True);
   try
@@ -637,17 +660,20 @@ begin
 
     for var Index := 0 to FModel.EdgeCount - 1 do
     begin
-      const Edge = FModel.Edges[Index];
-      const Source = Edge.SourceIndex;
-      const Target = Edge.TargetIndex;
-
-      const IsValid = (Source >= 0) and (Source < NodeCount) and (Target >= 0) and (Target < NodeCount) and
-        (Source <> Target);
-      if not IsValid then
+      if not IsEdgeValid[Index] then
         Continue;
 
-      SuccessorLists[Source].Add(Target);
-      PredecessorLists[Target].Add(Source);
+      const Edge = FModel.Edges[Index];
+      var RankSource := Edge.SourceIndex;
+      var RankTarget := Edge.TargetIndex;
+      if IsBackEdge[Index] then
+      begin
+        RankSource := Edge.TargetIndex;
+        RankTarget := Edge.SourceIndex;
+      end;
+
+      SuccessorLists[RankSource].Add(RankTarget);
+      PredecessorLists[RankTarget].Add(RankSource);
     end;
 
     SetLength(FSuccessors, NodeCount);
@@ -664,7 +690,84 @@ begin
   end;
 end;
 
-function TMermaidFlowchartBuilder.TryRank(out MaxRank: Integer): Boolean;
+// A depth-first search classifies every edge relative to its own traversal:
+// an edge into a node still on the call stack is what closes a cycle. Nodes
+// and each node's own edges are both visited in the diagram's declaration
+// order, so the edge that reads as "loop back to an earlier step" in the
+// source is the one found here, rather than an arbitrary other edge of the
+// same cycle - the reading order the diagram was authored in is also the one
+// that keeps the picture readable.
+function TMermaidFlowchartBuilder.FindBackEdges(const IsEdgeValid: TArray<Boolean>): TArray<Boolean>;
+begin
+  const NodeCount = FModel.NodeCount;
+
+  const SuccessorEdgeLists = TObjectList<TList<Integer>>.Create(True);
+  try
+    for var Index := 0 to NodeCount - 1 do
+    begin
+      SuccessorEdgeLists.Add(TList<Integer>.Create);
+    end;
+
+    for var Index := 0 to FModel.EdgeCount - 1 do
+    begin
+      if IsEdgeValid[Index] then
+        SuccessorEdgeLists[FModel.Edges[Index].SourceIndex].Add(Index);
+    end;
+
+    var SuccessorEdges: TArray<TList<Integer>>;
+    SetLength(SuccessorEdges, NodeCount);
+    for var Index := 0 to NodeCount - 1 do
+    begin
+      SuccessorEdges[Index] := SuccessorEdgeLists[Index];
+    end;
+
+    SetLength(Result, FModel.EdgeCount);
+
+    var State: TArray<TMermaidDfsState>;
+    SetLength(State, NodeCount);
+
+    for var NodeIndex := 0 to NodeCount - 1 do
+    begin
+      if State[NodeIndex] = TMermaidDfsState.Unvisited then
+        MarkBackEdges(NodeIndex, SuccessorEdges, State, Result);
+    end;
+  finally
+    SuccessorEdgeLists.Free;
+  end;
+end;
+
+procedure TMermaidFlowchartBuilder.MarkBackEdges(const NodeIndex: Integer;
+  const SuccessorEdges: TArray<TList<Integer>>; const State: TArray<TMermaidDfsState>;
+  const IsBackEdge: TArray<Boolean>);
+begin
+  State[NodeIndex] := TMermaidDfsState.InProgress;
+
+  for var EdgeIndex in SuccessorEdges[NodeIndex] do
+  begin
+    const Target = FModel.Edges[EdgeIndex].TargetIndex;
+
+    case State[Target] of
+      TMermaidDfsState.InProgress:
+        IsBackEdge[EdgeIndex] := True;
+      TMermaidDfsState.Unvisited:
+        MarkBackEdges(Target, SuccessorEdges, State, IsBackEdge);
+      TMermaidDfsState.Done:
+        ; // A forward or cross edge: it does not close a cycle, ranking keeps it as authored.
+    else
+      raise EMarkdownError.CreateFmt('Unhandled depth-first search state: %d', [Ord(State[Target])]);
+    end;
+  end;
+
+  State[NodeIndex] := TMermaidDfsState.Done;
+end;
+
+// Reversing every back edge for ranking (see BuildAdjacency) always leaves an
+// acyclic graph - a standard property of depth-first search: every edge that
+// is not a back edge already runs from a later finish time to an earlier one,
+// and a reversed back edge now does too, so the topological sort below cannot
+// fail. If it ever does, that means a back edge was missed, which is a defect
+// in this method, not a diagram shape to fall back away from silently.
+procedure TMermaidFlowchartBuilder.RankNodes(out MaxRank: Integer);
 begin
   MaxRank := 0;
 
@@ -700,7 +803,8 @@ begin
     end;
 
     if Order.Count < NodeCount then
-      Exit(False);
+      raise EMarkdownError.Create('Mermaid flowchart ranking produced a graph that is still cyclic after back ' +
+        'edges were reversed');
 
     for var Current in Order do
     begin
@@ -715,8 +819,6 @@ begin
     begin
       MaxRank := Max(MaxRank, FBoxes[Index].Rank);
     end;
-
-    Result := True;
   finally
     Ready.Free;
     Order.Free;
@@ -959,42 +1061,6 @@ begin
 
     Result[Index].Node := NodeIndex;
     Result[Index].Ordinal := Index;
-  end;
-end;
-
-procedure TMermaidFlowchartBuilder.LayoutGrid;
-begin
-  const NodeCount = FModel.NodeCount;
-  const Columns = Max(1, Ceil(Sqrt(NodeCount)));
-  const Rows = Ceil(NodeCount / Columns);
-
-  var MaxWidth := 0.0;
-  var MaxHeight := 0.0;
-  for var Index := 0 to NodeCount - 1 do
-  begin
-    MaxWidth := Max(MaxWidth, FBoxes[Index].Width);
-    MaxHeight := Max(MaxHeight, FBoxes[Index].Height);
-  end;
-
-  const CellWidth = MaxWidth + SiblingGap;
-  const CellHeight = MaxHeight + RankGap;
-
-  FContentWidth := Columns * MaxWidth + (Columns - 1) * SiblingGap;
-  FContentHeight := Rows * MaxHeight + (Rows - 1) * RankGap;
-
-  const OriginX = FBounds.Left + Max(0.0, (FBounds.Width - FContentWidth) / 2);
-  const OriginY = FBounds.Top + DiagramMargin;
-
-  for var Index := 0 to NodeCount - 1 do
-  begin
-    const Column = Index mod Columns;
-    const Row = Index div Columns;
-
-    const CellLeft = OriginX + Column * CellWidth;
-    const CellTop = OriginY + Row * CellHeight;
-
-    FBoxes[Index].X := CellLeft + (MaxWidth - FBoxes[Index].Width) / 2;
-    FBoxes[Index].Y := CellTop + (MaxHeight - FBoxes[Index].Height) / 2;
   end;
 end;
 

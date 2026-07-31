@@ -46,7 +46,13 @@ type
     procedure Flowchart_TopDown_SourceRanksAboveTarget;
 
     [Test]
-    procedure Flowchart_Cycle_ProducesItemsWithoutHanging;
+    procedure Flowchart_Cycle_BreaksBackEdgeAndLaysOutAsChain;
+
+    [Test]
+    procedure Flowchart_DecisionWithRetryEdge_NodesFormAChainNotAGrid;
+
+    [Test]
+    procedure Flowchart_DecisionWithRetryEdge_BackEdgeStillDrawnBackward;
 
     [Test]
     procedure Flowchart_RoundedAndStadiumNodes_AreWiderThanRectangle;
@@ -125,6 +131,24 @@ begin
   for var Item in Items do
   begin
     if Item.Kind = Kind then
+      Inc(Result);
+  end;
+end;
+
+function DistinctValueCount(const Values: TArray<Single>; const Tolerance: Single): Integer;
+begin
+  Result := 0;
+
+  for var Index := 0 to High(Values) do
+  begin
+    var IsDistinct := True;
+    for var Earlier := 0 to Index - 1 do
+    begin
+      if Abs(Values[Index] - Values[Earlier]) < Tolerance then
+        IsDistinct := False;
+    end;
+
+    if IsDistinct then
       Inc(Result);
   end;
 end;
@@ -294,10 +318,67 @@ begin
   Assert.IsTrue(LastTop > FirstTop, 'In a top-down flowchart later ranks must sit below earlier ranks');
 end;
 
-procedure TMermaidLayoutTests.Flowchart_Cycle_ProducesItemsWithoutHanging;
+procedure TMermaidLayoutTests.Flowchart_Cycle_BreaksBackEdgeAndLaysOutAsChain;
 begin
   const Items = ModelItems('flowchart-cycle');
-  Assert.IsTrue(Length(Items) > 0, 'A cyclic flowchart must fall back to a grid layout and still emit items');
+
+  var Tops: TArray<Single> := nil;
+  for var Item in Items do
+  begin
+    if Item.Kind = TDisplayItemKind.Rectangle then
+      Tops := Tops + [Item.Bounds.Top];
+  end;
+
+  Assert.AreEqual(3, Integer(Length(Tops)), 'A three-node cycle must still emit a rectangle per node');
+  Assert.AreEqual(3, DistinctValueCount(Tops, 1.0),
+    'Breaking the cycle''s back edge for ranking must let each node take its own rank, ' +
+    'not fold three nodes into a shared grid row');
+end;
+
+procedure TMermaidLayoutTests.Flowchart_DecisionWithRetryEdge_NodesFormAChainNotAGrid;
+begin
+  const Items = ItemsForDiagram('flowchart LR' + LineFeed +
+    '  Edit[Edit source] --> Parse{Parse ok?}' + LineFeed +
+    '  Parse -->|yes| Preview([Render preview])' + LineFeed +
+    '  Parse -->|no| Edit' + LineFeed +
+    '  Preview --> Sync[Scroll sync]');
+
+  // Node shapes are emitted before any edge (EmitNodes, then EmitEdges), so the
+  // first four rectangle-or-polygon items are exactly the four nodes, not an
+  // edge label background or an arrowhead sharing the same primitive kinds.
+  var Lefts: TArray<Single> := nil;
+  for var Item in Items do
+  begin
+    if Length(Lefts) >= 4 then
+      Break;
+    if (Item.Kind = TDisplayItemKind.Rectangle) or (Item.Kind = TDisplayItemKind.Polygon) then
+      Lefts := Lefts + [Item.Bounds.Left];
+  end;
+
+  Assert.AreEqual(4, Integer(Length(Lefts)), 'A four-node flowchart must emit a shape per node');
+  Assert.AreEqual(4, DistinctValueCount(Lefts, 1.0),
+    'A decision with a retry edge back to an earlier step must still read left to right as a chain, ' +
+    'not fold into a two-by-two grid');
+end;
+
+procedure TMermaidLayoutTests.Flowchart_DecisionWithRetryEdge_BackEdgeStillDrawnBackward;
+begin
+  const Items = ItemsForDiagram('flowchart LR' + LineFeed +
+    '  Edit[Edit source] --> Parse{Parse ok?}' + LineFeed +
+    '  Parse -->|yes| Preview([Render preview])' + LineFeed +
+    '  Parse -->|no| Edit' + LineFeed +
+    '  Preview --> Sync[Scroll sync]');
+
+  var HasBackwardLine := False;
+  for var Item in Items do
+  begin
+    var Line: IDisplayLine;
+    if Supports(Item, IDisplayLine, Line) and (Line.EndPoint.X < Line.StartPoint.X - 1.0) then
+      HasBackwardLine := True;
+  end;
+
+  Assert.IsTrue(HasBackwardLine,
+    'The retry edge must still be drawn from Parse back to Edit in its authored direction, not silently reversed');
 end;
 
 procedure TMermaidLayoutTests.Flowchart_RoundedAndStadiumNodes_AreWiderThanRectangle;
