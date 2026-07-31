@@ -41,10 +41,10 @@ uses
   Markdown4D.Image.Glyphs,
   Markdown4D.Image.Svg.Xml,
   Markdown4D.Image.Svg.Path,
-  // The Windows font engine first, because it needs nothing deployed beside
-  // it; Skia elsewhere, compiled in only there.
-  Markdown4D.Image.Glyphs.Gdi,
-  Markdown4D.Image.Glyphs.Skia;
+  // The Windows font engine, which answers where it can. Everywhere else the
+  // FMX layer registers its own, because a cross-platform application is
+  // already there.
+  Markdown4D.Image.Glyphs.Gdi;
 
 const
   // What a document without a font size of its own is drawn at.

@@ -20,13 +20,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   drawn on a layer of its own and `feGaussianBlur`, `feOffset`, `feFlood`,
   `feComposite` and `feMerge` are applied to it, so a drop shadow arrives as a
   drop shadow rather than being left out.
-- **Text renders on every platform.** Outlines come through
-  `Markdown4D.Image.Glyphs`: the Windows font engine answers on Windows,
-  needing nothing beside it, and Skia answers everywhere else. Skia is only
-  compiled in where it is the answer, because its objects load their library as
-  the program starts rather than when first asked.
+- **Text renders on every platform**, with nothing to deploy beside the
+  application. Outlines come through `Markdown4D.Image.Glyphs`: the system font
+  engine answers on Windows, and FMX answers everywhere it runs, by laying the
+  run out and converting it to a path. Where the baseline sits is measured from
+  a capital H, which rests on it in every Latin face.
 - **Images embedded in an SVG** are decoded through `Markdown4D.Image.Decoder`,
-  with the VCL picture classes answering on Windows and Skia elsewhere.
+  by the VCL picture classes or the FMX bitmap, whichever the application
+  already has.
 - `Markdown4D.Image.Rasterizer` fills polygons with anti-aliasing, exactly
   horizontally and over four sub-scanlines vertically, with the non-zero and
   even-odd rules, gradient paints, clip masks and source-over compositing.

@@ -194,6 +194,7 @@ uses
   System.Math.Vectors,
   FMX.Platform,
   Markdown4D.Image.Svg.Native,
+  Markdown4D.Fmx.Glyphs,
   Markdown4D.Fmx.ImageDecoder,
   Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Defaults,

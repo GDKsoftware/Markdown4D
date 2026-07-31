@@ -100,7 +100,6 @@ contains
   Markdown4D.Image.Svg.Native in '..\Source\Layout\Markdown4D.Image.Svg.Native.pas',
   Markdown4D.Image.Glyphs in '..\Source\Layout\Markdown4D.Image.Glyphs.pas',
   Markdown4D.Image.Glyphs.Gdi in '..\Source\Layout\Markdown4D.Image.Glyphs.Gdi.pas',
-  Markdown4D.Image.Glyphs.Skia in '..\Source\Layout\Markdown4D.Image.Glyphs.Skia.pas',
   Markdown4D.Image.Decoder in '..\Source\Layout\Markdown4D.Image.Decoder.pas',
   Markdown4D.Image.Svg in '..\Source\Layout\Markdown4D.Image.Svg.pas',
   Img32 in '..\ThirdParty\Image32\source\Img32.pas',

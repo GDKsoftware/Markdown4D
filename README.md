@@ -225,11 +225,9 @@ None. Every line under `Source\` is written for this project, including the
 anti-aliased polygon rasterizer and the SVG engine behind the viewers.
 
 Two things an SVG needs from the machine it runs on, glyph outlines and image
-decoding, are reached through seams. On Windows the system font engine and the
-VCL picture classes answer them, so nothing has to be deployed beside the
-application. On the platforms FMX reaches beyond Windows, Skia answers, which
-ships with RAD Studio; it is compiled in only there, because its objects load
-their library as the program starts rather than when first asked.
+decoding, are reached through seams. The system font engine and the VCL picture
+classes answer them on Windows, and FMX answers them everywhere it runs, so
+nothing has to be deployed beside the application on any platform.
 
 The specification corpora under `Tests\specs` come from the CommonMark and GFM
 specifications; see [Tests/specs/README.md](Tests/specs/README.md) for their
