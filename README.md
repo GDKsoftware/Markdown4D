@@ -7,7 +7,7 @@ runtime DLL, no package manager.
 
 <!-- badges -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Version 2.0.0](https://img.shields.io/badge/version-2.0.0-blue.svg)](CHANGELOG.md)
+[![Version 2.0.0](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/GDKsoftware/Markdown4D/releases)
 [![Delphi 12+](https://img.shields.io/badge/Delphi-12%2B-e62329.svg)](https://www.embarcadero.com/products/delphi)
 [![CommonMark 0.31.2](https://img.shields.io/badge/CommonMark-0.31.2%20652%2F652-1f6feb.svg)](https://spec.commonmark.org/0.31.2/)
 
@@ -225,7 +225,6 @@ and every package, and regenerates the conformance dashboard above.
 - [docs/STREAMING.md](docs/STREAMING.md) — the LLM / streaming integration
   guide: `AppendMarkdown`, debounce, threading, charts and `Text` semantics.
 - [packages/INSTALL.md](packages/INSTALL.md) — package build and IDE install.
-- [CHANGELOG.md](CHANGELOG.md) — release history.
 
 ## Third-party code
 

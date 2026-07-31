@@ -472,17 +472,28 @@ drawing surface. Its primitives:
 | `DrawText(TopLeft, Text, Font, Color)` | A run of text |
 | `DrawLine(StartPoint, EndPoint, Color, StrokeWidth)` | A straight line (axes, gridlines, lifelines) |
 | `DrawDashedLine(StartPoint, EndPoint, Color, StrokeWidth)` | A dashed line |
-| `FillPolygon(Points, Color)` | A filled polygon (arrowheads, diamond nodes) |
+| `FillPolygon(Points, Color)` | A filled polygon (arrowheads) |
+| `DrawPolygon(Points, StrokeColor, StrokeWidth)` | A stroked polygon |
+| `FillAndStrokePolygon(Points, FillColor, StrokeColor, StrokeWidth)` | A filled and stroked polygon in one primitive (diamond, stadium and rounded nodes) |
 | `FillWedge(Center, OuterRadius, InnerRadius, StartAngle, SweepAngle, Color)` | An annular wedge — the pie / doughnut slice primitive; angles in degrees |
+| `DrawWedge(Center, OuterRadius, InnerRadius, StartAngle, SweepAngle, StrokeColor, StrokeWidth)` | A stroked wedge |
+| `FillAndStrokeWedge(Center, OuterRadius, InnerRadius, StartAngle, SweepAngle, FillColor, StrokeColor, StrokeWidth)` | A filled and stroked wedge in one primitive (circle nodes) |
 | `DrawImage(Bounds, Source, AltText)` | An image slot |
 | `MeasureText(Text, Font)` | Measures without drawing |
 | `SaveState` / `SetClip(Bounds)` / `RestoreState` | Push a clip region and pop it |
 
-`FillAndStrokeRectangle` keeps a filled-and-stroked box (a mermaid node, a
-sequence participant) as a **single** display item, so its bounds are never
-duplicated across two primitives. `FillWedge` is why charts render natively: a
-pie slice is a wedge with `InnerRadius = 0`; a doughnut slice keeps a positive
-inner radius.
+Each of the three shapes comes in the same three forms: fill, stroke, or both
+at once. Reach for the combined one when a shape needs a fill and an outline,
+so it stays a **single** display item and its bounds are never duplicated
+across two primitives.
+
+`FillWedge` is why charts render natively: a pie slice is a wedge with
+`InnerRadius = 0`; a doughnut slice keeps a positive inner radius.
+
+How smoothly a curve is drawn follows how large it is, so a shape asks for no
+segment count of its own. On a canvas without anti-aliasing of its own the
+painter fills and strokes through this project's rasterizer, which is why a
+diamond has no staircase on its diagonals.
 
 ### Registration
 

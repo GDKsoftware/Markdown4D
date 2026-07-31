@@ -69,7 +69,6 @@ explains *why*, never *what*.
 
 - One subject per pull request.
 - Tests included, and both suites green.
-- Add an entry under `[Unreleased]` in `CHANGELOG.md`.
 - Update the docs under `docs/` when you change public behaviour.
 
 Found a security problem instead? Please read [SECURITY.md](SECURITY.md) and
