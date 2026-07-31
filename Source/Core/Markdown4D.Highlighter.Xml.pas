@@ -5,26 +5,24 @@ unit Markdown4D.Highlighter.Xml;
 interface
 
 uses
-  Markdown4D.Highlighter.Interfaces;
+  Markdown4D.Highlighter.LineScanner;
 
 type
-  TXmlSyntaxHighlighter = class(TInterfacedObject, IMarkdownSyntaxHighlighter)
-  public
-    function InitialState: Integer;
-    function TokenizeLine(const Line: string; const State: Integer): TSyntaxLine;
+  TXmlSyntaxHighlighter = class(TSyntaxHighlighter)
+  protected
+    function ScannerClass: TSyntaxLineScannerClass; override;
   end;
 
 implementation
 
 uses
   System.SysUtils,
-  Markdown4D.Highlighter.TokenBuilder;
+  Markdown4D.Highlighter.Interfaces;
 
 type
-  TXmlLineScanner = class
+  TXmlLineScanner = class(TSyntaxLineScanner)
   private
     const
-      CleanState = THighlighterRegistry.DefaultState;
       CommentState = 1;
       CDataState = 2;
       CommentOpen = '<!--';
@@ -40,12 +38,8 @@ type
       EntityStartCharacter = '&';
       QuoteCharacters = ['"', ''''];
     var
-      FLine: string;
-      FState: Integer;
-      FPosition: Integer;
       FInsideTag: Boolean;
       FExpectTagName: Boolean;
-      FBuilder: TSyntaxTokenBuilder;
     procedure FinishComment;
     procedure FinishCData;
     procedure ScanText;
@@ -56,64 +50,32 @@ type
     procedure ScanInsideTag;
     procedure ScanName;
     procedure ScanAttributeValue;
-    procedure AddPlainCharacter;
     function StartsAt(const Prefix: string): Boolean;
-    function CharAt(const Position: Integer): Char;
 
-  public
-    constructor Create(const Line: string; const State: Integer);
-    destructor Destroy; override;
-    function Scan: TSyntaxLine;
+  protected
+    procedure Resume; override;
+    procedure ScanNext; override;
   end;
 
-function TXmlSyntaxHighlighter.InitialState: Integer;
+function TXmlSyntaxHighlighter.ScannerClass: TSyntaxLineScannerClass;
 begin
-  Result := THighlighterRegistry.DefaultState;
+  Result := TXmlLineScanner;
 end;
 
-function TXmlSyntaxHighlighter.TokenizeLine(const Line: string; const State: Integer): TSyntaxLine;
-begin
-  const Scanner = TXmlLineScanner.Create(Line, State);
-  try
-    Result := Scanner.Scan;
-  finally
-    Scanner.Free;
-  end;
-end;
-
-constructor TXmlLineScanner.Create(const Line: string; const State: Integer);
-begin
-  inherited Create;
-
-  FLine := Line;
-  FState := State;
-  FPosition := 1;
-  FBuilder := TSyntaxTokenBuilder.Create;
-end;
-
-destructor TXmlLineScanner.Destroy;
-begin
-  FBuilder.Free;
-
-  inherited Destroy;
-end;
-
-function TXmlLineScanner.Scan: TSyntaxLine;
+procedure TXmlLineScanner.Resume;
 begin
   if FState = CommentState then
     FinishComment
   else if FState = CDataState then
     FinishCData;
+end;
 
-  while FPosition <= Length(FLine) do
-  begin
-    if FInsideTag then
-      ScanInsideTag
-    else
-      ScanText;
-  end;
-
-  Result := FBuilder.ToLine(FState);
+procedure TXmlLineScanner.ScanNext;
+begin
+  if FInsideTag then
+    ScanInsideTag
+  else
+    ScanText;
 end;
 
 procedure TXmlLineScanner.FinishComment;
@@ -291,24 +253,9 @@ begin
   FBuilder.Add(TSyntaxTokenKind.AttributeValue, Start, FPosition - Start);
 end;
 
-procedure TXmlLineScanner.AddPlainCharacter;
-begin
-  FBuilder.Add(TSyntaxTokenKind.PlainText, FPosition, 1);
-  Inc(FPosition);
-end;
-
 function TXmlLineScanner.StartsAt(const Prefix: string): Boolean;
 begin
   Result := (Copy(FLine, FPosition, Length(Prefix)) = Prefix);
-end;
-
-function TXmlLineScanner.CharAt(const Position: Integer): Char;
-begin
-  const IsInsideLine = (Position >= 1) and (Position <= Length(FLine));
-  if not IsInsideLine then
-    Exit(#0);
-
-  Result := FLine[Position];
 end;
 
 end.

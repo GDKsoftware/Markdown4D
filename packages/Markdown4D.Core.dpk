@@ -46,6 +46,7 @@ contains
   Markdown4D.Extensions.Sample in '..\Source\Core\Markdown4D.Extensions.Sample.pas',
   Markdown4D.Highlighter.Interfaces in '..\Source\Core\Markdown4D.Highlighter.Interfaces.pas',
   Markdown4D.Highlighter.Json in '..\Source\Core\Markdown4D.Highlighter.Json.pas',
+  Markdown4D.Highlighter.LineScanner in '..\Source\Core\Markdown4D.Highlighter.LineScanner.pas',
   Markdown4D.Highlighter.Pascal in '..\Source\Core\Markdown4D.Highlighter.Pascal.pas',
   Markdown4D.Highlighter.Sql in '..\Source\Core\Markdown4D.Highlighter.Sql.pas',
   Markdown4D.Highlighter.TokenBuilder in '..\Source\Core\Markdown4D.Highlighter.TokenBuilder.pas',

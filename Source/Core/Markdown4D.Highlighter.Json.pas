@@ -5,23 +5,22 @@ unit Markdown4D.Highlighter.Json;
 interface
 
 uses
-  Markdown4D.Highlighter.Interfaces;
+  Markdown4D.Highlighter.LineScanner;
 
 type
-  TJsonSyntaxHighlighter = class(TInterfacedObject, IMarkdownSyntaxHighlighter)
-  public
-    function InitialState: Integer;
-    function TokenizeLine(const Line: string; const State: Integer): TSyntaxLine;
+  TJsonSyntaxHighlighter = class(TSyntaxHighlighter)
+  protected
+    function ScannerClass: TSyntaxLineScannerClass; override;
   end;
 
 implementation
 
 uses
   System.SysUtils,
-  Markdown4D.Highlighter.TokenBuilder;
+  Markdown4D.Highlighter.Interfaces;
 
 type
-  TJsonLineScanner = class
+  TJsonLineScanner = class(TSyntaxLineScanner)
   private
     const
       QuoteCharacter = '"';
@@ -33,74 +32,28 @@ type
       TrueLiteral = 'true';
       FalseLiteral = 'false';
       NullLiteral = 'null';
-      Digits = ['0'..'9'];
       Letters = ['A'..'Z', 'a'..'z'];
       SignCharacters = ['+', '-'];
       WhitespaceCharacters = [' ', #9];
       MinusSign = '-';
       DecimalPoint = '.';
       ExponentIndicators = ['e', 'E'];
-    var
-      FLine: string;
-      FState: Integer;
-      FPosition: Integer;
-      FBuilder: TSyntaxTokenBuilder;
-    procedure ScanNext;
     procedure ScanString;
     function IsKeyString(const Start: Integer): Boolean;
     function FindStringClose(const Start: Integer): Integer;
-    procedure ScanNumber;
+    // A number here may carry a sign and an exponent, which the plain reader
+    // this descends from does not allow.
+    procedure ScanSignedNumber;
     procedure ScanWord;
-    procedure AddPlainCharacter;
     function EscapeLengthAt(const Position: Integer): Integer;
-    function CharAt(const Position: Integer): Char;
 
-  public
-    constructor Create(const Line: string; const State: Integer);
-    destructor Destroy; override;
-    function Scan: TSyntaxLine;
+  protected
+    procedure ScanNext; override;
   end;
 
-function TJsonSyntaxHighlighter.InitialState: Integer;
+function TJsonSyntaxHighlighter.ScannerClass: TSyntaxLineScannerClass;
 begin
-  Result := THighlighterRegistry.DefaultState;
-end;
-
-function TJsonSyntaxHighlighter.TokenizeLine(const Line: string; const State: Integer): TSyntaxLine;
-begin
-  const Scanner = TJsonLineScanner.Create(Line, State);
-  try
-    Result := Scanner.Scan;
-  finally
-    Scanner.Free;
-  end;
-end;
-
-constructor TJsonLineScanner.Create(const Line: string; const State: Integer);
-begin
-  inherited Create;
-
-  FLine := Line;
-  FState := State;
-  FPosition := 1;
-  FBuilder := TSyntaxTokenBuilder.Create;
-end;
-
-destructor TJsonLineScanner.Destroy;
-begin
-  FBuilder.Free;
-
-  inherited Destroy;
-end;
-
-function TJsonLineScanner.Scan: TSyntaxLine;
-begin
-  while FPosition <= Length(FLine) do
-  begin
-    ScanNext;
-  end;
-
-  Result := FBuilder.ToLine(FState);
+  Result := TJsonLineScanner;
 end;
 
 procedure TJsonLineScanner.ScanNext;
@@ -113,7 +66,7 @@ begin
   if Current = QuoteCharacter then
     ScanString
   else if StartsNumber then
-    ScanNumber
+    ScanSignedNumber
   else if CharInSet(Current, Letters) then
     ScanWord
   else
@@ -192,7 +145,7 @@ begin
   Result := 0;
 end;
 
-procedure TJsonLineScanner.ScanNumber;
+procedure TJsonLineScanner.ScanSignedNumber;
 begin
   const Start = FPosition;
 
@@ -254,12 +207,6 @@ begin
   FBuilder.Add(Kind, Start, FPosition - Start);
 end;
 
-procedure TJsonLineScanner.AddPlainCharacter;
-begin
-  FBuilder.Add(TSyntaxTokenKind.PlainText, FPosition, 1);
-  Inc(FPosition);
-end;
-
 function TJsonLineScanner.EscapeLengthAt(const Position: Integer): Integer;
 begin
   var EscapeLength := ShortEscapeLength;
@@ -271,15 +218,6 @@ begin
     EscapeLength := RemainingLength;
 
   Result := EscapeLength;
-end;
-
-function TJsonLineScanner.CharAt(const Position: Integer): Char;
-begin
-  const IsInsideLine = (Position >= 1) and (Position <= Length(FLine));
-  if not IsInsideLine then
-    Exit(#0);
-
-  Result := FLine[Position];
 end;
 
 end.

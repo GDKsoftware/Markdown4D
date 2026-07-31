@@ -93,6 +93,7 @@
         <DCCReference Include="..\Source\Core\Markdown4D.Extensions.Sample.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Highlighter.Interfaces.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Highlighter.Json.pas"/>
+        <DCCReference Include="..\Source\Core\Markdown4D.Highlighter.LineScanner.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Highlighter.Pascal.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Highlighter.Sql.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Highlighter.TokenBuilder.pas"/>
