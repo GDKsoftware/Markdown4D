@@ -61,6 +61,7 @@ type
       FCurrent: TSvgSubPath;
       FHasCurrent: Boolean;
       FState: TPathState;
+      FReader: TSvgNumberReader;
     class function SegmentsFor(const ChordLength: Single): Integer; static;
     class function CubicPoints(const Start, ControlOne, ControlTwo, Stop: TLayoutPointF): TArray<TLayoutPointF>; static;
     class function QuadraticPoints(const Start, Control, Stop: TLayoutPointF): TArray<TLayoutPointF>; static;
@@ -69,6 +70,17 @@ type
     procedure Flush;
     procedure Add(const Point: TLayoutPointF);
     procedure AddMany(const Points: TArray<TLayoutPointF>);
+    function TryMoveTo(const Origin: TLayoutPointF): Boolean;
+    function TryLineTo(const Origin: TLayoutPointF): Boolean;
+    function TryHorizontalTo(const Origin: TLayoutPointF): Boolean;
+    function TryVerticalTo(const Origin: TLayoutPointF): Boolean;
+    function TryCubicTo(const Origin: TLayoutPointF): Boolean;
+    function TrySmoothCubicTo(const Origin: TLayoutPointF): Boolean;
+    function TryQuadraticTo(const Origin: TLayoutPointF): Boolean;
+    function TrySmoothQuadraticTo(const Origin: TLayoutPointF): Boolean;
+    function TryArcTo(const Origin: TLayoutPointF): Boolean;
+    procedure ClosePath;
+    function TryRunCommand(const Command: Char; const Origin: TLayoutPointF): Boolean;
     procedure Run(const Data: string);
 
   public
@@ -365,19 +377,211 @@ begin
   end;
 end;
 
+function TSvgPathParser.TryMoveTo(const Origin: TLayoutPointF): Boolean;
+begin
+  var Value: Single;
+  Result := FReader.TryReadNumber(Value);
+  if not Result then
+    Exit;
+
+  const Point = TLayoutPointF.Create(Origin.X + Value, Origin.Y + FReader.ReadNumber);
+
+  Flush;
+  FHasCurrent := True;
+  FState.Start := Point;
+  Add(Point);
+end;
+
+function TSvgPathParser.TryLineTo(const Origin: TLayoutPointF): Boolean;
+begin
+  var Value: Single;
+  Result := FReader.TryReadNumber(Value);
+  if not Result then
+    Exit;
+
+  Add(TLayoutPointF.Create(Origin.X + Value, Origin.Y + FReader.ReadNumber));
+end;
+
+function TSvgPathParser.TryHorizontalTo(const Origin: TLayoutPointF): Boolean;
+begin
+  var Value: Single;
+  Result := FReader.TryReadNumber(Value);
+  if not Result then
+    Exit;
+
+  Add(TLayoutPointF.Create(Origin.X + Value, FState.Current.Y));
+end;
+
+function TSvgPathParser.TryVerticalTo(const Origin: TLayoutPointF): Boolean;
+begin
+  var Value: Single;
+  Result := FReader.TryReadNumber(Value);
+  if not Result then
+    Exit;
+
+  Add(TLayoutPointF.Create(FState.Current.X, Origin.Y + Value));
+end;
+
+function TSvgPathParser.TryCubicTo(const Origin: TLayoutPointF): Boolean;
+begin
+  var Value: Single;
+  Result := FReader.TryReadNumber(Value);
+  if not Result then
+    Exit;
+
+  const ControlOne = TLayoutPointF.Create(Origin.X + Value, Origin.Y + FReader.ReadNumber);
+  const ControlTwo = TLayoutPointF.Create(Origin.X + FReader.ReadNumber, Origin.Y + FReader.ReadNumber);
+  const Stop = TLayoutPointF.Create(Origin.X + FReader.ReadNumber, Origin.Y + FReader.ReadNumber);
+
+  AddMany(CubicPoints(FState.Current, ControlOne, ControlTwo, Stop));
+  FState.LastCubicControl := ControlTwo;
+  FState.HadCubic := True;
+  FState.HadQuadratic := False;
+end;
+
+function TSvgPathParser.TrySmoothCubicTo(const Origin: TLayoutPointF): Boolean;
+begin
+  var Value: Single;
+  Result := FReader.TryReadNumber(Value);
+  if not Result then
+    Exit;
+
+  const Start = FState.Current;
+
+  // A smooth curve mirrors the control point of the curve before it.
+  var ControlOne := Start;
+  if FState.HadCubic then
+    ControlOne := TLayoutPointF.Create(2 * Start.X - FState.LastCubicControl.X,
+      2 * Start.Y - FState.LastCubicControl.Y);
+
+  const ControlTwo = TLayoutPointF.Create(Origin.X + Value, Origin.Y + FReader.ReadNumber);
+  const Stop = TLayoutPointF.Create(Origin.X + FReader.ReadNumber, Origin.Y + FReader.ReadNumber);
+
+  AddMany(CubicPoints(Start, ControlOne, ControlTwo, Stop));
+  FState.LastCubicControl := ControlTwo;
+  FState.HadCubic := True;
+  FState.HadQuadratic := False;
+end;
+
+function TSvgPathParser.TryQuadraticTo(const Origin: TLayoutPointF): Boolean;
+begin
+  var Value: Single;
+  Result := FReader.TryReadNumber(Value);
+  if not Result then
+    Exit;
+
+  const Control = TLayoutPointF.Create(Origin.X + Value, Origin.Y + FReader.ReadNumber);
+  const Stop = TLayoutPointF.Create(Origin.X + FReader.ReadNumber, Origin.Y + FReader.ReadNumber);
+
+  AddMany(QuadraticPoints(FState.Current, Control, Stop));
+  FState.LastQuadraticControl := Control;
+  FState.HadQuadratic := True;
+  FState.HadCubic := False;
+end;
+
+function TSvgPathParser.TrySmoothQuadraticTo(const Origin: TLayoutPointF): Boolean;
+begin
+  var Value: Single;
+  Result := FReader.TryReadNumber(Value);
+  if not Result then
+    Exit;
+
+  const Start = FState.Current;
+
+  var Control := Start;
+  if FState.HadQuadratic then
+    Control := TLayoutPointF.Create(2 * Start.X - FState.LastQuadraticControl.X,
+      2 * Start.Y - FState.LastQuadraticControl.Y);
+
+  const Stop = TLayoutPointF.Create(Origin.X + Value, Origin.Y + FReader.ReadNumber);
+
+  AddMany(QuadraticPoints(Start, Control, Stop));
+  FState.LastQuadraticControl := Control;
+  FState.HadQuadratic := True;
+  FState.HadCubic := False;
+end;
+
+function TSvgPathParser.TryArcTo(const Origin: TLayoutPointF): Boolean;
+begin
+  var Value: Single;
+  Result := FReader.TryReadNumber(Value);
+  if not Result then
+    Exit;
+
+  const RadiusX = Value;
+  const RadiusY = FReader.ReadNumber;
+  const Rotation = FReader.ReadNumber;
+
+  var LargeArc := False;
+  var Sweep := False;
+  Result := FReader.TryReadFlag(LargeArc) and FReader.TryReadFlag(Sweep);
+  if not Result then
+    Exit;
+
+  const Stop = TLayoutPointF.Create(Origin.X + FReader.ReadNumber, Origin.Y + FReader.ReadNumber);
+
+  AddMany(ArcPoints(FState.Current, Stop, RadiusX, RadiusY, Rotation, LargeArc, Sweep));
+  FState.HadCubic := False;
+  FState.HadQuadratic := False;
+end;
+
+procedure TSvgPathParser.ClosePath;
+begin
+  if FHasCurrent then
+  begin
+    FCurrent.IsClosed := True;
+    Flush;
+  end;
+
+  FState.Current := FState.Start;
+end;
+
+// False stops the walk: the command is either unknown or its numbers ran out
+// halfway, and a path that cannot be read further ends where it got to.
+function TSvgPathParser.TryRunCommand(const Command: Char; const Origin: TLayoutPointF): Boolean;
+begin
+  case UpCase(Command) of
+    'M':
+      Result := TryMoveTo(Origin);
+    'L':
+      Result := TryLineTo(Origin);
+    'H':
+      Result := TryHorizontalTo(Origin);
+    'V':
+      Result := TryVerticalTo(Origin);
+    'C':
+      Result := TryCubicTo(Origin);
+    'S':
+      Result := TrySmoothCubicTo(Origin);
+    'Q':
+      Result := TryQuadraticTo(Origin);
+    'T':
+      Result := TrySmoothQuadraticTo(Origin);
+    'A':
+      Result := TryArcTo(Origin);
+    'Z':
+      begin
+        ClosePath;
+        Result := True;
+      end;
+  else
+    Result := False;
+  end;
+end;
+
 procedure TSvgPathParser.Run(const Data: string);
 begin
   if Data.Trim = '' then
     Exit;
 
-  var Reader := TSvgNumberReader.Create(Data);
+  FReader := TSvgNumberReader.Create(Data);
   var Command := #0;
 
-  while not Reader.AtEnd do
+  while not FReader.AtEnd do
   begin
     var Next: Char;
-    if Reader.PeekCommand(Next) then
-      Command := Reader.TakeCommand
+    if FReader.PeekCommand(Next) then
+      Command := FReader.TakeCommand
     else if Command = #0 then
       Break
     // A second pair of coordinates after a moveto draws a line, which is what
@@ -392,140 +596,8 @@ begin
     if Relative then
       Origin := FState.Current;
 
-    var Value: Single;
-
-    case UpCase(Command) of
-      'M':
-        begin
-          if not Reader.TryReadNumber(Value) then
-            Break;
-
-          const Point = TLayoutPointF.Create(Origin.X + Value, Origin.Y + Reader.ReadNumber);
-
-          Flush;
-          FHasCurrent := True;
-          FState.Start := Point;
-          Add(Point);
-        end;
-      'L':
-        begin
-          if not Reader.TryReadNumber(Value) then
-            Break;
-
-          Add(TLayoutPointF.Create(Origin.X + Value, Origin.Y + Reader.ReadNumber));
-        end;
-      'H':
-        begin
-          if not Reader.TryReadNumber(Value) then
-            Break;
-
-          Add(TLayoutPointF.Create(Origin.X + Value, FState.Current.Y));
-        end;
-      'V':
-        begin
-          if not Reader.TryReadNumber(Value) then
-            Break;
-
-          Add(TLayoutPointF.Create(FState.Current.X, Origin.Y + Value));
-        end;
-      'C':
-        begin
-          if not Reader.TryReadNumber(Value) then
-            Break;
-
-          const ControlOne = TLayoutPointF.Create(Origin.X + Value, Origin.Y + Reader.ReadNumber);
-          const ControlTwo = TLayoutPointF.Create(Origin.X + Reader.ReadNumber, Origin.Y + Reader.ReadNumber);
-          const Stop = TLayoutPointF.Create(Origin.X + Reader.ReadNumber, Origin.Y + Reader.ReadNumber);
-
-          AddMany(CubicPoints(FState.Current, ControlOne, ControlTwo, Stop));
-          FState.LastCubicControl := ControlTwo;
-          FState.HadCubic := True;
-          FState.HadQuadratic := False;
-        end;
-      'S':
-        begin
-          if not Reader.TryReadNumber(Value) then
-            Break;
-
-          const Start = FState.Current;
-          var ControlOne := Start;
-          // A smooth curve mirrors the control point of the curve before it.
-          if FState.HadCubic then
-            ControlOne := TLayoutPointF.Create(2 * Start.X - FState.LastCubicControl.X,
-              2 * Start.Y - FState.LastCubicControl.Y);
-
-          const ControlTwo = TLayoutPointF.Create(Origin.X + Value, Origin.Y + Reader.ReadNumber);
-          const Stop = TLayoutPointF.Create(Origin.X + Reader.ReadNumber, Origin.Y + Reader.ReadNumber);
-
-          AddMany(CubicPoints(Start, ControlOne, ControlTwo, Stop));
-          FState.LastCubicControl := ControlTwo;
-          FState.HadCubic := True;
-          FState.HadQuadratic := False;
-        end;
-      'Q':
-        begin
-          if not Reader.TryReadNumber(Value) then
-            Break;
-
-          const Control = TLayoutPointF.Create(Origin.X + Value, Origin.Y + Reader.ReadNumber);
-          const Stop = TLayoutPointF.Create(Origin.X + Reader.ReadNumber, Origin.Y + Reader.ReadNumber);
-
-          AddMany(QuadraticPoints(FState.Current, Control, Stop));
-          FState.LastQuadraticControl := Control;
-          FState.HadQuadratic := True;
-          FState.HadCubic := False;
-        end;
-      'T':
-        begin
-          if not Reader.TryReadNumber(Value) then
-            Break;
-
-          const Start = FState.Current;
-          var Control := Start;
-          if FState.HadQuadratic then
-            Control := TLayoutPointF.Create(2 * Start.X - FState.LastQuadraticControl.X,
-              2 * Start.Y - FState.LastQuadraticControl.Y);
-
-          const Stop = TLayoutPointF.Create(Origin.X + Value, Origin.Y + Reader.ReadNumber);
-
-          AddMany(QuadraticPoints(Start, Control, Stop));
-          FState.LastQuadraticControl := Control;
-          FState.HadQuadratic := True;
-          FState.HadCubic := False;
-        end;
-      'A':
-        begin
-          if not Reader.TryReadNumber(Value) then
-            Break;
-
-          const RadiusX = Value;
-          const RadiusY = Reader.ReadNumber;
-          const Rotation = Reader.ReadNumber;
-
-          var LargeArc := False;
-          var Sweep := False;
-          if not (Reader.TryReadFlag(LargeArc) and Reader.TryReadFlag(Sweep)) then
-            Break;
-
-          const Stop = TLayoutPointF.Create(Origin.X + Reader.ReadNumber, Origin.Y + Reader.ReadNumber);
-
-          AddMany(ArcPoints(FState.Current, Stop, RadiusX, RadiusY, Rotation, LargeArc, Sweep));
-          FState.HadCubic := False;
-          FState.HadQuadratic := False;
-        end;
-      'Z':
-        begin
-          if FHasCurrent then
-          begin
-            FCurrent.IsClosed := True;
-            Flush;
-          end;
-
-          FState.Current := FState.Start;
-        end;
-    else
+    if not TryRunCommand(Command, Origin) then
       Break;
-    end;
 
     const StartsNewCurve = CharInSet(UpCase(Command), ['C', 'S', 'Q', 'T', 'A']);
     if not StartsNewCurve then

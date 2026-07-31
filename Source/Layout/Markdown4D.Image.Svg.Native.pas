@@ -1716,197 +1716,343 @@ end;
 
 // Definitions are read first, because a shape may point at a gradient, a clip
 // path or a filter written further down the document.
+type
+  // A definition is spread over an opening element, its children and its
+  // closing element, so each collector keeps the state of the one it is
+  // reading and answers whether the element belonged to it.
+  TSvgGradientCollector = class
+  private
+    FTarget: TDictionary<string, TSvgGradient>;
+    FGradient: TSvgGradient;
+    FId: string;
+    procedure Start(const Element: TSvgXmlElement; const Name: string);
+    procedure AddStop(const Element: TSvgXmlElement);
+    procedure Finish;
+
+  public
+    constructor Create(const Target: TDictionary<string, TSvgGradient>);
+    function TryCollect(const Element: TSvgXmlElement; const Name: string): Boolean;
+  end;
+
+  TSvgClipPathCollector = class
+  private
+    FTarget: TDictionary<string, TArray<TSvgSubPath>>;
+    FSubPaths: TArray<TSvgSubPath>;
+    FId: string;
+    procedure Finish;
+
+  public
+    constructor Create(const Target: TDictionary<string, TArray<TSvgSubPath>>);
+    function TryCollect(const Element: TSvgXmlElement; const Name: string): Boolean;
+    procedure CollectShape(const Element: TSvgXmlElement);
+  end;
+
+  TSvgFilterCollector = class
+  private
+    FTarget: TDictionary<string, TSvgFilter>;
+    FFilter: TSvgFilter;
+    FId: string;
+    FMergeInputs: TArray<string>;
+    FInMerge: Boolean;
+    function TryCollectClosing(const Name: string): Boolean;
+    function ReadStep(const Element: TSvgXmlElement; const Name: string): TSvgFilterStep;
+    procedure Finish;
+
+  public
+    constructor Create(const Target: TDictionary<string, TSvgFilter>);
+    function TryCollect(const Element: TSvgXmlElement; const Name: string): Boolean;
+  end;
+
+constructor TSvgGradientCollector.Create(const Target: TDictionary<string, TSvgGradient>);
+begin
+  inherited Create;
+
+  FTarget := Target;
+end;
+
+function TSvgGradientCollector.TryCollect(const Element: TSvgXmlElement; const Name: string): Boolean;
+begin
+  const IsGradient = (Name = 'lineargradient') or (Name = 'radialgradient');
+
+  if Element.IsClosing then
+  begin
+    Result := IsGradient;
+    if Result then
+      Finish;
+
+    Exit;
+  end;
+
+  if IsGradient then
+  begin
+    Start(Element, Name);
+    Exit(True);
+  end;
+
+  Result := (Name = 'stop') and (FId <> '');
+  if Result then
+    AddStop(Element);
+end;
+
+procedure TSvgGradientCollector.Start(const Element: TSvgXmlElement; const Name: string);
+begin
+  FGradient := Default(TSvgGradient);
+  FId := Element.Attribute(IdAttribute);
+  FGradient.OnBoundingBox := not SameText(Element.Attribute('gradientUnits', 'objectBoundingBox'),
+    'userSpaceOnUse');
+
+  var Value: Single;
+  if Name = 'lineargradient' then
+  begin
+    FGradient.Kind := TMarkdownPaintKind.LinearGradient;
+    FGradient.First := TLayoutPointF.Create(0, 0);
+    FGradient.Second := TLayoutPointF.Create(1, 0);
+    if TSvgValue.TryParseFraction(Element.Attribute('x1'), Value) then
+      FGradient.First.X := Value;
+    if TSvgValue.TryParseFraction(Element.Attribute('y1'), Value) then
+      FGradient.First.Y := Value;
+    if TSvgValue.TryParseFraction(Element.Attribute('x2'), Value) then
+      FGradient.Second.X := Value;
+    if TSvgValue.TryParseFraction(Element.Attribute('y2'), Value) then
+      FGradient.Second.Y := Value;
+
+    Exit;
+  end;
+
+  FGradient.Kind := TMarkdownPaintKind.RadialGradient;
+  FGradient.First := TLayoutPointF.Create(0.5, 0.5);
+  FGradient.Radius := 0.5;
+  if TSvgValue.TryParseFraction(Element.Attribute(CentreXAttribute), Value) then
+    FGradient.First.X := Value;
+  if TSvgValue.TryParseFraction(Element.Attribute(CentreYAttribute), Value) then
+    FGradient.First.Y := Value;
+  if TSvgValue.TryParseFraction(Element.Attribute('r'), Value) then
+    FGradient.Radius := Value;
+end;
+
+procedure TSvgGradientCollector.AddStop(const Element: TSvgXmlElement);
+begin
+  var Stop := Default(TMarkdownGradientStop);
+
+  var Value: Single;
+  if TSvgValue.TryParseFraction(TSvgValue.PresentationValue(Element, 'offset'), Value) then
+    Stop.Offset := EnsureRange(Value, 0, 1);
+
+  var Color: TLayoutColor := $FF000000;
+  TSvgValue.TryParseColor(TSvgValue.PresentationValue(Element, 'stop-color'), Color);
+
+  var Alpha: Single := 1;
+  if TSvgValue.TryParseLength(TSvgValue.PresentationValue(Element, 'stop-opacity'), Alpha) then
+    Color := TSvgValue.WithOpacity(Color, EnsureRange(Alpha, 0, 1));
+
+  Stop.Color := Color;
+  FGradient.Stops := FGradient.Stops + [Stop];
+end;
+
+procedure TSvgGradientCollector.Finish;
+begin
+  if (FId <> '') and (Length(FGradient.Stops) > 0) then
+    FTarget.AddOrSetValue(FId, FGradient);
+
+  FId := '';
+end;
+
+constructor TSvgClipPathCollector.Create(const Target: TDictionary<string, TArray<TSvgSubPath>>);
+begin
+  inherited Create;
+
+  FTarget := Target;
+end;
+
+function TSvgClipPathCollector.TryCollect(const Element: TSvgXmlElement; const Name: string): Boolean;
+begin
+  Result := Name = 'clippath';
+  if not Result then
+    Exit;
+
+  if Element.IsClosing then
+  begin
+    Finish;
+    Exit;
+  end;
+
+  FId := Element.Attribute(IdAttribute);
+  FSubPaths := nil;
+end;
+
+// Every shape between the opening and closing element belongs to the path the
+// clip is built from, whatever its name.
+procedure TSvgClipPathCollector.CollectShape(const Element: TSvgXmlElement);
+begin
+  if Element.IsClosing or (FId = '') then
+    Exit;
+
+  FSubPaths := FSubPaths + TNativeSvgRenderer.SubPathsFor(Element);
+end;
+
+procedure TSvgClipPathCollector.Finish;
+begin
+  if (FId <> '') and (Length(FSubPaths) > 0) then
+    FTarget.AddOrSetValue(FId, FSubPaths);
+
+  FId := '';
+  FSubPaths := nil;
+end;
+
+constructor TSvgFilterCollector.Create(const Target: TDictionary<string, TSvgFilter>);
+begin
+  inherited Create;
+
+  FTarget := Target;
+end;
+
+function TSvgFilterCollector.TryCollect(const Element: TSvgXmlElement; const Name: string): Boolean;
+begin
+  if Element.IsClosing then
+    Exit(TryCollectClosing(Name));
+
+  if Name = FilterElement then
+  begin
+    FId := Element.Attribute(IdAttribute);
+    FFilter := nil;
+    Exit(True);
+  end;
+
+  if FId = '' then
+    Exit(False);
+
+  if Name = 'femerge' then
+  begin
+    FInMerge := True;
+    FMergeInputs := nil;
+    Exit(True);
+  end;
+
+  if (Name = 'femergenode') and FInMerge then
+  begin
+    FMergeInputs := FMergeInputs + [Element.Attribute(InputAttribute)];
+    Exit(True);
+  end;
+
+  FFilter := FFilter + [ReadStep(Element, Name)];
+  Result := True;
+end;
+
+function TSvgFilterCollector.TryCollectClosing(const Name: string): Boolean;
+begin
+  if Name = FilterElement then
+  begin
+    Finish;
+    Exit(True);
+  end;
+
+  Result := Name = 'femerge';
+  if not Result then
+    Exit;
+
+  var Step := Default(TSvgFilterStep);
+  Step.Kind := TSvgFilterKind.Merge;
+  Step.MergeInputs := FMergeInputs;
+
+  FFilter := FFilter + [Step];
+  FMergeInputs := nil;
+  FInMerge := False;
+end;
+
+function TSvgFilterCollector.ReadStep(const Element: TSvgXmlElement; const Name: string): TSvgFilterStep;
+begin
+  Result := Default(TSvgFilterStep);
+  Result.Input := Element.Attribute(InputAttribute);
+  Result.SecondInput := Element.Attribute('in2');
+  Result.ResultName := Element.Attribute('result');
+
+  var Value: Single;
+
+  if Name = 'fegaussianblur' then
+  begin
+    Result.Kind := TSvgFilterKind.Blur;
+
+    var Deviations := TSvgNumberReader.Create(Element.Attribute('stdDeviation', '0'));
+    Result.DeviationX := Deviations.ReadNumber;
+    if Deviations.TryReadNumber(Value) then
+      Result.DeviationY := Value
+    else
+      Result.DeviationY := Result.DeviationX;
+
+    Exit;
+  end;
+
+  if Name = 'feoffset' then
+  begin
+    Result.Kind := TSvgFilterKind.Offset;
+    if TSvgValue.TryParseLength(Element.Attribute('dx', '0'), Value) then
+      Result.DeltaX := Value;
+    if TSvgValue.TryParseLength(Element.Attribute('dy', '0'), Value) then
+      Result.DeltaY := Value;
+
+    Exit;
+  end;
+
+  if Name = 'feflood' then
+  begin
+    Result.Kind := TSvgFilterKind.Flood;
+    Result.Color := $FF000000;
+    TSvgValue.TryParseColor(TSvgValue.PresentationValue(Element, 'flood-color'), Result.Color);
+    if TSvgValue.TryParseLength(TSvgValue.PresentationValue(Element, 'flood-opacity'), Value) then
+      Result.Color := TSvgValue.WithOpacity(Result.Color, EnsureRange(Value, 0, 1));
+
+    Exit;
+  end;
+
+  if Name = 'fecomposite' then
+  begin
+    Result.Kind := TSvgFilterKind.Composite;
+    Result.Operation := Element.Attribute('operator', 'over');
+
+    Exit;
+  end;
+
+  // A primitive this engine has no answer for would quietly change the result,
+  // so the whole document goes back rather than half a filter.
+  raise ESvgUnsupported.Create(Name);
+end;
+
+procedure TSvgFilterCollector.Finish;
+begin
+  if (FId <> '') and (Length(FFilter) > 0) then
+    FTarget.AddOrSetValue(FId, FFilter);
+
+  FId := '';
+  FFilter := nil;
+end;
+
 procedure TNativeSvgRenderer.CollectDefinitions(const Svg: string);
 begin
   const Scanner = TSvgXmlScanner.Create(Svg);
+  const Gradients = TSvgGradientCollector.Create(FGradients);
+  const ClipPaths = TSvgClipPathCollector.Create(FClipPaths);
+  const Filters = TSvgFilterCollector.Create(FFilters);
   try
-    var Gradient := Default(TSvgGradient);
-    var GradientId := '';
-    var ClipId := '';
-    var ClipPaths: TArray<TSvgSubPath> := nil;
-    var FilterId := '';
-    var Filter: TSvgFilter := nil;
-    var MergeInputs: TArray<string> := nil;
-    var InMerge := False;
-
     var Element: TSvgXmlElement;
     while Scanner.ReadElement(Element) do
     begin
       const Name = Element.Name.ToLowerInvariant;
 
-      if Element.IsClosing then
-      begin
-        if (Name = 'lineargradient') or (Name = 'radialgradient') then
-        begin
-          if (GradientId <> '') and (Length(Gradient.Stops) > 0) then
-            FGradients.AddOrSetValue(GradientId, Gradient);
-          GradientId := '';
-        end
-        else if Name = 'clippath' then
-        begin
-          if (ClipId <> '') and (Length(ClipPaths) > 0) then
-            FClipPaths.AddOrSetValue(ClipId, ClipPaths);
-          ClipId := '';
-          ClipPaths := nil;
-        end
-        else if Name = FilterElement then
-        begin
-          if (FilterId <> '') and (Length(Filter) > 0) then
-            FFilters.AddOrSetValue(FilterId, Filter);
-          FilterId := '';
-          Filter := nil;
-        end
-        else if Name = 'femerge' then
-        begin
-          var Step := Default(TSvgFilterStep);
-          Step.Kind := TSvgFilterKind.Merge;
-          Step.MergeInputs := MergeInputs;
-          Filter := Filter + [Step];
-          MergeInputs := nil;
-          InMerge := False;
-        end;
-
+      if Gradients.TryCollect(Element, Name) then
         Continue;
-      end;
 
-      if (Name = 'lineargradient') or (Name = 'radialgradient') then
-      begin
-        Gradient := Default(TSvgGradient);
-        GradientId := Element.Attribute(IdAttribute);
-        Gradient.OnBoundingBox := not SameText(Element.Attribute('gradientUnits', 'objectBoundingBox'),
-          'userSpaceOnUse');
-
-        var Value: Single;
-        if Name = 'lineargradient' then
-        begin
-          Gradient.Kind := TMarkdownPaintKind.LinearGradient;
-          Gradient.First := TLayoutPointF.Create(0, 0);
-          Gradient.Second := TLayoutPointF.Create(1, 0);
-          if TSvgValue.TryParseFraction(Element.Attribute('x1'), Value) then
-            Gradient.First.X := Value;
-          if TSvgValue.TryParseFraction(Element.Attribute('y1'), Value) then
-            Gradient.First.Y := Value;
-          if TSvgValue.TryParseFraction(Element.Attribute('x2'), Value) then
-            Gradient.Second.X := Value;
-          if TSvgValue.TryParseFraction(Element.Attribute('y2'), Value) then
-            Gradient.Second.Y := Value;
-        end
-        else
-        begin
-          Gradient.Kind := TMarkdownPaintKind.RadialGradient;
-          Gradient.First := TLayoutPointF.Create(0.5, 0.5);
-          Gradient.Radius := 0.5;
-          if TSvgValue.TryParseFraction(Element.Attribute(CentreXAttribute), Value) then
-            Gradient.First.X := Value;
-          if TSvgValue.TryParseFraction(Element.Attribute(CentreYAttribute), Value) then
-            Gradient.First.Y := Value;
-          if TSvgValue.TryParseFraction(Element.Attribute('r'), Value) then
-            Gradient.Radius := Value;
-        end;
-
+      if ClipPaths.TryCollect(Element, Name) then
         Continue;
-      end;
 
-      if (Name = 'stop') and (GradientId <> '') then
-      begin
-        var Stop := Default(TMarkdownGradientStop);
-        var Value: Single;
-        if TSvgValue.TryParseFraction(TSvgValue.PresentationValue(Element, 'offset'), Value) then
-          Stop.Offset := EnsureRange(Value, 0, 1);
-
-        var Color: TLayoutColor := $FF000000;
-        TSvgValue.TryParseColor(TSvgValue.PresentationValue(Element, 'stop-color'), Color);
-
-        var Alpha: Single := 1;
-        if TSvgValue.TryParseLength(TSvgValue.PresentationValue(Element, 'stop-opacity'), Alpha) then
-          Color := TSvgValue.WithOpacity(Color, EnsureRange(Alpha, 0, 1));
-
-        Stop.Color := Color;
-        Gradient.Stops := Gradient.Stops + [Stop];
+      if Filters.TryCollect(Element, Name) then
         Continue;
-      end;
 
-      if Name = 'clippath' then
-      begin
-        ClipId := Element.Attribute(IdAttribute);
-        ClipPaths := nil;
-        Continue;
-      end;
-
-      if Name = FilterElement then
-      begin
-        FilterId := Element.Attribute(IdAttribute);
-        Filter := nil;
-        Continue;
-      end;
-
-      if FilterId <> '' then
-      begin
-        if Name = 'femerge' then
-        begin
-          InMerge := True;
-          MergeInputs := nil;
-          Continue;
-        end;
-
-        if (Name = 'femergenode') and InMerge then
-        begin
-          MergeInputs := MergeInputs + [Element.Attribute(InputAttribute)];
-          Continue;
-        end;
-
-        var Step := Default(TSvgFilterStep);
-        Step.Input := Element.Attribute(InputAttribute);
-        Step.SecondInput := Element.Attribute('in2');
-        Step.ResultName := Element.Attribute('result');
-
-        var Value: Single;
-
-        if Name = 'fegaussianblur' then
-        begin
-          Step.Kind := TSvgFilterKind.Blur;
-
-          var Deviations := TSvgNumberReader.Create(Element.Attribute('stdDeviation', '0'));
-          Step.DeviationX := Deviations.ReadNumber;
-          if Deviations.TryReadNumber(Value) then
-            Step.DeviationY := Value
-          else
-            Step.DeviationY := Step.DeviationX;
-        end
-        else if Name = 'feoffset' then
-        begin
-          Step.Kind := TSvgFilterKind.Offset;
-          if TSvgValue.TryParseLength(Element.Attribute('dx', '0'), Value) then
-            Step.DeltaX := Value;
-          if TSvgValue.TryParseLength(Element.Attribute('dy', '0'), Value) then
-            Step.DeltaY := Value;
-        end
-        else if Name = 'feflood' then
-        begin
-          Step.Kind := TSvgFilterKind.Flood;
-          Step.Color := $FF000000;
-          TSvgValue.TryParseColor(TSvgValue.PresentationValue(Element, 'flood-color'), Step.Color);
-          if TSvgValue.TryParseLength(TSvgValue.PresentationValue(Element, 'flood-opacity'), Value) then
-            Step.Color := TSvgValue.WithOpacity(Step.Color, EnsureRange(Value, 0, 1));
-        end
-        else if Name = 'fecomposite' then
-        begin
-          Step.Kind := TSvgFilterKind.Composite;
-          Step.Operation := Element.Attribute('operator', 'over');
-        end
-        else
-          // A primitive this engine has no answer for would quietly change the
-          // result, so the whole document goes back rather than half a filter.
-          raise ESvgUnsupported.Create(Name);
-
-        Filter := Filter + [Step];
-        Continue;
-      end;
-
-      if ClipId <> '' then
-        ClipPaths := ClipPaths + SubPathsFor(Element);
+      ClipPaths.CollectShape(Element);
     end;
   finally
+    Filters.Free;
+    ClipPaths.Free;
+    Gradients.Free;
     Scanner.Free;
   end;
 end;
