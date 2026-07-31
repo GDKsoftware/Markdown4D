@@ -37,6 +37,7 @@ requires
 
 contains
   Markdown4D.Fmx.Painter in '..\Source\Fmx\Markdown4D.Fmx.Painter.pas',
+  Markdown4D.Fmx.ImageDecoder in '..\Source\Fmx\Markdown4D.Fmx.ImageDecoder.pas',
   Markdown4D.Fmx.Viewer in '..\Source\Fmx\Markdown4D.Fmx.Viewer.pas',
   Markdown4D.Fmx.Editor in '..\Source\Fmx\Markdown4D.Fmx.Editor.pas';
 

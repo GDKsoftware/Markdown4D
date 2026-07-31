@@ -88,6 +88,7 @@
         <DCCReference Include="fmx.dcp"/>
         <DCCReference Include="Markdown4D.Core.dcp"/>
         <DCCReference Include="..\Source\Fmx\Markdown4D.Fmx.Painter.pas"/>
+        <DCCReference Include="..\Source\Fmx\Markdown4D.Fmx.ImageDecoder.pas"/>
         <DCCReference Include="..\Source\Fmx\Markdown4D.Fmx.Viewer.pas"/>
         <DCCReference Include="..\Source\Fmx\Markdown4D.Fmx.Editor.pas"/>
         <BuildConfiguration Include="Base">

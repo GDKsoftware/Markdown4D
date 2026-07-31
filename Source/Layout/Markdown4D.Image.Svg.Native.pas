@@ -38,12 +38,11 @@ uses
   Markdown4D.Image.Rasterizer,
   Markdown4D.Image.Filters,
   Markdown4D.Image.Decoder,
-  Markdown4D.Image.Decoder.Skia,
   Markdown4D.Image.Glyphs,
   Markdown4D.Image.Svg.Xml,
   Markdown4D.Image.Svg.Path,
-  // The Windows font engine first, because it needs no library beside it;
-  // Skia elsewhere, which is what carries text to the other platforms.
+  // The Windows font engine first, because it needs nothing deployed beside
+  // it; Skia elsewhere, compiled in only there.
   Markdown4D.Image.Glyphs.Gdi,
   Markdown4D.Image.Glyphs.Skia;
 
