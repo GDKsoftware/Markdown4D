@@ -82,13 +82,17 @@ type
         X: Single;
         Direction: Integer;
       end;
+      // Counts its way along a scanline and says, at each gap between two
+      // crossings, whether that gap lies inside the shape.
+      TWindingCounter = record
+        Total: Integer;
+        function Accepts(const Crossing: TEdgeCrossing; const Rule: TMarkdownFillRule): Boolean;
+      end;
     class function CollectCrossings(const Contours: TArray<TArray<TLayoutPointF>>; const SampleY: Single;
       var Crossings: TArray<TEdgeCrossing>): Integer; static;
     class function CrossingCapacity(const Contours: TArray<TArray<TLayoutPointF>>): Integer; static;
     class procedure SortCrossings(var Crossings: TArray<TEdgeCrossing>; const Count: Integer); static;
     class procedure AddSpan(var Coverage: TArray<Single>; const Left, Right, Weight: Single); static;
-    class function SpanIsInside(const Crossing: TEdgeCrossing; const Rule: TMarkdownFillRule;
-      var Winding: Integer): Boolean; static;
 
   public
     // Fills into a fresh buffer of the given size.
@@ -324,19 +328,20 @@ begin
   end;
 end;
 
-// Decides whether the gap that starts at Index is inside the shape, keeping the
-// winding count the caller carries from one gap to the next.
-class function TMarkdownPolygonRasterizer.SpanIsInside(const Crossing: TEdgeCrossing;
-  const Rule: TMarkdownFillRule; var Winding: Integer): Boolean;
+// The even-odd rule counts crossings and the non-zero rule counts the direction
+// they were crossed in, and both are inside the shape whenever the count is not
+// back to nothing.
+function TMarkdownPolygonRasterizer.TWindingCounter.Accepts(const Crossing: TEdgeCrossing;
+  const Rule: TMarkdownFillRule): Boolean;
 begin
   if Rule = TMarkdownFillRule.EvenOdd then
   begin
-    Winding := Winding + 1;
-    Exit(Odd(Winding));
+    Total := Total + 1;
+    Exit(Odd(Total));
   end;
 
-  Winding := Winding + Crossing.Direction;
-  Result := Winding <> 0;
+  Total := Total + Crossing.Direction;
+  Result := Total <> 0;
 end;
 
 // Adds the exact horizontal overlap of one span to the pixels it touches: the
@@ -440,10 +445,10 @@ begin
 
       SortCrossings(Crossings, Count);
 
-      var Winding := 0;
+      var Winding := Default(TWindingCounter);
       for var Index := 0 to Count - 2 do
       begin
-        if SpanIsInside(Crossings[Index], Rule, Winding) then
+        if Winding.Accepts(Crossings[Index], Rule) then
           AddSpan(Coverage, Crossings[Index].X, Crossings[Index + 1].X, SampleWeight);
       end;
     end;

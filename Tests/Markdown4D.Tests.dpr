@@ -28,6 +28,7 @@ uses
   Markdown4D.Layout.Renderer.Tests in 'Markdown4D.Layout.Renderer.Tests.pas',
   Markdown4D.Theme.Tests in 'Markdown4D.Theme.Tests.pas',
   Markdown4D.Image.Rasterizer.Tests in 'Markdown4D.Image.Rasterizer.Tests.pas',
+  Markdown4D.Image.Filters.Tests in 'Markdown4D.Image.Filters.Tests.pas',
   Markdown4D.Image.Svg.Xml.Tests in 'Markdown4D.Image.Svg.Xml.Tests.pas',
   Markdown4D.Image.Svg.Path.Tests in 'Markdown4D.Image.Svg.Path.Tests.pas',
   Markdown4D.Image.Svg.Native.Tests in 'Markdown4D.Image.Svg.Native.Tests.pas',

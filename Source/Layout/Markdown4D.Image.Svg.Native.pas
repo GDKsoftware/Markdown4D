@@ -50,6 +50,22 @@ const
   // What a document without a font size of its own is drawn at.
   DefaultFontSize = 16.0;
 
+  // The attribute names read more than once, so a typo cannot make one spelling
+  // silently disagree with another.
+  IdAttribute = 'id';
+  WidthAttribute = 'width';
+  HeightAttribute = 'height';
+  LeftAttribute = 'x';
+  TopAttribute = 'y';
+  RadiusXAttribute = 'rx';
+  RadiusYAttribute = 'ry';
+  CentreXAttribute = 'cx';
+  CentreYAttribute = 'cy';
+  FilterAttribute = 'filter';
+  InputAttribute = 'in';
+  ZeroLength = '0';
+  FilterElement = 'filter';
+
 type
   TSvgMatrix = record
     A, B, C, D, E, F: Single;
@@ -138,7 +154,7 @@ type
       MaxFragmentDepth = 8;
       RadiansPerDegree = Pi / 180;
       OpaqueAlpha = $FF000000;
-      SkippedElements: array[0..6] of string = ('defs', 'clippath', 'mask', 'marker', 'filter', 'style',
+      SkippedElements: array[0..6] of string = ('defs', 'clippath', 'mask', 'marker', FilterElement, 'style',
         'pattern');
       UnsupportedElements: array[0..0] of string = ('foreignobject');
     var
@@ -1021,18 +1037,18 @@ begin
 
   if Name = 'rect' then
   begin
-    if not TryParseLength(Element.Attribute('x', '0'), Left) then
+    if not TryParseLength(Element.Attribute(LeftAttribute, ZeroLength), Left) then
       Left := 0;
-    if not TryParseLength(Element.Attribute('y', '0'), Top) then
+    if not TryParseLength(Element.Attribute(TopAttribute, ZeroLength), Top) then
       Top := 0;
-    if not (TryParseLength(Element.Attribute('width'), Width) and
-      TryParseLength(Element.Attribute('height'), Height)) then
+    if not (TryParseLength(Element.Attribute(WidthAttribute), Width) and
+      TryParseLength(Element.Attribute(HeightAttribute), Height)) then
       Exit;
 
     var RadiusX: Single := 0;
     var RadiusY: Single := 0;
-    TryParseLength(Element.Attribute('rx', '0'), RadiusX);
-    if not TryParseLength(Element.Attribute('ry', '0'), RadiusY) then
+    TryParseLength(Element.Attribute(RadiusXAttribute, ZeroLength), RadiusX);
+    if not TryParseLength(Element.Attribute(RadiusYAttribute, ZeroLength), RadiusY) then
       RadiusY := RadiusX;
     if RadiusY = 0 then
       RadiusY := RadiusX;
@@ -1047,9 +1063,9 @@ begin
     var Radius: Single;
     if not TryParseLength(Element.Attribute('r'), Radius) then
       Exit;
-    if not TryParseLength(Element.Attribute('cx', '0'), Left) then
+    if not TryParseLength(Element.Attribute(CentreXAttribute, ZeroLength), Left) then
       Left := 0;
-    if not TryParseLength(Element.Attribute('cy', '0'), Top) then
+    if not TryParseLength(Element.Attribute(CentreYAttribute, ZeroLength), Top) then
       Top := 0;
 
     Exit(EllipsePath(Left, Top, Radius, Radius));
@@ -1059,12 +1075,12 @@ begin
   begin
     var RadiusX: Single;
     var RadiusY: Single;
-    if not (TryParseLength(Element.Attribute('rx'), RadiusX) and
-      TryParseLength(Element.Attribute('ry'), RadiusY)) then
+    if not (TryParseLength(Element.Attribute(RadiusXAttribute), RadiusX) and
+      TryParseLength(Element.Attribute(RadiusYAttribute), RadiusY)) then
       Exit;
-    if not TryParseLength(Element.Attribute('cx', '0'), Left) then
+    if not TryParseLength(Element.Attribute(CentreXAttribute, ZeroLength), Left) then
       Left := 0;
-    if not TryParseLength(Element.Attribute('cy', '0'), Top) then
+    if not TryParseLength(Element.Attribute(CentreYAttribute, ZeroLength), Top) then
       Top := 0;
 
     Exit(EllipsePath(Left, Top, RadiusX, RadiusY));
@@ -1138,9 +1154,9 @@ begin
 
   var Left: Single;
   var Baseline: Single;
-  if not TryParseLength(Element.Attribute('x', '0'), Left) then
+  if not TryParseLength(Element.Attribute(LeftAttribute, ZeroLength), Left) then
     Left := 0;
-  if not TryParseLength(Element.Attribute('y', '0'), Baseline) then
+  if not TryParseLength(Element.Attribute(TopAttribute, ZeroLength), Baseline) then
     Baseline := 0;
 
   // A run asked to occupy a given width is stretched to it, which is how a
@@ -1226,13 +1242,13 @@ begin
   var Top: Single;
   var Width: Single;
   var Height: Single;
-  if not TryParseLength(Element.Attribute('x', '0'), Left) then
+  if not TryParseLength(Element.Attribute(LeftAttribute, ZeroLength), Left) then
     Left := 0;
-  if not TryParseLength(Element.Attribute('y', '0'), Top) then
+  if not TryParseLength(Element.Attribute(TopAttribute, ZeroLength), Top) then
     Top := 0;
-  if not TryParseLength(Element.Attribute('width'), Width) then
+  if not TryParseLength(Element.Attribute(WidthAttribute), Width) then
     Width := Source.Width;
-  if not TryParseLength(Element.Attribute('height'), Height) then
+  if not TryParseLength(Element.Attribute(HeightAttribute), Height) then
     Height := Source.Height;
 
   if (Width <= 0) or (Height <= 0) then
@@ -1355,10 +1371,10 @@ begin
   var Top: Single := 0;
   var Width: Single := 0;
   var Height: Single := 0;
-  TryParseFraction(Wrapper.Attribute('x', '0'), Left);
-  TryParseFraction(Wrapper.Attribute('y', '0'), Top);
-  if not (TryParseFraction(Wrapper.Attribute('width'), Width) and
-    TryParseFraction(Wrapper.Attribute('height'), Height)) then
+  TryParseFraction(Wrapper.Attribute(LeftAttribute, ZeroLength), Left);
+  TryParseFraction(Wrapper.Attribute(TopAttribute, ZeroLength), Top);
+  if not (TryParseFraction(Wrapper.Attribute(WidthAttribute), Width) and
+    TryParseFraction(Wrapper.Attribute(HeightAttribute), Height)) then
     Exit(False);
 
   const OnBoundingBox = not SameText(Wrapper.Attribute('patternUnits', 'objectBoundingBox'), 'userSpaceOnUse');
@@ -1587,7 +1603,7 @@ begin
       // applied to when the element closes.
       var Reference := '';
       var Filter: TSvgFilter := nil;
-      const IsFiltered = TryParseReference(PresentationValue(Element, 'filter'), Reference) and
+      const IsFiltered = TryParseReference(PresentationValue(Element, FilterAttribute), Reference) and
         FFilters.TryGetValue(Reference, Filter);
       if IsFiltered then
         BeginLayer(Filter);
@@ -1627,9 +1643,9 @@ begin
 
   var Left: Single;
   var Top: Single;
-  if not TryParseLength(Element.Attribute('x', '0'), Left) then
+  if not TryParseLength(Element.Attribute(LeftAttribute, ZeroLength), Left) then
     Left := 0;
-  if not TryParseLength(Element.Attribute('y', '0'), Top) then
+  if not TryParseLength(Element.Attribute(TopAttribute, ZeroLength), Top) then
     Top := 0;
 
   var Moved := Frame;
@@ -1735,7 +1751,7 @@ begin
 
       Inc(Depth);
 
-      const Identifier = Element.Attribute('id');
+      const Identifier = Element.Attribute(IdAttribute);
       if Identifier <> '' then
       begin
         if Element.IsSelfClosing then
@@ -1892,7 +1908,7 @@ begin
           ClipId := '';
           ClipPaths := nil;
         end
-        else if Name = 'filter' then
+        else if Name = FilterElement then
         begin
           if (FilterId <> '') and (Length(Filter) > 0) then
             FFilters.AddOrSetValue(FilterId, Filter);
@@ -1915,7 +1931,7 @@ begin
       if (Name = 'lineargradient') or (Name = 'radialgradient') then
       begin
         Gradient := Default(TSvgGradient);
-        GradientId := Element.Attribute('id');
+        GradientId := Element.Attribute(IdAttribute);
         Gradient.OnBoundingBox := not SameText(Element.Attribute('gradientUnits', 'objectBoundingBox'),
           'userSpaceOnUse');
 
@@ -1939,9 +1955,9 @@ begin
           Gradient.Kind := TMarkdownPaintKind.RadialGradient;
           Gradient.First := TLayoutPointF.Create(0.5, 0.5);
           Gradient.Radius := 0.5;
-          if TryParseFraction(Element.Attribute('cx'), Value) then
+          if TryParseFraction(Element.Attribute(CentreXAttribute), Value) then
             Gradient.First.X := Value;
-          if TryParseFraction(Element.Attribute('cy'), Value) then
+          if TryParseFraction(Element.Attribute(CentreYAttribute), Value) then
             Gradient.First.Y := Value;
           if TryParseFraction(Element.Attribute('r'), Value) then
             Gradient.Radius := Value;
@@ -1971,14 +1987,14 @@ begin
 
       if Name = 'clippath' then
       begin
-        ClipId := Element.Attribute('id');
+        ClipId := Element.Attribute(IdAttribute);
         ClipPaths := nil;
         Continue;
       end;
 
-      if Name = 'filter' then
+      if Name = FilterElement then
       begin
-        FilterId := Element.Attribute('id');
+        FilterId := Element.Attribute(IdAttribute);
         Filter := nil;
         Continue;
       end;
@@ -1994,12 +2010,12 @@ begin
 
         if (Name = 'femergenode') and InMerge then
         begin
-          MergeInputs := MergeInputs + [Element.Attribute('in')];
+          MergeInputs := MergeInputs + [Element.Attribute(InputAttribute)];
           Continue;
         end;
 
         var Step := Default(TSvgFilterStep);
-        Step.Input := Element.Attribute('in');
+        Step.Input := Element.Attribute(InputAttribute);
         Step.SecondInput := Element.Attribute('in2');
         Step.ResultName := Element.Attribute('result');
 
@@ -2092,8 +2108,8 @@ begin
 
     var DeclaredWidth: Single := 0;
     var DeclaredHeight: Single := 0;
-    TryParseLength(Root.Attribute('width'), DeclaredWidth);
-    TryParseLength(Root.Attribute('height'), DeclaredHeight);
+    TryParseLength(Root.Attribute(WidthAttribute), DeclaredWidth);
+    TryParseLength(Root.Attribute(HeightAttribute), DeclaredHeight);
 
     if (ViewWidth <= 0) or (ViewHeight <= 0) then
     begin

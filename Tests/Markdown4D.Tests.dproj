@@ -86,6 +86,7 @@
         <DCCReference Include="Markdown4D.Layout.Renderer.Tests.pas"/>
         <DCCReference Include="Markdown4D.Theme.Tests.pas"/>
         <DCCReference Include="Markdown4D.Image.Rasterizer.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Image.Filters.Tests.pas"/>
         <DCCReference Include="Markdown4D.Image.Svg.Xml.Tests.pas"/>
         <DCCReference Include="Markdown4D.Image.Svg.Path.Tests.pas"/>
         <DCCReference Include="Markdown4D.Image.Svg.Native.Tests.pas"/>
