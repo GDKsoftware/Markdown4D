@@ -18,6 +18,8 @@ All public enumerations are scoped (`{$SCOPEDENUMS ON}`), so qualify them:
 - [Incremental parser](#incremental-parser)
 - [Viewer components](#viewer-components)
 - [Editor components](#editor-components)
+- [Drawing SVG](#drawing-svg)
+- [Glyph outlines and image decoding](#glyph-outlines-and-image-decoding)
 
 ## Facade — `TMarkdown`
 
@@ -452,3 +454,76 @@ uses
 FEditor.AttachPreview(FPreview);
 FEditor.Text := '# Live preview'#10#10 + 'Type on the left, rendered on the right.';
 ```
+
+## Drawing SVG
+
+The viewers render SVG images with an engine of this project. Nothing has to be
+switched on for that: adding a viewer to a form brings it along.
+
+`Markdown4D.Image.Svg` is the hook the viewers route image bytes through, and
+`Markdown4D.Image.Svg.Native` is the engine registered on it:
+
+```pascal
+uses
+  Markdown4D.Image.Svg,
+  Markdown4D.Image.Svg.Native;
+
+// Draws with this engine alone, reporting False for anything it will not draw
+// rather than passing it on. TMarkdownSvgSupport.TryRasterize goes through
+// whichever engine is registered.
+var Raster: TMarkdownSvgRaster;
+if TryRasterizeSvgNatively(Bytes, 200, 200, Raster) then
+  // Raster.Pixels is premultiplied BGRA, top down, stride = Width * 4.
+```
+
+Covered: `path`, `rect` with corner radii, `circle`, `ellipse`, `line`,
+`polyline`, `polygon`, `g`, `use`, `svg` with a `viewBox`, transform lists,
+solid fills, linear and radial gradients, patterns, strokes with miter and
+round joins and caps, opacity, both fill rules, `clipPath`, `mask`, `image`
+carrying a data URI, `text`, and filters built from `feGaussianBlur`,
+`feOffset`, `feFlood`, `feComposite` and `feMerge`.
+
+Refused whole, so a document is never drawn half right: `foreignObject`, an
+image pointing outside the document, and any filter primitive not in that list.
+
+Two units underneath are useful on their own. `Markdown4D.Image.Rasterizer`
+fills polygons with anti-aliasing, one colour or a gradient or a tile, held
+inside an optional mask. `Markdown4D.Image.Filters` holds the pixel operations
+the filters are built from.
+
+## Glyph outlines and image decoding
+
+Two things drawing an SVG needs from the machine it runs on. Both sit behind a
+seam, and both already have an answer on every platform, so an application
+normally does nothing here.
+
+```pascal
+uses
+  Markdown4D.Image.Glyphs;
+
+// The outlines of a run of text, laid out from an origin at the baseline
+// start. Registered by Markdown4D.Image.Glyphs.Gdi on Windows and by
+// Markdown4D.Fmx.Glyphs everywhere FMX runs.
+TMarkdownGlyphSupport.RegisterOutliner(
+  function (const FamilyName: string; const PixelSize: Single; const Bold, Italic: Boolean;
+    const Text: string; out Run: TMarkdownGlyphRun): Boolean
+  begin
+    // Run.Contours in the units of PixelSize, Run.Advance is the width.
+  end);
+```
+
+```pascal
+uses
+  Markdown4D.Image.Decoder;
+
+// Encoded image bytes to pixels. Registered by Markdown4D.Vcl.ImageDecoder and
+// Markdown4D.Fmx.ImageDecoder, whichever the application already has.
+TMarkdownImageDecoding.RegisterDecoder(
+  function (const Data: TBytes; out Raster: TMarkdownPixelRaster): Boolean
+  begin
+  end);
+```
+
+Register your own to reach a font or a format the platform does not offer. A
+provider registered before the viewer unit initialises keeps its place: the
+bundled ones step aside when something is already there.
