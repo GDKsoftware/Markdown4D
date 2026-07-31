@@ -83,6 +83,8 @@ type
 
     [Test]
     procedure Pie_EmitsWedgePerSlice;
+    [Test]
+    procedure Pie_PercentageLabel_SitsInsideItsOwnSlice;
 
     [Test]
     procedure Deterministic_SameInputProducesIdenticalPrimitiveKinds;
@@ -497,6 +499,52 @@ procedure TMermaidLayoutTests.Pie_EmitsWedgePerSlice;
 begin
   const Items = ModelItems('pie-title-three-slices');
   Assert.AreEqual(3, CountKind(Items, TDisplayItemKind.Wedge), 'A three-slice pie must emit three wedge primitives');
+end;
+
+procedure TMermaidLayoutTests.Pie_PercentageLabel_SitsInsideItsOwnSlice;
+begin
+  const Items = ModelItems('pie-title-three-slices');
+
+  var Wedges: TArray<IDisplayWedge> := nil;
+  var Labels: TArray<IDisplayItem> := nil;
+  for var Item in Items do
+  begin
+    var Wedge: IDisplayWedge;
+    if Supports(Item, IDisplayWedge, Wedge) then
+    begin
+      Wedges := Wedges + [Wedge];
+      Continue;
+    end;
+
+    var Run: IDisplayTextRun;
+    if Supports(Item, IDisplayTextRun, Run) and Run.Text.EndsWith('%') then
+      Labels := Labels + [Item];
+  end;
+
+  Assert.AreEqual(3, Length(Wedges), 'A three-slice pie must emit three wedges');
+  Assert.AreEqual(3, Length(Labels), 'Every slice wide enough to carry a percentage must show one');
+
+  for var Index := 0 to High(Labels) do
+  begin
+    const Wedge = Wedges[Index];
+    const Bounds = Labels[Index].Bounds;
+    const CentreX = (Bounds.Left + Bounds.Right) / 2;
+    const CentreY = (Bounds.Top + Bounds.Bottom) / 2;
+
+    // The wedge sweeps clockwise from 0 degrees at 3 o'clock, so the label
+    // belongs at the same angle measured the same way.
+    var Angle := RadToDeg(ArcTan2(CentreY - Wedge.Center.Y, CentreX - Wedge.Center.X));
+    if Angle < 0 then
+      Angle := Angle + 360;
+
+    const Start = Wedge.StartAngle;
+    const Stop = Start + Wedge.SweepAngle;
+    const IsInsideSlice = ((Angle >= Start) and (Angle <= Stop)) or
+      ((Angle + 360 >= Start) and (Angle + 360 <= Stop));
+    Assert.IsTrue(IsInsideSlice,
+      Format('Percentage %d sits at %.1f degrees, outside its slice %.1f..%.1f',
+        [Index, Angle, Start, Stop]));
+  end;
 end;
 
 procedure TMermaidLayoutTests.Deterministic_SameInputProducesIdenticalPrimitiveKinds;

@@ -95,6 +95,55 @@ type
     property Value: Double read GetValue;
   end;
 
+  // What a diagram of any kind carries. The three views below add what one
+  // kind of diagram needs, so a layout builder sees the part of the model it
+  // draws and nothing else.
+  IMermaidDiagram = interface
+    ['{0A5E7C93-2D46-4F81-9B7A-5C1E8D3F60A4}']
+    function GetDiagramKind: TMermaidDiagramKind;
+    function GetTitle: string;
+    property DiagramKind: TMermaidDiagramKind read GetDiagramKind;
+    property Title: string read GetTitle;
+  end;
+
+  IMermaidGraph = interface(IMermaidDiagram)
+    ['{1B6F8DA4-3E57-4092-8C0B-6D2F9E4A71B5}']
+    function GetDirection: TMermaidDirection;
+    function GetNodeCount: Integer;
+    function GetNode(const Index: Integer): IMermaidNode;
+    function GetEdgeCount: Integer;
+    function GetEdge(const Index: Integer): IMermaidEdge;
+    property Direction: TMermaidDirection read GetDirection;
+    property NodeCount: Integer read GetNodeCount;
+    property Nodes[const Index: Integer]: IMermaidNode read GetNode;
+    property EdgeCount: Integer read GetEdgeCount;
+    property Edges[const Index: Integer]: IMermaidEdge read GetEdge;
+  end;
+
+  IMermaidSequence = interface(IMermaidDiagram)
+    ['{2C709EB5-4F68-41A3-9D1C-7E30AF5B82C6}']
+    function GetParticipantCount: Integer;
+    function GetParticipant(const Index: Integer): IMermaidParticipant;
+    function GetMessageCount: Integer;
+    function GetMessage(const Index: Integer): IMermaidMessage;
+    function GetNoteCount: Integer;
+    function GetNote(const Index: Integer): IMermaidNote;
+    property ParticipantCount: Integer read GetParticipantCount;
+    property Participants[const Index: Integer]: IMermaidParticipant read GetParticipant;
+    property MessageCount: Integer read GetMessageCount;
+    property Messages[const Index: Integer]: IMermaidMessage read GetMessage;
+    property NoteCount: Integer read GetNoteCount;
+    property Notes[const Index: Integer]: IMermaidNote read GetNote;
+  end;
+
+  IMermaidPie = interface(IMermaidDiagram)
+    ['{3D81AFC6-5079-42B4-8E2D-8F41B06C93D7}']
+    function GetSliceCount: Integer;
+    function GetSlice(const Index: Integer): IMermaidSlice;
+    property SliceCount: Integer read GetSliceCount;
+    property Slices[const Index: Integer]: IMermaidSlice read GetSlice;
+  end;
+
   IMermaidModel = interface
     ['{8F2C6A14-5B70-4D39-8E01-63A5D0C7B4E2}']
     function GetDiagramKind: TMermaidDiagramKind;
@@ -246,7 +295,8 @@ type
     constructor Create(const Caption: string; const Value: Double);
   end;
 
-  TMermaidModel = class(TInterfacedObject, IMermaidModel)
+  TMermaidModel = class(TInterfacedObject, IMermaidModel, IMermaidGraph, IMermaidSequence,
+    IMermaidPie)
   private
     FDiagramKind: TMermaidDiagramKind;
     FDirection: TMermaidDirection;

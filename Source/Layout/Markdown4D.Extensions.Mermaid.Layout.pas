@@ -68,7 +68,6 @@ type
       DashLength = 7.0;
       DashGap = 4.0;
     var
-      FModel: IMermaidModel;
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
       FCanvas: IExtensionCanvas;
@@ -88,12 +87,14 @@ type
       const Color: TLayoutColor);
 
   public
-    constructor Create(const Model: IMermaidModel; const Theme: TMarkdownTheme; const Measurer: ITextMeasurer;
+    constructor Create(const Theme: TMarkdownTheme; const Measurer: ITextMeasurer;
       const Canvas: IExtensionCanvas);
   end;
 
   TMermaidFlowchartBuilder = class(TMermaidBuilderBase)
   private
+    var
+      FModel: IMermaidGraph;
     const
       LabelFontSize = 13.0;
       NodePaddingX = 14.0;
@@ -174,7 +175,7 @@ type
     class function CrossSize(const Box: TMermaidNodeBox; const Horizontal: Boolean): Single; static;
 
   public
-    constructor Create(const Model: IMermaidModel; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
+    constructor Create(const Model: IMermaidGraph; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
       const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
     procedure Build;
     function ContentHeight: Single;
@@ -188,6 +189,8 @@ type
 
   TMermaidSequenceBuilder = class(TMermaidBuilderBase)
   private
+    var
+      FModel: IMermaidSequence;
     const
       LabelFontSize = 13.0;
       BoxPaddingX = 12.0;
@@ -249,7 +252,7 @@ type
       const StrokeWidth: Single);
 
   public
-    constructor Create(const Model: IMermaidModel; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
+    constructor Create(const Model: IMermaidSequence; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
       const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
     destructor Destroy; override;
     procedure Build;
@@ -258,6 +261,8 @@ type
 
   TMermaidPieBuilder = class(TMermaidBuilderBase)
   private
+    var
+      FModel: IMermaidPie;
     const
       LabelFontSize = 11.0;
       TitleFontSize = 16.0;
@@ -283,7 +288,7 @@ type
     procedure EmitWedge(const CenterX, CenterY, OuterRadius, StartAngle, SweepAngle: Single; const Color: TLayoutColor);
 
   public
-    constructor Create(const Model: IMermaidModel; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
+    constructor Create(const Model: IMermaidPie; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
       const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
     class function PreferredHeightForWidth(const AvailableWidth: Single): Single; static;
     procedure Build;
@@ -310,7 +315,7 @@ begin
   case Model.DiagramKind of
     TMermaidDiagramKind.Sequence:
       begin
-        const Builder = TMermaidSequenceBuilder.Create(Model, Bounds, Theme, Measurer, Canvas);
+        const Builder = TMermaidSequenceBuilder.Create(Model as IMermaidSequence, Bounds, Theme, Measurer, Canvas);
         try
           Builder.Build;
         finally
@@ -319,7 +324,7 @@ begin
       end;
     TMermaidDiagramKind.Pie:
       begin
-        const Builder = TMermaidPieBuilder.Create(Model, Bounds, Theme, Measurer, Canvas);
+        const Builder = TMermaidPieBuilder.Create(Model as IMermaidPie, Bounds, Theme, Measurer, Canvas);
         try
           Builder.Build;
         finally
@@ -328,7 +333,7 @@ begin
       end;
   else
     begin
-      const Builder = TMermaidFlowchartBuilder.Create(Model, Bounds, Theme, Measurer, Canvas);
+      const Builder = TMermaidFlowchartBuilder.Create(Model as IMermaidGraph, Bounds, Theme, Measurer, Canvas);
       try
         Builder.Build;
       finally
@@ -349,7 +354,7 @@ begin
     case Model.DiagramKind of
       TMermaidDiagramKind.Sequence:
         begin
-          const Builder = TMermaidSequenceBuilder.Create(Model, Bounds, Theme, Measurer, Canvas);
+          const Builder = TMermaidSequenceBuilder.Create(Model as IMermaidSequence, Bounds, Theme, Measurer, Canvas);
           try
             Builder.Build;
             Result := Builder.ContentHeight;
@@ -360,7 +365,7 @@ begin
       TMermaidDiagramKind.Pie:
         begin
           const PieBounds = TLayoutRectF.Create(0, 0, AvailableWidth, TMermaidPieBuilder.PreferredHeightForWidth(AvailableWidth));
-          const Builder = TMermaidPieBuilder.Create(Model, PieBounds, Theme, Measurer, Canvas);
+          const Builder = TMermaidPieBuilder.Create(Model as IMermaidPie, PieBounds, Theme, Measurer, Canvas);
           try
             Builder.Build;
             Result := Builder.ContentHeight;
@@ -370,7 +375,7 @@ begin
         end;
     else
       begin
-        const Builder = TMermaidFlowchartBuilder.Create(Model, Bounds, Theme, Measurer, Canvas);
+        const Builder = TMermaidFlowchartBuilder.Create(Model as IMermaidGraph, Bounds, Theme, Measurer, Canvas);
         try
           Builder.Build;
           Result := Builder.ContentHeight;
@@ -384,12 +389,11 @@ begin
   end;
 end;
 
-constructor TMermaidBuilderBase.Create(const Model: IMermaidModel; const Theme: TMarkdownTheme;
+constructor TMermaidBuilderBase.Create(const Theme: TMarkdownTheme;
   const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
 begin
   inherited Create;
 
-  FModel := Model;
   FTheme := Theme;
   FMeasurer := Measurer;
   FCanvas := Canvas;
@@ -468,10 +472,12 @@ begin
   EmitText(Text, CenterX - Size.Width / 2, Top, Font, Color);
 end;
 
-constructor TMermaidFlowchartBuilder.Create(const Model: IMermaidModel; const Bounds: TLayoutRectF;
+constructor TMermaidFlowchartBuilder.Create(const Model: IMermaidGraph; const Bounds: TLayoutRectF;
   const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
 begin
-  inherited Create(Model, Theme, Measurer, Canvas);
+  inherited Create(Theme, Measurer, Canvas);
+
+  FModel := Model;
 
   FBounds := Bounds;
 end;
@@ -1349,10 +1355,12 @@ begin
     Result := Box.Width;
 end;
 
-constructor TMermaidSequenceBuilder.Create(const Model: IMermaidModel; const Bounds: TLayoutRectF;
+constructor TMermaidSequenceBuilder.Create(const Model: IMermaidSequence; const Bounds: TLayoutRectF;
   const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
 begin
-  inherited Create(Model, Theme, Measurer, Canvas);
+  inherited Create(Theme, Measurer, Canvas);
+
+  FModel := Model;
 
   FBounds := Bounds;
   FBars := TList<TMermaidActivationBar>.Create;
@@ -1762,10 +1770,12 @@ begin
     EmitLine(StartPoint, EndPoint, MessageColor, StrokeWidth);
 end;
 
-constructor TMermaidPieBuilder.Create(const Model: IMermaidModel; const Bounds: TLayoutRectF;
+constructor TMermaidPieBuilder.Create(const Model: IMermaidPie; const Bounds: TLayoutRectF;
   const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
 begin
-  inherited Create(Model, Theme, Measurer, Canvas);
+  inherited Create(Theme, Measurer, Canvas);
+
+  FModel := Model;
 
   const ClampedHeight = Min(Bounds.Height, PreferredHeightForWidth(Bounds.Width));
 
@@ -1895,9 +1905,11 @@ begin
 
     if (Sweep >= MinLabelSweepDegrees) and (Total > 0) then
     begin
+      // Place the label with the same polar convention the wedge uses (0deg at
+      // 3 o'clock, sweeping clockwise) so each percentage sits on its own slice.
       const MidAngle = (StartAngle + Sweep / 2) * Pi / 180;
-      const LabelX = CenterX + LabelRadius * Sin(MidAngle);
-      const LabelY = CenterY - LabelRadius * Cos(MidAngle);
+      const LabelX = CenterX + LabelRadius * Cos(MidAngle);
+      const LabelY = CenterY + LabelRadius * Sin(MidAngle);
       const Percent = Format('%.0f%%', [Value / Total * 100]);
       EmitCenteredText(Percent, LabelX, LabelY - FMeasurer.LineHeight(Font) / 2, Font, FTheme.ChartTextColor);
     end;
