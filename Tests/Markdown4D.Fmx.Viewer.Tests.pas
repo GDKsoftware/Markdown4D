@@ -6,6 +6,9 @@ interface
 
 uses
   DUnitX.TestFramework,
+  System.Types,
+  System.UITypes,
+  FMX.Graphics,
   Markdown4D.Theme,
   Markdown4D.Fmx.Viewer;
 
@@ -18,9 +21,28 @@ type
       ControlHeight = 200.0;
       SampleMarkdown = '# Title'#10#10'Body paragraph with enough words to wrap onto a second line.';
       ImageMarkdown = '![alt](img.png)';
+      ClipTestViewerWidth = 300.0;
+      ClipTestViewerHeight = 80.0;
+      ClipTestSelectionStartX = 5.0;
+      ClipTestSelectionEndX = 250.0;
+      ClipTestSelectionBottomY = 40.0;
+      ClipTestBandHeight = 60;
+      ClipTestMarkdown =
+        '# Top'#10#10 +
+        'Filler paragraph number one with enough words to wrap across several lines of text at this width.'#10#10 +
+        'Filler paragraph number two with enough words to wrap across several lines of text at this width.'#10#10 +
+        'Filler paragraph number three with enough words to wrap across several lines of text at this width.'#10#10 +
+        'Filler paragraph number four with enough words to wrap across several lines of text at this width.'#10#10 +
+        'Filler paragraph number five with enough words to wrap across several lines of text at this width.'#10#10 +
+        'Filler paragraph number six with enough words to wrap across several lines of text at this width.'#10#10 +
+        'Filler paragraph number seven with enough words to wrap across several lines of text at this width.'#10#10 +
+        'Filler paragraph number eight with enough words to wrap across several lines of text at this width.'#10#10 +
+        'Filler paragraph number nine with enough words to wrap across several lines of text at this width.'#10#10 +
+        'Filler paragraph number ten with enough words to wrap across several lines of text at this width.';
     var
       FViewer: TMarkdownViewer;
       FExternalTheme: TMarkdownTheme;
+    class function IsBandUntouched(const Bitmap: TBitmap; const BandHeight: Integer): Boolean;
 
   public
     [Setup]
@@ -46,12 +68,20 @@ type
 
     [Test]
     procedure DestroyWithPendingImages_DoesNotCrash;
+
+    [Test]
+    procedure Paint_ScrolledPastActiveSelection_ConfinesPaintingToViewerBounds;
   end;
 
 implementation
 
 uses
   System.SysUtils;
+
+type
+  // Widens MouseDown/MouseMove/MouseUp from protected to accessible-in-unit, so a
+  // test can drive a text selection the same way a real mouse drag would.
+  TMarkdownViewerAccess = class(TMarkdownViewer);
 
 procedure TMarkdownFmxViewerTests.Setup;
 begin
@@ -119,6 +149,70 @@ begin
   end;
 
   Assert.Pass('Destroying a viewer with pending image slots must not crash');
+end;
+
+procedure TMarkdownFmxViewerTests.Paint_ScrolledPastActiveSelection_ConfinesPaintingToViewerBounds;
+begin
+  FViewer.Width := ClipTestViewerWidth;
+  FViewer.Height := ClipTestViewerHeight;
+  FViewer.Text := ClipTestMarkdown;
+
+  const Access = TMarkdownViewerAccess(FViewer);
+  Access.MouseDown(TMouseButton.mbLeft, [], ClipTestSelectionStartX, 2);
+  Access.MouseMove([], ClipTestSelectionEndX, ClipTestSelectionBottomY);
+  Access.MouseUp(TMouseButton.mbLeft, [], ClipTestSelectionEndX, ClipTestSelectionBottomY);
+  Assert.AreNotEqual('', FViewer.SelectedText,
+    'Expected the drag to select text near the top of the document before scrolling it out of view');
+
+  FViewer.ScrollOffset := FViewer.ContentHeight;
+  const ScrollY = FViewer.ScrollOffset;
+  Assert.IsTrue(ScrollY > ClipTestSelectionBottomY,
+    'Expected scrolling to the bottom to move the selected text above the current viewport');
+
+  // Placing the destination rect at ScrollY within a canvas as tall as the scroll
+  // position lines up doc-space coordinates with canvas coordinates one-to-one, so
+  // anything painted above row 0 of this canvas is painting above the whole document.
+  const CanvasHeight = Round(ScrollY) + Round(ClipTestViewerHeight);
+  const Bitmap = TBitmap.Create(Round(ClipTestViewerWidth), CanvasHeight);
+  try
+    Bitmap.Clear(TAlphaColorRec.White);
+
+    if Bitmap.Canvas.BeginScene then
+    try
+      FViewer.PaintTo(Bitmap.Canvas, TRectF.Create(0, ScrollY, ClipTestViewerWidth, ScrollY + ClipTestViewerHeight));
+    finally
+      Bitmap.Canvas.EndScene;
+    end;
+
+    const BandHeight = Round(ClipTestSelectionBottomY) + ClipTestBandHeight;
+    Assert.IsTrue(IsBandUntouched(Bitmap, BandHeight),
+      'Expected nothing to paint above the viewer''s own rectangle once scrolled past the selection');
+  finally
+    Bitmap.Free;
+  end;
+end;
+
+class function TMarkdownFmxViewerTests.IsBandUntouched(const Bitmap: TBitmap; const BandHeight: Integer): Boolean;
+begin
+  Result := True;
+
+  var Data: TBitmapData;
+  if not Bitmap.Map(TMapAccess.Read, Data) then
+    Exit(False);
+
+  try
+    for var YIndex := 0 to BandHeight - 1 do
+    begin
+      for var XIndex := 0 to Bitmap.Width - 1 do
+      begin
+        const IsWhite = (Data.GetPixel(XIndex, YIndex) = TAlphaColorRec.White);
+        if not IsWhite then
+          Exit(False);
+      end;
+    end;
+  finally
+    Bitmap.Unmap(Data);
+  end;
 end;
 
 end.

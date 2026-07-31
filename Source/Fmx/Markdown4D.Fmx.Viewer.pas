@@ -403,15 +403,23 @@ begin
   Canvas.SetMatrix(TMatrix.CreateTranslation(0, -ScrollY) * SavedMatrix);
   try
     const Viewport = TLayoutRectF.Create(0, ScrollY, Width, ScrollY + Height);
-    TMarkdownDisplayListRenderer.Render(FModel.DisplayList, PainterLifetime, Viewport, Background);
 
-    for var SelectionRect in FModel.SelectionRects do
-    begin
-      PainterLifetime.FillRect(SelectionRect, SelectionFillColor);
+    PainterLifetime.SaveState;
+    try
+      PainterLifetime.SetClip(Viewport);
+
+      TMarkdownDisplayListRenderer.Render(FModel.DisplayList, PainterLifetime, Viewport, Background);
+
+      for var SelectionRect in FModel.SelectionRects do
+      begin
+        PainterLifetime.FillRect(SelectionRect, SelectionFillColor);
+      end;
+
+      if FCodeHoverActive then
+        DrawCopyButton(PainterLifetime);
+    finally
+      PainterLifetime.RestoreState;
     end;
-
-    if FCodeHoverActive then
-      DrawCopyButton(PainterLifetime);
   finally
     Canvas.SetMatrix(SavedMatrix);
   end;
