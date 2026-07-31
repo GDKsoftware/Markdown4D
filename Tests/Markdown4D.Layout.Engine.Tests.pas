@@ -139,6 +139,15 @@ type
     procedure Layout_TaskListItems_EmitCheckboxPrimitives;
 
     [Test]
+    procedure Layout_TaskListItem_DrawsNoBulletMarker;
+
+    [Test]
+    procedure Layout_ListWithMixedTaskAndPlainItems_PlainItemStillDrawsBullet;
+
+    [Test]
+    procedure Layout_OrderedList_UnaffectedByTaskMarkerLogic;
+
+    [Test]
     procedure Layout_BoldRuns_ShiftWrapPositions;
 
     [Test]
@@ -506,6 +515,54 @@ begin
   Assert.IsNotNull(DoneRun);
   const StartsAfterCheckbox = (DoneRun.Bounds.Left >= Checkboxes[0].Bounds.Right);
   Assert.IsTrue(StartsAfterCheckbox);
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_TaskListItem_DrawsNoBulletMarker;
+begin
+  const DisplayList = LayoutMarkdown('- [x] done', DefaultWidth);
+
+  const Markers = RunsWithText(TextRunsOf(DisplayList), BulletMarkerText);
+  Assert.AreEqual(0, Integer(Length(Markers)));
+
+  const Checkboxes = CheckboxesOf(DisplayList);
+  Assert.AreEqual(1, Integer(Length(Checkboxes)));
+  AssertSingle(ListMarkerWidthValue, Checkboxes[0].Bounds.Left);
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_ListWithMixedTaskAndPlainItems_PlainItemStillDrawsBullet;
+begin
+  const DisplayList = LayoutMarkdown('- [x] done'#10'- plain', DefaultWidth);
+
+  const Runs = TextRunsOf(DisplayList);
+  const Markers = RunsWithText(Runs, BulletMarkerText);
+  Assert.AreEqual(1, Integer(Length(Markers)));
+  AssertSingle(BaseLineHeight, Markers[0].Bounds.Top);
+
+  const PlainContent = FindRunByPrefix(Runs, 'plain');
+  Assert.IsNotNull(PlainContent);
+  AssertSingle(ListMarkerWidthValue, PlainContent.Bounds.Left);
+
+  const Checkboxes = CheckboxesOf(DisplayList);
+  Assert.AreEqual(1, Integer(Length(Checkboxes)));
+  AssertSingle(ListMarkerWidthValue, Checkboxes[0].Bounds.Left);
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_OrderedList_UnaffectedByTaskMarkerLogic;
+begin
+  const DisplayList = LayoutMarkdown('1. first'#10'2. second', DefaultWidth);
+
+  const Runs = TextRunsOf(DisplayList);
+  const FirstMarker = FindRunByPrefix(Runs, '1.');
+  Assert.IsNotNull(FirstMarker);
+  AssertSingle(0, FirstMarker.Bounds.Left);
+
+  const SecondMarker = FindRunByPrefix(Runs, '2.');
+  Assert.IsNotNull(SecondMarker);
+  AssertSingle(BaseLineHeight, SecondMarker.Bounds.Top);
+
+  const FirstContent = FindRunByPrefix(Runs, 'first');
+  Assert.IsNotNull(FirstContent);
+  AssertSingle(ListMarkerWidthValue, FirstContent.Bounds.Left);
 end;
 
 procedure TMarkdownLayoutEngineTests.Layout_BoldRuns_ShiftWrapPositions;

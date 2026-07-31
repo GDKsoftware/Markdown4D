@@ -253,6 +253,7 @@ type
     procedure PushBlockQuote(const Command: TLayoutCommand);
     procedure EmitQuoteBar(const Command: TLayoutCommand);
     procedure PushList(const Command: TLayoutCommand);
+    class function IsTaskListItem(const ListItem: IMarkdownNode): Boolean;
     procedure PushContainerChildren(const Container: IMarkdownNode; const X: Single; const TextColor: TLayoutColor);
     procedure PushBlock(const Node: IMarkdownNode; const X: Single; const TextColor: TLayoutColor);
     procedure PushGap(const Amount: Single);
@@ -658,6 +659,10 @@ end;
 
 procedure TLayoutWorker.EmitListMarker(const Command: TLayoutCommand);
 begin
+  const HasMarker = (Command.MarkerText <> '');
+  if not HasMarker then
+    Exit;
+
   const MarkerSize = FMeasurer.MeasureText(Command.MarkerText, FTheme.BaseFont);
   const MarkerHeight = FMeasurer.LineHeight(FTheme.BaseFont);
   const Bounds = TLayoutRectF.Create(Command.X, FCurrentY, Command.X + MarkerSize.Width, FCurrentY + MarkerHeight);
@@ -707,7 +712,10 @@ begin
     ItemCommand.TextColor := Command.TextColor;
     ItemCommand.Tight := List.IsTight;
 
-    if List.IsOrdered then
+    const IsTaskItem = IsTaskListItem(ItemCommand.Node);
+    if IsTaskItem then
+      ItemCommand.MarkerText := ''
+    else if List.IsOrdered then
       ItemCommand.MarkerText := Format(OrderedMarkerFormat, [List.StartNumber + Index])
     else
       ItemCommand.MarkerText := BulletMarkerText;
@@ -717,6 +725,28 @@ begin
     if Index > 0 then
       PushGap(ItemGap);
   end;
+end;
+
+class function TLayoutWorker.IsTaskListItem(const ListItem: IMarkdownNode): Boolean;
+begin
+  const HasFirstBlock = (ListItem.ChildCount > 0);
+  if not HasFirstBlock then
+    Exit(False);
+
+  const FirstBlock = ListItem.Children[0];
+  const IsParagraph = (FirstBlock.Kind = TMarkdownNodeKind.Paragraph);
+  const HasFirstInline = (FirstBlock.ChildCount > 0);
+  if not (IsParagraph and HasFirstInline) then
+    Exit(False);
+
+  const FirstInline = FirstBlock.Children[0];
+  const IsCustomInline = (FirstInline.Kind = TMarkdownNodeKind.CustomInline);
+  if not IsCustomInline then
+    Exit(False);
+
+  const Marker = FirstInline as IMarkdownCustomInline;
+  Result := (Marker.NodeName = TGfmInlineParser.TaskCheckedNodeName) or
+            (Marker.NodeName = TGfmInlineParser.TaskUncheckedNodeName);
 end;
 
 procedure TLayoutWorker.PushContainerChildren(const Container: IMarkdownNode; const X: Single;
