@@ -30,10 +30,23 @@ const
   // Not declared by the RTL: asks the font engine for the outline as the
   // designer drew it, without the grid fitting a screen size would impose.
   UnhintedOutline = $0100;
-  BoldWeight = 700;
-  NormalWeight = 400;
 
 type
+  // Turns a run of text into contours by asking the system font engine for the
+  // outline of each glyph in turn.
+  TGdiGlyphOutliner = class
+  private
+    const
+      BoldWeight = 700;
+      NormalWeight = 400;
+    class function CreateFont(const FamilyName: string; const PixelSize: Single;
+      const Bold, Italic: Boolean): HFONT; static;
+
+  public
+    class function TryOutline(const FamilyName: string; const PixelSize: Single; const Bold, Italic: Boolean;
+      const Text: string; out Run: TMarkdownGlyphRun): Boolean; static;
+  end;
+
   TOutlineReader = record
   private
     FData: TBytes;
@@ -156,7 +169,8 @@ begin
   end;
 end;
 
-function CreateOutlineFont(const FamilyName: string; const PixelSize: Single; const Bold, Italic: Boolean): HFONT;
+class function TGdiGlyphOutliner.CreateFont(const FamilyName: string; const PixelSize: Single;
+  const Bold, Italic: Boolean): HFONT;
 begin
   var Description := Default(TLogFont);
   Description.lfHeight := -Round(PixelSize);
@@ -172,8 +186,8 @@ begin
   Result := CreateFontIndirect(Description);
 end;
 
-function OutlineText(const FamilyName: string; const PixelSize: Single; const Bold, Italic: Boolean;
-  const Text: string; out Run: TMarkdownGlyphRun): Boolean;
+class function TGdiGlyphOutliner.TryOutline(const FamilyName: string; const PixelSize: Single;
+  const Bold, Italic: Boolean; const Text: string; out Run: TMarkdownGlyphRun): Boolean;
 const
   Identity: TMat2 = (eM11: (fract: 0; value: 1); eM12: (fract: 0; value: 0); eM21: (fract: 0; value: 0);
     eM22: (fract: 0; value: 1));
@@ -190,7 +204,7 @@ begin
       Exit(False);
 
     try
-      const Font = CreateOutlineFont(FamilyName, PixelSize, Bold, Italic);
+      const Font = CreateFont(FamilyName, PixelSize, Bold, Italic);
       if Font = 0 then
         Exit(False);
 
@@ -240,7 +254,7 @@ end;
 
 procedure RegisterGdiGlyphOutliner;
 begin
-  TMarkdownGlyphSupport.RegisterOutliner(OutlineText);
+  TMarkdownGlyphSupport.RegisterOutliner(TGdiGlyphOutliner.TryOutline);
 end;
 
 initialization

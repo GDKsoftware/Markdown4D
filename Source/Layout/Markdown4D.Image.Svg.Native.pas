@@ -67,6 +67,20 @@ const
   FilterElement = 'filter';
 
 type
+  // Reads the values an SVG writes into its attributes: lengths, fractions,
+  // colours, references and the style attribute that can carry any of them.
+  TSvgValue = class
+  public
+    class function TryParseLength(const Text: string; out Value: Single): Boolean; static;
+    class function TryParseFraction(const Text: string; out Value: Single): Boolean; static;
+    class function TryParseColor(const Text: string; out Color: TLayoutColor): Boolean; static;
+    class function TryParseReference(const Text: string; out Reference: string): Boolean; static;
+    class function FirstFamilyName(const Families: string): string; static;
+    class function StyleValue(const Style, Name: string): string; static;
+    class function PresentationValue(const Element: TSvgXmlElement; const Name: string): string; static;
+    class function WithOpacity(const Color: TLayoutColor; const Opacity: Single): TLayoutColor; static;
+  end;
+
   TSvgMatrix = record
     A, B, C, D, E, F: Single;
     class function Identity: TSvgMatrix; static;
@@ -78,6 +92,7 @@ type
     function Multiply(const Other: TSvgMatrix): TSvgMatrix;
     function Apply(const Point: TLayoutPointF): TLayoutPointF;
     function AverageScale: Single;
+    class function Parse(const Text: string): TSvgMatrix; static;
   end;
 
   TSvgGradient = record
@@ -129,6 +144,7 @@ type
     Italic: Boolean;
     Anchor: string;
     class function Initial: TSvgStyle; static;
+    class function Read(const Element: TSvgXmlElement; const Parent: TSvgStyle): TSvgStyle; static;
   end;
 
   TSvgFrame = record
@@ -314,7 +330,7 @@ begin
   Result.Anchor := '';
 end;
 
-function TryParseLength(const Text: string; out Value: Single): Boolean;
+class function TSvgValue.TryParseLength(const Text: string; out Value: Single): Boolean;
 const
   Suffixes: array[0..6] of string = ('px', 'pt', 'pc', 'mm', 'cm', 'in', '%');
 begin
@@ -334,7 +350,7 @@ begin
   Result := TryStrToFloat(Trimmed, Value, TFormatSettings.Invariant);
 end;
 
-function TryParseFraction(const Text: string; out Value: Single): Boolean;
+class function TSvgValue.TryParseFraction(const Text: string; out Value: Single): Boolean;
 begin
   Value := 0;
 
@@ -352,7 +368,7 @@ begin
   Result := TryStrToFloat(Trimmed, Value, TFormatSettings.Invariant);
 end;
 
-function TryParseColor(const Text: string; out Color: TLayoutColor): Boolean;
+class function TSvgValue.TryParseColor(const Text: string; out Color: TLayoutColor): Boolean;
 const
   Named: array[0..15] of record Name: string; Value: Cardinal; end = (
     (Name: 'black'; Value: $FF000000), (Name: 'white'; Value: $FFFFFFFF),
@@ -420,7 +436,7 @@ begin
 end;
 
 // "url(#name)" points at a definition elsewhere in the document.
-function TryParseReference(const Text: string; out Reference: string): Boolean;
+class function TSvgValue.TryParseReference(const Text: string; out Reference: string): Boolean;
 begin
   Reference := '';
 
@@ -436,7 +452,7 @@ begin
   Result := Reference <> '';
 end;
 
-function FirstFamilyName(const Families: string): string;
+class function TSvgValue.FirstFamilyName(const Families: string): string;
 begin
   for var Family in Families.Split([',']) do
   begin
@@ -457,7 +473,7 @@ begin
   Result := 'Segoe UI';
 end;
 
-function StyleValue(const Style, Name: string): string;
+class function TSvgValue.StyleValue(const Style, Name: string): string;
 begin
   Result := '';
   if Style = '' then
@@ -476,16 +492,16 @@ end;
 
 // An attribute and its counterpart inside a style attribute say the same thing,
 // with the style winning, so both are read through one lookup.
-function PresentationValue(const Element: TSvgXmlElement; const Name: string): string;
+class function TSvgValue.PresentationValue(const Element: TSvgXmlElement; const Name: string): string;
 begin
   const Style = Element.Attribute('style');
 
-  Result := StyleValue(Style, Name);
+  Result := TSvgValue.StyleValue(Style, Name);
   if Result = '' then
     Result := Element.Attribute(Name);
 end;
 
-function ParseTransform(const Text: string): TSvgMatrix;
+class function TSvgMatrix.Parse(const Text: string): TSvgMatrix;
 begin
   Result := TSvgMatrix.Identity;
   if Text.Trim = '' then
@@ -560,22 +576,22 @@ begin
   end;
 end;
 
-function ReadStyle(const Element: TSvgXmlElement; const Parent: TSvgStyle): TSvgStyle;
+class function TSvgStyle.Read(const Element: TSvgXmlElement; const Parent: TSvgStyle): TSvgStyle;
 begin
   Result := Parent;
 
-  const Fill = PresentationValue(Element, 'fill');
+  const Fill = TSvgValue.PresentationValue(Element, 'fill');
   if Fill <> '' then
   begin
     var Reference := '';
     if SameText(Fill.Trim, 'none') then
       Result.HasFill := False
-    else if TryParseReference(Fill, Reference) then
+    else if TSvgValue.TryParseReference(Fill, Reference) then
     begin
       Result.FillPaintId := Reference;
       Result.HasFill := True;
     end
-    else if TryParseColor(Fill, Result.FillColor) then
+    else if TSvgValue.TryParseColor(Fill, Result.FillColor) then
     begin
       Result.FillPaintId := '';
       Result.HasFill := True;
@@ -584,18 +600,18 @@ begin
       raise ESvgUnsupported.CreateFmt('fill "%s"', [Fill]);
   end;
 
-  const Stroke = PresentationValue(Element, 'stroke');
+  const Stroke = TSvgValue.PresentationValue(Element, 'stroke');
   if Stroke <> '' then
   begin
     var Reference := '';
     if SameText(Stroke.Trim, 'none') then
       Result.HasStroke := False
-    else if TryParseReference(Stroke, Reference) then
+    else if TSvgValue.TryParseReference(Stroke, Reference) then
     begin
       Result.StrokePaintId := Reference;
       Result.HasStroke := True;
     end
-    else if TryParseColor(Stroke, Result.StrokeColor) then
+    else if TSvgValue.TryParseColor(Stroke, Result.StrokeColor) then
     begin
       Result.StrokePaintId := '';
       Result.HasStroke := True;
@@ -605,53 +621,53 @@ begin
   end;
 
   var Value: Single;
-  if TryParseLength(PresentationValue(Element, 'stroke-width'), Value) then
+  if TSvgValue.TryParseLength(TSvgValue.PresentationValue(Element, 'stroke-width'), Value) then
     Result.StrokeWidth := Value;
 
-  if TryParseLength(PresentationValue(Element, 'opacity'), Value) then
+  if TSvgValue.TryParseLength(TSvgValue.PresentationValue(Element, 'opacity'), Value) then
     Result.Opacity := Result.Opacity * EnsureRange(Value, 0, 1);
 
-  if TryParseLength(PresentationValue(Element, 'fill-opacity'), Value) then
+  if TSvgValue.TryParseLength(TSvgValue.PresentationValue(Element, 'fill-opacity'), Value) then
     Result.FillOpacity := EnsureRange(Value, 0, 1);
 
-  if TryParseLength(PresentationValue(Element, 'stroke-opacity'), Value) then
+  if TSvgValue.TryParseLength(TSvgValue.PresentationValue(Element, 'stroke-opacity'), Value) then
     Result.StrokeOpacity := EnsureRange(Value, 0, 1);
 
-  if SameText(PresentationValue(Element, 'fill-rule').Trim, 'evenodd') then
+  if SameText(TSvgValue.PresentationValue(Element, 'fill-rule').Trim, 'evenodd') then
     Result.FillRule := TMarkdownFillRule.EvenOdd
-  else if SameText(PresentationValue(Element, 'fill-rule').Trim, 'nonzero') then
+  else if SameText(TSvgValue.PresentationValue(Element, 'fill-rule').Trim, 'nonzero') then
     Result.FillRule := TMarkdownFillRule.NonZero;
 
-  Result.RoundCaps := SameText(PresentationValue(Element, 'stroke-linecap').Trim, 'round');
+  Result.RoundCaps := SameText(TSvgValue.PresentationValue(Element, 'stroke-linecap').Trim, 'round');
 
-  const Join = PresentationValue(Element, 'stroke-linejoin').Trim;
+  const Join = TSvgValue.PresentationValue(Element, 'stroke-linejoin').Trim;
   if Join <> '' then
     Result.RoundJoins := SameText(Join, 'round');
 
   // Font properties are inherited, and a document that sets them on a group
   // expects the text inside it to pick them up.
-  const Family = PresentationValue(Element, 'font-family');
+  const Family = TSvgValue.PresentationValue(Element, 'font-family');
   if Family <> '' then
     Result.FontFamily := Family;
 
-  if TryParseLength(PresentationValue(Element, 'font-size'), Value) then
+  if TSvgValue.TryParseLength(TSvgValue.PresentationValue(Element, 'font-size'), Value) then
     Result.FontSize := Value;
 
-  const Weight = PresentationValue(Element, 'font-weight').Trim;
+  const Weight = TSvgValue.PresentationValue(Element, 'font-weight').Trim;
   if Weight <> '' then
     Result.Bold := SameText(Weight, 'bold') or SameText(Weight, 'bolder') or (Weight = '700') or
       (Weight = '800') or (Weight = '900');
 
-  const Slant = PresentationValue(Element, 'font-style').Trim;
+  const Slant = TSvgValue.PresentationValue(Element, 'font-style').Trim;
   if Slant <> '' then
     Result.Italic := SameText(Slant, 'italic') or SameText(Slant, 'oblique');
 
-  const Anchor = PresentationValue(Element, 'text-anchor').Trim;
+  const Anchor = TSvgValue.PresentationValue(Element, 'text-anchor').Trim;
   if Anchor <> '' then
     Result.Anchor := Anchor;
 end;
 
-function WithOpacity(const Color: TLayoutColor; const Opacity: Single): TLayoutColor;
+class function TSvgValue.WithOpacity(const Color: TLayoutColor; const Opacity: Single): TLayoutColor;
 begin
   const Alpha = Round((Color shr 24) * EnsureRange(Opacity, 0, 1));
 
@@ -687,16 +703,16 @@ procedure TNativeSvgRenderer.Push(const Element: TSvgXmlElement);
 begin
   var Next := Frame;
   Next.Depth := FDepth;
-  Next.Style := ReadStyle(Element, Next.Style);
-  Next.Matrix := ParseTransform(Element.Attribute('transform')).Multiply(Next.Matrix);
+  Next.Style := TSvgStyle.Read(Element, Next.Style);
+  Next.Matrix := TSvgMatrix.Parse(Element.Attribute('transform')).Multiply(Next.Matrix);
 
   var Reference := '';
-  if TryParseReference(PresentationValue(Element, 'clip-path'), Reference) then
+  if TSvgValue.TryParseReference(TSvgValue.PresentationValue(Element, 'clip-path'), Reference) then
     Next.Mask := ClipMaskFor(Reference, Next.Matrix, Next.Mask);
 
   FStack := FStack + [Next];
   try
-    if TryParseReference(PresentationValue(Element, 'mask'), Reference) then
+    if TSvgValue.TryParseReference(TSvgValue.PresentationValue(Element, 'mask'), Reference) then
       Next.Mask := MaskFor(Reference, Next.Mask);
   finally
     Pop;
@@ -1037,18 +1053,18 @@ begin
 
   if Name = 'rect' then
   begin
-    if not TryParseLength(Element.Attribute(LeftAttribute, ZeroLength), Left) then
+    if not TSvgValue.TryParseLength(Element.Attribute(LeftAttribute, ZeroLength), Left) then
       Left := 0;
-    if not TryParseLength(Element.Attribute(TopAttribute, ZeroLength), Top) then
+    if not TSvgValue.TryParseLength(Element.Attribute(TopAttribute, ZeroLength), Top) then
       Top := 0;
-    if not (TryParseLength(Element.Attribute(WidthAttribute), Width) and
-      TryParseLength(Element.Attribute(HeightAttribute), Height)) then
+    if not (TSvgValue.TryParseLength(Element.Attribute(WidthAttribute), Width) and
+      TSvgValue.TryParseLength(Element.Attribute(HeightAttribute), Height)) then
       Exit;
 
     var RadiusX: Single := 0;
     var RadiusY: Single := 0;
-    TryParseLength(Element.Attribute(RadiusXAttribute, ZeroLength), RadiusX);
-    if not TryParseLength(Element.Attribute(RadiusYAttribute, ZeroLength), RadiusY) then
+    TSvgValue.TryParseLength(Element.Attribute(RadiusXAttribute, ZeroLength), RadiusX);
+    if not TSvgValue.TryParseLength(Element.Attribute(RadiusYAttribute, ZeroLength), RadiusY) then
       RadiusY := RadiusX;
     if RadiusY = 0 then
       RadiusY := RadiusX;
@@ -1061,11 +1077,11 @@ begin
   if Name = 'circle' then
   begin
     var Radius: Single;
-    if not TryParseLength(Element.Attribute('r'), Radius) then
+    if not TSvgValue.TryParseLength(Element.Attribute('r'), Radius) then
       Exit;
-    if not TryParseLength(Element.Attribute(CentreXAttribute, ZeroLength), Left) then
+    if not TSvgValue.TryParseLength(Element.Attribute(CentreXAttribute, ZeroLength), Left) then
       Left := 0;
-    if not TryParseLength(Element.Attribute(CentreYAttribute, ZeroLength), Top) then
+    if not TSvgValue.TryParseLength(Element.Attribute(CentreYAttribute, ZeroLength), Top) then
       Top := 0;
 
     Exit(EllipsePath(Left, Top, Radius, Radius));
@@ -1075,12 +1091,12 @@ begin
   begin
     var RadiusX: Single;
     var RadiusY: Single;
-    if not (TryParseLength(Element.Attribute(RadiusXAttribute), RadiusX) and
-      TryParseLength(Element.Attribute(RadiusYAttribute), RadiusY)) then
+    if not (TSvgValue.TryParseLength(Element.Attribute(RadiusXAttribute), RadiusX) and
+      TSvgValue.TryParseLength(Element.Attribute(RadiusYAttribute), RadiusY)) then
       Exit;
-    if not TryParseLength(Element.Attribute(CentreXAttribute, ZeroLength), Left) then
+    if not TSvgValue.TryParseLength(Element.Attribute(CentreXAttribute, ZeroLength), Left) then
       Left := 0;
-    if not TryParseLength(Element.Attribute(CentreYAttribute, ZeroLength), Top) then
+    if not TSvgValue.TryParseLength(Element.Attribute(CentreYAttribute, ZeroLength), Top) then
       Top := 0;
 
     Exit(EllipsePath(Left, Top, RadiusX, RadiusY));
@@ -1088,10 +1104,10 @@ begin
 
   if Name = 'line' then
   begin
-    if not (TryParseLength(Element.Attribute('x1', '0'), Left) and
-      TryParseLength(Element.Attribute('y1', '0'), Top) and
-      TryParseLength(Element.Attribute('x2', '0'), Width) and
-      TryParseLength(Element.Attribute('y2', '0'), Height)) then
+    if not (TSvgValue.TryParseLength(Element.Attribute('x1', '0'), Left) and
+      TSvgValue.TryParseLength(Element.Attribute('y1', '0'), Top) and
+      TSvgValue.TryParseLength(Element.Attribute('x2', '0'), Width) and
+      TSvgValue.TryParseLength(Element.Attribute('y2', '0'), Height)) then
       Exit;
 
     var SubPath: TSvgSubPath;
@@ -1146,7 +1162,7 @@ begin
     Exit;
 
   const Style = Frame.Style;
-  const Family = FirstFamilyName(Style.FontFamily);
+  const Family = TSvgValue.FirstFamilyName(Style.FontFamily);
 
   var Run: TMarkdownGlyphRun;
   if not TMarkdownGlyphSupport.TryOutline(Family, Style.FontSize, Style.Bold, Style.Italic, Content, Run) then
@@ -1154,16 +1170,16 @@ begin
 
   var Left: Single;
   var Baseline: Single;
-  if not TryParseLength(Element.Attribute(LeftAttribute, ZeroLength), Left) then
+  if not TSvgValue.TryParseLength(Element.Attribute(LeftAttribute, ZeroLength), Left) then
     Left := 0;
-  if not TryParseLength(Element.Attribute(TopAttribute, ZeroLength), Baseline) then
+  if not TSvgValue.TryParseLength(Element.Attribute(TopAttribute, ZeroLength), Baseline) then
     Baseline := 0;
 
   // A run asked to occupy a given width is stretched to it, which is how a
   // badge keeps its text inside its own box whatever font is installed.
   var Stretch: Single := 1;
   var Wanted: Single;
-  if TryParseLength(Element.Attribute('textLength'), Wanted) and (Run.Advance > 0) then
+  if TSvgValue.TryParseLength(Element.Attribute('textLength'), Wanted) and (Run.Advance > 0) then
     Stretch := Wanted / Run.Advance;
 
   const Width = Run.Advance * Stretch;
@@ -1242,13 +1258,13 @@ begin
   var Top: Single;
   var Width: Single;
   var Height: Single;
-  if not TryParseLength(Element.Attribute(LeftAttribute, ZeroLength), Left) then
+  if not TSvgValue.TryParseLength(Element.Attribute(LeftAttribute, ZeroLength), Left) then
     Left := 0;
-  if not TryParseLength(Element.Attribute(TopAttribute, ZeroLength), Top) then
+  if not TSvgValue.TryParseLength(Element.Attribute(TopAttribute, ZeroLength), Top) then
     Top := 0;
-  if not TryParseLength(Element.Attribute(WidthAttribute), Width) then
+  if not TSvgValue.TryParseLength(Element.Attribute(WidthAttribute), Width) then
     Width := Source.Width;
-  if not TryParseLength(Element.Attribute(HeightAttribute), Height) then
+  if not TSvgValue.TryParseLength(Element.Attribute(HeightAttribute), Height) then
     Height := Source.Height;
 
   if (Width <= 0) or (Height <= 0) then
@@ -1371,10 +1387,10 @@ begin
   var Top: Single := 0;
   var Width: Single := 0;
   var Height: Single := 0;
-  TryParseFraction(Wrapper.Attribute(LeftAttribute, ZeroLength), Left);
-  TryParseFraction(Wrapper.Attribute(TopAttribute, ZeroLength), Top);
-  if not (TryParseFraction(Wrapper.Attribute(WidthAttribute), Width) and
-    TryParseFraction(Wrapper.Attribute(HeightAttribute), Height)) then
+  TSvgValue.TryParseFraction(Wrapper.Attribute(LeftAttribute, ZeroLength), Left);
+  TSvgValue.TryParseFraction(Wrapper.Attribute(TopAttribute, ZeroLength), Top);
+  if not (TSvgValue.TryParseFraction(Wrapper.Attribute(WidthAttribute), Width) and
+    TSvgValue.TryParseFraction(Wrapper.Attribute(HeightAttribute), Height)) then
     Exit(False);
 
   const OnBoundingBox = not SameText(Wrapper.Attribute('patternUnits', 'objectBoundingBox'), 'userSpaceOnUse');
@@ -1446,12 +1462,12 @@ begin
 
   var Gradient: TSvgGradient;
   if (PaintId = '') or (not FGradients.TryGetValue(PaintId, Gradient)) then
-    Exit(TMarkdownPaint.SolidColor(WithOpacity(Color, Opacity)));
+    Exit(TMarkdownPaint.SolidColor(TSvgValue.WithOpacity(Color, Opacity)));
 
   var Stops := Gradient.Stops;
   for var Index := 0 to High(Stops) do
   begin
-    Stops[Index].Color := WithOpacity(Stops[Index].Color, Opacity);
+    Stops[Index].Color := TSvgValue.WithOpacity(Stops[Index].Color, Opacity);
   end;
 
   // In bounding box units the numbers are fractions of the shape itself, so
@@ -1603,7 +1619,7 @@ begin
       // applied to when the element closes.
       var Reference := '';
       var Filter: TSvgFilter := nil;
-      const IsFiltered = TryParseReference(PresentationValue(Element, FilterAttribute), Reference) and
+      const IsFiltered = TSvgValue.TryParseReference(TSvgValue.PresentationValue(Element, FilterAttribute), Reference) and
         FFilters.TryGetValue(Reference, Filter);
       if IsFiltered then
         BeginLayer(Filter);
@@ -1643,9 +1659,9 @@ begin
 
   var Left: Single;
   var Top: Single;
-  if not TryParseLength(Element.Attribute(LeftAttribute, ZeroLength), Left) then
+  if not TSvgValue.TryParseLength(Element.Attribute(LeftAttribute, ZeroLength), Left) then
     Left := 0;
-  if not TryParseLength(Element.Attribute(TopAttribute, ZeroLength), Top) then
+  if not TSvgValue.TryParseLength(Element.Attribute(TopAttribute, ZeroLength), Top) then
     Top := 0;
 
   var Moved := Frame;
@@ -1941,13 +1957,13 @@ begin
           Gradient.Kind := TMarkdownPaintKind.LinearGradient;
           Gradient.First := TLayoutPointF.Create(0, 0);
           Gradient.Second := TLayoutPointF.Create(1, 0);
-          if TryParseFraction(Element.Attribute('x1'), Value) then
+          if TSvgValue.TryParseFraction(Element.Attribute('x1'), Value) then
             Gradient.First.X := Value;
-          if TryParseFraction(Element.Attribute('y1'), Value) then
+          if TSvgValue.TryParseFraction(Element.Attribute('y1'), Value) then
             Gradient.First.Y := Value;
-          if TryParseFraction(Element.Attribute('x2'), Value) then
+          if TSvgValue.TryParseFraction(Element.Attribute('x2'), Value) then
             Gradient.Second.X := Value;
-          if TryParseFraction(Element.Attribute('y2'), Value) then
+          if TSvgValue.TryParseFraction(Element.Attribute('y2'), Value) then
             Gradient.Second.Y := Value;
         end
         else
@@ -1955,11 +1971,11 @@ begin
           Gradient.Kind := TMarkdownPaintKind.RadialGradient;
           Gradient.First := TLayoutPointF.Create(0.5, 0.5);
           Gradient.Radius := 0.5;
-          if TryParseFraction(Element.Attribute(CentreXAttribute), Value) then
+          if TSvgValue.TryParseFraction(Element.Attribute(CentreXAttribute), Value) then
             Gradient.First.X := Value;
-          if TryParseFraction(Element.Attribute(CentreYAttribute), Value) then
+          if TSvgValue.TryParseFraction(Element.Attribute(CentreYAttribute), Value) then
             Gradient.First.Y := Value;
-          if TryParseFraction(Element.Attribute('r'), Value) then
+          if TSvgValue.TryParseFraction(Element.Attribute('r'), Value) then
             Gradient.Radius := Value;
         end;
 
@@ -1970,15 +1986,15 @@ begin
       begin
         var Stop := Default(TMarkdownGradientStop);
         var Value: Single;
-        if TryParseFraction(PresentationValue(Element, 'offset'), Value) then
+        if TSvgValue.TryParseFraction(TSvgValue.PresentationValue(Element, 'offset'), Value) then
           Stop.Offset := EnsureRange(Value, 0, 1);
 
         var Color: TLayoutColor := $FF000000;
-        TryParseColor(PresentationValue(Element, 'stop-color'), Color);
+        TSvgValue.TryParseColor(TSvgValue.PresentationValue(Element, 'stop-color'), Color);
 
         var Alpha: Single := 1;
-        if TryParseLength(PresentationValue(Element, 'stop-opacity'), Alpha) then
-          Color := WithOpacity(Color, EnsureRange(Alpha, 0, 1));
+        if TSvgValue.TryParseLength(TSvgValue.PresentationValue(Element, 'stop-opacity'), Alpha) then
+          Color := TSvgValue.WithOpacity(Color, EnsureRange(Alpha, 0, 1));
 
         Stop.Color := Color;
         Gradient.Stops := Gradient.Stops + [Stop];
@@ -2035,18 +2051,18 @@ begin
         else if Name = 'feoffset' then
         begin
           Step.Kind := TSvgFilterKind.Offset;
-          if TryParseLength(Element.Attribute('dx', '0'), Value) then
+          if TSvgValue.TryParseLength(Element.Attribute('dx', '0'), Value) then
             Step.DeltaX := Value;
-          if TryParseLength(Element.Attribute('dy', '0'), Value) then
+          if TSvgValue.TryParseLength(Element.Attribute('dy', '0'), Value) then
             Step.DeltaY := Value;
         end
         else if Name = 'feflood' then
         begin
           Step.Kind := TSvgFilterKind.Flood;
           Step.Color := $FF000000;
-          TryParseColor(PresentationValue(Element, 'flood-color'), Step.Color);
-          if TryParseLength(PresentationValue(Element, 'flood-opacity'), Value) then
-            Step.Color := WithOpacity(Step.Color, EnsureRange(Value, 0, 1));
+          TSvgValue.TryParseColor(TSvgValue.PresentationValue(Element, 'flood-color'), Step.Color);
+          if TSvgValue.TryParseLength(TSvgValue.PresentationValue(Element, 'flood-opacity'), Value) then
+            Step.Color := TSvgValue.WithOpacity(Step.Color, EnsureRange(Value, 0, 1));
         end
         else if Name = 'fecomposite' then
         begin
@@ -2108,8 +2124,8 @@ begin
 
     var DeclaredWidth: Single := 0;
     var DeclaredHeight: Single := 0;
-    TryParseLength(Root.Attribute(WidthAttribute), DeclaredWidth);
-    TryParseLength(Root.Attribute(HeightAttribute), DeclaredHeight);
+    TSvgValue.TryParseLength(Root.Attribute(WidthAttribute), DeclaredWidth);
+    TSvgValue.TryParseLength(Root.Attribute(HeightAttribute), DeclaredHeight);
 
     if (ViewWidth <= 0) or (ViewHeight <= 0) then
     begin

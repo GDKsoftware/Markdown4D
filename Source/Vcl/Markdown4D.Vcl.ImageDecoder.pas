@@ -21,9 +21,15 @@ uses
   Markdown4D.Image.Rasterizer,
   Markdown4D.Image.Decoder;
 
-// Draws the picture onto a white-free 32 bit bitmap and premultiplies it, which
-// is the shape the rasterizer composites in.
-function DecodeImage(const Data: TBytes; out Raster: TMarkdownPixelRaster): Boolean;
+type
+  TVclImageDecoder = class
+  public
+    class function TryDecode(const Data: TBytes; out Raster: TMarkdownPixelRaster): Boolean; static;
+  end;
+
+// Draws the picture onto a 32 bit bitmap with its alpha kept, which is the
+// shape the rasterizer composites in.
+class function TVclImageDecoder.TryDecode(const Data: TBytes; out Raster: TMarkdownPixelRaster): Boolean;
 begin
   Raster := Default(TMarkdownPixelRaster);
 
@@ -74,7 +80,7 @@ begin
   if TMarkdownImageDecoding.IsAvailable then
     Exit;
 
-  TMarkdownImageDecoding.RegisterDecoder(DecodeImage);
+  TMarkdownImageDecoding.RegisterDecoder(TVclImageDecoder.TryDecode);
 end;
 
 initialization

@@ -11,6 +11,14 @@ runtime DLL, no package manager.
 [![Delphi 12+](https://img.shields.io/badge/Delphi-12%2B-e62329.svg)](https://www.embarcadero.com/products/delphi)
 [![CommonMark 0.31.2](https://img.shields.io/badge/CommonMark-0.31.2%20652%2F652-1f6feb.svg)](https://spec.commonmark.org/0.31.2/)
 
+<p align="center">
+  <img src="docs/images/viewer-light.png" alt="TMarkdownViewer rendering a document with a table and a native bar chart" width="49%">
+  <img src="docs/images/viewer-dark.png" alt="The same viewer in its dark theme, rendering a mermaid flowchart and a doughnut chart" width="49%">
+</p>
+
+<p align="center"><em>Both are the VCL viewer painting on a canvas. No browser, no image files: the
+charts and the diagram are drawn from the markdown itself.</em></p>
+
 ## Why Markdown4D
 
 - **Fully spec-conformant.** Passes all **652** official CommonMark 0.31.2

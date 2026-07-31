@@ -21,7 +21,13 @@ uses
   Markdown4D.Image.Rasterizer,
   Markdown4D.Image.Decoder;
 
-function DecodeImage(const Data: TBytes; out Raster: TMarkdownPixelRaster): Boolean;
+type
+  TFmxImageDecoder = class
+  public
+    class function TryDecode(const Data: TBytes; out Raster: TMarkdownPixelRaster): Boolean; static;
+  end;
+
+class function TFmxImageDecoder.TryDecode(const Data: TBytes; out Raster: TMarkdownPixelRaster): Boolean;
 begin
   Raster := Default(TMarkdownPixelRaster);
 
@@ -74,7 +80,7 @@ begin
   if TMarkdownImageDecoding.IsAvailable then
     Exit;
 
-  TMarkdownImageDecoding.RegisterDecoder(DecodeImage);
+  TMarkdownImageDecoding.RegisterDecoder(TFmxImageDecoder.TryDecode);
 end;
 
 initialization
