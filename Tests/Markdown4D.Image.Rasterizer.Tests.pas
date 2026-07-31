@@ -19,6 +19,9 @@ type
       TransparentRed = $00FF0000;
       HalfRed = $80FF0000;
       CoverageTolerance = 3;
+      JoinDiscRadius = 0.75;
+      MermaidCircleNodeRadius = 25.0;
+      MinSmoothCircleSegments = 30;
 
   public
     [Test]
@@ -44,6 +47,12 @@ type
 
     [Test]
     procedure Fill_FewerThanThreePoints_LeavesTheRasterEmpty;
+
+    [Test]
+    procedure SegmentsForRadius_LargerRadius_YieldsMoreSegments;
+
+    [Test]
+    procedure Disc_MermaidCircleNodeRadius_IsNotVisiblyFaceted;
   end;
 
 implementation
@@ -176,6 +185,29 @@ begin
 
   Assert.IsFalse(Raster.IsEmpty, 'The buffer is still allocated');
   Assert.AreEqual(0, Alpha(Raster, 4, 4), 'Two points enclose no area');
+end;
+
+// A fixed segment count tuned for a stroke join disc (a pixel or two across)
+// turns a mermaid circle node (tens of pixels) into a visible polygon: the
+// count has to grow with the radius, the way TSvgPathParser scales a curve's
+// segment count with its own size instead of using one fixed number for all.
+procedure TMarkdownPolygonRasterizerTests.SegmentsForRadius_LargerRadius_YieldsMoreSegments;
+begin
+  const SmallRadiusSegments = TMarkdownPolygonRasterizer.SegmentsForRadius(JoinDiscRadius);
+  const LargeRadiusSegments = TMarkdownPolygonRasterizer.SegmentsForRadius(MermaidCircleNodeRadius);
+
+  Assert.IsTrue(LargeRadiusSegments > SmallRadiusSegments,
+    Format('A %.0fpx circle must use more segments than a %.2fpx join disc, got %d and %d',
+    [MermaidCircleNodeRadius, JoinDiscRadius, LargeRadiusSegments, SmallRadiusSegments]));
+end;
+
+procedure TMarkdownPolygonRasterizerTests.Disc_MermaidCircleNodeRadius_IsNotVisiblyFaceted;
+begin
+  const Points = TMarkdownPolygonRasterizer.Disc(TLayoutPointF.Create(0, 0), MermaidCircleNodeRadius);
+
+  Assert.IsTrue(Length(Points) >= MinSmoothCircleSegments,
+    Format('A %.0fpx circle border must not be built from as few points as a small join disc (got %d)',
+    [MermaidCircleNodeRadius, Length(Points)]));
 end;
 
 end.

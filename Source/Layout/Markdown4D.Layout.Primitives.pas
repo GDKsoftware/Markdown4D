@@ -113,16 +113,21 @@ type
     FStartAngle: Single;
     FSweepAngle: Single;
     FFillColor: TLayoutColor;
+    FStrokeColor: TLayoutColor;
+    FStrokeWidth: Single;
     function GetCenter: TLayoutPointF;
     function GetOuterRadius: Single;
     function GetInnerRadius: Single;
     function GetStartAngle: Single;
     function GetSweepAngle: Single;
     function GetFillColor: TLayoutColor;
+    function GetStrokeColor: TLayoutColor;
+    function GetStrokeWidth: Single;
 
   public
     constructor Create(const Bounds: TLayoutRectF; const Node: IMarkdownNode; const Center: TLayoutPointF;
-      const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single; const FillColor: TLayoutColor);
+      const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single; const FillColor, StrokeColor: TLayoutColor;
+      const StrokeWidth: Single);
     function Shifted(const DeltaX, DeltaY: Single): IDisplayItem; override;
   end;
 
@@ -130,13 +135,17 @@ type
   private
     FPoints: TArray<TLayoutPointF>;
     FFillColor: TLayoutColor;
+    FStrokeColor: TLayoutColor;
+    FStrokeWidth: Single;
     function GetPointCount: Integer;
     function GetPoint(const Index: Integer): TLayoutPointF;
     function GetFillColor: TLayoutColor;
+    function GetStrokeColor: TLayoutColor;
+    function GetStrokeWidth: Single;
 
   public
     constructor Create(const Bounds: TLayoutRectF; const Node: IMarkdownNode; const Points: TArray<TLayoutPointF>;
-      const FillColor: TLayoutColor);
+      const FillColor, StrokeColor: TLayoutColor; const StrokeWidth: Single);
     function Shifted(const DeltaX, DeltaY: Single): IDisplayItem; override;
   end;
 
@@ -349,7 +358,8 @@ begin
 end;
 
 constructor TDisplayWedge.Create(const Bounds: TLayoutRectF; const Node: IMarkdownNode; const Center: TLayoutPointF;
-  const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single; const FillColor: TLayoutColor);
+  const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single; const FillColor, StrokeColor: TLayoutColor;
+  const StrokeWidth: Single);
 begin
   inherited Create(TDisplayItemKind.Wedge, Bounds, Node);
 
@@ -359,6 +369,8 @@ begin
   FStartAngle := StartAngle;
   FSweepAngle := SweepAngle;
   FFillColor := FillColor;
+  FStrokeColor := StrokeColor;
+  FStrokeWidth := StrokeWidth;
 end;
 
 function TDisplayWedge.GetCenter: TLayoutPointF;
@@ -391,21 +403,33 @@ begin
   Result := FFillColor;
 end;
 
+function TDisplayWedge.GetStrokeColor: TLayoutColor;
+begin
+  Result := FStrokeColor;
+end;
+
+function TDisplayWedge.GetStrokeWidth: Single;
+begin
+  Result := FStrokeWidth;
+end;
+
 function TDisplayWedge.Shifted(const DeltaX, DeltaY: Single): IDisplayItem;
 begin
   const NewCenter = TLayoutPointF.Create(FCenter.X + DeltaX, FCenter.Y + DeltaY);
 
   Result := TDisplayWedge.Create(ShiftedBounds(DeltaX, DeltaY), FNode, NewCenter, FOuterRadius, FInnerRadius,
-    FStartAngle, FSweepAngle, FFillColor);
+    FStartAngle, FSweepAngle, FFillColor, FStrokeColor, FStrokeWidth);
 end;
 
 constructor TDisplayPolygon.Create(const Bounds: TLayoutRectF; const Node: IMarkdownNode;
-  const Points: TArray<TLayoutPointF>; const FillColor: TLayoutColor);
+  const Points: TArray<TLayoutPointF>; const FillColor, StrokeColor: TLayoutColor; const StrokeWidth: Single);
 begin
   inherited Create(TDisplayItemKind.Polygon, Bounds, Node);
 
   FPoints := Points;
   FFillColor := FillColor;
+  FStrokeColor := StrokeColor;
+  FStrokeWidth := StrokeWidth;
 end;
 
 function TDisplayPolygon.GetPointCount: Integer;
@@ -423,6 +447,16 @@ begin
   Result := FFillColor;
 end;
 
+function TDisplayPolygon.GetStrokeColor: TLayoutColor;
+begin
+  Result := FStrokeColor;
+end;
+
+function TDisplayPolygon.GetStrokeWidth: Single;
+begin
+  Result := FStrokeWidth;
+end;
+
 function TDisplayPolygon.Shifted(const DeltaX, DeltaY: Single): IDisplayItem;
 begin
   var Moved: TArray<TLayoutPointF>;
@@ -433,7 +467,7 @@ begin
     Moved[Index] := TLayoutPointF.Create(FPoints[Index].X + DeltaX, FPoints[Index].Y + DeltaY);
   end;
 
-  Result := TDisplayPolygon.Create(ShiftedBounds(DeltaX, DeltaY), FNode, Moved, FFillColor);
+  Result := TDisplayPolygon.Create(ShiftedBounds(DeltaX, DeltaY), FNode, Moved, FFillColor, FStrokeColor, FStrokeWidth);
 end;
 
 constructor TMarkdownDisplayList.Create(const Items: TArray<IDisplayItem>; const Blocks: TArray<TLayoutBlockInfo>;

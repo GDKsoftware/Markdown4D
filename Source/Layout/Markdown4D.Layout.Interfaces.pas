@@ -64,7 +64,10 @@ type
     procedure DrawImage(const Bounds: TLayoutRectF; const Source: string; const SourceRect: TLayoutRectF);
     procedure FillWedge(const Center: TLayoutPointF; const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single;
       const Color: TLayoutColor);
+    procedure DrawWedge(const Center: TLayoutPointF; const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single;
+      const Color: TLayoutColor; const StrokeWidth: Single);
     procedure FillPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor);
+    procedure DrawPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor; const StrokeWidth: Single);
     procedure SaveState;
     procedure SetClip(const Bounds: TLayoutRectF);
     procedure RestoreState;

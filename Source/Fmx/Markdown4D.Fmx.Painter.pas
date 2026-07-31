@@ -50,6 +50,9 @@ type
     procedure DrawBrokenImagePlaceholder(const Bounds: TLayoutRectF);
     class function ToRectF(const Bounds: TLayoutRectF): TRectF;
     class function OpacityOf(const Color: TLayoutColor): Single;
+    class function BuildPolygonPath(const Points: TArray<TLayoutPointF>): TPathData;
+    class function BuildWedgePath(const Center: TLayoutPointF;
+      const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single): TPathData;
 
   public
     constructor Create(const Canvas: TCanvas; const PixelsPerInch: Integer = ReferencePixelsPerInch);
@@ -66,7 +69,10 @@ type
     procedure DrawImage(const Bounds: TLayoutRectF; const Source: string; const SourceRect: TLayoutRectF);
     procedure FillWedge(const Center: TLayoutPointF; const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single;
       const Color: TLayoutColor);
+    procedure DrawWedge(const Center: TLayoutPointF; const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single;
+      const Color: TLayoutColor; const StrokeWidth: Single);
     procedure FillPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor);
+    procedure DrawPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor; const StrokeWidth: Single);
     procedure SaveState;
     procedure SetClip(const Bounds: TLayoutRectF);
     procedure RestoreState;
@@ -248,23 +254,8 @@ begin
   if (TMarkdownViewerShared.AlphaOf(Color) = 0) or (OuterRadius <= 0) or (SweepAngle = 0) then
     Exit;
 
-  const CenterPoint = TPointF.Create(Center.X, Center.Y);
-  const HasHole = (InnerRadius > 0);
-
-  const Path = TPathData.Create;
+  const Path = BuildWedgePath(Center, OuterRadius, InnerRadius, StartAngle, SweepAngle);
   try
-    if HasHole then
-    begin
-      Path.AddArc(CenterPoint, TPointF.Create(OuterRadius, OuterRadius), StartAngle, SweepAngle);
-      Path.AddArc(CenterPoint, TPointF.Create(InnerRadius, InnerRadius), StartAngle + SweepAngle, -SweepAngle);
-    end
-    else
-    begin
-      Path.MoveTo(CenterPoint);
-      Path.AddArc(CenterPoint, TPointF.Create(OuterRadius, OuterRadius), StartAngle, SweepAngle);
-    end;
-    Path.ClosePath;
-
     FCanvas.Fill.Kind := TBrushKind.Solid;
     FCanvas.Fill.Color := TAlphaColor(Color) or OpaqueMask;
     FCanvas.FillPath(Path, OpacityOf(Color));
@@ -273,28 +264,99 @@ begin
   end;
 end;
 
+procedure TMarkdownFmxPainter.DrawWedge(const Center: TLayoutPointF;
+  const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single; const Color: TLayoutColor;
+  const StrokeWidth: Single);
+begin
+  if (TMarkdownViewerShared.AlphaOf(Color) = 0) or (StrokeWidth <= 0) or (OuterRadius <= 0) or (SweepAngle = 0) then
+    Exit;
+
+  const Path = BuildWedgePath(Center, OuterRadius, InnerRadius, StartAngle, SweepAngle);
+  try
+    FCanvas.Stroke.Kind := TBrushKind.Solid;
+    FCanvas.Stroke.Color := TAlphaColor(Color) or OpaqueMask;
+    FCanvas.Stroke.Thickness := StrokeWidth;
+    FCanvas.DrawPath(Path, OpacityOf(Color));
+  finally
+    Path.Free;
+  end;
+end;
+
+// The outline a wedge fills or strokes: an arc plus the two radii that close a
+// partial slice, or a hole's own arc closing an annulus. A full turn with no
+// hole (mermaid's circle node) skips the centre point a partial slice needs -
+// stroking that unclosed spoke would draw a visible line from the arc through
+// the centre, since the shape would otherwise start and end there.
+class function TMarkdownFmxPainter.BuildWedgePath(const Center: TLayoutPointF;
+  const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single): TPathData;
+begin
+  const CenterPoint = TPointF.Create(Center.X, Center.Y);
+  const HasHole = InnerRadius > 0;
+  const IsFullTurn = Abs(SweepAngle) >= 360;
+
+  Result := TPathData.Create;
+
+  if HasHole then
+  begin
+    Result.AddArc(CenterPoint, TPointF.Create(OuterRadius, OuterRadius), StartAngle, SweepAngle);
+    Result.AddArc(CenterPoint, TPointF.Create(InnerRadius, InnerRadius), StartAngle + SweepAngle, -SweepAngle);
+  end
+  else if IsFullTurn then
+  begin
+    Result.AddArc(CenterPoint, TPointF.Create(OuterRadius, OuterRadius), StartAngle, SweepAngle);
+  end
+  else
+  begin
+    Result.MoveTo(CenterPoint);
+    Result.AddArc(CenterPoint, TPointF.Create(OuterRadius, OuterRadius), StartAngle, SweepAngle);
+  end;
+
+  Result.ClosePath;
+end;
+
 procedure TMarkdownFmxPainter.FillPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor);
 begin
   if (TMarkdownViewerShared.AlphaOf(Color) = 0) or (Length(Points) < 3) then
     Exit;
 
-  const Path = TPathData.Create;
+  const Path = BuildPolygonPath(Points);
   try
-    Path.MoveTo(TPointF.Create(Points[0].X, Points[0].Y));
-
-    for var Index := 1 to High(Points) do
-    begin
-      Path.LineTo(TPointF.Create(Points[Index].X, Points[Index].Y));
-    end;
-
-    Path.ClosePath;
-
     FCanvas.Fill.Kind := TBrushKind.Solid;
     FCanvas.Fill.Color := TAlphaColor(Color) or OpaqueMask;
     FCanvas.FillPath(Path, OpacityOf(Color));
   finally
     Path.Free;
   end;
+end;
+
+procedure TMarkdownFmxPainter.DrawPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor;
+  const StrokeWidth: Single);
+begin
+  if (TMarkdownViewerShared.AlphaOf(Color) = 0) or (StrokeWidth <= 0) or (Length(Points) < 3) then
+    Exit;
+
+  const Path = BuildPolygonPath(Points);
+  try
+    FCanvas.Stroke.Kind := TBrushKind.Solid;
+    FCanvas.Stroke.Color := TAlphaColor(Color) or OpaqueMask;
+    FCanvas.Stroke.Thickness := StrokeWidth;
+    FCanvas.DrawPath(Path, OpacityOf(Color));
+  finally
+    Path.Free;
+  end;
+end;
+
+class function TMarkdownFmxPainter.BuildPolygonPath(const Points: TArray<TLayoutPointF>): TPathData;
+begin
+  Result := TPathData.Create;
+  Result.MoveTo(TPointF.Create(Points[0].X, Points[0].Y));
+
+  for var Index := 1 to High(Points) do
+  begin
+    Result.LineTo(TPointF.Create(Points[Index].X, Points[Index].Y));
+  end;
+
+  Result.ClosePath;
 end;
 
 procedure TMarkdownFmxPainter.SaveState;

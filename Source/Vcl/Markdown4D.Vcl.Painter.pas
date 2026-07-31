@@ -26,7 +26,8 @@ type
       PlaceholderBorderColor = TLayoutColor($FF9E9E9E);
       PlaceholderStrokeWidth = 1.0;
       BrokenImageCrossColor = TLayoutColor($FFC0392B);
-      // Room around a wedge for the pixels its anti-aliased edge reaches into.
+      // Room around a wedge or a stroke for the pixels its anti-aliased edge
+      // reaches into.
       WedgeBufferMargin = 2;
     var
       FCanvas: TCanvas;
@@ -55,6 +56,9 @@ type
     procedure FillDevicePolygonOpaque(const Points: TArray<TPoint>; const Color: TLayoutColor);
     procedure FillDevicePolygonBlended(const Points: TArray<TPoint>; const Bounds: TLayoutRectF;
       const Color: TLayoutColor);
+    procedure BlendContours(const Contours: TArray<TArray<TLayoutPointF>>; const Color: TLayoutColor);
+    class function WedgeOutlineLoops(const Center: TLayoutPointF;
+      const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single): TArray<TArray<TLayoutPointF>>;
     class function PremultipliedPixel(const Color: TLayoutColor): Cardinal;
     class function ToVclColor(const Color: TLayoutColor): TColor;
     class function ToDeviceRect(const Bounds: TLayoutRectF): TRect;
@@ -75,7 +79,10 @@ type
     procedure DrawImage(const Bounds: TLayoutRectF; const Source: string; const SourceRect: TLayoutRectF);
     procedure FillWedge(const Center: TLayoutPointF; const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single;
       const Color: TLayoutColor);
+    procedure DrawWedge(const Center: TLayoutPointF; const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single;
+      const Color: TLayoutColor; const StrokeWidth: Single);
     procedure FillPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor);
+    procedure DrawPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor; const StrokeWidth: Single);
     procedure SaveState;
     procedure SetClip(const Bounds: TLayoutRectF);
     procedure RestoreState;
@@ -494,6 +501,114 @@ begin
   finally
     RestoreDC(FCanvas.Handle, Saved);
   end;
+end;
+
+// Strokes a polygon by turning it into the same kind of stroke band the SVG
+// engine builds for a path (TMarkdownPolygonRasterizer.StrokeContours: a quad
+// per edge plus a round join per vertex), then rasterizes and blends it exactly
+// as FillWedge does its slice, so a mermaid diamond or stadium border is as
+// anti-aliased as the pie chart beside it instead of a plain GDI staircase.
+procedure TMarkdownVclPainter.DrawPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor;
+  const StrokeWidth: Single);
+begin
+  const IsInvisible = (TMarkdownViewerShared.AlphaOf(Color) = 0) or (StrokeWidth <= 0) or (Length(Points) < 3);
+  if IsInvisible then
+    Exit;
+
+  const Contours = TMarkdownPolygonRasterizer.StrokeContours(Points, True, StrokeWidth / 2, True, False);
+  BlendContours(Contours, Color);
+end;
+
+// A wedge's outline is one closed loop (arc plus the straight radii that close
+// it) for any partial slice, hole or not: WedgePath already produces exactly
+// that shape today for filling. The one case it cannot be reused for is a full
+// turn, where its forward-then-backward arcs coincide and would stroke as two
+// exactly overlapping, oppositely wound bands that cancel each other out under
+// the non-zero rule; a full circle (mermaid's circle node) or a full annulus is
+// instead its own outer and, if there is a hole, inner circle.
+procedure TMarkdownVclPainter.DrawWedge(const Center: TLayoutPointF;
+  const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single; const Color: TLayoutColor;
+  const StrokeWidth: Single);
+begin
+  const IsInvisible = (TMarkdownViewerShared.AlphaOf(Color) = 0) or (StrokeWidth <= 0) or (OuterRadius <= 0) or
+    (SweepAngle = 0);
+  if IsInvisible then
+    Exit;
+
+  const HalfWidth = StrokeWidth / 2;
+  const Loops = WedgeOutlineLoops(Center, OuterRadius, InnerRadius, StartAngle, SweepAngle);
+
+  var Contours: TArray<TArray<TLayoutPointF>> := nil;
+  for var Loop in Loops do
+  begin
+    Contours := Contours + TMarkdownPolygonRasterizer.StrokeContours(Loop, True, HalfWidth, True, False);
+  end;
+
+  BlendContours(Contours, Color);
+end;
+
+class function TMarkdownVclPainter.WedgeOutlineLoops(const Center: TLayoutPointF;
+  const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single): TArray<TArray<TLayoutPointF>>;
+begin
+  const IsFullTurn = Abs(SweepAngle) >= 360;
+  if not IsFullTurn then
+  begin
+    Result := [WedgePath(Center, OuterRadius, InnerRadius, StartAngle, SweepAngle)];
+    Exit;
+  end;
+
+  Result := [TMarkdownPolygonRasterizer.Disc(Center, OuterRadius)];
+  if InnerRadius > 0 then
+    Result := Result + [TMarkdownPolygonRasterizer.Disc(Center, InnerRadius)];
+end;
+
+// Shared tail for DrawPolygon and DrawWedge: sizes a buffer to the contours'
+// own extent (the stroke geometry already reaches half a stroke width beyond
+// the source points), fills every contour into it as one figure, and blends
+// it onto the canvas through the same DIB path FillWedge uses.
+procedure TMarkdownVclPainter.BlendContours(const Contours: TArray<TArray<TLayoutPointF>>; const Color: TLayoutColor);
+begin
+  if Length(Contours) = 0 then
+    Exit;
+
+  var MinX := Contours[0][0].X;
+  var MinY := Contours[0][0].Y;
+  var MaxX := Contours[0][0].X;
+  var MaxY := Contours[0][0].Y;
+  for var Contour in Contours do
+  begin
+    for var Point in Contour do
+    begin
+      MinX := Min(MinX, Point.X);
+      MinY := Min(MinY, Point.Y);
+      MaxX := Max(MaxX, Point.X);
+      MaxY := Max(MaxY, Point.Y);
+    end;
+  end;
+
+  const Left = Floor(MinX) - WedgeBufferMargin;
+  const Top = Floor(MinY) - WedgeBufferMargin;
+  const BufferWidth = Ceil(MaxX) - Left + WedgeBufferMargin;
+  const BufferHeight = Ceil(MaxY) - Top + WedgeBufferMargin;
+  if (BufferWidth <= 0) or (BufferHeight <= 0) then
+    Exit;
+
+  var Translated: TArray<TArray<TLayoutPointF>>;
+  SetLength(Translated, Length(Contours));
+  for var ContourIndex := 0 to High(Contours) do
+  begin
+    SetLength(Translated[ContourIndex], Length(Contours[ContourIndex]));
+    for var PointIndex := 0 to High(Contours[ContourIndex]) do
+    begin
+      const Point = Contours[ContourIndex][PointIndex];
+      Translated[ContourIndex][PointIndex] := TLayoutPointF.Create(Point.X - Left, Point.Y - Top);
+    end;
+  end;
+
+  var Raster := TMarkdownPixelRaster.Create(BufferWidth, BufferHeight);
+  TMarkdownPolygonRasterizer.FillContoursInto(Raster, Translated, Color);
+
+  BlendRaster(Raster, Left, Top);
 end;
 
 procedure TMarkdownVclPainter.SaveState;

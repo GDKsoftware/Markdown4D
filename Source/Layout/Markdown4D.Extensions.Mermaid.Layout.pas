@@ -31,6 +31,7 @@ uses
   System.Generics.Collections,
   System.Generics.Defaults,
   Markdown4D.Defines,
+  Markdown4D.Image.Rasterizer,
   Markdown4D.Layout.ExtensionCanvas;
 
 type
@@ -69,6 +70,10 @@ type
     procedure EmitRectangle(const Bounds: TLayoutRectF; const FillColor, StrokeColor: TLayoutColor;
       const StrokeWidth: Single);
     procedure EmitPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor);
+    procedure EmitFilledAndStrokedPolygon(const Points: TArray<TLayoutPointF>; const FillColor, StrokeColor: TLayoutColor;
+      const StrokeWidth: Single);
+    procedure EmitFilledAndStrokedWedge(const Center: TLayoutPointF; const Radius: Single;
+      const FillColor, StrokeColor: TLayoutColor; const StrokeWidth: Single);
     procedure EmitLine(const StartPoint, EndPoint: TLayoutPointF; const Color: TLayoutColor; const StrokeWidth: Single);
     procedure EmitDashedLine(const StartPoint, EndPoint: TLayoutPointF; const Color: TLayoutColor;
       const StrokeWidth: Single);
@@ -144,12 +149,18 @@ type
     procedure LayoutGrid;
     procedure EmitNodes;
     procedure EmitNodeShape(const Index: Integer);
+    procedure EmitRectangleNode(const Box: TMermaidNodeBox);
+    procedure EmitRoundedNode(const Box: TMermaidNodeBox);
+    procedure EmitStadiumNode(const Box: TMermaidNodeBox);
+    procedure EmitCircleNode(const Box: TMermaidNodeBox);
+    procedure EmitDiamondNode(const Box: TMermaidNodeBox);
+    class function BuildRoundedRectanglePoints(const Bounds: TLayoutRectF;
+      const CornerRadius: Single): TArray<TLayoutPointF>; static;
     procedure EmitNodeLabel(const Index: Integer);
     procedure EmitEdges;
     procedure EmitArrowHead(const Tip, Direction: TLayoutPointF);
     procedure EmitEdgeLabel(const Caption: string; const Center: TLayoutPointF);
     function ParallelEdgeShift(const EdgeIndex: Integer): TLayoutPointF;
-    procedure EmitWedge(const Center: TLayoutPointF; const Radius: Single; const Color: TLayoutColor);
     class function NodeCenter(const Box: TMermaidNodeBox): TLayoutPointF; static;
     class function BorderPoint(const Box: TMermaidNodeBox; const Toward: TLayoutPointF): TLayoutPointF; static;
     class function MainSize(const Box: TMermaidNodeBox; const Horizontal: Boolean): Single; static;
@@ -386,6 +397,18 @@ end;
 procedure TMermaidBuilderBase.EmitPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor);
 begin
   FCanvas.FillPolygon(Points, Color);
+end;
+
+procedure TMermaidBuilderBase.EmitFilledAndStrokedPolygon(const Points: TArray<TLayoutPointF>;
+  const FillColor, StrokeColor: TLayoutColor; const StrokeWidth: Single);
+begin
+  FCanvas.FillAndStrokePolygon(Points, FillColor, StrokeColor, StrokeWidth);
+end;
+
+procedure TMermaidBuilderBase.EmitFilledAndStrokedWedge(const Center: TLayoutPointF; const Radius: Single;
+  const FillColor, StrokeColor: TLayoutColor; const StrokeWidth: Single);
+begin
+  FCanvas.FillAndStrokeWedge(Center, Radius, 0, 0, 360, FillColor, StrokeColor, StrokeWidth);
 end;
 
 procedure TMermaidBuilderBase.EmitLine(const StartPoint, EndPoint: TLayoutPointF; const Color: TLayoutColor;
@@ -987,22 +1010,91 @@ end;
 procedure TMermaidFlowchartBuilder.EmitNodeShape(const Index: Integer);
 begin
   const Box = FBoxes[Index];
-  const Bounds = TLayoutRectF.Create(Box.X, Box.Y, Box.X + Box.Width, Box.Y + Box.Height);
-  const Center = NodeCenter(Box);
 
   case FModel.Nodes[Index].Shape of
-    TMermaidNodeShape.Diamond:
-      begin
-        var Points: TArray<TLayoutPointF>;
-        Points := [TLayoutPointF.Create(Center.X, Box.Y), TLayoutPointF.Create(Box.X + Box.Width, Center.Y),
-          TLayoutPointF.Create(Center.X, Box.Y + Box.Height), TLayoutPointF.Create(Box.X, Center.Y)];
-        EmitPolygon(Points, NodeFillColor);
-      end;
+    TMermaidNodeShape.Rectangle:
+      EmitRectangleNode(Box);
+    TMermaidNodeShape.Rounded:
+      EmitRoundedNode(Box);
+    TMermaidNodeShape.Stadium:
+      EmitStadiumNode(Box);
     TMermaidNodeShape.Circle:
-      EmitWedge(Center, Min(Box.Width, Box.Height) / 2, NodeFillColor);
+      EmitCircleNode(Box);
+    TMermaidNodeShape.Diamond:
+      EmitDiamondNode(Box);
   else
-    EmitRectangle(Bounds, NodeFillColor, NodeBorderColor, NodeBorderWidth);
+    raise EMarkdownError.CreateFmt('Unhandled node shape: %d', [Ord(FModel.Nodes[Index].Shape)]);
   end;
+end;
+
+procedure TMermaidFlowchartBuilder.EmitRectangleNode(const Box: TMermaidNodeBox);
+begin
+  const Bounds = TLayoutRectF.Create(Box.X, Box.Y, Box.X + Box.Width, Box.Y + Box.Height);
+  EmitRectangle(Bounds, NodeFillColor, NodeBorderColor, NodeBorderWidth);
+end;
+
+procedure TMermaidFlowchartBuilder.EmitRoundedNode(const Box: TMermaidNodeBox);
+begin
+  const Bounds = TLayoutRectF.Create(Box.X, Box.Y, Box.X + Box.Width, Box.Y + Box.Height);
+  const Points = BuildRoundedRectanglePoints(Bounds, RoundedCornerPadding);
+  EmitFilledAndStrokedPolygon(Points, NodeFillColor, NodeBorderColor, NodeBorderWidth);
+end;
+
+procedure TMermaidFlowchartBuilder.EmitStadiumNode(const Box: TMermaidNodeBox);
+begin
+  const Bounds = TLayoutRectF.Create(Box.X, Box.Y, Box.X + Box.Width, Box.Y + Box.Height);
+  const Points = BuildRoundedRectanglePoints(Bounds, Box.Height / 2);
+  EmitFilledAndStrokedPolygon(Points, NodeFillColor, NodeBorderColor, NodeBorderWidth);
+end;
+
+procedure TMermaidFlowchartBuilder.EmitCircleNode(const Box: TMermaidNodeBox);
+begin
+  EmitFilledAndStrokedWedge(NodeCenter(Box), Min(Box.Width, Box.Height) / 2, NodeFillColor, NodeBorderColor,
+    NodeBorderWidth);
+end;
+
+procedure TMermaidFlowchartBuilder.EmitDiamondNode(const Box: TMermaidNodeBox);
+begin
+  const Center = NodeCenter(Box);
+  var Points: TArray<TLayoutPointF>;
+  Points := [TLayoutPointF.Create(Center.X, Box.Y), TLayoutPointF.Create(Box.X + Box.Width, Center.Y),
+    TLayoutPointF.Create(Center.X, Box.Y + Box.Height), TLayoutPointF.Create(Box.X, Center.Y)];
+  EmitFilledAndStrokedPolygon(Points, NodeFillColor, NodeBorderColor, NodeBorderWidth);
+end;
+
+class function TMermaidFlowchartBuilder.BuildRoundedRectanglePoints(const Bounds: TLayoutRectF;
+  const CornerRadius: Single): TArray<TLayoutPointF>;
+begin
+  const MaxRadius = Min(Bounds.Width, Bounds.Height) / 2;
+  const Radius = Min(CornerRadius, MaxRadius);
+
+  var CornerCenters: TArray<TLayoutPointF>;
+  CornerCenters := [TLayoutPointF.Create(Bounds.Right - Radius, Bounds.Top + Radius),
+    TLayoutPointF.Create(Bounds.Right - Radius, Bounds.Bottom - Radius),
+    TLayoutPointF.Create(Bounds.Left + Radius, Bounds.Bottom - Radius),
+    TLayoutPointF.Create(Bounds.Left + Radius, Bounds.Top + Radius)];
+
+  // A quarter turn per corner, so each corner gets the same chord-length
+  // smoothness a full circle of this radius would (TMarkdownPolygonRasterizer
+  // scales its own segment count as an arc grows, and a rounded rectangle's
+  // corner faces the same problem at a wide box or a large corner radius).
+  const CornerSegments = Max(1, TMarkdownPolygonRasterizer.SegmentsForRadius(Radius) div 4);
+
+  var Points: TArray<TLayoutPointF> := nil;
+  for var CornerIndex := 0 to High(CornerCenters) do
+  begin
+    const CornerCenter = CornerCenters[CornerIndex];
+    const StartAngle = CornerIndex * 90.0 - 90.0;
+
+    for var Step := 0 to CornerSegments do
+    begin
+      const Angle = DegToRad(StartAngle + Step * 90.0 / CornerSegments);
+      Points := Points + [TLayoutPointF.Create(CornerCenter.X + Radius * Cos(Angle),
+        CornerCenter.Y + Radius * Sin(Angle))];
+    end;
+  end;
+
+  Result := Points;
 end;
 
 procedure TMermaidFlowchartBuilder.EmitNodeLabel(const Index: Integer);
@@ -1145,12 +1237,6 @@ begin
 
   EmitRectangle(Bounds, FTheme.BackgroundColor, 0, 0);
   EmitCenteredText(Caption, Center.X, Center.Y - Size.Height / 2, Font, LabelColor);
-end;
-
-procedure TMermaidFlowchartBuilder.EmitWedge(const Center: TLayoutPointF; const Radius: Single;
-  const Color: TLayoutColor);
-begin
-  FCanvas.FillWedge(Center, Radius, 0, 0, 360, Color);
 end;
 
 class function TMermaidFlowchartBuilder.NodeCenter(const Box: TMermaidNodeBox): TLayoutPointF;

@@ -156,18 +156,18 @@ end;
 
 class procedure TMarkdownDisplayListRenderer.RenderWedge(const Wedge: IDisplayWedge; const Painter: IPainter);
 begin
-  if AlphaOf(Wedge.FillColor) = 0 then
-    Exit;
+  if AlphaOf(Wedge.FillColor) > 0 then
+    Painter.FillWedge(Wedge.Center, Wedge.OuterRadius, Wedge.InnerRadius, Wedge.StartAngle, Wedge.SweepAngle,
+      Wedge.FillColor);
 
-  Painter.FillWedge(Wedge.Center, Wedge.OuterRadius, Wedge.InnerRadius, Wedge.StartAngle, Wedge.SweepAngle,
-    Wedge.FillColor);
+  const HasStroke = (Wedge.StrokeWidth > 0) and (AlphaOf(Wedge.StrokeColor) > 0);
+  if HasStroke then
+    Painter.DrawWedge(Wedge.Center, Wedge.OuterRadius, Wedge.InnerRadius, Wedge.StartAngle, Wedge.SweepAngle,
+      Wedge.StrokeColor, Wedge.StrokeWidth);
 end;
 
 class procedure TMarkdownDisplayListRenderer.RenderPolygon(const Polygon: IDisplayPolygon; const Painter: IPainter);
 begin
-  if AlphaOf(Polygon.FillColor) = 0 then
-    Exit;
-
   const PointCount = Polygon.PointCount;
   var Points: TArray<TLayoutPointF>;
   SetLength(Points, PointCount);
@@ -176,7 +176,12 @@ begin
     Points[Index] := Polygon.Points[Index];
   end;
 
-  Painter.FillPolygon(Points, Polygon.FillColor);
+  if AlphaOf(Polygon.FillColor) > 0 then
+    Painter.FillPolygon(Points, Polygon.FillColor);
+
+  const HasStroke = (Polygon.StrokeWidth > 0) and (AlphaOf(Polygon.StrokeColor) > 0);
+  if HasStroke then
+    Painter.DrawPolygon(Points, Polygon.StrokeColor, Polygon.StrokeWidth);
 end;
 
 end.

@@ -79,12 +79,16 @@ type
     function GetStartAngle: Single;
     function GetSweepAngle: Single;
     function GetFillColor: TLayoutColor;
+    function GetStrokeColor: TLayoutColor;
+    function GetStrokeWidth: Single;
     property Center: TLayoutPointF read GetCenter;
     property OuterRadius: Single read GetOuterRadius;
     property InnerRadius: Single read GetInnerRadius;
     property StartAngle: Single read GetStartAngle;
     property SweepAngle: Single read GetSweepAngle;
     property FillColor: TLayoutColor read GetFillColor;
+    property StrokeColor: TLayoutColor read GetStrokeColor;
+    property StrokeWidth: Single read GetStrokeWidth;
   end;
 
   IDisplayPolygon = interface(IDisplayItem)
@@ -92,9 +96,13 @@ type
     function GetPointCount: Integer;
     function GetPoint(const Index: Integer): TLayoutPointF;
     function GetFillColor: TLayoutColor;
+    function GetStrokeColor: TLayoutColor;
+    function GetStrokeWidth: Single;
     property PointCount: Integer read GetPointCount;
     property Points[const Index: Integer]: TLayoutPointF read GetPoint;
     property FillColor: TLayoutColor read GetFillColor;
+    property StrokeColor: TLayoutColor read GetStrokeColor;
+    property StrokeWidth: Single read GetStrokeWidth;
   end;
 
   TLayoutBlockInfo = record

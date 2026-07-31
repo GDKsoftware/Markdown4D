@@ -161,10 +161,6 @@ type
     const
       DefaultViewportSize = 300.0;
       MinimumStrokeWidth = 0.1;
-      JoinSegments = 12;
-      // Past this ratio of miter length to stroke width a sharp corner grows a
-      // spike, which is where the specification says to cut it off square.
-      MiterLimit = 4.0;
       // A reference pointing back at what already contains it would go on for
       // ever, so the nesting is bounded.
       MaxFragmentDepth = 8;
@@ -202,12 +198,6 @@ type
     procedure FillSubPaths(const SubPaths: TArray<TSvgSubPath>; const Style: TSvgStyle; const Matrix: TSvgMatrix);
     procedure StrokeSubPaths(const SubPaths: TArray<TSvgSubPath>; const Style: TSvgStyle; const Matrix: TSvgMatrix);
     class function Transformed(const Points: TArray<TLayoutPointF>; const Matrix: TSvgMatrix): TArray<TLayoutPointF>; static;
-    class function StrokeContours(const Points: TArray<TLayoutPointF>; const Closed: Boolean;
-      const HalfWidth: Single; const Style: TSvgStyle): TArray<TArray<TLayoutPointF>>; static;
-    class function JoinContours(const Previous, Corner, Next: TLayoutPointF;
-      const HalfWidth: Single): TArray<TArray<TLayoutPointF>>; static;
-    class function Disc(const Centre: TLayoutPointF; const Radius: Single): TArray<TLayoutPointF>; static;
-    class function Anticlockwise(const Points: TArray<TLayoutPointF>): TArray<TLayoutPointF>; static;
     class function RectanglePath(const Left, Top, Width, Height, RadiusX, RadiusY: Single): TArray<TSvgSubPath>; static;
     class function EllipsePath(const CentreX, CentreY, RadiusX, RadiusY: Single): TArray<TSvgSubPath>; static;
     class function PointsPath(const Data: string; const Closed: Boolean): TArray<TSvgSubPath>; static;
@@ -738,172 +728,6 @@ begin
   end;
 end;
 
-// Every piece of a stroke has to wind the same way. Two overlapping pieces that
-// wind against each other cancel out under the non-zero rule, which leaves a
-// hole exactly where the band should be at its thickest.
-class function TNativeSvgRenderer.Anticlockwise(const Points: TArray<TLayoutPointF>): TArray<TLayoutPointF>;
-begin
-  Result := Points;
-  if Length(Points) < 3 then
-    Exit;
-
-  var Area := 0.0;
-  for var Index := 0 to High(Points) do
-  begin
-    var NextIndex := Index + 1;
-    if NextIndex > High(Points) then
-      NextIndex := 0;
-
-    Area := Area + Points[Index].X * Points[NextIndex].Y - Points[NextIndex].X * Points[Index].Y;
-  end;
-
-  if Area >= 0 then
-    Exit;
-
-  // Into a buffer of its own: assigning a dynamic array shares it, so writing
-  // the reversal in place would overwrite the points still to be read.
-  var Reversed: TArray<TLayoutPointF>;
-  SetLength(Reversed, Length(Points));
-  for var Index := 0 to High(Points) do
-  begin
-    Reversed[Index] := Points[High(Points) - Index];
-  end;
-
-  Result := Reversed;
-end;
-
-class function TNativeSvgRenderer.Disc(const Centre: TLayoutPointF; const Radius: Single): TArray<TLayoutPointF>;
-begin
-  SetLength(Result, JoinSegments);
-
-  for var Step := 0 to JoinSegments - 1 do
-  begin
-    const Angle = 2 * Pi * Step / JoinSegments;
-    Result[Step] := TLayoutPointF.Create(Centre.X + Radius * Cos(Angle), Centre.Y + Radius * Sin(Angle));
-  end;
-end;
-
-// A stroke becomes a quad per segment plus a join at every corner, filled as
-// one figure with the non-zero rule so the pieces read as a single band.
-class function TNativeSvgRenderer.StrokeContours(const Points: TArray<TLayoutPointF>; const Closed: Boolean;
-  const HalfWidth: Single; const Style: TSvgStyle): TArray<TArray<TLayoutPointF>>;
-begin
-  Result := nil;
-  if System.Length(Points) < 2 then
-    Exit;
-
-  var LastSegment := High(Points) - 1;
-  if Closed then
-    LastSegment := High(Points);
-
-  for var Index := 0 to LastSegment do
-  begin
-    const Start = Points[Index];
-    var StopIndex := Index + 1;
-    if StopIndex > High(Points) then
-      StopIndex := 0;
-    const Stop = Points[StopIndex];
-
-    const DeltaX = Stop.X - Start.X;
-    const DeltaY = Stop.Y - Start.Y;
-    const Span = Sqrt(DeltaX * DeltaX + DeltaY * DeltaY);
-    if Span = 0 then
-      Continue;
-
-    const NormalX = -DeltaY / Span * HalfWidth;
-    const NormalY = DeltaX / Span * HalfWidth;
-
-    Result := Result + [Anticlockwise([
-      TLayoutPointF.Create(Start.X + NormalX, Start.Y + NormalY),
-      TLayoutPointF.Create(Stop.X + NormalX, Stop.Y + NormalY),
-      TLayoutPointF.Create(Stop.X - NormalX, Stop.Y - NormalY),
-      TLayoutPointF.Create(Start.X - NormalX, Start.Y - NormalY)])];
-  end;
-
-  var FirstCorner := 1;
-  var LastCorner := High(Points) - 1;
-  if Closed then
-  begin
-    FirstCorner := 0;
-    LastCorner := High(Points);
-  end;
-
-  for var Corner := FirstCorner to LastCorner do
-  begin
-    var PreviousIndex := Corner - 1;
-    if PreviousIndex < 0 then
-      PreviousIndex := High(Points);
-    var NextIndex := Corner + 1;
-    if NextIndex > High(Points) then
-      NextIndex := 0;
-
-    if Style.RoundJoins then
-      Result := Result + [Anticlockwise(Disc(Points[Corner], HalfWidth))]
-    else
-      Result := Result + JoinContours(Points[PreviousIndex], Points[Corner], Points[NextIndex], HalfWidth);
-  end;
-
-  if Closed or (not Style.RoundCaps) then
-    Exit;
-
-  Result := Result + [Anticlockwise(Disc(Points[0], HalfWidth))];
-  Result := Result + [Anticlockwise(Disc(Points[High(Points)], HalfWidth))];
-end;
-
-// Closes the wedge two segments leave between them. The bevel triangle covers
-// the corner itself; the miter tip extends it to the point the two edges would
-// meet at, unless that point runs away from the corner.
-class function TNativeSvgRenderer.JoinContours(const Previous, Corner, Next: TLayoutPointF;
-  const HalfWidth: Single): TArray<TArray<TLayoutPointF>>;
-begin
-  Result := nil;
-
-  const InX = Corner.X - Previous.X;
-  const InY = Corner.Y - Previous.Y;
-  const OutX = Next.X - Corner.X;
-  const OutY = Next.Y - Corner.Y;
-
-  const InLength = Sqrt(InX * InX + InY * InY);
-  const OutLength = Sqrt(OutX * OutX + OutY * OutY);
-  if (InLength = 0) or (OutLength = 0) then
-    Exit;
-
-  const InNormalX = -InY / InLength * HalfWidth;
-  const InNormalY = InX / InLength * HalfWidth;
-  const OutNormalX = -OutY / OutLength * HalfWidth;
-  const OutNormalY = OutX / OutLength * HalfWidth;
-
-  for var Side in [1, -1] do
-  begin
-    const FromX = Corner.X + Side * InNormalX;
-    const FromY = Corner.Y + Side * InNormalY;
-    const ToX = Corner.X + Side * OutNormalX;
-    const ToY = Corner.Y + Side * OutNormalY;
-
-    Result := Result + [Anticlockwise([Corner, TLayoutPointF.Create(FromX, FromY),
-      TLayoutPointF.Create(ToX, ToY)])];
-
-    // Where the two offset edges cross is the tip of the miter.
-    const Denominator = InX / InLength * (OutY / OutLength) - InY / InLength * (OutX / OutLength);
-    if Abs(Denominator) < 0.0001 then
-      Continue;
-
-    const GapX = ToX - FromX;
-    const GapY = ToY - FromY;
-    const Travel = (GapX * (OutY / OutLength) - GapY * (OutX / OutLength)) / Denominator;
-
-    const TipX = FromX + InX / InLength * Travel;
-    const TipY = FromY + InY / InLength * Travel;
-
-    const Reach = Sqrt(Sqr(TipX - Corner.X) + Sqr(TipY - Corner.Y));
-    if Reach > MiterLimit * HalfWidth then
-      Continue;
-
-    Result := Result + [Anticlockwise([TLayoutPointF.Create(FromX, FromY),
-      TLayoutPointF.Create(TipX, TipY), TLayoutPointF.Create(ToX, ToY)])];
-  end;
-end;
-
 procedure TNativeSvgRenderer.FillSubPaths(const SubPaths: TArray<TSvgSubPath>; const Style: TSvgStyle;
   const Matrix: TSvgMatrix);
 begin
@@ -933,7 +757,8 @@ begin
   for var SubPath in SubPaths do
   begin
     const Device = Transformed(SubPath.Points, Matrix);
-    Contours := Contours + StrokeContours(Device, SubPath.IsClosed, HalfWidth, Style);
+    Contours := Contours + TMarkdownPolygonRasterizer.StrokeContours(Device, SubPath.IsClosed, HalfWidth,
+      Style.RoundJoins, Style.RoundCaps);
   end;
 
   if Length(Contours) = 0 then

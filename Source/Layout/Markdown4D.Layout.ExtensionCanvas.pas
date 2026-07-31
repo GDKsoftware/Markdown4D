@@ -32,8 +32,16 @@ type
     procedure FillAndStrokeRectangle(const Bounds: TLayoutRectF; const FillColor, StrokeColor: TLayoutColor;
       const StrokeWidth: Single);
     procedure FillPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor);
+    procedure DrawPolygon(const Points: TArray<TLayoutPointF>; const StrokeColor: TLayoutColor;
+      const StrokeWidth: Single);
+    procedure FillAndStrokePolygon(const Points: TArray<TLayoutPointF>; const FillColor, StrokeColor: TLayoutColor;
+      const StrokeWidth: Single);
     procedure FillWedge(const Center: TLayoutPointF; const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single;
       const Color: TLayoutColor);
+    procedure DrawWedge(const Center: TLayoutPointF; const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single;
+      const StrokeColor: TLayoutColor; const StrokeWidth: Single);
+    procedure FillAndStrokeWedge(const Center: TLayoutPointF; const OuterRadius, InnerRadius, StartAngle,
+      SweepAngle: Single; const FillColor, StrokeColor: TLayoutColor; const StrokeWidth: Single);
     procedure DrawImage(const Bounds: TLayoutRectF; const Source, AltText: string);
     procedure SaveState;
     procedure SetClip(const Bounds: TLayoutRectF);
@@ -125,7 +133,25 @@ begin
   if Length(Points) = 0 then
     Exit;
 
-  FItems.Add(TDisplayPolygon.Create(BoundingRect(Points), FNode, Points, Color));
+  FItems.Add(TDisplayPolygon.Create(BoundingRect(Points), FNode, Points, Color, 0, 0));
+end;
+
+procedure TDisplayListExtensionCanvas.DrawPolygon(const Points: TArray<TLayoutPointF>; const StrokeColor: TLayoutColor;
+  const StrokeWidth: Single);
+begin
+  if Length(Points) = 0 then
+    Exit;
+
+  FItems.Add(TDisplayPolygon.Create(BoundingRect(Points), FNode, Points, 0, StrokeColor, StrokeWidth));
+end;
+
+procedure TDisplayListExtensionCanvas.FillAndStrokePolygon(const Points: TArray<TLayoutPointF>;
+  const FillColor, StrokeColor: TLayoutColor; const StrokeWidth: Single);
+begin
+  if Length(Points) = 0 then
+    Exit;
+
+  FItems.Add(TDisplayPolygon.Create(BoundingRect(Points), FNode, Points, FillColor, StrokeColor, StrokeWidth));
 end;
 
 procedure TDisplayListExtensionCanvas.FillWedge(const Center: TLayoutPointF;
@@ -134,7 +160,30 @@ begin
   const Bounds = TLayoutRectF.Create(Center.X - OuterRadius, Center.Y - OuterRadius, Center.X + OuterRadius,
     Center.Y + OuterRadius);
 
-  FItems.Add(TDisplayWedge.Create(Bounds, FNode, Center, OuterRadius, InnerRadius, StartAngle, SweepAngle, Color));
+  FItems.Add(TDisplayWedge.Create(Bounds, FNode, Center, OuterRadius, InnerRadius, StartAngle, SweepAngle, Color,
+    0, 0));
+end;
+
+procedure TDisplayListExtensionCanvas.DrawWedge(const Center: TLayoutPointF;
+  const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single; const StrokeColor: TLayoutColor;
+  const StrokeWidth: Single);
+begin
+  const Bounds = TLayoutRectF.Create(Center.X - OuterRadius, Center.Y - OuterRadius, Center.X + OuterRadius,
+    Center.Y + OuterRadius);
+
+  FItems.Add(TDisplayWedge.Create(Bounds, FNode, Center, OuterRadius, InnerRadius, StartAngle, SweepAngle, 0,
+    StrokeColor, StrokeWidth));
+end;
+
+procedure TDisplayListExtensionCanvas.FillAndStrokeWedge(const Center: TLayoutPointF;
+  const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single; const FillColor, StrokeColor: TLayoutColor;
+  const StrokeWidth: Single);
+begin
+  const Bounds = TLayoutRectF.Create(Center.X - OuterRadius, Center.Y - OuterRadius, Center.X + OuterRadius,
+    Center.Y + OuterRadius);
+
+  FItems.Add(TDisplayWedge.Create(Bounds, FNode, Center, OuterRadius, InnerRadius, StartAngle, SweepAngle, FillColor,
+    StrokeColor, StrokeWidth));
 end;
 
 procedure TDisplayListExtensionCanvas.DrawImage(const Bounds: TLayoutRectF; const Source, AltText: string);

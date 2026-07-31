@@ -77,6 +77,15 @@ type
       BytesPerPixel = 4;
       FullCoverage = 1.0;
       OpaqueAlpha = 255;
+      // Target chord length per segment when flattening a circular arc into a
+      // polyline, matching TSvgPathParser.FlatteningStep so a circle looks
+      // equally smooth whether an SVG or a rasterizer shape drew it.
+      ArcFlatteningStep = 3.0;
+      MinArcSegments = 8;
+      MaxArcSegments = 128;
+      // Past this ratio of miter length to stroke width a sharp corner grows a
+      // spike, which is where a bevel join cuts it off square instead.
+      MiterLimit = 4.0;
     type
       TEdgeCrossing = record
         X: Single;
@@ -93,6 +102,8 @@ type
     class function CrossingCapacity(const Contours: TArray<TArray<TLayoutPointF>>): Integer; static;
     class procedure SortCrossings(var Crossings: TArray<TEdgeCrossing>; const Count: Integer); static;
     class procedure AddSpan(var Coverage: TArray<Single>; const Left, Right, Weight: Single); static;
+    class function JoinContours(const Previous, Corner, Next: TLayoutPointF;
+      const HalfWidth: Single): TArray<TArray<TLayoutPointF>>; static;
 
   public
     // Fills into a fresh buffer of the given size.
@@ -116,6 +127,25 @@ type
     // Coverage of the contours on their own, for use as a mask.
     class function CoverageOf(const Contours: TArray<TArray<TLayoutPointF>>;
       const Width, Height: Integer; const Rule: TMarkdownFillRule): TMarkdownClipMask; static;
+    // How many straight segments a circular arc of this radius needs to read as
+    // a curve rather than a polygon: a fixed angle per segment would leave a
+    // small join disc wasteful and a large circle faceted, so the count keeps
+    // the chord length itself bounded and only clamps at the extremes.
+    class function SegmentsForRadius(const Radius: Single): Integer; static;
+    // A disc of points around a centre, used as a round join, a round cap, or
+    // (at full circle) a plain circular outline in its own right.
+    class function Disc(const Centre: TLayoutPointF; const Radius: Single): TArray<TLayoutPointF>; static;
+    // Reverses point order if it runs clockwise, so every contour a stroke is
+    // built from turns the same way: two overlapping pieces wound against each
+    // other would cancel out under the non-zero rule, tearing a hole exactly
+    // where the band should be at its thickest.
+    class function Anticlockwise(const Points: TArray<TLayoutPointF>): TArray<TLayoutPointF>; static;
+    // Turns a path into the band a stroke actually draws: a quad per segment
+    // plus a join at every corner (round, or a mitre falling back to a bevel
+    // past MiterLimit), filled together as one figure under the non-zero rule
+    // so the pieces read as a single outline rather than N overlapping shapes.
+    class function StrokeContours(const Points: TArray<TLayoutPointF>; const Closed: Boolean;
+      const HalfWidth: Single; const RoundJoins, RoundCaps: Boolean): TArray<TArray<TLayoutPointF>>; static;
   end;
 
 implementation
@@ -487,6 +517,174 @@ begin
 
       Inc(Offset, BytesPerPixel);
     end;
+  end;
+end;
+
+class function TMarkdownPolygonRasterizer.SegmentsForRadius(const Radius: Single): Integer;
+begin
+  const Circumference = 2 * Pi * Abs(Radius);
+  Result := Ceil(Circumference / ArcFlatteningStep);
+  Result := Min(MaxArcSegments, Max(MinArcSegments, Result));
+end;
+
+class function TMarkdownPolygonRasterizer.Disc(const Centre: TLayoutPointF; const Radius: Single): TArray<TLayoutPointF>;
+begin
+  const Segments = SegmentsForRadius(Radius);
+  SetLength(Result, Segments);
+
+  for var Step := 0 to Segments - 1 do
+  begin
+    const Angle = 2 * Pi * Step / Segments;
+    Result[Step] := TLayoutPointF.Create(Centre.X + Radius * Cos(Angle), Centre.Y + Radius * Sin(Angle));
+  end;
+end;
+
+class function TMarkdownPolygonRasterizer.Anticlockwise(const Points: TArray<TLayoutPointF>): TArray<TLayoutPointF>;
+begin
+  Result := Points;
+  if Length(Points) < 3 then
+    Exit;
+
+  var Area := 0.0;
+  for var Index := 0 to High(Points) do
+  begin
+    var NextIndex := Index + 1;
+    if NextIndex > High(Points) then
+      NextIndex := 0;
+
+    Area := Area + Points[Index].X * Points[NextIndex].Y - Points[NextIndex].X * Points[Index].Y;
+  end;
+
+  if Area >= 0 then
+    Exit;
+
+  // Into a buffer of its own: assigning a dynamic array shares it, so writing
+  // the reversal in place would overwrite the points still to be read.
+  var Reversed: TArray<TLayoutPointF>;
+  SetLength(Reversed, Length(Points));
+  for var Index := 0 to High(Points) do
+  begin
+    Reversed[Index] := Points[High(Points) - Index];
+  end;
+
+  Result := Reversed;
+end;
+
+class function TMarkdownPolygonRasterizer.StrokeContours(const Points: TArray<TLayoutPointF>; const Closed: Boolean;
+  const HalfWidth: Single; const RoundJoins, RoundCaps: Boolean): TArray<TArray<TLayoutPointF>>;
+begin
+  Result := nil;
+  if Length(Points) < 2 then
+    Exit;
+
+  var LastSegment := High(Points) - 1;
+  if Closed then
+    LastSegment := High(Points);
+
+  for var Index := 0 to LastSegment do
+  begin
+    const Start = Points[Index];
+    var StopIndex := Index + 1;
+    if StopIndex > High(Points) then
+      StopIndex := 0;
+    const Stop = Points[StopIndex];
+
+    const DeltaX = Stop.X - Start.X;
+    const DeltaY = Stop.Y - Start.Y;
+    const Span = Sqrt(DeltaX * DeltaX + DeltaY * DeltaY);
+    if Span = 0 then
+      Continue;
+
+    const NormalX = -DeltaY / Span * HalfWidth;
+    const NormalY = DeltaX / Span * HalfWidth;
+
+    Result := Result + [Anticlockwise([TLayoutPointF.Create(Start.X + NormalX, Start.Y + NormalY),
+      TLayoutPointF.Create(Stop.X + NormalX, Stop.Y + NormalY),
+      TLayoutPointF.Create(Stop.X - NormalX, Stop.Y - NormalY),
+      TLayoutPointF.Create(Start.X - NormalX, Start.Y - NormalY)])];
+  end;
+
+  var FirstCorner := 1;
+  var LastCorner := High(Points) - 1;
+  if Closed then
+  begin
+    FirstCorner := 0;
+    LastCorner := High(Points);
+  end;
+
+  for var Corner := FirstCorner to LastCorner do
+  begin
+    var PreviousIndex := Corner - 1;
+    if PreviousIndex < 0 then
+      PreviousIndex := High(Points);
+    var NextIndex := Corner + 1;
+    if NextIndex > High(Points) then
+      NextIndex := 0;
+
+    if RoundJoins then
+      Result := Result + [Anticlockwise(Disc(Points[Corner], HalfWidth))]
+    else
+      Result := Result + JoinContours(Points[PreviousIndex], Points[Corner], Points[NextIndex], HalfWidth);
+  end;
+
+  if Closed or (not RoundCaps) then
+    Exit;
+
+  Result := Result + [Anticlockwise(Disc(Points[0], HalfWidth))];
+  Result := Result + [Anticlockwise(Disc(Points[High(Points)], HalfWidth))];
+end;
+
+// Closes the wedge two segments leave between them. The bevel triangle covers
+// the corner itself; the mitre tip extends it to the point the two edges would
+// meet at, unless that point runs away from the corner.
+class function TMarkdownPolygonRasterizer.JoinContours(const Previous, Corner, Next: TLayoutPointF;
+  const HalfWidth: Single): TArray<TArray<TLayoutPointF>>;
+begin
+  Result := nil;
+
+  const InX = Corner.X - Previous.X;
+  const InY = Corner.Y - Previous.Y;
+  const OutX = Next.X - Corner.X;
+  const OutY = Next.Y - Corner.Y;
+
+  const InLength = Sqrt(InX * InX + InY * InY);
+  const OutLength = Sqrt(OutX * OutX + OutY * OutY);
+  if (InLength = 0) or (OutLength = 0) then
+    Exit;
+
+  const InNormalX = -InY / InLength * HalfWidth;
+  const InNormalY = InX / InLength * HalfWidth;
+  const OutNormalX = -OutY / OutLength * HalfWidth;
+  const OutNormalY = OutX / OutLength * HalfWidth;
+
+  for var Side in [1, -1] do
+  begin
+    const FromX = Corner.X + Side * InNormalX;
+    const FromY = Corner.Y + Side * InNormalY;
+    const ToX = Corner.X + Side * OutNormalX;
+    const ToY = Corner.Y + Side * OutNormalY;
+
+    Result := Result + [Anticlockwise([Corner, TLayoutPointF.Create(FromX, FromY),
+      TLayoutPointF.Create(ToX, ToY)])];
+
+    // Where the two offset edges cross is the tip of the mitre.
+    const Denominator = InX / InLength * (OutY / OutLength) - InY / InLength * (OutX / OutLength);
+    if Abs(Denominator) < 0.0001 then
+      Continue;
+
+    const GapX = ToX - FromX;
+    const GapY = ToY - FromY;
+    const Travel = (GapX * (OutY / OutLength) - GapY * (OutX / OutLength)) / Denominator;
+
+    const TipX = FromX + InX / InLength * Travel;
+    const TipY = FromY + InY / InLength * Travel;
+
+    const Reach = Sqrt(Sqr(TipX - Corner.X) + Sqr(TipY - Corner.Y));
+    if Reach > MiterLimit * HalfWidth then
+      Continue;
+
+    Result := Result + [Anticlockwise([TLayoutPointF.Create(FromX, FromY),
+      TLayoutPointF.Create(TipX, TipY), TLayoutPointF.Create(ToX, ToY)])];
   end;
 end;
 
