@@ -53,7 +53,7 @@ type
     function Equals(const Other: TMarkdownFontStyle): Boolean;
   end;
 
-  TInlineAtomKind = (WordToken, SpaceToken, HardBreakToken, ImageToken, CheckboxToken);
+  TInlineAtomKind = (WordToken, SpaceToken, HardBreakToken, ImageToken);
 
   TInlineAtom = record
     Kind: TInlineAtomKind;
@@ -66,7 +66,6 @@ type
     Height: Single;
     Source: string;
     AltText: string;
-    Checked: Boolean;
     CodeSpan: Boolean;
   end;
 
@@ -118,15 +117,14 @@ type
     procedure FlushLine;
     function LineAdvance: Single;
     function LineBaseline: Single;
-    procedure EmitLineItems(const Advance: Single);
-    procedure EmitLineAtom(const Atom: TInlineAtom; const Advance: Single);
+    procedure EmitLineItems;
+    procedure EmitLineAtom(const Atom: TInlineAtom);
     procedure OpenGroup(const Atom: TInlineAtom);
     procedure AppendToGroup(const Atom: TInlineAtom);
     procedure CloseGroup;
     procedure EmitCodeSpanChip(const RunBounds: TLayoutRectF);
     function SameRunStyle(const Atom: TInlineAtom): Boolean;
     procedure EmitImageItem(const Atom: TInlineAtom);
-    procedure EmitCheckboxItem(const Atom: TInlineAtom; const Advance: Single);
 
   public
     constructor Create(const Measurer: ITextMeasurer; const Items: TList<IDisplayItem>;
@@ -184,7 +182,6 @@ type
     procedure AppendHardBreakAtom(const Atoms: TList<TInlineAtom>);
     procedure AppendImageAtom(const Atoms: TList<TInlineAtom>; const Child: IMarkdownNode;
       const Style: TInlineStyle);
-    procedure AppendCheckboxAtom(const Atoms: TList<TInlineAtom>; const Child: IMarkdownNode; const Checked: Boolean);
     procedure HandleCustomInline(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
       const Child: IMarkdownNode; const Style: TInlineStyle);
     class procedure PushStyledFrame(const Frames: TList<TInlineFrame>; const Node: IMarkdownNode;
@@ -250,10 +247,11 @@ type
     procedure ApplyBlockOverride(const Command: TLayoutCommand; const Handler: ILayoutBlockOverride);
     procedure ProcessListItem(const Command: TLayoutCommand);
     procedure EmitListMarker(const Command: TLayoutCommand);
+    procedure EmitTaskCheckbox(const Command: TLayoutCommand; const Marker: IMarkdownCustomInline);
     procedure PushBlockQuote(const Command: TLayoutCommand);
     procedure EmitQuoteBar(const Command: TLayoutCommand);
     procedure PushList(const Command: TLayoutCommand);
-    class function IsTaskListItem(const ListItem: IMarkdownNode): Boolean;
+    class function TryFindTaskMarker(const ListItem: IMarkdownNode; out Marker: IMarkdownCustomInline): Boolean;
     procedure PushContainerChildren(const Container: IMarkdownNode; const X: Single; const TextColor: TLayoutColor);
     procedure PushBlock(const Node: IMarkdownNode; const X: Single; const TextColor: TLayoutColor);
     procedure PushGap(const Amount: Single);
@@ -629,7 +627,11 @@ end;
 
 procedure TLayoutWorker.ProcessListItem(const Command: TLayoutCommand);
 begin
-  EmitListMarker(Command);
+  var TaskMarker: IMarkdownCustomInline;
+  if TryFindTaskMarker(Command.Node, TaskMarker) then
+    EmitTaskCheckbox(Command, TaskMarker)
+  else
+    EmitListMarker(Command);
 
   const HasContent = (Command.Node.ChildCount > 0);
   if not HasContent then
@@ -659,16 +661,25 @@ end;
 
 procedure TLayoutWorker.EmitListMarker(const Command: TLayoutCommand);
 begin
-  const HasMarker = (Command.MarkerText <> '');
-  if not HasMarker then
-    Exit;
-
   const MarkerSize = FMeasurer.MeasureText(Command.MarkerText, FTheme.BaseFont);
   const MarkerHeight = FMeasurer.LineHeight(FTheme.BaseFont);
   const Bounds = TLayoutRectF.Create(Command.X, FCurrentY, Command.X + MarkerSize.Width, FCurrentY + MarkerHeight);
 
   FItems.Add(TDisplayTextRun.Create(Bounds, Command.Node, Command.MarkerText, FTheme.BaseFont, Command.TextColor,
     FMeasurer.Baseline(FTheme.BaseFont), 0));
+end;
+
+procedure TLayoutWorker.EmitTaskCheckbox(const Command: TLayoutCommand; const Marker: IMarkdownCustomInline);
+begin
+  // The checkbox takes the marker column a bullet would have occupied; the gap
+  // before the text falls out of ListMarkerWidth already being wider than
+  // CheckboxSize, so no separate spacing setting is needed.
+  const Checked = (Marker.NodeName = TGfmInlineParser.TaskCheckedNodeName);
+  const LineHeight = FMeasurer.LineHeight(FTheme.BaseFont);
+  const Top = FCurrentY + Max(0, (LineHeight - FTheme.CheckboxSize) / 2);
+  const Bounds = TLayoutRectF.Create(Command.X, Top, Command.X + FTheme.CheckboxSize, Top + FTheme.CheckboxSize);
+
+  FItems.Add(TDisplayCheckbox.Create(Bounds, Marker, Checked));
 end;
 
 procedure TLayoutWorker.PushBlockQuote(const Command: TLayoutCommand);
@@ -712,13 +723,15 @@ begin
     ItemCommand.TextColor := Command.TextColor;
     ItemCommand.Tight := List.IsTight;
 
-    const IsTaskItem = IsTaskListItem(ItemCommand.Node);
-    if IsTaskItem then
-      ItemCommand.MarkerText := ''
-    else if List.IsOrdered then
-      ItemCommand.MarkerText := Format(OrderedMarkerFormat, [List.StartNumber + Index])
-    else
-      ItemCommand.MarkerText := BulletMarkerText;
+    var TaskMarker: IMarkdownCustomInline;
+    const IsTaskItem = TryFindTaskMarker(ItemCommand.Node, TaskMarker);
+    if not IsTaskItem then
+    begin
+      if List.IsOrdered then
+        ItemCommand.MarkerText := Format(OrderedMarkerFormat, [List.StartNumber + Index])
+      else
+        ItemCommand.MarkerText := BulletMarkerText;
+    end;
 
     FCommands.Add(ItemCommand);
 
@@ -727,8 +740,10 @@ begin
   end;
 end;
 
-class function TLayoutWorker.IsTaskListItem(const ListItem: IMarkdownNode): Boolean;
+class function TLayoutWorker.TryFindTaskMarker(const ListItem: IMarkdownNode; out Marker: IMarkdownCustomInline): Boolean;
 begin
+  Marker := nil;
+
   const HasFirstBlock = (ListItem.ChildCount > 0);
   if not HasFirstBlock then
     Exit(False);
@@ -744,9 +759,13 @@ begin
   if not IsCustomInline then
     Exit(False);
 
-  const Marker = FirstInline as IMarkdownCustomInline;
-  Result := (Marker.NodeName = TGfmInlineParser.TaskCheckedNodeName) or
-            (Marker.NodeName = TGfmInlineParser.TaskUncheckedNodeName);
+  const Candidate = FirstInline as IMarkdownCustomInline;
+  const IsCheckedTask = (Candidate.NodeName = TGfmInlineParser.TaskCheckedNodeName);
+  const IsUncheckedTask = (Candidate.NodeName = TGfmInlineParser.TaskUncheckedNodeName);
+
+  Result := IsCheckedTask or IsUncheckedTask;
+  if Result then
+    Marker := Candidate;
 end;
 
 procedure TLayoutWorker.PushContainerChildren(const Container: IMarkdownNode; const X: Single;
@@ -1387,19 +1406,6 @@ begin
   Atoms.Add(Atom);
 end;
 
-procedure TInlineAtomCollector.AppendCheckboxAtom(const Atoms: TList<TInlineAtom>; const Child: IMarkdownNode;
-  const Checked: Boolean);
-begin
-  var Atom := Default(TInlineAtom);
-  Atom.Kind := TInlineAtomKind.CheckboxToken;
-  Atom.Node := Child;
-  Atom.Width := FTheme.CheckboxSize;
-  Atom.Height := FTheme.CheckboxSize;
-  Atom.Checked := Checked;
-
-  Atoms.Add(Atom);
-end;
-
 procedure TInlineAtomCollector.HandleCustomInline(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
   const Child: IMarkdownNode; const Style: TInlineStyle);
 begin
@@ -1407,11 +1413,10 @@ begin
   const IsCheckedTask = (Custom.NodeName = TGfmInlineParser.TaskCheckedNodeName);
   const IsUncheckedTask = (Custom.NodeName = TGfmInlineParser.TaskUncheckedNodeName);
 
+  // The list item's marker column already carries the checkbox for this node
+  // (see TLayoutWorker.EmitTaskCheckbox); a task marker contributes no inline content.
   if IsCheckedTask or IsUncheckedTask then
-  begin
-    AppendCheckboxAtom(Atoms, Child, IsCheckedTask);
     Exit;
-  end;
 
   var StrikeStyle := Style;
   StrikeStyle.Font.Strikeout := True;
@@ -1652,7 +1657,7 @@ procedure TInlineWrapper.FlushLine;
 begin
   const Advance = LineAdvance;
 
-  EmitLineItems(Advance);
+  EmitLineItems;
 
   FLineTop := FLineTop + Advance;
   FCommitted.Clear;
@@ -1670,7 +1675,7 @@ begin
     case Atom.Kind of
       TInlineAtomKind.WordToken, TInlineAtomKind.SpaceToken:
         Result := Max(Result, FMeasurer.LineHeight(Atom.Font));
-      TInlineAtomKind.ImageToken, TInlineAtomKind.CheckboxToken:
+      TInlineAtomKind.ImageToken:
         Result := Max(Result, Atom.Height);
     else
       raise EMarkdownError.CreateFmt('Unhandled inline atom kind: %d', [Ord(Atom.Kind)]);
@@ -1696,7 +1701,7 @@ begin
     Result := FMeasurer.Baseline(FBaseFont);
 end;
 
-procedure TInlineWrapper.EmitLineItems(const Advance: Single);
+procedure TInlineWrapper.EmitLineItems;
 begin
   FCursor := FLeft;
   FGroupOpen := False;
@@ -1704,13 +1709,13 @@ begin
 
   for var Atom in FCommitted do
   begin
-    EmitLineAtom(Atom, Advance);
+    EmitLineAtom(Atom);
   end;
 
   CloseGroup;
 end;
 
-procedure TInlineWrapper.EmitLineAtom(const Atom: TInlineAtom; const Advance: Single);
+procedure TInlineWrapper.EmitLineAtom(const Atom: TInlineAtom);
 begin
   case Atom.Kind of
     TInlineAtomKind.SpaceToken:
@@ -1733,11 +1738,6 @@ begin
       begin
         CloseGroup;
         EmitImageItem(Atom);
-      end;
-    TInlineAtomKind.CheckboxToken:
-      begin
-        CloseGroup;
-        EmitCheckboxItem(Atom, Advance);
       end;
   else
     raise EMarkdownError.CreateFmt('Unhandled inline atom kind: %d', [Ord(Atom.Kind)]);
@@ -1806,15 +1806,6 @@ procedure TInlineWrapper.EmitImageItem(const Atom: TInlineAtom);
 begin
   const Bounds = TLayoutRectF.Create(FCursor, FLineTop, FCursor + Atom.Width, FLineTop + Atom.Height);
   FItems.Add(TDisplayImage.Create(Bounds, Atom.Node, Atom.Source, Atom.AltText));
-
-  FCursor := FCursor + Atom.Width;
-end;
-
-procedure TInlineWrapper.EmitCheckboxItem(const Atom: TInlineAtom; const Advance: Single);
-begin
-  const Top = FLineTop + Max(0, (Advance - Atom.Height) / 2);
-  const Bounds = TLayoutRectF.Create(FCursor, Top, FCursor + Atom.Width, Top + Atom.Height);
-  FItems.Add(TDisplayCheckbox.Create(Bounds, Atom.Node, Atom.Checked));
 
   FCursor := FCursor + Atom.Width;
 end;

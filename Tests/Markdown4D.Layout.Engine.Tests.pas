@@ -148,6 +148,9 @@ type
     procedure Layout_OrderedList_UnaffectedByTaskMarkerLogic;
 
     [Test]
+    procedure Layout_TaskBulletAndOrderedLists_ShareMarkerAndContentColumns;
+
+    [Test]
     procedure Layout_BoldRuns_ShiftWrapPositions;
 
     [Test]
@@ -513,8 +516,10 @@ begin
 
   const DoneRun = FindRunByPrefix(TextRunsOf(DisplayList), 'done');
   Assert.IsNotNull(DoneRun);
-  const StartsAfterCheckbox = (DoneRun.Bounds.Left >= Checkboxes[0].Bounds.Right);
-  Assert.IsTrue(StartsAfterCheckbox);
+  AssertSingle(0, Checkboxes[0].Bounds.Left);
+  AssertSingle(ListMarkerWidthValue, DoneRun.Bounds.Left);
+  const HasGapBeforeText = (Checkboxes[0].Bounds.Right < DoneRun.Bounds.Left);
+  Assert.IsTrue(HasGapBeforeText, 'Expected a visible gap between the checkbox and its text');
 end;
 
 procedure TMarkdownLayoutEngineTests.Layout_TaskListItem_DrawsNoBulletMarker;
@@ -526,7 +531,7 @@ begin
 
   const Checkboxes = CheckboxesOf(DisplayList);
   Assert.AreEqual(1, Integer(Length(Checkboxes)));
-  AssertSingle(ListMarkerWidthValue, Checkboxes[0].Bounds.Left);
+  AssertSingle(0, Checkboxes[0].Bounds.Left);
 end;
 
 procedure TMarkdownLayoutEngineTests.Layout_ListWithMixedTaskAndPlainItems_PlainItemStillDrawsBullet;
@@ -537,6 +542,7 @@ begin
   const Markers = RunsWithText(Runs, BulletMarkerText);
   Assert.AreEqual(1, Integer(Length(Markers)));
   AssertSingle(BaseLineHeight, Markers[0].Bounds.Top);
+  AssertSingle(0, Markers[0].Bounds.Left);
 
   const PlainContent = FindRunByPrefix(Runs, 'plain');
   Assert.IsNotNull(PlainContent);
@@ -544,7 +550,41 @@ begin
 
   const Checkboxes = CheckboxesOf(DisplayList);
   Assert.AreEqual(1, Integer(Length(Checkboxes)));
-  AssertSingle(ListMarkerWidthValue, Checkboxes[0].Bounds.Left);
+  AssertSingle(0, Checkboxes[0].Bounds.Left);
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_TaskBulletAndOrderedLists_ShareMarkerAndContentColumns;
+begin
+  const TaskList = LayoutMarkdown('- [x] done', DefaultWidth);
+  const BulletList = LayoutMarkdown('- plain', DefaultWidth);
+  const OrderedList = LayoutMarkdown('1. first', DefaultWidth);
+
+  const TaskCheckboxes = CheckboxesOf(TaskList);
+  Assert.AreEqual(1, Integer(Length(TaskCheckboxes)));
+
+  const BulletMarker = FindRunByPrefix(TextRunsOf(BulletList), BulletMarkerText);
+  const OrderedMarker = FindRunByPrefix(TextRunsOf(OrderedList), '1.');
+  Assert.IsNotNull(BulletMarker);
+  Assert.IsNotNull(OrderedMarker);
+
+  // All three marker columns start at the same X, exactly where a bullet would sit.
+  AssertSingle(BulletMarker.Bounds.Left, TaskCheckboxes[0].Bounds.Left);
+  AssertSingle(OrderedMarker.Bounds.Left, TaskCheckboxes[0].Bounds.Left);
+
+  const TaskContent = FindRunByPrefix(TextRunsOf(TaskList), 'done');
+  const BulletContent = FindRunByPrefix(TextRunsOf(BulletList), 'plain');
+  const OrderedContent = FindRunByPrefix(TextRunsOf(OrderedList), 'first');
+  Assert.IsNotNull(TaskContent);
+  Assert.IsNotNull(BulletContent);
+  Assert.IsNotNull(OrderedContent);
+
+  // All three content columns start at the same X too, so the lists line up.
+  AssertSingle(ListMarkerWidthValue, TaskContent.Bounds.Left);
+  AssertSingle(ListMarkerWidthValue, BulletContent.Bounds.Left);
+  AssertSingle(ListMarkerWidthValue, OrderedContent.Bounds.Left);
+
+  const ExpectedGap = ListMarkerWidthValue - CheckboxSizeValue;
+  AssertSingle(ExpectedGap, TaskContent.Bounds.Left - TaskCheckboxes[0].Bounds.Right);
 end;
 
 procedure TMarkdownLayoutEngineTests.Layout_OrderedList_UnaffectedByTaskMarkerLogic;
