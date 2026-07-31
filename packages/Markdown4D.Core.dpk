@@ -76,6 +76,7 @@ contains
   Markdown4D.Editor.Folding in '..\Source\Layout\Markdown4D.Editor.Folding.pas',
   Markdown4D.Editor.Highlighter in '..\Source\Layout\Markdown4D.Editor.Highlighter.pas',
   Markdown4D.Editor.Model in '..\Source\Layout\Markdown4D.Editor.Model.pas',
+  Markdown4D.Editor.Rows in '..\Source\Layout\Markdown4D.Editor.Rows.pas',
   Markdown4D.Editor.Keys in '..\Source\Layout\Markdown4D.Editor.Keys.pas',
   Markdown4D.Editor.Actions in '..\Source\Layout\Markdown4D.Editor.Actions.pas',
   Markdown4D.Editor.ContextMenu in '..\Source\Layout\Markdown4D.Editor.ContextMenu.pas',

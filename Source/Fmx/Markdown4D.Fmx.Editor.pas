@@ -16,6 +16,7 @@ uses
   Markdown4D.Layout.Interfaces,
   Markdown4D.Theme,
   Markdown4D.Editor.Model,
+  Markdown4D.Editor.Rows,
   Markdown4D.Editor.Keys,
   Markdown4D.Editor.Actions,
   Markdown4D.Editor.ContextMenu,
@@ -46,22 +47,6 @@ type
       DeleteChar = #127;
       DefaultIndentWidth = 2;
       DragThresholdPx = 4;
-    type
-      // One on-screen line from soft-wrapping a source line. Offsets are absolute
-      // into the model text and the range excludes the trailing line break.
-      TVisualRow = record
-        LineIndex: Integer;
-        StartOffset: Integer;
-        EndOffset: Integer;
-        IsFirst: Boolean;
-      end;
-      // Where one source line wraps, cached per line so an edit only re-measures
-      // the line that actually changed instead of the whole document.
-      TWrapCacheEntry = record
-        Text: string;
-        WrapWidth: Single;
-        Breaks: TArray<Integer>;
-      end;
     var
       FLifetime: IMarkdownViewerLifetime;
       FModel: TMarkdownEditorModel;
@@ -101,9 +86,8 @@ type
       FSync: TMarkdownEditorSync;
       FSyncScroll: Boolean;
       FSyncing: Boolean;
+      FRowModel: TMarkdownEditorRows;
       FRows: TArray<TVisualRow>;
-      FWrapCache: TArray<TWrapCacheEntry>;
-      FWrapWidth: Single;
       FOnChange: TNotifyEvent;
       FOnScroll: TNotifyEvent;
       FOnSyncScroll: TMarkdownSyncScrollEvent;
@@ -129,12 +113,6 @@ type
     procedure RenderContent(const Target: TCanvas; const TargetWidth, TargetHeight, ScrollY: Single;
       const DrawCaret: Boolean);
     procedure RebuildRows;
-    procedure AppendWrappedRows(const Rows: TList<TVisualRow>; const LineIndex: Integer);
-    function WrapBreaksFor(const LineIndex: Integer; const LineText: string): TArray<Integer>;
-    function ComputeWrapBreaks(const LineText: string): TArray<Integer>;
-    function MakeRow(const LineIndex, StartOffset, EndOffset: Integer; const IsFirst: Boolean): TVisualRow;
-    function NextWrapLength(const LineText: string; const StartCol: Integer): Integer;
-    function LastSpaceWithin(const LineText: string; const StartCol, MaxLength: Integer): Integer;
     function WrapWidthPx: Single;
     function RowCount: Integer;
     function RowIndexOfOffset(const Offset: Integer): Integer;
@@ -310,6 +288,11 @@ begin
 
   FModel := TMarkdownEditorModel.Create;
   FModel.OnChange := HandleModelChange;
+  FRowModel := TMarkdownEditorRows.Create(FModel,
+    function(const Text: string): Single
+    begin
+      Result := FMeasurePainter.MeasureText(Text, CodeFont).Width;
+    end);
   FHighlighter := TMarkdownSourceHighlighter.Create;
   FMatches := TMarkdownEditorHighlights.Create;
   FSync := TMarkdownEditorSync.Create;
@@ -341,6 +324,7 @@ begin
 
   FHighlighter.Free;
   FMatches.Free;
+  FRowModel.Free;
   FModel.Free;
   FSync.Free;
   FMeasurePainter := nil;
@@ -977,139 +961,13 @@ end;
 
 procedure TMarkdownEditor.RebuildRows;
 begin
-  const NotReady = (FModel = nil) or (FMeasurePainter = nil);
+  const NotReady = (FRowModel = nil) or (FMeasurePainter = nil);
   if NotReady then
     Exit;
 
-  FWrapWidth := WrapWidthPx;
-
-  const Rows = TList<TVisualRow>.Create;
-  try
-    const LineCount = FModel.LineCount;
-    if Length(FWrapCache) < LineCount then
-      SetLength(FWrapCache, LineCount);
-
-    for var LineIndex := 0 to LineCount - 1 do
-    begin
-      if FModel.IsLineHidden(LineIndex) then
-        Continue;
-
-      AppendWrappedRows(Rows, LineIndex);
-    end;
-
-    FRows := Rows.ToArray;
-  finally
-    Rows.Free;
-  end;
+  FRowModel.Rebuild(WrapWidthPx);
+  FRows := FRowModel.Items;
 end;
-
-procedure TMarkdownEditor.AppendWrappedRows(const Rows: TList<TVisualRow>; const LineIndex: Integer);
-begin
-  const LineText = LineTextAt(LineIndex);
-  const LineStart = LineStartOffset(LineIndex);
-
-  const LineIsEmpty = Length(LineText) = 0;
-  if LineIsEmpty then
-  begin
-    Rows.Add(MakeRow(LineIndex, LineStart, LineStart, True));
-    Exit;
-  end;
-
-  var Consumed := 0;
-  for var Index in WrapBreaksFor(LineIndex, LineText) do
-  begin
-    Rows.Add(MakeRow(LineIndex, LineStart + Consumed, LineStart + Index, Consumed = 0));
-    Consumed := Index;
-  end;
-end;
-
-function TMarkdownEditor.WrapBreaksFor(const LineIndex: Integer; const LineText: string): TArray<Integer>;
-begin
-  const Reusable = (LineIndex <= High(FWrapCache)) and (FWrapCache[LineIndex].WrapWidth = FWrapWidth) and
-    (FWrapCache[LineIndex].Text = LineText);
-  if Reusable then
-    Exit(FWrapCache[LineIndex].Breaks);
-
-  Result := ComputeWrapBreaks(LineText);
-
-  if LineIndex > High(FWrapCache) then
-    SetLength(FWrapCache, LineIndex + 1);
-
-  FWrapCache[LineIndex].Text := LineText;
-  FWrapCache[LineIndex].WrapWidth := FWrapWidth;
-  FWrapCache[LineIndex].Breaks := Result;
-end;
-
-function TMarkdownEditor.ComputeWrapBreaks(const LineText: string): TArray<Integer>;
-begin
-  Result := [];
-
-  const Len = Length(LineText);
-  var Consumed := 0;
-  while Consumed < Len do
-  begin
-    Consumed := Consumed + NextWrapLength(LineText, Consumed);
-    Result := Result + [Consumed];
-  end;
-end;
-
-function TMarkdownEditor.MakeRow(const LineIndex, StartOffset, EndOffset: Integer;
-  const IsFirst: Boolean): TVisualRow;
-begin
-  Result.LineIndex := LineIndex;
-  Result.StartOffset := StartOffset;
-  Result.EndOffset := EndOffset;
-  Result.IsFirst := IsFirst;
-end;
-
-function TMarkdownEditor.NextWrapLength(const LineText: string; const StartCol: Integer): Integer;
-begin
-  const Remaining = Length(LineText) - StartCol;
-
-  const RemainderWidth = FMeasurePainter.MeasureText(Copy(LineText, StartCol + 1, Remaining), CodeFont).Width;
-  const FitsWholeRemainder = RemainderWidth <= FWrapWidth;
-  if FitsWholeRemainder then
-    Exit(Remaining);
-
-  var LowerBound := 1;
-  var UpperBound := Remaining;
-  var BestFit := 1;
-  while LowerBound <= UpperBound do
-  begin
-    const Candidate = (LowerBound + UpperBound) div 2;
-    const CandidateWidth = FMeasurePainter.MeasureText(Copy(LineText, StartCol + 1, Candidate), CodeFont).Width;
-    const CandidateFits = CandidateWidth <= FWrapWidth;
-    if CandidateFits then
-    begin
-      BestFit := Candidate;
-      LowerBound := Candidate + 1;
-    end
-    else
-    begin
-      UpperBound := Candidate - 1;
-    end;
-  end;
-
-  const WordBreak = LastSpaceWithin(LineText, StartCol, BestFit);
-  const CanBreakAtWord = WordBreak > 0;
-  if CanBreakAtWord then
-    Result := WordBreak
-  else
-    Result := BestFit;
-end;
-
-function TMarkdownEditor.LastSpaceWithin(const LineText: string; const StartCol, MaxLength: Integer): Integer;
-begin
-  for var Offset := MaxLength downto 1 do
-  begin
-    const IsSpace = LineText[StartCol + Offset] = ' ';
-    if IsSpace then
-      Exit(Offset);
-  end;
-
-  Result := 0;
-end;
-
 function TMarkdownEditor.WrapWidthPx: Single;
 begin
   const Available = Width - TextLeftPx - CaretWidthPx;
@@ -1124,55 +982,16 @@ end;
 
 function TMarkdownEditor.RowText(const Row: TVisualRow): string;
 begin
-  Result := Copy(FModel.Text, Row.StartOffset + 1, Row.EndOffset - Row.StartOffset);
+  Result := FRowModel.TextOf(Row);
 end;
-
 function TMarkdownEditor.RowIndexOfOffset(const Offset: Integer): Integer;
 begin
-  if Length(FRows) = 0 then
-    Exit(0);
-
-  for var Index := 0 to High(FRows) do
-  begin
-    const Row = FRows[Index];
-    if Offset <= Row.EndOffset then
-    begin
-      const AtWrapBoundary = (Offset = Row.EndOffset) and (Index < High(FRows)) and
-        (FRows[Index + 1].LineIndex = Row.LineIndex);
-      if AtWrapBoundary then
-        Exit(Index + 1);
-
-      Exit(Index);
-    end;
-  end;
-
-  Result := High(FRows);
+  Result := FRowModel.IndexOfOffset(Offset);
 end;
-
 function TMarkdownEditor.OffsetAtRowX(const RowIndex: Integer; const TargetX: Single): Integer;
 begin
-  if Length(FRows) = 0 then
-    Exit(0);
-
-  const Row = FRows[EnsureRange(RowIndex, 0, High(FRows))];
-  const RowStr = RowText(Row);
-
-  var BestColumn := 0;
-  var BestDistance := Abs(TargetX);
-  for var PrefixLength := 1 to Length(RowStr) do
-  begin
-    const Width = FMeasurePainter.MeasureText(Copy(RowStr, 1, PrefixLength), CodeFont).Width;
-    const Distance = Abs(TargetX - Width);
-    if Distance < BestDistance then
-    begin
-      BestDistance := Distance;
-      BestColumn := PrefixLength;
-    end;
-  end;
-
-  Result := Row.StartOffset + BestColumn;
+  Result := FRowModel.OffsetAtX(RowIndex, TargetX);
 end;
-
 procedure TMarkdownEditor.DrawGutterNumber(const Painter: IPainter; const LineIndex: Integer;
   const GutterWidth, Top: Single);
 begin
@@ -1413,22 +1232,12 @@ end;
 
 function TMarkdownEditor.LineTextAt(const LineIndex: Integer): string;
 begin
-  const Source = FModel.Text;
-  const StartOffset = FModel.OffsetOfLineStart(LineIndex);
-  var EndOffset: Integer;
-  if LineIndex < FModel.LineCount - 1 then
-    EndOffset := FModel.OffsetOfLineStart(LineIndex + 1) - 1
-  else
-    EndOffset := Length(Source);
-
-  Result := Copy(Source, StartOffset + 1, EndOffset - StartOffset);
+  Result := FRowModel.LineTextAt(LineIndex);
 end;
-
 function TMarkdownEditor.LineStartOffset(const LineIndex: Integer): Integer;
 begin
-  Result := FModel.OffsetOfLineStart(LineIndex);
+  Result := FRowModel.LineStartOffset(LineIndex);
 end;
-
 function TMarkdownEditor.OffsetFromPoint(const X, Y: Single): Integer;
 begin
   if Length(FRows) = 0 then
