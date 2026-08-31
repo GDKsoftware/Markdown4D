@@ -556,6 +556,12 @@ end;
 
 function TMarkdownViewer.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean;
 begin
+  // Content that already fits has nothing to scroll; leaving the wheel
+  // unhandled lets a surrounding scroll box move the viewer itself instead.
+  const CanScroll = ContentHeight > ClientHeight;
+  if not CanScroll then
+    Exit(inherited DoMouseWheel(Shift, WheelDelta, MousePos));
+
   const Notches = WheelDelta / WHEEL_DELTA;
   SetScrollPosition(FModel.ScrollOffset - (Notches * WheelLinesPerNotch * LineScrollAmount));
 

@@ -27,6 +27,7 @@ type
       ClipTestSelectionEndX = 250.0;
       ClipTestSelectionBottomY = 40.0;
       ClipTestBandHeight = 60;
+      WheelNotchDown = -120;
       ClipTestMarkdown =
         '# Top'#10#10 +
         'Filler paragraph number one with enough words to wrap across several lines of text at this width.'#10#10 +
@@ -71,6 +72,12 @@ type
 
     [Test]
     procedure Paint_ScrolledPastActiveSelection_ConfinesPaintingToViewerBounds;
+
+    [Test]
+    procedure Wheel_ContentFitsViewport_LeavesWheelUnhandled;
+
+    [Test]
+    procedure Wheel_ContentOverflowsViewport_ScrollsAndHandles;
   end;
 
 implementation
@@ -190,6 +197,27 @@ begin
   finally
     Bitmap.Free;
   end;
+end;
+
+procedure TMarkdownFmxViewerTests.Wheel_ContentFitsViewport_LeavesWheelUnhandled;
+begin
+  FViewer.Text := SampleMarkdown;
+
+  var Handled := False;
+  TMarkdownViewerAccess(FViewer).MouseWheel([], WheelNotchDown, Handled);
+
+  Assert.IsFalse(Handled, 'A viewer whose content fits should pass the wheel to its parent');
+end;
+
+procedure TMarkdownFmxViewerTests.Wheel_ContentOverflowsViewport_ScrollsAndHandles;
+begin
+  FViewer.Text := ClipTestMarkdown;
+
+  var Handled := False;
+  TMarkdownViewerAccess(FViewer).MouseWheel([], WheelNotchDown, Handled);
+
+  Assert.IsTrue(Handled, 'A scrollable viewer should claim the wheel');
+  Assert.IsTrue(FViewer.ScrollOffset > 0, 'The wheel should have scrolled the content down');
 end;
 
 class function TMarkdownFmxViewerTests.IsBandUntouched(const Bitmap: TBitmap; const BandHeight: Integer): Boolean;

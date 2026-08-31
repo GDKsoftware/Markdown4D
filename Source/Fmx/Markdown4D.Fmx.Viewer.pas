@@ -565,6 +565,12 @@ begin
   if Handled then
     Exit;
 
+  // Content that already fits has nothing to scroll; leaving the wheel
+  // unhandled lets a surrounding scroll box move the viewer itself instead.
+  const CanScroll = ContentHeight > Height;
+  if not CanScroll then
+    Exit;
+
   const Notches = WheelDelta / MouseWheelDeltaPerNotch;
   SetScrollPosition(FModel.ScrollOffset - (Notches * WheelLinesPerNotch * LineScrollAmount));
   Handled := True;

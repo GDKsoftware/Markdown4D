@@ -36,6 +36,7 @@ uses
   Markdown4D.Highlighter.Tests in 'Markdown4D.Highlighter.Tests.pas',
   Markdown4D.Viewer.Model.Tests in 'Markdown4D.Viewer.Model.Tests.pas',
   Markdown4D.Vcl.Render.Tests in 'Markdown4D.Vcl.Render.Tests.pas',
+  Markdown4D.Vcl.Viewer.Tests in 'Markdown4D.Vcl.Viewer.Tests.pas',
   Markdown4D.Vcl.Image.Tests in 'Markdown4D.Vcl.Image.Tests.pas',
   Markdown4D.Charts.Corpus in 'Markdown4D.Charts.Corpus.pas',
   Markdown4D.Extensions.Chart.Tests in 'Markdown4D.Extensions.Chart.Tests.pas',
