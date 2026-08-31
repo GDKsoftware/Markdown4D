@@ -115,6 +115,7 @@ type
       RoundedCornerPadding = 6.0;
       OrderingSweeps = 2;
       EdgeLabelPadding = 3.0;
+      EdgeLabelStub = 10.0;
       ParallelEdgeSpacing = 16.0;
     var
       FBounds: TLayoutRectF;
@@ -143,6 +144,7 @@ type
       const MaxRank: Integer): TArray<TList<Integer>>;
     function ComputeRankMainSizes(const Members: TArray<TList<Integer>>; const MaxRank: Integer;
       const Horizontal: Boolean): TArray<Single>;
+    function RankGapAfter(const Rank: Integer): Single;
     function ComputeRankMainStarts(const RankMainSize: TArray<Single>; const MaxRank: Integer;
       out TotalMain: Single): TArray<Single>;
     function ComputeRankCrossWidths(const Members: TArray<TList<Integer>>; const MaxRank: Integer;
@@ -896,9 +898,11 @@ begin
   for var Rank := 0 to MaxRank do
   begin
     Result[Rank] := MainCursor;
-    MainCursor := MainCursor + RankMainSize[Rank] + RankGap;
+    MainCursor := MainCursor + RankMainSize[Rank];
+    if Rank < MaxRank then
+      MainCursor := MainCursor + RankGapAfter(Rank);
   end;
-  TotalMain := MainCursor - RankGap;
+  TotalMain := MainCursor;
 
   if IsReversed then
   begin
@@ -906,6 +910,38 @@ begin
     begin
       Result[Rank] := TotalMain - Result[Rank] - RankMainSize[Rank];
     end;
+  end;
+end;
+
+// A labelled edge carries its caption at the midpoint of the line, over an
+// opaque background. The gap it crosses has to fit that caption plus visible
+// line stubs and the arrowhead, or the label swallows the whole edge and bites
+// into the node shapes on either side.
+function TMermaidFlowchartBuilder.RankGapAfter(const Rank: Integer): Single;
+begin
+  Result := RankGap;
+
+  const Font = LabelFont;
+  for var Index := 0 to FModel.EdgeCount - 1 do
+  begin
+    const Edge = FModel.Edges[Index];
+    if Edge.Caption = '' then
+      Continue;
+
+    const IsValid = (Edge.SourceIndex >= 0) and (Edge.SourceIndex < FModel.NodeCount) and
+      (Edge.TargetIndex >= 0) and (Edge.TargetIndex < FModel.NodeCount);
+    if not IsValid then
+      Continue;
+
+    const LowRank = Min(FBoxes[Edge.SourceIndex].Rank, FBoxes[Edge.TargetIndex].Rank);
+    const HighRank = Max(FBoxes[Edge.SourceIndex].Rank, FBoxes[Edge.TargetIndex].Rank);
+    const CrossesThisBoundary = (LowRank = Rank) and (HighRank = Rank + 1);
+    if not CrossesThisBoundary then
+      Continue;
+
+    const LabelWidth = FMeasurer.MeasureText(Edge.Caption, Font).Width;
+    const NeededGap = LabelWidth + 2 * EdgeLabelPadding + ArrowLength + 2 * EdgeLabelStub;
+    Result := Max(Result, NeededGap);
   end;
 end;
 

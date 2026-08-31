@@ -76,6 +76,9 @@ type
     procedure Flowchart_CircleNode_BorderMatchesRectangleNodeBorder;
 
     [Test]
+    procedure Flowchart_LabelledEdge_KeepsLineVisibleAroundLabel;
+
+    [Test]
     procedure Sequence_EmitsVerticalLifelines;
 
     [Test]
@@ -471,6 +474,57 @@ begin
     'A circle border must be the same colour as every other node border, not a shade off');
   Assert.AreEqual(Rectangle.StrokeWidth, Wedge.StrokeWidth, 0.001,
     'A circle border must be the same weight as every other node border, not a pixel heavier or lighter');
+end;
+
+procedure TMermaidLayoutTests.Flowchart_LabelledEdge_KeepsLineVisibleAroundLabel;
+begin
+  const Items = ItemsForDiagram('flowchart LR' + LineFeed +
+    '  Prompt[Prompt] --> Model{Model}' + LineFeed +
+    '  Model -->|tokens| Stream([Stream chunks])' + LineFeed +
+    '  Stream --> Render');
+
+  var LabelBounds := Default(TLayoutRectF);
+  var HasLabel := False;
+  for var Item in Items do
+  begin
+    var Run: IDisplayTextRun;
+    if Supports(Item, IDisplayTextRun, Run) and (Run.Text = 'tokens') then
+    begin
+      LabelBounds := Item.Bounds;
+      HasLabel := True;
+    end;
+  end;
+  Assert.IsTrue(HasLabel, 'The labelled edge must emit its caption');
+
+  const LabelCenterX = (LabelBounds.Left + LabelBounds.Right) / 2;
+  const LabelCenterY = (LabelBounds.Top + LabelBounds.Bottom) / 2;
+
+  var HasEdgeLine := False;
+  var LineLeft := 0.0;
+  var LineRight := 0.0;
+  for var Item in Items do
+  begin
+    var Line: IDisplayLine;
+    if not Supports(Item, IDisplayLine, Line) then
+      Continue;
+
+    const IsLevel = Abs(Line.StartPoint.Y - Line.EndPoint.Y) < 0.5;
+    const SpansLabel = (Min(Line.StartPoint.X, Line.EndPoint.X) <= LabelCenterX) and
+      (Max(Line.StartPoint.X, Line.EndPoint.X) >= LabelCenterX);
+    const SitsOnLabelRow = Abs(Line.StartPoint.Y - LabelCenterY) < 12.0;
+    if IsLevel and SpansLabel and SitsOnLabelRow then
+    begin
+      HasEdgeLine := True;
+      LineLeft := Min(Line.StartPoint.X, Line.EndPoint.X);
+      LineRight := Max(Line.StartPoint.X, Line.EndPoint.X);
+    end;
+  end;
+  Assert.IsTrue(HasEdgeLine, 'The labelled edge must emit a line under its caption');
+
+  Assert.IsTrue(LabelBounds.Left - LineLeft >= 6.0,
+    'The line must stay visible between the source node and the label');
+  Assert.IsTrue(LineRight - LabelBounds.Right >= 6.0,
+    'The line must stay visible between the label and the arrowhead');
 end;
 
 procedure TMermaidLayoutTests.Sequence_EmitsVerticalLifelines;
