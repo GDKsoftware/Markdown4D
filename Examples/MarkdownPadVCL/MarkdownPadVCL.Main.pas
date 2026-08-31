@@ -66,6 +66,14 @@ type
     procedure HandleTick(Sender: TObject);
     procedure HandleEditorFindChange(Sender: TObject);
   private
+    type
+      TPadChrome = record
+        ToolbarColor: TColor;
+        IconColor: TColor;
+        SeparatorColor: TColor;
+        ActiveTabColor: TColor;
+        HoverTabColor: TColor;
+      end;
     var
       FIconFontName: string;
       FNewButton: TSpeedButton;
@@ -216,6 +224,14 @@ type
     procedure SaveSession;
     procedure RebuildTabs;
     procedure ApplyTheme;
+    function CurrentChrome: TPadChrome;
+    procedure ApplyViewerTheme;
+    procedure ApplyWindowColor(const Chrome: TPadChrome);
+    procedure ApplyToolbarChrome(const Chrome: TPadChrome);
+    procedure ApplyTabStripChrome(const Chrome: TPadChrome);
+    procedure ApplySidePanelChrome(const Chrome: TPadChrome);
+    procedure ToggleDarkTheme;
+    procedure ToggleTocPane;
     procedure RebuildSyncAndToc;
     procedure UpdateActiveTocEntry(const SourceLine: Integer);
     procedure ExecuteFind;
@@ -788,6 +804,11 @@ end;
 
 procedure TMarkdownPadVCLForm.HandleThemeClick(Sender: TObject);
 begin
+  ToggleDarkTheme;
+end;
+
+procedure TMarkdownPadVCLForm.ToggleDarkTheme;
+begin
   FDarkThemeActive := not FDarkThemeActive;
   ApplyTheme;
 end;
@@ -803,6 +824,11 @@ begin
 end;
 
 procedure TMarkdownPadVCLForm.HandleTocClick(Sender: TObject);
+begin
+  ToggleTocPane;
+end;
+
+procedure TMarkdownPadVCLForm.ToggleTocPane;
 begin
   const ShowToc = not pnlToc.Visible;
   pnlToc.Visible := ShowToc;
@@ -976,7 +1002,7 @@ end;
 
 procedure TMarkdownPadVCLForm.HandleTabAdd(Sender: TObject);
 begin
-  HandleNewClick(nil);
+  FController.NewDocument;
 end;
 
 procedure TMarkdownPadVCLForm.HandleTabReorder(Sender: TObject; const FromIndex, ToIndex: Integer);
@@ -1272,74 +1298,103 @@ end;
 
 procedure TMarkdownPadVCLForm.ApplyTheme;
 begin
-  var ToolbarColor := ToolbarLightColor;
-  var IconColor := IconLightColor;
-  var SeparatorColor := SeparatorLightColor;
-  var ActiveTabColor := clWhite;
-  var HoverTabColor := TabHoverLightColor;
+  const Chrome = CurrentChrome;
 
+  ApplyViewerTheme;
+  ApplyWindowColor(Chrome);
+  ApplyToolbarChrome(Chrome);
+  ApplyTabStripChrome(Chrome);
+  ApplyTitleBarColors(Chrome.ToolbarColor, Chrome.IconColor, Chrome.SeparatorColor);
+  ApplySidePanelChrome(Chrome);
+end;
+
+function TMarkdownPadVCLForm.CurrentChrome: TPadChrome;
+begin
+  if FDarkThemeActive then
+  begin
+    Result.ToolbarColor := ToolbarDarkColor;
+    Result.IconColor := IconDarkColor;
+    Result.SeparatorColor := SeparatorDarkColor;
+    Result.ActiveTabColor := TabActiveDarkColor;
+    Result.HoverTabColor := TabHoverDarkColor;
+  end
+  else
+  begin
+    Result.ToolbarColor := ToolbarLightColor;
+    Result.IconColor := IconLightColor;
+    Result.SeparatorColor := SeparatorLightColor;
+    Result.ActiveTabColor := clWhite;
+    Result.HoverTabColor := TabHoverLightColor;
+  end;
+end;
+
+procedure TMarkdownPadVCLForm.ApplyViewerTheme;
+begin
   if FDarkThemeActive then
   begin
     mdEditor.Theme := FDarkTheme;
     mdPreview.Theme := FDarkTheme;
-
-    ToolbarColor := ToolbarDarkColor;
-    IconColor := IconDarkColor;
-    SeparatorColor := SeparatorDarkColor;
-
-    ActiveTabColor := TabActiveDarkColor;
-    HoverTabColor := TabHoverDarkColor;
   end
   else
   begin
     mdEditor.Theme := FLightTheme;
     mdPreview.Theme := FLightTheme;
   end;
+end;
 
-  // The custom title bar area behind the system caption buttons shows the form
-  // background, so tint it with the chrome colour; content panes cover the rest.
+// The custom title bar area behind the system caption buttons shows the form
+// background, so tint it with the chrome colour; content panes cover the rest.
+procedure TMarkdownPadVCLForm.ApplyWindowColor(const Chrome: TPadChrome);
+begin
   if FUseCustomTitleBar then
-    Color := ToolbarColor
+    Color := Chrome.ToolbarColor
   else if FDarkThemeActive then
     Color := clBlack
   else
     Color := clWhite;
+end;
 
-  pnlToolbar.Color := ToolbarColor;
+procedure TMarkdownPadVCLForm.ApplyToolbarChrome(const Chrome: TPadChrome);
+begin
+  pnlToolbar.Color := Chrome.ToolbarColor;
 
   for var Button in FIconButtons do
   begin
-    Button.Font.Color := IconColor;
+    Button.Font.Color := Chrome.IconColor;
   end;
 
   for var Separator in FSeparators do
   begin
-    Separator.Color := SeparatorColor;
+    Separator.Color := Chrome.SeparatorColor;
   end;
+end;
 
-  FTabStrip.ActiveColor := ActiveTabColor;
-  FTabStrip.InactiveColor := ToolbarColor;
-  FTabStrip.HoverColor := HoverTabColor;
-  FTabStrip.TextColor := IconColor;
+procedure TMarkdownPadVCLForm.ApplyTabStripChrome(const Chrome: TPadChrome);
+begin
+  FTabStrip.ActiveColor := Chrome.ActiveTabColor;
+  FTabStrip.InactiveColor := Chrome.ToolbarColor;
+  FTabStrip.HoverColor := Chrome.HoverTabColor;
+  FTabStrip.TextColor := Chrome.IconColor;
   FTabStrip.AccentColor := TabAccentColor;
-  FTabStrip.GlyphColor := IconColor;
+  FTabStrip.GlyphColor := Chrome.IconColor;
   FTabStrip.Invalidate;
+end;
 
-  ApplyTitleBarColors(ToolbarColor, IconColor, SeparatorColor);
+procedure TMarkdownPadVCLForm.ApplySidePanelChrome(const Chrome: TPadChrome);
+begin
+  pnlToc.Color := Chrome.ToolbarColor;
+  pnlToc.Font.Color := Chrome.IconColor;
+  lstToc.Color := Chrome.ToolbarColor;
+  lstToc.Font.Color := Chrome.IconColor;
+  splToc.Color := Chrome.SeparatorColor;
+  splMain.Color := Chrome.SeparatorColor;
 
-  pnlToc.Color := ToolbarColor;
-  pnlToc.Font.Color := IconColor;
-  lstToc.Color := ToolbarColor;
-  lstToc.Font.Color := IconColor;
-  splToc.Color := SeparatorColor;
-  splMain.Color := SeparatorColor;
+  pnlStatus.Color := Chrome.ToolbarColor;
+  lblPos.Font.Color := Chrome.IconColor;
+  lblWords.Font.Color := Chrome.IconColor;
 
-  pnlStatus.Color := ToolbarColor;
-  lblPos.Font.Color := IconColor;
-  lblWords.Font.Color := IconColor;
-
-  pnlFind.Color := ToolbarColor;
-  lblFindCount.Font.Color := IconColor;
+  pnlFind.Color := Chrome.ToolbarColor;
+  lblFindCount.Font.Color := Chrome.IconColor;
 
   pnlToc.Invalidate;
   lstToc.Invalidate;
@@ -1540,10 +1595,10 @@ end;
 
 function TMarkdownPadVCLForm.BuildCommandActions: TPadCommandActions;
 begin
-  Result.NewDocument := procedure begin HandleNewClick(nil); end;
-  Result.OpenDocument := procedure begin HandleOpenClick(nil); end;
-  Result.Save := procedure begin HandleSaveClick(nil); end;
-  Result.SaveAs := procedure begin HandleSaveAsClick(nil); end;
+  Result.NewDocument := procedure begin FController.NewDocument; end;
+  Result.OpenDocument := procedure begin FController.OpenViaDialog; end;
+  Result.Save := procedure begin FController.Save; end;
+  Result.SaveAs := procedure begin FController.SaveAs; end;
   Result.CloseDocument := procedure begin CloseActiveDocument; end;
   Result.NextTab :=
     procedure
@@ -1557,8 +1612,8 @@ begin
   Result.ViewSplit := procedure begin SetViewMode(TPadViewMode.Split); end;
   Result.ViewPreviewOnly := procedure begin SetViewMode(TPadViewMode.PreviewOnly); end;
   Result.ToggleZen := procedure begin ToggleZen; end;
-  Result.ToggleTheme := procedure begin HandleThemeClick(nil); end;
-  Result.ToggleToc := procedure begin HandleTocClick(nil); end;
+  Result.ToggleTheme := procedure begin ToggleDarkTheme; end;
+  Result.ToggleToc := procedure begin ToggleTocPane; end;
   Result.ShowFind := procedure begin ShowFindBar; end;
   Result.ShowReplace := procedure begin ShowReplaceBar; end;
   Result.FindInPreview := procedure begin ExecuteFind; end;

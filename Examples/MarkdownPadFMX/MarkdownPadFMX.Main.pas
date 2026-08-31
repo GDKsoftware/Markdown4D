@@ -192,6 +192,8 @@ type
     function TryHandleCommandShortcut(const Key: Word): Boolean;
     function TryHandleGlobalKey(const Key: Word): Boolean;
     procedure ExecuteFormatCommand(const Command: TEditorCommand);
+    procedure ToggleDarkTheme;
+    procedure ToggleTocPane;
     procedure SetViewMode(const Mode: TPadViewMode);
     procedure ApplyViewMode;
     procedure ShowFindBar;
@@ -676,7 +678,7 @@ end;
 
 procedure TMarkdownPadFMXForm.HandleTabAdd(Sender: TObject);
 begin
-  HandleNewClick(nil);
+  FController.NewDocument;
 end;
 
 procedure TMarkdownPadFMXForm.HandleTabReorder(Sender: TObject; const FromIndex, ToIndex: Integer);
@@ -908,10 +910,10 @@ end;
 
 function TMarkdownPadFMXForm.BuildCommandActions: TPadCommandActions;
 begin
-  Result.NewDocument := procedure begin HandleNewClick(nil); end;
-  Result.OpenDocument := procedure begin HandleOpenClick(nil); end;
-  Result.Save := procedure begin HandleSaveClick(nil); end;
-  Result.SaveAs := procedure begin HandleSaveAsClick(nil); end;
+  Result.NewDocument := procedure begin FController.NewDocument; end;
+  Result.OpenDocument := procedure begin FController.OpenViaDialog; end;
+  Result.Save := procedure begin FController.Save; end;
+  Result.SaveAs := procedure begin FController.SaveAs; end;
   Result.CloseDocument := procedure begin CloseActiveDocument; end;
   Result.NextTab :=
     procedure
@@ -925,8 +927,8 @@ begin
   Result.ViewSplit := procedure begin SetViewMode(TPadViewMode.Split); end;
   Result.ViewPreviewOnly := procedure begin SetViewMode(TPadViewMode.PreviewOnly); end;
   Result.ToggleZen := procedure begin ToggleZen; end;
-  Result.ToggleTheme := procedure begin HandleThemeClick(nil); end;
-  Result.ToggleToc := procedure begin HandleTocClick(nil); end;
+  Result.ToggleTheme := procedure begin ToggleDarkTheme; end;
+  Result.ToggleToc := procedure begin ToggleTocPane; end;
   Result.ShowFind := procedure begin ShowFindBar; end;
   Result.ShowReplace := procedure begin ShowReplaceBar; end;
   Result.FindInPreview := procedure begin ExecuteFind; end;
@@ -1555,6 +1557,11 @@ end;
 
 procedure TMarkdownPadFMXForm.HandleThemeClick(Sender: TObject);
 begin
+  ToggleDarkTheme;
+end;
+
+procedure TMarkdownPadFMXForm.ToggleDarkTheme;
+begin
   FDarkThemeActive := not FDarkThemeActive;
   ApplyTheme;
 end;
@@ -1570,6 +1577,11 @@ begin
 end;
 
 procedure TMarkdownPadFMXForm.HandleTocClick(Sender: TObject);
+begin
+  ToggleTocPane;
+end;
+
+procedure TMarkdownPadFMXForm.ToggleTocPane;
 begin
   const ShowToc = not FTocPanel.Visible;
   FTocPanel.Visible := ShowToc;
