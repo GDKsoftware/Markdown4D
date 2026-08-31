@@ -124,6 +124,7 @@ type
     function GetContentHeight: Integer;
     function GetScrollOffset: Single;
     function GetDisplayList: IMarkdownDisplayList;
+    function GetLayoutCount: Integer;
     function GetText: string;
     procedure SetText(const Value: string);
     procedure SetImages(const Value: TMarkdownViewerImageSettings);
@@ -154,6 +155,10 @@ type
     property ContentHeight: Integer read GetContentHeight;
     property ScrollOffset: Single read GetScrollOffset write SetScrollPosition;
     property DisplayList: IMarkdownDisplayList read GetDisplayList;
+    // Advances every time the content is laid out again (first width, resize,
+    // arriving images, upgrading diagrams), so an attached editor can tell that
+    // its scroll mapping went stale.
+    property LayoutCount: Integer read GetLayoutCount;
     property SelectedText: string read GetSelectedText;
 
   published
@@ -971,6 +976,11 @@ end;
 function TMarkdownViewer.GetDisplayList: IMarkdownDisplayList;
 begin
   Result := FModel.DisplayList;
+end;
+
+function TMarkdownViewer.GetLayoutCount: Integer;
+begin
+  Result := FModel.LayoutCount;
 end;
 
 function TMarkdownViewer.GetText: string;

@@ -56,6 +56,7 @@ type
       FHostForm: TForm;
     function NewHostedEditor(const ControlHeight: Integer): TTestableVclEditor;
     class function ManyLines(const Count: Integer): string; static;
+    class function ManyParagraphs(const Count: Integer): string; static;
     class function OneWrappedLine: string; static;
     class function ClipboardIsAccessible: Boolean; static;
     class function TrySetClipboardText(const Value: string): Boolean; static;
@@ -151,6 +152,12 @@ type
 
     [Test]
     procedure EditWithLinkedPreview_LeavesPreviewOnEditorOffset;
+
+    [Test]
+    procedure EditorScroll_PreviewSizedAfterAttach_MovesPreview;
+
+    [Test]
+    procedure PreviewScroll_PreviewSizedAfterAttach_MovesEditor;
 
     [Test]
     procedure MergeText_KeepsCaretAndUndoHistory;
@@ -336,6 +343,18 @@ begin
     if Index > 0 then
       Builder := Builder + #10;
     Builder := Builder + Format('L%.2d', [Index]);
+  end;
+  Result := Builder;
+end;
+
+class function TMarkdownVclEditorTests.ManyParagraphs(const Count: Integer): string;
+begin
+  var Builder := '';
+  for var Index := 0 to Count - 1 do
+  begin
+    if Index > 0 then
+      Builder := Builder + #10#10;
+    Builder := Builder + Format('Paragraph %.2d', [Index]);
   end;
   Result := Builder;
 end;
@@ -753,6 +772,43 @@ begin
   Editor.FlushPreview;
 
   Assert.AreEqual(Double(Expected), Double(Viewer.ScrollOffset), 0.5);
+end;
+
+// The pad wires the panes while the form is still being built: the preview has
+// no width yet, so the first scroll mapping is built against an empty layout.
+// Both directions have to come alive once the preview gets its real size.
+procedure TMarkdownVclEditorTests.EditorScroll_PreviewSizedAfterAttach_MovesPreview;
+begin
+  const Editor = NewHostedEditor(ShortHostHeight);
+  const Viewer = TMarkdownViewer.Create(FHostForm);
+
+  Editor.Text := ManyParagraphs(ManyLineCount);
+  Editor.AttachPreview(Viewer);
+
+  Viewer.Parent := FHostForm;
+  Viewer.SetBounds(0, 0, HostWidth, ShortHostHeight);
+  Viewer.HandleNeeded;
+
+  Editor.SimulateVScroll(SB_BOTTOM);
+
+  Assert.IsTrue(Viewer.ScrollOffset > 0, 'Expected the preview to follow the editor to the bottom');
+end;
+
+procedure TMarkdownVclEditorTests.PreviewScroll_PreviewSizedAfterAttach_MovesEditor;
+begin
+  const Editor = NewHostedEditor(ShortHostHeight);
+  const Viewer = TMarkdownViewer.Create(FHostForm);
+
+  Editor.Text := ManyParagraphs(ManyLineCount);
+  Editor.AttachPreview(Viewer);
+
+  Viewer.Parent := FHostForm;
+  Viewer.SetBounds(0, 0, HostWidth, ShortHostHeight);
+  Viewer.HandleNeeded;
+
+  Viewer.ScrollOffset := Viewer.ContentHeight;
+
+  Assert.IsTrue(Editor.FirstVisibleSourceLine > 0, 'Expected the editor to follow the preview downward');
 end;
 
 procedure TMarkdownVclEditorTests.MergeText_KeepsCaretAndUndoHistory;

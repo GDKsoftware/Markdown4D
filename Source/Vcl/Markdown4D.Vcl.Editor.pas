@@ -85,6 +85,7 @@ type
       FSync: TMarkdownEditorSync;
       FSyncScroll: Boolean;
       FSyncing: Boolean;
+      FSyncedLayoutCount: Integer;
       FRowModel: TMarkdownEditorRows;
       FRows: TArray<TVisualRow>;
       FOnChange: TNotifyEvent;
@@ -102,6 +103,7 @@ type
     procedure HandleInternalPreviewScroll(Sender: TObject);
     procedure SyncPreviewToEditor;
     procedure RestorePreviewScroll(const PreviousOffset: Single);
+    procedure EnsureSyncCurrent;
     procedure UpdateSync;
     procedure DoSyncScroll(const SourceLine: Integer);
     procedure RenderContent(const TargetCanvas: TCanvas; const TargetWidth, TargetHeight, PixelsPerInch,
@@ -508,6 +510,17 @@ begin
   FPreview.ScrollOffset := PreviousOffset;
 end;
 
+// The preview lays out lazily: it has no display list until it first gets a
+// width, and every relayout after that (a resize, an arriving image, a diagram
+// upgrading) moves the blocks. A mapping built against the old layout would
+// leave the panes standing still, so it is rebuilt the moment it is used
+// against a layout it has not seen.
+procedure TMarkdownEditor.EnsureSyncCurrent;
+begin
+  if FPreview.LayoutCount <> FSyncedLayoutCount then
+    UpdateSync;
+end;
+
 procedure TMarkdownEditor.UpdateSync;
 begin
   if FPreview = nil then
@@ -515,6 +528,7 @@ begin
 
   const Document = TMarkdown.Parse(FModel.Text, TMarkdownDialect.Gfm);
   FSync.Update(Document, FPreview.DisplayList, FModel.Text);
+  FSyncedLayoutCount := FPreview.LayoutCount;
 end;
 
 procedure TMarkdownEditor.HandleInternalPreviewScroll(Sender: TObject);
@@ -524,6 +538,7 @@ begin
 
   FSyncing := True;
   try
+    EnsureSyncCurrent;
     const SourceLine = FSync.PreviewOffsetToSourceLine(FPreview.ScrollOffset);
     ScrollToSourceLine(SourceLine);
     DoSyncScroll(SourceLine);
@@ -539,6 +554,7 @@ begin
 
   FSyncing := True;
   try
+    EnsureSyncCurrent;
     const SourceLine = FirstVisibleSourceLine;
     FPreview.ScrollOffset := FSync.SourceLineToPreviewOffset(SourceLine);
     DoSyncScroll(SourceLine);
