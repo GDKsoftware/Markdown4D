@@ -307,11 +307,13 @@ begin
   tmrTick.Enabled := True;
 
   if FUseCustomTitleBar then
+  begin
     TThread.ForceQueue(nil,
       procedure
       begin
         LayoutTitleBar;
       end);
+  end;
 end;
 
 destructor TMarkdownPadVCLForm.Destroy;
