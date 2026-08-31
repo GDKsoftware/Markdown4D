@@ -25,6 +25,7 @@ type
     btnSend: TButton;
     tmrStream: TTimer;
     tmrLayout: TTimer;
+    procedure HandleShow(Sender: TObject);
     procedure HandleSendClick(Sender: TObject);
     procedure HandlePromptKeyDown(Sender: TObject; var Key: Word; var KeyChar: Char; Shift: TShiftState);
     procedure HandleStreamTimer(Sender: TObject);
@@ -91,6 +92,15 @@ begin
   Control.Margins.Top := Amount;
   Control.Margins.Right := Amount;
   Control.Margins.Bottom := Amount;
+end;
+
+// A chat demo should demonstrate itself: the first show streams the canned
+// answer without waiting for a prompt.
+procedure TStreamingMarkdownFMXForm.HandleShow(Sender: TObject);
+begin
+  const IsFirstShow = (FMessageViewers.Count = 0);
+  if IsFirstShow then
+    StartStreaming;
 end;
 
 procedure TStreamingMarkdownFMXForm.HandleSendClick(Sender: TObject);

@@ -6,6 +6,7 @@ interface
 
 uses
   System.Classes,
+  System.Types,
   System.Generics.Collections,
   Vcl.Forms,
   Vcl.Controls,
@@ -22,8 +23,11 @@ type
     btnSend: TButton;
     tmrStream: TTimer;
     tmrLayout: TTimer;
+    procedure HandleShow(Sender: TObject);
     procedure HandleSendClick(Sender: TObject);
     procedure HandlePromptKeyPress(Sender: TObject; var Key: Char);
+    procedure HandleMessagesWheel(Sender: TObject; Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint;
+      var Handled: Boolean);
     procedure HandleStreamTimer(Sender: TObject);
     procedure HandleLayoutTimer(Sender: TObject);
   private
@@ -81,9 +85,27 @@ begin
   FStreamer := TMarkdownStreamer.Create;
 end;
 
+// A chat demo should demonstrate itself: the first show streams the canned
+// answer without waiting for a prompt.
+procedure TStreamingMarkdownVCLForm.HandleShow(Sender: TObject);
+begin
+  const IsFirstShow = (FMessageViewers.Count = 0);
+  if IsFirstShow then
+    StartStreaming;
+end;
+
 procedure TStreamingMarkdownVCLForm.HandleSendClick(Sender: TObject);
 begin
   SendPrompt;
+end;
+
+// Wheel input that no child claims lands on the form; the conversation is the
+// only thing left to scroll, wherever the cursor happens to hover.
+procedure TStreamingMarkdownVCLForm.HandleMessagesWheel(Sender: TObject; Shift: TShiftState;
+  WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
+begin
+  sbxMessages.VertScrollBar.Position := sbxMessages.VertScrollBar.Position - WheelDelta;
+  Handled := True;
 end;
 
 procedure TStreamingMarkdownVCLForm.HandlePromptKeyPress(Sender: TObject; var Key: Char);

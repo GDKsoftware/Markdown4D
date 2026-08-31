@@ -11,6 +11,8 @@ object StreamingMarkdownVCLForm: TStreamingMarkdownVCLForm
   Font.Name = 'Segoe UI'
   Font.Style = []
   Position = poScreenCenter
+  OnMouseWheel = HandleMessagesWheel
+  OnShow = HandleShow
   TextHeight = 15
   object sbxMessages: TScrollBox
     Left = 0

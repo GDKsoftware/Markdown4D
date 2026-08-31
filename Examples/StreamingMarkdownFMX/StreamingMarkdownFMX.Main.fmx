@@ -5,6 +5,7 @@ object StreamingMarkdownFMXForm: TStreamingMarkdownFMXForm
   ClientHeight = 680
   ClientWidth = 760
   Position = ScreenCenter
+  OnShow = HandleShow
   FormFactor.Width = 320
   FormFactor.Height = 480
   FormFactor.Devices = [Desktop]
