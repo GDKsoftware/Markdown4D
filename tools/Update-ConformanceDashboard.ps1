@@ -84,7 +84,7 @@ if ($GrandTotal -gt 0) {
 }
 $Lines.Add(('| **Total** | **{0}** | **{1}** | **{2}%** |' -f $GrandTotal, $GrandPassed, $GrandPercentage.ToString('0.0', $Invariant)))
 
-$Table = $Lines -join "`r`n"
+$Table = $Lines -join "`n"
 
 $StartMarker = '<!-- conformance:start -->'
 $EndMarker = '<!-- conformance:end -->'
@@ -100,7 +100,7 @@ if ($StartIndex -lt 0 -or $EndIndex -lt 0 -or $EndIndex -lt $StartIndex) {
 
 $Before = $Readme.Substring(0, $StartIndex)
 $After = $Readme.Substring($EndIndex + $EndMarker.Length)
-$Updated = $Before + $StartMarker + "`r`n" + $Table + "`r`n" + $EndMarker + $After
+$Updated = $Before + $StartMarker + "`n" + $Table + "`n" + $EndMarker + $After
 
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText($ReadmePath, $Updated, $Utf8NoBom)
