@@ -1,4 +1,4 @@
-# Markdown4D — Package build & IDE installation
+# Markdown4D package build and IDE installation
 
 This folder contains the runtime and design-time packages that make the
 Markdown4D VCL and FMX components available on the RAD Studio component palette.
@@ -18,8 +18,8 @@ component palette page named **Markdown4D**.
 
 ## Build outputs
 
-- BPL (Win32) → `$(BDSCOMMONDIR)\Bpl` (e.g. `C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl`) — the standard shared package folder, which is always on the IDE's package search path, so design-time packages and their runtime dependencies load without any PATH configuration
-- BPL (Win64x) → `$(BDSCOMMONDIR)\Bpl\Win64x` — kept out of the Win32 folder because the BPL file names are identical across platforms
+- BPL (Win32) → `$(BDSCOMMONDIR)\Bpl` (e.g. `C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl`), the standard shared package folder, which is always on the IDE's package search path, so design-time packages and their runtime dependencies load without any PATH configuration
+- BPL (Win64x) → `$(BDSCOMMONDIR)\Bpl\Win64x`, kept out of the Win32 folder because the BPL file names are identical across platforms
 - DCP → `packages\dcp\<Platform>\<Config>`
 - DCU → `packages\<Platform>\<Config>`
 

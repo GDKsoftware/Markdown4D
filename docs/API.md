@@ -9,7 +9,7 @@ All public enumerations are scoped (`{$SCOPEDENUMS ON}`), so qualify them:
 
 ## Contents
 
-- [Facade — `TMarkdown`](#facade--tmarkdown)
+- [Facade: `TMarkdown`](#facade-tmarkdown)
 - [Pipeline builder](#pipeline-builder)
 - [Abstract syntax tree](#abstract-syntax-tree)
 - [Document builder](#document-builder)
@@ -21,7 +21,7 @@ All public enumerations are scoped (`{$SCOPEDENUMS ON}`), so qualify them:
 - [Drawing SVG](#drawing-svg)
 - [Glyph outlines and image decoding](#glyph-outlines-and-image-decoding)
 
-## Facade — `TMarkdown`
+## Facade: `TMarkdown`
 
 Unit `Markdown4D`. The one-stop entry point for the common cases.
 
@@ -124,7 +124,7 @@ type
 
 Higher priority wins; ties break by registration order. Rather than passing
 magic numbers, use the named constants on `TMarkdownPriorities` (unit
-`Markdown4D.Extensions.Interfaces`) — `Highest`, `High`, `AboveNormal`,
+`Markdown4D.Extensions.Interfaces`): `Highest`, `High`, `AboveNormal`,
 `Normal`, `BelowNormal`, `Low`, `Lowest`, and the extension slots
 `ExtensionProcessor`, `ExtensionRenderer` and `ExtensionLayoutOverride`. A built
 pipeline is thread-safe to reuse for parsing and rendering.
@@ -174,7 +174,7 @@ InlineHtml, CustomInline, Table, TableRow, TableCell`.
 
 `TMarkdownSegment` (`StartOffset`, `EndOffset`, `Length`) locates the node in
 the source string. `SetExtensionData` / `TryGetExtensionData` attach arbitrary
-interface payloads keyed by string — the mechanism the chart extension uses to
+interface payloads keyed by string, the mechanism the chart extension uses to
 cache its parsed model on the node.
 
 ### Typed node interfaces
@@ -221,7 +221,7 @@ open a container you fill with nested content (`BeginParagraph`,
 `BeginBulletList`, `BeginOrderedList`, `BeginListItem`, `BeginTaskListItem`,
 `BeginTable`, `BeginTableRow`, `BeginTableCell`, `BeginBlockQuote`,
 `BeginBold`, `BeginItalic`, `BeginStrikethrough`, `BeginLink`, `BeginHeading`).
-Structural rules are enforced — a table may contain only rows, a row only cells —
+Structural rules are enforced (a table may contain only rows, a row only cells),
 and `Build` raises `EMarkdownError` if any node is left open.
 
 ```pascal
@@ -330,7 +330,8 @@ The viewer components use the same incremental machinery internally; see
 
 ## Viewer components
 
-`TMarkdownViewer` renders markdown natively onto the control canvas — no browser.
+`TMarkdownViewer` renders markdown natively onto the control canvas, without a
+browser.
 The VCL control lives in `Markdown4D.Vcl.Viewer` (a `TCustomControl`); the FMX
 control in `Markdown4D.Fmx.Viewer` (a `TControl`). Their public surface is the
 same.

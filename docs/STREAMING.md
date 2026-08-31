@@ -1,13 +1,13 @@
 # Streaming markdown into the viewer
 
-Markdown4D is built for text that arrives a little at a time — most obviously an
+Markdown4D is built for text that arrives a little at a time, most obviously an
 LLM response that streams token by token. This guide covers the streaming API
 of `TMarkdownViewer`: `AppendMarkdown`, the debounce and auto-follow behaviour,
 the threading contract, how chart blocks behave mid-stream, and what the `Text`
 property means while data is still arriving.
 
 Everything here applies to both the VCL viewer (`Markdown4D.Vcl.Viewer`) and the
-FMX viewer (`Markdown4D.Fmx.Viewer`) — the streaming surface is identical.
+FMX viewer (`Markdown4D.Fmx.Viewer`); the streaming surface is identical.
 
 ## `AppendMarkdown`
 
@@ -42,7 +42,7 @@ chunk it waits a short debounce interval (~100 ms) and then flushes everything
 accumulated so far in one reparse-and-repaint. A burst of chunks becomes a
 handful of relayouts per second, and the control stays responsive.
 
-You do not drive the debounce — an internal timer flushes pending text and
+You do not drive the debounce: an internal timer flushes pending text and
 disables itself once the buffer is drained. Just keep calling `AppendMarkdown`.
 
 **Auto-follow.** At each flush the viewer checks whether you were scrolled to the
@@ -56,7 +56,7 @@ a selection made mid-stream remains valid across the relayouts that follow.
 ## Threading contract
 
 LLM clients usually deliver tokens on a background thread. `AppendMarkdown` (and
-`Text`, `LoadFromFile`, `LoadFromStream`) are **safe to call from any thread** —
+`Text`, `LoadFromFile`, `LoadFromStream`) are **safe to call from any thread**:
 if called off the UI thread they marshal themselves onto it, so you never touch
 VCL/FMX state from a worker.
 
@@ -100,13 +100,13 @@ TChartBlockOverride.RegisterOverride;
 ```
 
 Chart parsing is part of the viewer's built-in GFM pipeline, so no pipeline
-wiring is required — only the layout-time override registration above. See
+wiring is required beyond the layout-time override registration above. See
 [EXTENSIONS.md](EXTENSIONS.md) for how the chart override is built. Partial or
 malformed chart JSON degrades to a plain code block; it never breaks the stream.
 
 ## `Text` semantics while streaming
 
-`Text` always reflects the **entire** document you have appended — the committed
+`Text` always reflects the **entire** document you have appended: the committed
 text plus any pending chunk that has not been flushed yet. Reading `Text`
 immediately after `AppendMarkdown`, before the next repaint, still returns the
 full accumulated markdown.
@@ -120,7 +120,7 @@ end;
 
 This makes `Text` the right source of truth for persisting a message, copying
 the raw markdown, or handing the finished document to another component when the
-stream ends — there is no separate "pending" text to reconcile.
+stream ends; there is no separate "pending" text to reconcile.
 
 `ContentHeight` reports the laid-out height and is handy for auto-sizing a
 message bubble as it grows: read it after each flush (for example on `OnScroll`
@@ -141,7 +141,7 @@ end;
 - Create one `TMarkdownViewer` per message.
 - Register `TChartBlockOverride.RegisterOverride` once at application start if
   you expect charts.
-- Feed tokens with `AppendMarkdown` from wherever they arrive — worker thread or
+- Feed tokens with `AppendMarkdown` from wherever they arrive, worker thread or
   UI thread, in any chunk size.
 - Let the viewer debounce, reparse, repaint and auto-follow.
 - Read `Text` for the finished markdown when the stream completes.

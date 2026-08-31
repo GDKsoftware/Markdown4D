@@ -1940,8 +1940,8 @@ begin
   Result :=
     '# Markdown4D Pad'#10#10 +
     'A native Markdown editor with a **live preview**, a clickable table of contents, ' +
-    'and synchronized scrolling. Everything renders directly on the VCL canvas - ' +
-    'no embedded browser.'#10#10 +
+    'and synchronized scrolling. Everything renders directly on the VCL canvas, ' +
+    'without an embedded browser.'#10#10 +
     '## Editing'#10#10 +
     'Use the toolbar or shortcuts: **Ctrl+B** bold, *Ctrl+I* italic, Ctrl+K link, ' +
     'and the Code button wraps the selection in a fenced block.'#10#10 +

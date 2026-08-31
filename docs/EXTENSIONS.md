@@ -2,25 +2,25 @@
 
 Markdown4D is extensible at two layers:
 
-1. **Parsing and HTML rendering** — add syntax and output through the pipeline
-   builder. An extension implements `IMarkdownExtension` and registers parsers,
-   delimiter processors, renderer hooks or document processors.
-2. **Native (canvas) rendering** — teach the VCL / FMX viewer to draw a block
-   itself through an `ILayoutBlockOverride`, painting onto the neutral
+1. Parsing and HTML rendering: an extension implements `IMarkdownExtension`
+   and registers parsers, delimiter processors, renderer hooks or document
+   processors through the pipeline builder.
+2. Native (canvas) rendering: an `ILayoutBlockOverride` teaches the VCL / FMX
+   viewer to draw a block itself, painting onto the neutral
    `IExtensionCanvas`.
 
 This guide walks three worked examples, all built purely on the public API:
 
-- the sample `==mark==` extension (unit `Markdown4D.Extensions.Sample`, opt-in via
-  `Use(TMarkExtension.Create)` — it is **not** auto-registered by `UseGfm`) — the
-  **parser** reference;
-- an **admonition** extension — the **custom-rendering** walkthrough, combining a
+- the sample `==mark==` extension (unit `Markdown4D.Extensions.Sample`), the
+  parser reference. It is opt-in through `Use(TMarkExtension.Create)` and not
+  auto-registered by `UseGfm`;
+- an admonition extension, the custom-rendering walkthrough, combining a
   document processor, the node extension-data channel and a canvas block
   override;
-- the shipped **chart** and **mermaid** extensions — the bundled references that
+- the shipped chart and mermaid extensions, the bundled references that
   follow the same shape at full scale.
 
-> **Priorities without magic numbers.** Every registration point takes an integer
+> Every registration point takes an integer
 > priority. Use the named constants on `TMarkdownPriorities` (unit
 > `Markdown4D.Extensions.Interfaces`) instead of bare numbers: `Highest`, `High`,
 > `AboveNormal`, `Normal`, `BelowNormal`, `Low`, `Lowest`, and the extension
@@ -28,7 +28,7 @@ This guide walks three worked examples, all built purely on the public API:
 > `ExtensionProcessor` (document processors), `ExtensionRenderer` (renderer hooks)
 > and `ExtensionLayoutOverride` (canvas block overrides).
 
-## Part 1 — a parser extension: `==mark==`
+## Part 1: the `==mark==` parser extension
 
 The goal: turn `==highlighted==` into `<mark>highlighted</mark>`. `==` is a
 paired delimiter, so the natural tools are a **delimiter processor** (matches the
@@ -170,26 +170,26 @@ Block and inline parsers register with a **trigger-character** string (the
 characters that may begin the construct) and a **priority**. Delimiter
 processors key off `DelimiterCharacter`; renderer hooks off `NodeName`.
 
-When two delimiter processors claim the same `DelimiterCharacter` — for example a
-new `=` extension registered alongside the sample `==mark==` — the pipeline
+When two delimiter processors claim the same `DelimiterCharacter` (for example a
+new `=` extension registered alongside the sample `==mark==`), the pipeline
 resolves the collision exactly as it does for renderer hooks and block overrides:
 by **priority, then registration order**. The highest priority wins, and among
 equal priorities the first registered wins. Register your processor above
 `TMarkdownPriorities.ExtensionParser` if it must beat another extension for the
 same character.
 
-## Part 2 — a custom-rendering walkthrough: admonitions
+## Part 2: a custom-rendering walkthrough with admonitions
 
 HTML rendering is not always the goal. This walkthrough builds a complete
 extension that draws GitHub-style alert callouts (`> [!NOTE]`, `> [!WARNING]`, …)
-as a coloured banner on the viewer canvas — using nothing but the public API. It
+as a coloured banner on the viewer canvas, using nothing but the public API. It
 combines the three moving parts every native-rendering extension shares:
 
 1. a **document processor** that recognises the construct and stashes a small
    payload on the node through the **extension-data channel**;
 2. an **`ILayoutBlockOverride`** that claims those nodes during layout and draws
    them through the **`IExtensionCanvas`**;
-3. registration in two places — the processor at parse time, the override at
+3. registration in two places: the processor at parse time, the override at
    layout time.
 
 The same three parts scale up to the shipped chart and mermaid extensions in
@@ -197,7 +197,7 @@ Part 3.
 
 ### The extension-data channel
 
-Every `IMarkdownNode` carries a keyed slot for interface payloads —
+Every `IMarkdownNode` carries a keyed slot for interface payloads:
 `SetExtensionData(Key, Data)` and `TryGetExtensionData(Key, out Data)`. Use it
 for any per-node state an extension computes once and consumes later. Key it with
 a unique string.
@@ -401,17 +401,17 @@ type
   end;
 ```
 
-`Handles` returns `True` for nodes this override owns — here, block quotes the
+`Handles` returns `True` for nodes this override owns: here, block quotes the
 processor tagged. `LayoutBlock` receives the node, the `Top` at which it must lay
 out, and a context exposing the available `Width`, the active `Theme`, a text
 `Measurer`, and the `Canvas`. It draws onto the canvas and returns the block's
 height.
 
-**The `Theme`** is a `TMarkdownTheme` (unit `Markdown4D.Theme`) — the same record
+**The `Theme`** is a `TMarkdownTheme` (unit `Markdown4D.Theme`), the same record
 the viewer paints the rest of the document with. Add `Markdown4D.Theme` to your
 uses clause to name the type. Besides the members this example touches
 (`CodeBackgroundColor`, `LinkColor`, `TextColor`, `BaseFont`) it exposes every
-colour, font and metric the built-in blocks use — `BlockQuoteBarColor`,
+colour, font and metric the built-in blocks use: `BlockQuoteBarColor`,
 `CodeFont`, `CodeTextColor`, `ContentPadding`, `ChartPalette`, `ChartTextColor`,
 and the rest. Read `Markdown4D.Theme.pas` for the full member list, and prefer
 theme members over hard-coded colours so your block tracks the light and dark
@@ -421,7 +421,7 @@ presets.
 `Top` you receive is already inset by the theme's `ContentPadding` **vertically**,
 so draw at the `Top` you are given. The **x** origin is `0`, and `Context.Width`
 is the content width already reduced by the left content padding and the block's
-own indent (`FWidth - ContentPadding - Command.X`) — it is **not** the full page
+own indent (`FWidth - ContentPadding - Command.X`); it is not the full page
 width. Drawing conventionally starts at `x = 0` and fills to `Context.Width`, as
 the shipped chart and mermaid overrides do. A block that fills `0..Width` therefore
 sits flush with the left content edge but is not full-bleed on the right; it is not
@@ -461,7 +461,7 @@ end;
 
 ### The canvas
 
-`ILayoutBlockContext.Canvas` is an `IExtensionCanvas` — the single, neutral
+`ILayoutBlockContext.Canvas` is an `IExtensionCanvas`, the single neutral
 drawing surface. Its primitives:
 
 | Method | Draws |
@@ -475,7 +475,7 @@ drawing surface. Its primitives:
 | `FillPolygon(Points, Color)` | A filled polygon (arrowheads) |
 | `DrawPolygon(Points, StrokeColor, StrokeWidth)` | A stroked polygon |
 | `FillAndStrokePolygon(Points, FillColor, StrokeColor, StrokeWidth)` | A filled and stroked polygon in one primitive (diamond, stadium and rounded nodes) |
-| `FillWedge(Center, OuterRadius, InnerRadius, StartAngle, SweepAngle, Color)` | An annular wedge — the pie / doughnut slice primitive; angles in degrees |
+| `FillWedge(Center, OuterRadius, InnerRadius, StartAngle, SweepAngle, Color)` | An annular wedge, the pie / doughnut slice primitive; angles in degrees |
 | `DrawWedge(Center, OuterRadius, InnerRadius, StartAngle, SweepAngle, StrokeColor, StrokeWidth)` | A stroked wedge |
 | `FillAndStrokeWedge(Center, OuterRadius, InnerRadius, StartAngle, SweepAngle, FillColor, StrokeColor, StrokeWidth)` | A filled and stroked wedge in one primitive (circle nodes) |
 | `DrawImage(Bounds, Source, AltText)` | An image slot |
@@ -502,7 +502,7 @@ pipeline.** `TMarkdownViewerModel` parses with a fixed
 `TMarkdown.Parse(..., Gfm)` and then, at layout time, runs every processor
 registered with the static `TLayoutDocumentProcessorRegistry` before it lays the
 document out. An extension installed only into an `IMarkdownPipelineBuilder`
-(through `Use`) never runs in the viewer — so its tag is never cached, `Handles`
+(through `Use`) never runs in the viewer, so its tag is never cached, `Handles`
 returns `False`, and the banner never draws.
 
 A native-rendering extension therefore registers in **two layout-time registries**,
@@ -528,7 +528,7 @@ end;
 ```
 
 Declare `class var FRegistered: Boolean;` (strict private) on the override so the
-guard makes repeated calls from several forms harmless — the shipped chart and
+guard makes repeated calls from several forms harmless; the shipped chart and
 mermaid overrides register in exactly this shape. `TAdmonitionExtension` (the
 pipeline extension from Part 2) remains useful when you drive the HTML or AST
 pipeline yourself, where it caches the tag at parse time; but it has no effect on
@@ -543,7 +543,7 @@ two static layout registries in unit `Markdown4D.Layout.BlockOverride`
 **and** the document-processor registry.
 
 **Laying out without the viewer.** `TMarkdownLayoutEngine.LayoutDocument` does
-**not** run `TLayoutDocumentProcessorRegistry.Process` — only
+**not** run `TLayoutDocumentProcessorRegistry.Process`; only
 `TMarkdownViewerModel` does, immediately after it parses. If you lay out a freshly
 parsed document directly through `LayoutDocument` (bypassing the viewer model),
 run the processors yourself first, or the tagged nodes will not be cached and your
@@ -563,7 +563,7 @@ first registered wins. `ExtensionLayoutOverride` (100) sits above the built-in
 block rendering an override supersedes; raise it further if you must beat another
 override for the same node.
 
-## Part 3 — the bundled chart and mermaid extensions
+## Part 3: the bundled chart and mermaid extensions
 
 The shipped chart and mermaid extensions are the same three parts at full scale.
 
@@ -600,8 +600,8 @@ fixed GFM pipeline does not register the chart extension, so charts render only
 because `TChartBlockOverride.RegisterOverride` installs **both** halves at layout
 time. It calls `TMarkdownLayoutEngine.RegisterBlockOverride` for the override
 **and** `TLayoutDocumentProcessorRegistry.Register(TChartExtension.CreateDocumentProcessor)`
-for the document processor. That processor — not any on-demand parse in the
-override — is what runs during `TMarkdownViewerModel`'s layout pass and caches the
+for the document processor. That processor, not any on-demand parse in the
+override, is what runs during `TMarkdownViewerModel`'s layout pass and caches the
 `IChartModel`; `TChartBlockOverride.Handles` then merely reads the cached model
 back through `TChartExtension.TryGetModel` (no parsing). Installing
 `TChartExtension` in an author pipeline is optional and only matters when you drive
@@ -630,7 +630,7 @@ evaluated as code.
 | Sequence | `sequenceDiagram` | `participant` / `actor` declarations; messages `->>` `-->>` `-x` `->`; `activate` / `deactivate` via `+` / `-`; `Note left of` / `right of` / `over` |
 | Pie | `pie` (+ optional `title`) | `"label" : value` slices as one wedge each, legend and percentage labels |
 
-**Fallback — never an exception.** The override claims a node **only when a model
+The override claims a node **only when a model
 parses**, so anything outside the subset degrades to an ordinary highlighted code
 block instead of raising: an unknown diagram type (`gantt`, `classDiagram`, …), a
 parse error anywhere in the body, or a flowchart above the 500-node ceiling.
@@ -638,7 +638,7 @@ parse error anywhere in the body, or a flowchart above the 500-node ceiling.
 Streaming is handled by the document processor, which caches a model **only for a
 closed fence**: while a fence is still streaming the block stays an ordinary code
 block until its closing fence arrives. The viewer runs that same processor at
-layout time, so the behaviour is identical on both paths — a partial diagram
+layout time, so the behaviour is identical on both paths: a partial diagram
 renders as plain code and upgrades to a native diagram once its fence closes.
 
 `TMermaidExtension.TryGetModel` reads back a cached model:
@@ -680,15 +680,15 @@ TMermaidBlockOverride.RegisterOverride;
 
 ## Lifetime and threading rules
 
-- **Extensions are stateless and reusable.** `Setup` runs once when the pipeline
+- Extensions are stateless and reusable. `Setup` runs once when the pipeline
   is built. Keep per-parse state out of the extension object; use the node
   extension-data channel for per-node state.
-- **Register block overrides once.** The registry is process-wide and static.
+- Block overrides register once. The registry is process-wide and static.
   Guard registration with a flag so repeated calls are no-ops. There is no
   automatic unregister; overrides live for the process. Tests call
   `TMarkdownLayoutEngine.ClearBlockOverrides` to reset it.
-- **Layout runs on the UI thread.** `LayoutBlock` is called during the viewer's
-  layout pass. Do only measuring and primitive emission there — no blocking I/O,
+- Layout runs on the UI thread. `LayoutBlock` is called during the viewer's
+  layout pass. Do only measuring and primitive emission there: no blocking I/O,
   no network. Resolve data earlier (at parse time, into extension data).
 
 ## Do's and don'ts
@@ -706,7 +706,7 @@ TMermaidBlockOverride.RegisterOverride;
 
 **Don't**
 
-- Don't raise exceptions out to the host from a hook or override on bad input —
+- Don't raise exceptions out to the host from a hook or override on bad input;
   a single malformed block would break the whole render. Detect and degrade.
 - Don't cache mutable state on the extension instance across parses.
 - Don't perform I/O or long work inside `LayoutBlock`.

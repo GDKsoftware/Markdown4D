@@ -57,11 +57,12 @@ function BuildStreamingSampleAnswer: string;
 begin
   Result :=
     '# Streaming Markdown'#10#10 +
-    'Here is a rich answer that arrives in small chunks, exactly like an LLM response. ' +
+    'This answer arrives in small chunks, the way an LLM response does. ' +
     'The viewer re-parses incrementally and repaints as the text grows.'#10#10 +
-    '## Why native rendering?'#10#10 +
-    'No embedded browser, no HTML round-trip: the layout engine paints **bold**, *italic*, ' +
-    '`inline code` and [links](https://commonmark.org) directly on the canvas.'#10#10 +
+    '## Native rendering'#10#10 +
+    'The layout engine paints **bold**, *italic*, `inline code` and ' +
+    '[links](https://commonmark.org) directly on the canvas, without an embedded ' +
+    'browser or an HTML round-trip.'#10#10 +
     '## Comparison'#10#10 +
     '| Approach | Startup | Memory | Streaming |'#10 +
     '| --- | --- | --- | --- |'#10 +

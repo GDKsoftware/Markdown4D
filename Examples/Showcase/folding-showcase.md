@@ -24,7 +24,7 @@ this sub-section too.
 
 ## 2. Code examples
 
-A Pascal snippet — fold it from its opening fence:
+A Pascal snippet; fold it from its opening fence:
 
 ```pascal
 procedure TDemo.Run;

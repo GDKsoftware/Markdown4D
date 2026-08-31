@@ -1,7 +1,7 @@
 # Chart showcase
 
-Markdown4D renders Chart.js-style configs **natively** in the preview — no
-browser, no chart.js. Below is every supported chart type.
+Markdown4D renders Chart.js-style configs natively in the preview, without a
+browser or chart.js. Below is every supported chart type.
 
 ## Bar (grouped)
 
@@ -27,7 +27,7 @@ browser, no chart.js. Below is every supported chart type.
 {"type":"chart","data":{"type":"line","data":{"labels":["Mon","Tue","Wed","Thu","Fri"],"datasets":[{"label":"Visitors","data":[120,150,110,180,160],"borderColor":"#59a14f"}]}}}
 ```
 
-## Area — line + fill (new)
+## Area: line + fill
 
 ```chart
 {"type":"chart","data":{"type":"line","data":{"labels":["Jan","Feb","Mar","Apr","May"],"datasets":[{"label":"Revenue","data":[30,45,38,60,52],"borderColor":"#e15759","fill":true}]}}}
