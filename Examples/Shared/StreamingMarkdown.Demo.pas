@@ -16,7 +16,7 @@ type
     FPosition: Integer;
   public
     // Loads the text and rewinds to the start.
-    procedure Reset(const AText: string);
+    procedure Reset(const Text: string);
     // True while there is still text left to emit.
     function HasMore: Boolean;
     // Returns up to RequestedLength characters from the current position and
@@ -34,9 +34,9 @@ uses
 
 { TMarkdownStreamer }
 
-procedure TMarkdownStreamer.Reset(const AText: string);
+procedure TMarkdownStreamer.Reset(const Text: string);
 begin
-  FText := AText;
+  FText := Text;
   FPosition := 1;
 end;
 

@@ -5,6 +5,7 @@ unit MarkdownPad.Fmx.WinFrame;
 interface
 
 uses
+  Winapi.Windows,
   FMX.Forms;
 
 type
@@ -15,6 +16,12 @@ type
   /// buttons itself; BeginDrag starts the system move loop so Aero Snap keeps working.
   /// </summary>
   TFmxWinFrame = class
+  strict private
+    class var
+      FPreviousWindowProc: Pointer;
+      FWindowHandle: HWND;
+    class function FrameProc(Wnd: HWND; Msg: UINT; WParam: WPARAM; LParam: LPARAM): LRESULT; stdcall; static;
+
   public
     class function Install(const Form: TCommonCustomForm): Boolean; static;
     class procedure BeginDrag; static;
@@ -23,7 +30,6 @@ type
 implementation
 
 uses
-  Winapi.Windows,
   Winapi.Messages,
   Winapi.DwmApi,
   Winapi.UxTheme,
@@ -34,18 +40,14 @@ const
   ResizeBorder = 6;
   ScMoveCaption = $F012; // SC_MOVE or HTCAPTION
 
-var
-  GOldProc: Pointer = nil;
-  GHandle: HWND = 0;
-
-function FrameProc(Wnd: HWND; Msg: UINT; WParam: WPARAM; LParam: LPARAM): LRESULT; stdcall;
+class function TFmxWinFrame.FrameProc(Wnd: HWND; Msg: UINT; WParam: WPARAM; LParam: LPARAM): LRESULT;
 begin
   case Msg of
     WM_NCACTIVATE:
       begin
         // Passing -1 keeps DefWindowProc from repainting the (removed) non-client
         // frame when the window activates, which otherwise flashes a grey line.
-        Result := CallWindowProc(GOldProc, Wnd, Msg, WParam, -1);
+        Result := CallWindowProc(FPreviousWindowProc, Wnd, Msg, WParam, -1);
         Exit;
       end;
 
@@ -96,30 +98,30 @@ begin
       end;
   end;
 
-  Result := CallWindowProc(GOldProc, Wnd, Msg, WParam, LParam);
+  Result := CallWindowProc(FPreviousWindowProc, Wnd, Msg, WParam, LParam);
 end;
 
 class function TFmxWinFrame.Install(const Form: TCommonCustomForm): Boolean;
 begin
-  GHandle := FormToHWND(Form);
-  if GHandle = 0 then
+  FWindowHandle := FormToHWND(Form);
+  if FWindowHandle = 0 then
     Exit(False);
 
-  var Style := GetWindowLong(GHandle, GWL_STYLE);
+  var Style := GetWindowLong(FWindowHandle, GWL_STYLE);
   Style := Style or WS_THICKFRAME or WS_MINIMIZEBOX or WS_MAXIMIZEBOX or WS_CLIPCHILDREN;
-  SetWindowLong(GHandle, GWL_STYLE, Style);
+  SetWindowLong(FWindowHandle, GWL_STYLE, Style);
 
   var Margins: TMargins;
   Margins.cxLeftWidth := 0;
   Margins.cxRightWidth := 0;
   Margins.cyTopHeight := 0;
   Margins.cyBottomHeight := 1;
-  DwmExtendFrameIntoClientArea(GHandle, Margins);
+  DwmExtendFrameIntoClientArea(FWindowHandle, Margins);
 
-  GOldProc := Pointer(GetWindowLongPtr(GHandle, GWLP_WNDPROC));
-  SetWindowLongPtr(GHandle, GWLP_WNDPROC, LONG_PTR(@FrameProc));
+  FPreviousWindowProc := Pointer(GetWindowLongPtr(FWindowHandle, GWLP_WNDPROC));
+  SetWindowLongPtr(FWindowHandle, GWLP_WNDPROC, LONG_PTR(@FrameProc));
 
-  SetWindowPos(GHandle, 0, 0, 0, 0, 0,
+  SetWindowPos(FWindowHandle, 0, 0, 0, 0, 0,
     SWP_FRAMECHANGED or SWP_NOMOVE or SWP_NOSIZE or SWP_NOZORDER);
 
   Result := True;
@@ -127,11 +129,11 @@ end;
 
 class procedure TFmxWinFrame.BeginDrag;
 begin
-  if GHandle = 0 then
+  if FWindowHandle = 0 then
     Exit;
 
   ReleaseCapture;
-  SendMessage(GHandle, WM_SYSCOMMAND, ScMoveCaption, 0);
+  SendMessage(FWindowHandle, WM_SYSCOMMAND, ScMoveCaption, 0);
 end;
 
 end.
