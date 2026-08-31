@@ -12,6 +12,9 @@ object MarkdownPadVCLForm: TMarkdownPadVCLForm
   Font.Style = []
   KeyPreview = True
   Position = poScreenCenter
+  OnCloseQuery = HandleCloseQuery
+  OnKeyDown = HandleFormKeyDown
+  OnResize = HandleResize
   TextHeight = 15
   object splToc: TSplitter
     Left = 240
@@ -69,8 +72,8 @@ object MarkdownPadVCLForm: TMarkdownPadVCLForm
       Height = 32
       Align = alLeft
       TabOrder = 0
-      Text = 'edtEditorFind'
       TextHint = 'Find in editor'
+      OnChange = HandleEditorFindChange
       ExplicitLeft = 4
       ExplicitTop = 4
       ExplicitHeight = 24
@@ -90,10 +93,15 @@ object MarkdownPadVCLForm: TMarkdownPadVCLForm
     ExplicitTop = 730
     ExplicitWidth = 1198
     object lblPos: TLabel
-      Left = 0
+      AlignWithMargins = True
+      Left = 8
       Top = 0
-      Width = 32
+      Width = 160
       Height = 22
+      Margins.Left = 8
+      Margins.Top = 0
+      Margins.Right = 0
+      Margins.Bottom = 0
       Align = alLeft
       AutoSize = False
       Caption = 'lblPos'
@@ -104,10 +112,15 @@ object MarkdownPadVCLForm: TMarkdownPadVCLForm
       ExplicitHeight = 15
     end
     object lblWords: TLabel
-      Left = 32
+      AlignWithMargins = True
+      Left = 176
       Top = 0
-      Width = 47
+      Width = 160
       Height = 22
+      Margins.Left = 8
+      Margins.Top = 0
+      Margins.Right = 0
+      Margins.Bottom = 0
       Align = alLeft
       AutoSize = False
       Caption = 'lblWords'
@@ -132,14 +145,20 @@ object MarkdownPadVCLForm: TMarkdownPadVCLForm
     VerticalAlignment = taAlignTop
     ExplicitHeight = 634
     object lstToc: TListBox
-      Left = 0
-      Top = 0
-      Width = 240
-      Height = 642
+      AlignWithMargins = True
+      Left = 4
+      Top = 20
+      Width = 232
+      Height = 618
+      Margins.Left = 4
+      Margins.Top = 20
+      Margins.Right = 4
+      Margins.Bottom = 4
       Align = alClient
       BorderStyle = bsNone
       ItemHeight = 15
       TabOrder = 0
+      OnClick = HandleTocListClick
       ExplicitHeight = 634
     end
   end
@@ -151,6 +170,10 @@ object MarkdownPadVCLForm: TMarkdownPadVCLForm
     Align = alLeft
     TabOrder = 5
     TabStop = True
+    ShowLineNumbers = True
+    Preview = mdPreview
+    OnChange = HandleEditorChange
+    OnSyncScroll = HandleSyncScroll
   end
   object mdPreview: TMarkdownViewer
     Left = 728
@@ -160,24 +183,34 @@ object MarkdownPadVCLForm: TMarkdownPadVCLForm
     Align = alClient
     TabOrder = 6
     TabStop = True
+    OnLinkClick = HandlePreviewLinkClick
   end
   object dlgOpen: TOpenDialog
+    Filter = 'Markdown files (*.md)|*.md|All files (*.*)|*.*'
     Left = 900
     Top = 120
   end
   object dlgSave: TSaveDialog
+    DefaultExt = 'md'
+    Filter = 'Markdown files (*.md)|*.md|All files (*.*)|*.*'
     Left = 960
     Top = 120
   end
   object dlgSaveHtml: TSaveDialog
+    DefaultExt = 'html'
+    Filter = 'HTML files (*.html)|*.html|All files (*.*)|*.*'
     Left = 1020
     Top = 120
   end
   object tmrTick: TTimer
+    Enabled = False
+    Interval = 100
+    OnTimer = HandleTick
     Left = 900
     Top = 180
   end
   object popRecent: TPopupMenu
+    AutoHotkeys = maManual
     Left = 960
     Top = 180
   end

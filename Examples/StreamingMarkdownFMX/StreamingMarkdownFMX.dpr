@@ -3,7 +3,7 @@ program StreamingMarkdownFMX;
 uses
   FMX.Forms,
   StreamingMarkdown.Demo in '..\Shared\StreamingMarkdown.Demo.pas',
-  StreamingMarkdownFMX.Main in 'StreamingMarkdownFMX.Main.pas';
+  StreamingMarkdownFMX.Main in 'StreamingMarkdownFMX.Main.pas' {StreamingMarkdownFMXForm};
 
 {$R *.res}
 

@@ -19,16 +19,18 @@ uses
 
 type
   TStreamingMarkdownFMXForm = class(TForm)
+    sbxMessages: TVertScrollBox;
+    pnlInput: TPanel;
+    edtPrompt: TEdit;
+    btnSend: TButton;
+    tmrStream: TTimer;
+    tmrLayout: TTimer;
+    procedure HandleSendClick(Sender: TObject);
+    procedure HandlePromptKeyDown(Sender: TObject; var Key: Word; var KeyChar: Char; Shift: TShiftState);
+    procedure HandleStreamTimer(Sender: TObject);
+    procedure HandleLayoutTimer(Sender: TObject);
   private
     const
-      WindowCaption = 'Markdown4D FMX LLM Chat Demo';
-      InitialClientWidth = 760;
-      InitialClientHeight = 680;
-      InputPanelHeight = 52;
-      ControlMargin = 8;
-      SendButtonWidth = 80;
-      SendButtonCaption = 'Send';
-      InputHintCaption = 'Ask something...';
       MessageMargin = 8;
       MessageHeightPadding = 12;
       MinMessageHeight = 40;
@@ -36,32 +38,18 @@ type
       MaxChunkLength = 80;
       MinTickMilliseconds = 30;
       MaxTickMilliseconds = 60;
-      LayoutTickMilliseconds = 100;
       UserMessagePrefix = '**You:**'#10#10;
     var
-      FMessagesBox: TVertScrollBox;
-      FInputPanel: TPanel;
-      FInputEdit: TEdit;
-      FSendButton: TButton;
-      FStreamTimer: TTimer;
-      FLayoutTimer: TTimer;
       FMessageViewers: TList<TMarkdownViewer>;
       FStreamingViewer: TMarkdownViewer;
       FCannedResponse: string;
       FStreamer: TMarkdownStreamer;
-    procedure BuildMessagesBox;
-    procedure BuildInputPanel;
-    procedure BuildTimers;
     procedure SetUniformMargins(const Control: TControl; const Amount: Single);
-    procedure HandleSendClick(Sender: TObject);
-    procedure HandleInputEditKeyDown(Sender: TObject; var Key: Word; var KeyChar: Char; Shift: TShiftState);
     procedure SendPrompt;
     function AddMessageViewer(const Markdown: string): TMarkdownViewer;
     procedure StartStreaming;
-    procedure HandleStreamTimer(Sender: TObject);
     procedure AppendNextChunk;
     procedure FinishStreaming;
-    procedure HandleLayoutTimer(Sender: TObject);
     procedure SyncMessageHeights;
     procedure ScrollMessagesToBottom;
 
@@ -82,68 +70,19 @@ uses
   Markdown4D.Extensions.Chart.BlockOverride,
   Markdown4D.Extensions.Mermaid.BlockOverride;
 
+{$R *.fmx}
+
 constructor TStreamingMarkdownFMXForm.Create(Owner: TComponent);
 begin
-  inherited CreateNew(Owner);
+  inherited Create(Owner);
 
   TChartBlockOverride.RegisterOverride;
   TMermaidBlockOverride.RegisterOverride;
-
-  Caption := WindowCaption;
-  ClientWidth := InitialClientWidth;
-  ClientHeight := InitialClientHeight;
-  Position := TFormPosition.ScreenCenter;
 
   Randomize;
   FMessageViewers := TList<TMarkdownViewer>.Create;
   FCannedResponse := BuildStreamingSampleAnswer;
   FStreamer := TMarkdownStreamer.Create;
-
-  BuildInputPanel;
-  BuildMessagesBox;
-  BuildTimers;
-end;
-
-procedure TStreamingMarkdownFMXForm.BuildMessagesBox;
-begin
-  FMessagesBox := TVertScrollBox.Create(Self);
-  FMessagesBox.Parent := Self;
-  FMessagesBox.Align := TAlignLayout.Client;
-end;
-
-procedure TStreamingMarkdownFMXForm.BuildInputPanel;
-begin
-  FInputPanel := TPanel.Create(Self);
-  FInputPanel.Parent := Self;
-  FInputPanel.Align := TAlignLayout.Bottom;
-  FInputPanel.Height := InputPanelHeight;
-
-  FSendButton := TButton.Create(Self);
-  FSendButton.Parent := FInputPanel;
-  FSendButton.Align := TAlignLayout.Right;
-  SetUniformMargins(FSendButton, ControlMargin);
-  FSendButton.Width := SendButtonWidth;
-  FSendButton.Text := SendButtonCaption;
-  FSendButton.OnClick := HandleSendClick;
-
-  FInputEdit := TEdit.Create(Self);
-  FInputEdit.Parent := FInputPanel;
-  FInputEdit.Align := TAlignLayout.Client;
-  SetUniformMargins(FInputEdit, ControlMargin);
-  FInputEdit.TextPrompt := InputHintCaption;
-  FInputEdit.OnKeyDown := HandleInputEditKeyDown;
-end;
-
-procedure TStreamingMarkdownFMXForm.BuildTimers;
-begin
-  FStreamTimer := TTimer.Create(Self);
-  FStreamTimer.Enabled := False;
-  FStreamTimer.Interval := MinTickMilliseconds;
-  FStreamTimer.OnTimer := HandleStreamTimer;
-
-  FLayoutTimer := TTimer.Create(Self);
-  FLayoutTimer.Interval := LayoutTickMilliseconds;
-  FLayoutTimer.OnTimer := HandleLayoutTimer;
 end;
 
 procedure TStreamingMarkdownFMXForm.SetUniformMargins(const Control: TControl; const Amount: Single);
@@ -159,7 +98,7 @@ begin
   SendPrompt;
 end;
 
-procedure TStreamingMarkdownFMXForm.HandleInputEditKeyDown(Sender: TObject; var Key: Word; var KeyChar: Char;
+procedure TStreamingMarkdownFMXForm.HandlePromptKeyDown(Sender: TObject; var Key: Word; var KeyChar: Char;
   Shift: TShiftState);
 begin
   if Key <> vkReturn then
@@ -167,25 +106,25 @@ begin
 
   Key := 0;
   KeyChar := #0;
-  if FSendButton.Enabled then
+  if btnSend.Enabled then
     SendPrompt;
 end;
 
 procedure TStreamingMarkdownFMXForm.SendPrompt;
 begin
-  const Prompt = Trim(FInputEdit.Text);
+  const Prompt = Trim(edtPrompt.Text);
   if Prompt = '' then
     Exit;
 
   AddMessageViewer(UserMessagePrefix + Prompt);
-  FInputEdit.Text := '';
+  edtPrompt.Text := '';
   StartStreaming;
 end;
 
 function TStreamingMarkdownFMXForm.AddMessageViewer(const Markdown: string): TMarkdownViewer;
 begin
   Result := TMarkdownViewer.Create(Self);
-  Result.Parent := FMessagesBox;
+  Result.Parent := sbxMessages;
   Result.Align := TAlignLayout.Top;
   SetUniformMargins(Result, MessageMargin);
   Result.Margins.Bottom := 0;
@@ -199,9 +138,9 @@ procedure TStreamingMarkdownFMXForm.StartStreaming;
 begin
   FStreamingViewer := AddMessageViewer('');
   FStreamer.Reset(FCannedResponse);
-  FSendButton.Enabled := False;
-  FStreamTimer.Interval := MinTickMilliseconds;
-  FStreamTimer.Enabled := True;
+  btnSend.Enabled := False;
+  tmrStream.Interval := MinTickMilliseconds;
+  tmrStream.Enabled := True;
 end;
 
 procedure TStreamingMarkdownFMXForm.HandleStreamTimer(Sender: TObject);
@@ -220,15 +159,15 @@ begin
   const RequestedLength = MinChunkLength + Random(MaxChunkLength - MinChunkLength + 1);
   FStreamingViewer.AppendMarkdown(FStreamer.NextChunk(RequestedLength));
 
-  FStreamTimer.Interval := MinTickMilliseconds + Random(MaxTickMilliseconds - MinTickMilliseconds + 1);
+  tmrStream.Interval := MinTickMilliseconds + Random(MaxTickMilliseconds - MinTickMilliseconds + 1);
 end;
 
 procedure TStreamingMarkdownFMXForm.FinishStreaming;
 begin
-  FStreamTimer.Enabled := False;
+  tmrStream.Enabled := False;
   FStreamingViewer := nil;
-  FSendButton.Enabled := True;
-  FInputEdit.SetFocus;
+  btnSend.Enabled := True;
+  edtPrompt.SetFocus;
 end;
 
 procedure TStreamingMarkdownFMXForm.HandleLayoutTimer(Sender: TObject);
@@ -251,7 +190,7 @@ end;
 
 procedure TStreamingMarkdownFMXForm.ScrollMessagesToBottom;
 begin
-  FMessagesBox.ViewportPosition := PointF(0, FMessagesBox.ContentBounds.Height);
+  sbxMessages.ViewportPosition := PointF(0, sbxMessages.ContentBounds.Height);
 end;
 
 destructor TStreamingMarkdownFMXForm.Destroy;

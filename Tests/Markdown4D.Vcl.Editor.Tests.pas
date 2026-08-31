@@ -774,9 +774,10 @@ begin
   Assert.AreEqual(Double(Expected), Double(Viewer.ScrollOffset), 0.5);
 end;
 
-// The pad wires the panes while the form is still being built: the preview has
-// no width yet, so the first scroll mapping is built against an empty layout.
-// Both directions have to come alive once the preview gets its real size.
+// A host typically links the panes while its form is still being built: the
+// preview has no width yet, so the first scroll mapping is built against an
+// empty layout. Both directions have to come alive once the preview gets its
+// real size.
 procedure TMarkdownVclEditorTests.EditorScroll_PreviewSizedAfterAttach_MovesPreview;
 begin
   const Editor = NewHostedEditor(ShortHostHeight);

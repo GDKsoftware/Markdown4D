@@ -56,6 +56,15 @@ type
     lblWords: TLabel;
     edtEditorFind: TEdit;
     lblFindCount: TLabel;
+    procedure HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure HandleCloseQuery(Sender: TObject; var CanClose: Boolean);
+    procedure HandleResize(Sender: TObject);
+    procedure HandleEditorChange(Sender: TObject);
+    procedure HandleSyncScroll(Sender: TObject; const SourceLine: Integer);
+    procedure HandlePreviewLinkClick(const Sender: TObject; const Url: string);
+    procedure HandleTocListClick(Sender: TObject);
+    procedure HandleTick(Sender: TObject);
+    procedure HandleEditorFindChange(Sender: TObject);
   private
     var
       FIconFontName: string;
@@ -141,8 +150,6 @@ type
     function AddIconButton(const Glyph: string; const Hint: string; const Handler: TNotifyEvent): TSpeedButton;
     procedure AddSeparator;
     procedure WMDropFiles(var Message: TMessage); message WM_DROPFILES;
-    procedure HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
-    procedure HandleCloseQuery(Sender: TObject; var CanClose: Boolean);
     procedure HandleNewClick(Sender: TObject);
     procedure HandleOpenClick(Sender: TObject);
     procedure HandleSaveClick(Sender: TObject);
@@ -175,12 +182,7 @@ type
     procedure HandleTabClose(Sender: TObject; const Index: Integer);
     procedure HandleTabAdd(Sender: TObject);
     procedure HandleTabReorder(Sender: TObject; const FromIndex, ToIndex: Integer);
-    procedure HandleEditorChange(Sender: TObject);
-    procedure HandleSyncScroll(Sender: TObject; const SourceLine: Integer);
-    procedure HandlePreviewLinkClick(const Sender: TObject; const Url: string);
     function ActiveDocumentFolder: string;
-    procedure HandleTocListClick(Sender: TObject);
-    procedure HandleTick(Sender: TObject);
     procedure OpenPath(const FileName: string);
     function GetEditorText: string;
     procedure SetEditorText(const Value: string);
@@ -224,7 +226,6 @@ type
     procedure CloseFindBar;
     procedure FindInEditor;
     procedure UpdateFindCount;
-    procedure HandleEditorFindChange(Sender: TObject);
     procedure HandleReplaceClick(Sender: TObject);
     procedure HandleReplaceAllClick(Sender: TObject);
     procedure BuildReplaceControls;
@@ -240,7 +241,6 @@ type
     procedure EnterZen;
     procedure ExitZen;
     procedure UpdateZenPadding;
-    procedure HandleResize(Sender: TObject);
     class function BuildSampleMarkdown: string;
 
   protected
@@ -285,18 +285,8 @@ begin
   TChartBlockOverride.RegisterOverride;
   TMermaidBlockOverride.RegisterOverride;
 
-  OnKeyDown := HandleFormKeyDown;
-  OnCloseQuery := HandleCloseQuery;
-  OnResize := HandleResize;
-
   FLightTheme := TMarkdownTheme.CreateLight;
   FDarkTheme := TMarkdownTheme.CreateDark;
-
-  dlgOpen.Filter := MarkdownFilter;
-  dlgSave.Filter := MarkdownFilter;
-  dlgSave.DefaultExt := DefaultExtension;
-  dlgSaveHtml.Filter := HtmlFilter;
-  dlgSaveHtml.DefaultExt := HtmlExtension;
 
   FController := TPadController.Create(Self, Self, SessionFileName);
 
@@ -306,9 +296,6 @@ begin
   BuildPalette;
   BuildCommandRegistry;
 
-  mdEditor.AttachPreview(mdPreview);
-  mdEditor.OnSyncScroll := HandleSyncScroll;
-
   FSplitEditorWidth := (InitialClientWidth - TocPanelWidth) div 2;
   FViewMode := TPadViewMode.Split;
 
@@ -316,6 +303,8 @@ begin
   ApplyTheme;
 
   RestoreSession;
+
+  tmrTick.Enabled := True;
 
   if FUseCustomTitleBar then
     TThread.ForceQueue(nil,
@@ -327,7 +316,10 @@ end;
 
 destructor TMarkdownPadVCLForm.Destroy;
 begin
-  SaveSession;
+  // The controller is missing when construction failed halfway; there is no
+  // session to save then.
+  if FController <> nil then
+    SaveSession;
 
   if mdEditor <> nil then
     mdEditor.DetachPreview;
@@ -341,43 +333,8 @@ end;
 
 procedure TMarkdownPadVCLForm.ConfigureControls;
 begin
-  lstToc.AlignWithMargins := True;
-  lstToc.Margins.SetBounds(4, 20, 4, 4);
-  lstToc.BorderStyle := bsNone;
-  lstToc.OnClick := HandleTocListClick;
-
-  mdEditor.ShowLineNumbers := True;
-  mdEditor.OnChange := HandleEditorChange;
-
-  mdPreview.OnLinkClick := HandlePreviewLinkClick;
-
-  lblPos.AlignWithMargins := True;
-  lblPos.Margins.SetBounds(StatusLabelLeftMargin, 0, 0, 0);
-  lblPos.Layout := tlCenter;
-  lblPos.AutoSize := False;
-  lblPos.Width := StatusLabelWidth;
-  lblPos.Transparent := True;
-
-  lblWords.AlignWithMargins := True;
-  lblWords.Margins.SetBounds(StatusLabelLeftMargin, 0, 0, 0);
-  lblWords.Layout := tlCenter;
-  lblWords.AutoSize := False;
-  lblWords.Width := StatusLabelWidth;
-  lblWords.Transparent := True;
-
-  edtEditorFind.TextHint := FindHintCaption;
-  edtEditorFind.OnChange := HandleEditorFindChange;
-
   BuildReplaceControls;
-
-  lblFindCount.Layout := tlCenter;
   lblFindCount.Caption := EmptyFindCaption;
-
-  popRecent.AutoHotkeys := maManual;
-
-  tmrTick.Interval := TickIntervalMilliseconds;
-  tmrTick.OnTimer := HandleTick;
-  tmrTick.Enabled := True;
 end;
 
 procedure TMarkdownPadVCLForm.BuildToolbar;
@@ -1094,6 +1051,11 @@ end;
 
 procedure TMarkdownPadVCLForm.HandleSyncScroll(Sender: TObject; const SourceLine: Integer);
 begin
+  // The DFM links the panes, so the first sync fires while the form is still
+  // streaming in and the controller does not exist yet.
+  if FController = nil then
+    Exit;
+
   // The editor keeps the two panes in step itself; we only reflect the position
   // in the contents outline.
   UpdateActiveTocEntry(SourceLine);

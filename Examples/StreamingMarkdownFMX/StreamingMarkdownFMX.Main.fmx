@@ -1,0 +1,73 @@
+object StreamingMarkdownFMXForm: TStreamingMarkdownFMXForm
+  Left = 0
+  Top = 0
+  Caption = 'Markdown4D FMX LLM Chat Demo'
+  ClientHeight = 680
+  ClientWidth = 760
+  Position = ScreenCenter
+  FormFactor.Width = 320
+  FormFactor.Height = 480
+  FormFactor.Devices = [Desktop]
+  DesignerMasterStyle = 0
+  object sbxMessages: TVertScrollBox
+    Align = Client
+    Size.Width = 760.000000000000000000
+    Size.Height = 628.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 0
+    Viewport.Width = 760.000000000000000000
+    Viewport.Height = 628.000000000000000000
+  end
+  object pnlInput: TPanel
+    Align = Bottom
+    Position.Y = 628.000000000000000000
+    Size.Width = 760.000000000000000000
+    Size.Height = 52.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 1
+    object edtPrompt: TEdit
+      Touch.InteractiveGestures = [LongTap, DoubleTap]
+      Align = Client
+      TabOrder = 0
+      TextPrompt = 'Ask something...'
+      Position.X = 8.000000000000000000
+      Position.Y = 8.000000000000000000
+      Margins.Left = 8.000000000000000000
+      Margins.Top = 8.000000000000000000
+      Margins.Right = 8.000000000000000000
+      Margins.Bottom = 8.000000000000000000
+      Size.Width = 656.000000000000000000
+      Size.Height = 36.000000000000000000
+      Size.PlatformDefault = False
+      OnKeyDown = HandlePromptKeyDown
+    end
+    object btnSend: TButton
+      Align = Right
+      Position.X = 672.000000000000000000
+      Position.Y = 8.000000000000000000
+      Margins.Left = 8.000000000000000000
+      Margins.Top = 8.000000000000000000
+      Margins.Right = 8.000000000000000000
+      Margins.Bottom = 8.000000000000000000
+      Size.Width = 80.000000000000000000
+      Size.Height = 36.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 1
+      Text = 'Send'
+      OnClick = HandleSendClick
+    end
+  end
+  object tmrStream: TTimer
+    Enabled = False
+    Interval = 30
+    OnTimer = HandleStreamTimer
+    Left = 44
+    Top = 44
+  end
+  object tmrLayout: TTimer
+    Interval = 100
+    OnTimer = HandleLayoutTimer
+    Left = 108
+    Top = 44
+  end
+end
