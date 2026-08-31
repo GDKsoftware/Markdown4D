@@ -1,9 +1,10 @@
 # Markdown4D
 
-A native Delphi CommonMark / GFM markdown library with a public AST, an
-incremental streaming parser, an HTML renderer, a lossless markdown writer, and
-custom-drawn VCL & FMX viewer and editor components. No embedded browser, no
-runtime DLL, no package manager.
+Markdown4D is a CommonMark / GFM markdown library written in Delphi. It parses
+markdown into a typed AST, renders HTML, writes markdown back out, and ships
+custom-drawn viewer and editor components for VCL and FMX. Everything is plain
+Object Pascal on top of the RTL; rendering happens on a canvas, without an
+embedded browser.
 
 <!-- badges -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -16,34 +17,39 @@ runtime DLL, no package manager.
   <img src="docs/images/viewer-dark.png" alt="The same viewer in its dark theme, rendering a mermaid flowchart and a doughnut chart" width="49%">
 </p>
 
-<p align="center"><em>Both are the VCL viewer painting on a canvas. No browser, no image files: the
-charts and the diagram are drawn from the markdown itself.</em></p>
+<p align="center"><em>Both screenshots show the VCL viewer. The charts and the diagram are drawn
+on the canvas directly from the markdown source.</em></p>
 
 ## Why Markdown4D
 
-- **Fully spec-conformant.** Passes all **652** official CommonMark 0.31.2
-  examples, plus the GitHub Flavored Markdown extension corpora (tables, task
-  list items, strikethrough, extended autolinks, disallowed raw HTML).
-- **A real AST, not just HTML.** Parse to a typed, documented
-  `IMarkdownDocument`, inspect or transform it, and write it back to clean
-  markdown with the round-trip writer.
-- **Built for live text.** An incremental / streaming parser reparses only what
-  changed — ideal for editors and token-by-token LLM output.
-- **Open extension API.** Add inline and block syntax, delimiter processors,
-  renderer hooks and document processors through a fluent pipeline builder. The
-  bundled chart extension shows how far a custom renderer can go.
-- **Native UI, both frameworks.** Custom-drawn `TMarkdownViewer` and
-  `TMarkdownEditor` for VCL and FMX, with theming, images, selection, search,
-  syntax-highlighted code, live charts, mermaid diagrams and design-time preview.
-- **Nothing to install, nothing bundled.** Parser, renderer, writer, layout
-  engine, anti-aliased rasterizer and SVG engine are all written for this
-  project and use only the RTL. No DLL, no package manager, no build step.
-  MIT licensed. Delphi 12 Athens and Delphi 13.
+The parser passes all 652 official CommonMark 0.31.2 examples and the GitHub
+Flavored Markdown extension corpora (tables, task list items, strikethrough,
+extended autolinks, disallowed raw HTML).
+
+Parsing produces a typed, documented `IMarkdownDocument`. The tree can be
+inspected or transformed and written back to markdown with the round-trip
+writer.
+
+An incremental parser reparses only the region that changed, which keeps
+editors responsive and handles token-by-token LLM output well.
+
+The pipeline builder accepts custom inline and block syntax, delimiter
+processors, renderer hooks and document processors. The bundled chart and
+mermaid extensions are built on this same API.
+
+`TMarkdownViewer` and `TMarkdownEditor` exist for both VCL and FMX. They are
+custom-drawn and support theming, images, selection, search, syntax-highlighted
+code, charts, mermaid diagrams and a design-time preview.
+
+The whole library is written for this project and uses only the RTL. There is
+no DLL to deploy and no package manager involved; adding the source folders to
+the search path is enough. It supports Delphi 12 Athens and Delphi 13 and is
+MIT licensed.
 
 ## Features
 
-| Area | What you get |
-|------|--------------|
+| Area | Description |
+|------|-------------|
 | CommonMark 0.31.2 | Full block and inline grammar, 652/652 official examples |
 | GFM extensions | Tables, task list items, strikethrough, extended autolinks, tag filter |
 | Public AST | Typed node interfaces, visitor, source spans, extension data slots |
@@ -62,7 +68,7 @@ charts and the diagram are drawn from the markdown itself.</em></p>
 
 ## Quick start
 
-**One line — markdown to HTML:**
+Markdown to HTML:
 
 ```pascal
 uses
@@ -75,7 +81,7 @@ const Html = TMarkdown.ToHtml('# Hello *world*');
 `javascript:` are emptied. For byte-for-byte specification output on input you
 trust, use `TMarkdown.ToUnsafeHtml`.
 
-**Configure a pipeline** (GFM, raw HTML allowed):
+A configured pipeline (GFM, raw HTML allowed):
 
 ```pascal
 uses
@@ -89,7 +95,7 @@ const Html = TMarkdownPipeline.Create
   .ToHtml(Source);
 ```
 
-**Drop a viewer onto a form** (VCL):
+A viewer on a VCL form:
 
 ```pascal
 uses
@@ -103,8 +109,8 @@ Viewer.ThemePreset := TMarkdownThemePreset.Dark;
 Viewer.Text := '# Welcome'#10#10 + 'This is **Markdown4D**.';
 ```
 
-**Stream tokens from an LLM** — the viewer reparses incrementally, debounces
-relayout, and auto-follows the tail:
+Streaming LLM output. The viewer reparses incrementally, debounces relayout
+and follows the tail:
 
 ```pascal
 procedure TChatForm.OnTokenReceived(const Token: string);
@@ -118,8 +124,8 @@ thread for you. See [docs/STREAMING.md](docs/STREAMING.md).
 
 ## Installation
 
-Markdown4D is source-only: nothing to install, nothing to fetch. Add the source
-folders to your project's search path:
+Markdown4D is distributed as source. Add the source folders to your project's
+search path:
 
 ```
 Source\Core     framework-neutral parser, AST, renderer, writer, extensions
@@ -182,8 +188,8 @@ the outermost layer knows about VCL or FMX.
                        +----------------------------+
 ```
 
-A single string of markdown flows: **source → pipeline → AST → (HTML renderer
-| markdown writer | layout engine → display list → painter)**.
+A single string of markdown flows through
+`source → pipeline → AST → (HTML renderer | markdown writer | layout engine → display list → painter)`.
 
 ## Conformance dashboard
 
@@ -217,14 +223,15 @@ and every package, and regenerates the conformance dashboard above.
 
 ## Documentation
 
-- [docs/API.md](docs/API.md) — the public surface: facade, pipeline, AST,
-  builder, TOC, theme, and the viewer / editor components.
-- [docs/EXTENSIONS.md](docs/EXTENSIONS.md) — writing extensions: the `==mark==`
-  parser extension, an admonition custom-rendering walkthrough on the
-  `IExtensionCanvas`, and the bundled chart and mermaid extensions.
-- [docs/STREAMING.md](docs/STREAMING.md) — the LLM / streaming integration
+- [docs/API.md](docs/API.md) covers the public surface: facade, pipeline, AST,
+  builder, TOC, theme, and the viewer and editor components.
+- [docs/EXTENSIONS.md](docs/EXTENSIONS.md) explains how to write extensions:
+  the `==mark==` parser extension, an admonition custom-rendering walkthrough
+  on the `IExtensionCanvas`, and the bundled chart and mermaid extensions.
+- [docs/STREAMING.md](docs/STREAMING.md) is the LLM / streaming integration
   guide: `AppendMarkdown`, debounce, threading, charts and `Text` semantics.
-- [packages/INSTALL.md](packages/INSTALL.md) — package build and IDE install.
+- [packages/INSTALL.md](packages/INSTALL.md) describes the package build and
+  the IDE install.
 
 ## Third-party code
 
