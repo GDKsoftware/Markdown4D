@@ -82,7 +82,7 @@ begin
     '- [x] Async image loading'#10 +
     '- [x] FMX viewer'#10#10 +
     'Images stream in asynchronously too:'#10#10 +
-    '![Sample photo](https://picsum.photos/seed/streaming-markdown/280/140)'#10#10 +
+    '![Sample image](https://raw.githubusercontent.com/GDKsoftware/Markdown4D/main/docs/images/streaming-sample.png)'#10#10 +
     '## Live charts'#10#10 +
     'Charts arrive as fenced code blocks and upgrade to graphics the moment the fence closes:'#10#10 +
     '```json'#10 +
