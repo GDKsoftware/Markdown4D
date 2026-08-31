@@ -150,6 +150,11 @@ type
     function AddIconButton(const Glyph: string; const Hint: string; const Handler: TNotifyEvent): TSpeedButton;
     procedure AddSeparator;
     procedure WMDropFiles(var Message: TMessage); message WM_DROPFILES;
+    function TryHandlePaletteKey(const Key: Word; const Shift: TShiftState): Boolean;
+    function TryHandleFindBarReturn(const Key: Word): Boolean;
+    function TryHandleGlobalKey(const Key: Word): Boolean;
+    function TryHandleFormatShortcut(const Key: Word): Boolean;
+    function TryHandleCommandShortcut(const Key: Word): Boolean;
     procedure HandleNewClick(Sender: TObject);
     procedure HandleOpenClick(Sender: TObject);
     procedure HandleSaveClick(Sender: TObject);
@@ -459,222 +464,156 @@ procedure TMarkdownPadVCLForm.HandleFormKeyDown(Sender: TObject; var Key: Word; 
 begin
   if FPalette.Visible then
   begin
-    case Key of
-      VK_UP:
-        begin
-          PaletteMoveSelection(-1);
-          Key := 0;
-          Exit;
-        end;
-      VK_DOWN:
-        begin
-          PaletteMoveSelection(1);
-          Key := 0;
-          Exit;
-        end;
-      VK_RETURN:
-        begin
-          ExecuteSelectedCommand;
-          Key := 0;
-          Exit;
-        end;
-      VK_ESCAPE:
-        begin
-          ClosePalette;
-          Key := 0;
-          Exit;
-        end;
-    end;
-
-    if ssCtrl in Shift then
+    if TryHandlePaletteKey(Key, Shift) then
       Key := 0;
 
     Exit;
   end;
 
-  if pnlFind.Visible and (Key = VK_RETURN) and edtEditorFind.Focused then
+  var Handled := TryHandleFindBarReturn(Key) or TryHandleGlobalKey(Key);
+
+  const WantsShortcut = (ssCtrl in Shift) and not Handled;
+  if WantsShortcut then
   begin
-    FindInEditor;
-    Key := 0;
-    Exit;
+    if ssShift in Shift then
+      Handled := TryHandleFormatShortcut(Key)
+    else
+      Handled := TryHandleCommandShortcut(Key);
   end;
 
+  if Handled then
+    Key := 0;
+end;
+
+// While the palette is open it owns the keyboard: the arrows, Return and
+// Escape drive it, and control chords are swallowed so they cannot reach the
+// editor underneath.
+function TMarkdownPadVCLForm.TryHandlePaletteKey(const Key: Word; const Shift: TShiftState): Boolean;
+begin
+  case Key of
+    VK_UP:
+      PaletteMoveSelection(-1);
+    VK_DOWN:
+      PaletteMoveSelection(1);
+    VK_RETURN:
+      ExecuteSelectedCommand;
+    VK_ESCAPE:
+      ClosePalette;
+  else
+    Exit(ssCtrl in Shift);
+  end;
+
+  Result := True;
+end;
+
+function TMarkdownPadVCLForm.TryHandleFindBarReturn(const Key: Word): Boolean;
+begin
+  const IsFindReturn = pnlFind.Visible and (Key = VK_RETURN) and edtEditorFind.Focused;
+  if not IsFindReturn then
+    Exit(False);
+
+  FindInEditor;
+  Result := True;
+end;
+
+function TMarkdownPadVCLForm.TryHandleGlobalKey(const Key: Word): Boolean;
+begin
   case Key of
     VK_F11:
-      begin
-        ToggleZen;
-        Key := 0;
-        Exit;
-      end;
+      ToggleZen;
     VK_F3:
       begin
-        if pnlFind.Visible then
-        begin
-          FindInEditor;
-          Key := 0;
-        end;
+        if not pnlFind.Visible then
+          Exit(False);
 
-        Exit;
+        FindInEditor;
       end;
     VK_ESCAPE:
       begin
         if pnlFind.Visible then
-        begin
-          CloseFindBar;
-          Key := 0;
-        end
+          CloseFindBar
         else if FZenActive then
-        begin
-          ExitZen;
-          Key := 0;
-        end;
-
-        Exit;
+          ExitZen
+        else
+          Exit(False);
       end;
+  else
+    Exit(False);
   end;
 
-  if not (ssCtrl in Shift) then
-    Exit;
+  Result := True;
+end;
 
-  if ssShift in Shift then
-  begin
-    case Key of
-      Ord('1'):
-        begin
-          ExecuteFormatCommand(TEditorCommand.Heading1);
-          Key := 0;
-          Exit;
-        end;
-      Ord('2'):
-        begin
-          ExecuteFormatCommand(TEditorCommand.Heading2);
-          Key := 0;
-          Exit;
-        end;
-      Ord('3'):
-        begin
-          ExecuteFormatCommand(TEditorCommand.Heading3);
-          Key := 0;
-          Exit;
-        end;
-      Ord('U'):
-        begin
-          ExecuteFormatCommand(TEditorCommand.BulletList);
-          Key := 0;
-          Exit;
-        end;
-      Ord('O'):
-        begin
-          ExecuteFormatCommand(TEditorCommand.NumberedList);
-          Key := 0;
-          Exit;
-        end;
-      Ord('Q'):
-        begin
-          ExecuteFormatCommand(TEditorCommand.Quote);
-          Key := 0;
-          Exit;
-        end;
-      Ord('X'):
-        begin
-          ExecuteFormatCommand(TEditorCommand.Strikethrough);
-          Key := 0;
-          Exit;
-        end;
-      Ord('T'):
-        begin
-          ExecuteFormatCommand(TEditorCommand.Table);
-          Key := 0;
-          Exit;
-        end;
-      Ord('E'):
-        begin
-          DoExportHtml;
-          Key := 0;
-          Exit;
-        end;
-      Ord('C'):
-        begin
-          DoCopyHtml;
-          Key := 0;
-          Exit;
-        end;
-      Ord('S'):
-        begin
-          HandleSaveAsClick(nil);
-          Key := 0;
-          Exit;
-        end;
-      VK_TAB:
-        begin
-          FWorkspace.ActivatePrevious;
-          SwitchToDocument(FWorkspace.ActiveIndex);
-          Key := 0;
-          Exit;
-        end;
-    end;
-
-    Exit;
-  end;
-
+function TMarkdownPadVCLForm.TryHandleFormatShortcut(const Key: Word): Boolean;
+begin
   case Key of
     Ord('1'):
-      begin
-        SetViewMode(TPadViewMode.EditorOnly);
-        Key := 0;
-      end;
+      ExecuteFormatCommand(TEditorCommand.Heading1);
     Ord('2'):
-      begin
-        SetViewMode(TPadViewMode.Split);
-        Key := 0;
-      end;
+      ExecuteFormatCommand(TEditorCommand.Heading2);
     Ord('3'):
-      begin
-        SetViewMode(TPadViewMode.PreviewOnly);
-        Key := 0;
-      end;
-    Ord('F'):
-      begin
-        ShowFindBar;
-        Key := 0;
-      end;
-    Ord('H'):
-      begin
-        ShowReplaceBar;
-        Key := 0;
-      end;
-    Ord('K'):
-      begin
-        ShowPalette;
-        Key := 0;
-      end;
-    Ord('N'):
-      begin
-        HandleNewClick(nil);
-        Key := 0;
-      end;
+      ExecuteFormatCommand(TEditorCommand.Heading3);
+    Ord('U'):
+      ExecuteFormatCommand(TEditorCommand.BulletList);
     Ord('O'):
-      begin
-        HandleOpenClick(nil);
-        Key := 0;
-      end;
+      ExecuteFormatCommand(TEditorCommand.NumberedList);
+    Ord('Q'):
+      ExecuteFormatCommand(TEditorCommand.Quote);
+    Ord('X'):
+      ExecuteFormatCommand(TEditorCommand.Strikethrough);
+    Ord('T'):
+      ExecuteFormatCommand(TEditorCommand.Table);
+    Ord('E'):
+      DoExportHtml;
+    Ord('C'):
+      DoCopyHtml;
     Ord('S'):
+      FController.SaveAs;
+    VK_TAB:
       begin
-        HandleSaveClick(nil);
-        Key := 0;
+        FWorkspace.ActivatePrevious;
+        SwitchToDocument(FWorkspace.ActiveIndex);
       end;
+  else
+    Exit(False);
+  end;
+
+  Result := True;
+end;
+
+function TMarkdownPadVCLForm.TryHandleCommandShortcut(const Key: Word): Boolean;
+begin
+  case Key of
+    Ord('1'):
+      SetViewMode(TPadViewMode.EditorOnly);
+    Ord('2'):
+      SetViewMode(TPadViewMode.Split);
+    Ord('3'):
+      SetViewMode(TPadViewMode.PreviewOnly);
+    Ord('F'):
+      ShowFindBar;
+    Ord('H'):
+      ShowReplaceBar;
+    Ord('K'):
+      ShowPalette;
+    Ord('N'):
+      FController.NewDocument;
+    Ord('O'):
+      FController.OpenViaDialog;
+    Ord('S'):
+      FController.Save;
     Ord('W'):
-      begin
-        CloseActiveDocument;
-        Key := 0;
-      end;
+      CloseActiveDocument;
     VK_TAB:
       begin
         FWorkspace.ActivateNext;
         SwitchToDocument(FWorkspace.ActiveIndex);
-        Key := 0;
       end;
+  else
+    Exit(False);
   end;
+
+  Result := True;
 end;
 
 procedure TMarkdownPadVCLForm.HandleCloseQuery(Sender: TObject; var CanClose: Boolean);

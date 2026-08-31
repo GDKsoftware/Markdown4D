@@ -187,6 +187,11 @@ type
     function BuildCommandActions: TPadCommandActions;
     procedure RestoreSession;
     function HandleFormKey(const Key: Word; const Shift: TShiftState): Boolean;
+    function TryHandlePaletteKey(const Key: Word; const Shift: TShiftState): Boolean;
+    function TryHandleFormatShortcut(const Key: Word): Boolean;
+    function TryHandleCommandShortcut(const Key: Word): Boolean;
+    function TryHandleGlobalKey(const Key: Word): Boolean;
+    procedure ExecuteFormatCommand(const Command: TEditorCommand);
     procedure SetViewMode(const Mode: TPadViewMode);
     procedure ApplyViewMode;
     procedure ShowFindBar;
@@ -958,140 +963,146 @@ end;
 
 function TMarkdownPadFMXForm.HandleFormKey(const Key: Word; const Shift: TShiftState): Boolean;
 begin
-  Result := True;
-
   if FPalette.Visible then
-  begin
-    case Key of
-      vkUp:
-        PaletteMoveSelection(-1);
-      vkDown:
-        PaletteMoveSelection(1);
-      vkReturn:
-        ExecuteSelectedCommand;
-      vkEscape:
-        ClosePalette;
-    else
-      Result := ssCtrl in Shift;
-    end;
+    Exit(TryHandlePaletteKey(Key, Shift));
 
-    Exit;
-  end;
-
-  if ssCtrl in Shift then
+  const WantsShortcut = (ssCtrl in Shift);
+  if WantsShortcut then
   begin
     if ssShift in Shift then
-    begin
-      case Key of
-        vk1:
-          begin
-            FEditor.ExecuteCommand(TEditorCommand.Heading1);
-            FEditor.SetFocus;
-          end;
-        vk2:
-          begin
-            FEditor.ExecuteCommand(TEditorCommand.Heading2);
-            FEditor.SetFocus;
-          end;
-        vk3:
-          begin
-            FEditor.ExecuteCommand(TEditorCommand.Heading3);
-            FEditor.SetFocus;
-          end;
-        vkU:
-          begin
-            FEditor.ExecuteCommand(TEditorCommand.BulletList);
-            FEditor.SetFocus;
-          end;
-        vkO:
-          begin
-            FEditor.ExecuteCommand(TEditorCommand.NumberedList);
-            FEditor.SetFocus;
-          end;
-        vkQ:
-          begin
-            FEditor.ExecuteCommand(TEditorCommand.Quote);
-            FEditor.SetFocus;
-          end;
-        vkX:
-          begin
-            FEditor.ExecuteCommand(TEditorCommand.Strikethrough);
-            FEditor.SetFocus;
-          end;
-        vkT:
-          begin
-            FEditor.ExecuteCommand(TEditorCommand.Table);
-            FEditor.SetFocus;
-          end;
-        vkE:
-          DoExportHtml;
-        vkC:
-          DoCopyHtml;
-        vkS:
-          HandleSaveAsClick(nil);
-        vkTab:
-          begin
-            FWorkspace.ActivatePrevious;
-            SwitchToDocument(FWorkspace.ActiveIndex);
-          end;
-      else
-        Result := False;
-      end;
+      Exit(TryHandleFormatShortcut(Key));
 
-      Exit;
-    end;
-
-    case Key of
-      vk1:
-        SetViewMode(TPadViewMode.EditorOnly);
-      vk2:
-        SetViewMode(TPadViewMode.Split);
-      vk3:
-        SetViewMode(TPadViewMode.PreviewOnly);
-      vkF:
-        ShowFindBar;
-      vkH:
-        ShowReplaceBar;
-      vkK:
-        ShowPalette;
-      vkN:
-        HandleNewClick(nil);
-      vkO:
-        HandleOpenClick(nil);
-      vkS:
-        HandleSaveClick(nil);
-      vkW:
-        CloseActiveDocument;
-      vkTab:
-        begin
-          FWorkspace.ActivateNext;
-          SwitchToDocument(FWorkspace.ActiveIndex);
-        end;
-    else
-      Result := False;
-    end;
-
-    Exit;
+    Exit(TryHandleCommandShortcut(Key));
   end;
 
+  Result := TryHandleGlobalKey(Key);
+end;
+
+// While the palette is open it owns the keyboard: the arrows, Return and
+// Escape drive it, and control chords are swallowed so they cannot reach the
+// editor underneath.
+function TMarkdownPadFMXForm.TryHandlePaletteKey(const Key: Word; const Shift: TShiftState): Boolean;
+begin
+  case Key of
+    vkUp:
+      PaletteMoveSelection(-1);
+    vkDown:
+      PaletteMoveSelection(1);
+    vkReturn:
+      ExecuteSelectedCommand;
+    vkEscape:
+      ClosePalette;
+  else
+    Exit(ssCtrl in Shift);
+  end;
+
+  Result := True;
+end;
+
+function TMarkdownPadFMXForm.TryHandleFormatShortcut(const Key: Word): Boolean;
+begin
+  case Key of
+    vk1:
+      ExecuteFormatCommand(TEditorCommand.Heading1);
+    vk2:
+      ExecuteFormatCommand(TEditorCommand.Heading2);
+    vk3:
+      ExecuteFormatCommand(TEditorCommand.Heading3);
+    vkU:
+      ExecuteFormatCommand(TEditorCommand.BulletList);
+    vkO:
+      ExecuteFormatCommand(TEditorCommand.NumberedList);
+    vkQ:
+      ExecuteFormatCommand(TEditorCommand.Quote);
+    vkX:
+      ExecuteFormatCommand(TEditorCommand.Strikethrough);
+    vkT:
+      ExecuteFormatCommand(TEditorCommand.Table);
+    vkE:
+      DoExportHtml;
+    vkC:
+      DoCopyHtml;
+    vkS:
+      FController.SaveAs;
+    vkTab:
+      begin
+        FWorkspace.ActivatePrevious;
+        SwitchToDocument(FWorkspace.ActiveIndex);
+      end;
+  else
+    Exit(False);
+  end;
+
+  Result := True;
+end;
+
+function TMarkdownPadFMXForm.TryHandleCommandShortcut(const Key: Word): Boolean;
+begin
+  case Key of
+    vk1:
+      SetViewMode(TPadViewMode.EditorOnly);
+    vk2:
+      SetViewMode(TPadViewMode.Split);
+    vk3:
+      SetViewMode(TPadViewMode.PreviewOnly);
+    vkF:
+      ShowFindBar;
+    vkH:
+      ShowReplaceBar;
+    vkK:
+      ShowPalette;
+    vkN:
+      FController.NewDocument;
+    vkO:
+      FController.OpenViaDialog;
+    vkS:
+      FController.Save;
+    vkW:
+      CloseActiveDocument;
+    vkTab:
+      begin
+        FWorkspace.ActivateNext;
+        SwitchToDocument(FWorkspace.ActiveIndex);
+      end;
+  else
+    Exit(False);
+  end;
+
+  Result := True;
+end;
+
+function TMarkdownPadFMXForm.TryHandleGlobalKey(const Key: Word): Boolean;
+begin
   case Key of
     vkF11:
       ToggleZen;
     vkF3:
-      if FFindBar.Visible then
-        FindInEditor
-      else
-        Result := False;
+      begin
+        if not FFindBar.Visible then
+          Exit(False);
+
+        FindInEditor;
+      end;
     vkEscape:
-      if FFindBar.Visible then
-        CloseFindBar
-      else if FZenActive then
-        ExitZen
-      else
-        Result := False;
+      begin
+        if FFindBar.Visible then
+          CloseFindBar
+        else if FZenActive then
+          ExitZen
+        else
+          Exit(False);
+      end;
   else
-    Result := False;
+    Exit(False);
   end;
+
+  Result := True;
+end;
+
+procedure TMarkdownPadFMXForm.ExecuteFormatCommand(const Command: TEditorCommand);
+begin
+  FEditor.ExecuteCommand(Command);
+  FEditor.SetFocus;
 end;
 
 procedure TMarkdownPadFMXForm.DoShow;
