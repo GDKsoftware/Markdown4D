@@ -355,6 +355,7 @@ same.
 | `SelectedText: string` | The selected text |
 | `ContentHeight: Integer` | Laid-out document height, for auto-sizing |
 | `ScrollOffset: Single` | Read / set the vertical scroll position |
+| `LayoutCount: Integer` | Advances on every relayout (first width, resize, arriving images), so a host can notice layout-derived state going stale |
 | `DisplayList: IMarkdownDisplayList` | The rendered primitives, for advanced hosts |
 
 ### Events
@@ -372,6 +373,12 @@ The viewer loads `http(s)` images asynchronously and local images relative to
 `sql`, `json` or `xml` are syntax-highlighted; `chart` blocks render as
 graphics when the chart block override is registered (see
 [EXTENSIONS.md](EXTENSIONS.md)).
+
+The mouse wheel scrolls the control only while its content overflows;
+otherwise the wheel passes through to the parent, so viewers stacked inside a
+scroll box scroll the list they sit in. The VCL controls carry the native
+window scrollbar; the FMX viewer and editor draw a draggable overlay thumb
+whenever their content overflows.
 
 ### Image settings
 
