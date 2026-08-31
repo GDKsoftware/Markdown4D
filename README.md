@@ -245,3 +245,17 @@ origin and licence.
 Markdown4D is released under the [MIT License](LICENSE).
 
 Copyright (c) 2026 GDK Software
+
+## Commercial Support
+
+This library is MIT licensed and free to use. For companies that depend on it
+commercially we offer support and maintenance agreements with guaranteed
+response times, and sponsored development of features you need. Contact us at
+[gdksoftware.com/contact-us](https://gdksoftware.com/contact-us) or open an
+issue to get in touch.
+
+## About GDK Software
+
+Markdown4D is developed by [GDK Software](https://gdksoftware.com), a
+Delphi-focused software company building developer tools, MCP integrations,
+and enterprise applications.
