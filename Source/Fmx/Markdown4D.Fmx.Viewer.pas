@@ -20,6 +20,7 @@ uses
   Markdown4D.Viewer.ImageDownloader,
   Markdown4D.Viewer.ImageSettings,
   Markdown4D.Viewer.Lifetime,
+  Markdown4D.Viewer.ScrollBar,
   Markdown4D.Image.Svg,
   Markdown4D.Fmx.Painter;
 
@@ -73,6 +74,8 @@ type
       FFlushTimer: TTimer;
       FCopyFeedbackTimer: TTimer;
       FSelecting: Boolean;
+      FDraggingScrollBar: Boolean;
+      FScrollBarGrabDelta: Single;
       FLastMousePoint: TPointF;
       FHasLastMousePoint: Boolean;
       FCodeHoverActive: Boolean;
@@ -96,6 +99,10 @@ type
     procedure ApplyViewport;
     procedure ScrollToBottom;
     procedure SetScrollPosition(const Value: Single);
+    function ScrollBarVisible: Boolean;
+    function TryBeginScrollBarDrag(const X, Y: Single): Boolean;
+    procedure DragScrollBarTo(const Y: Single);
+    procedure DrawScrollBar(const Painter: IPainter);
     function LineScrollAmount: Single;
     function ContentPointOf(const X, Y: Single): TLayoutPointF;
     procedure UpdateHoverCursor(const Point: TLayoutPointF);
@@ -428,6 +435,8 @@ begin
   finally
     Canvas.SetMatrix(SavedMatrix);
   end;
+
+  DrawScrollBar(PainterLifetime);
 end;
 
 procedure TMarkdownViewer.EnsureDesignSample;
@@ -478,6 +487,9 @@ begin
   if CanFocus then
     SetFocus;
 
+  if TryBeginScrollBarDrag(X, Y) then
+    Exit;
+
   const Point = ContentPointOf(X, Y);
   if PointOnCopyButton(Point) then
   begin
@@ -507,6 +519,12 @@ begin
 
   FLastMousePoint := TPointF.Create(X, Y);
   FHasLastMousePoint := True;
+
+  if FDraggingScrollBar then
+  begin
+    DragScrollBarTo(Y);
+    Exit;
+  end;
 
   const ContentPoint = ContentPointOf(X, Y);
   if FSelecting then
@@ -540,6 +558,12 @@ begin
 
   if Button <> TMouseButton.mbLeft then
     Exit;
+
+  if FDraggingScrollBar then
+  begin
+    FDraggingScrollBar := False;
+    Exit;
+  end;
 
   if FSelecting then
   begin
@@ -601,6 +625,46 @@ begin
 
   if Assigned(FOnScroll) then
     FOnScroll(Self);
+end;
+
+function TMarkdownViewer.ScrollBarVisible: Boolean;
+begin
+  Result := TMarkdownScrollBarGeometry.IsVisible(Height, ContentHeight);
+end;
+
+function TMarkdownViewer.TryBeginScrollBarDrag(const X, Y: Single): Boolean;
+begin
+  if not ScrollBarVisible then
+    Exit(False);
+
+  if not TMarkdownScrollBarGeometry.IsOnLane(Width, X) then
+    Exit(False);
+
+  const Thumb = TMarkdownScrollBarGeometry.ThumbRect(Width, Height, ContentHeight, FModel.ScrollOffset);
+  const IsOnThumb = (Y >= Thumb.Top) and (Y <= Thumb.Bottom);
+  if IsOnThumb then
+    FScrollBarGrabDelta := Y - Thumb.Top
+  else
+    FScrollBarGrabDelta := Thumb.Height / 2;
+
+  FDraggingScrollBar := True;
+  DragScrollBarTo(Y);
+  Result := True;
+end;
+
+procedure TMarkdownViewer.DragScrollBarTo(const Y: Single);
+begin
+  const Offset = TMarkdownScrollBarGeometry.OffsetForThumbTop(Height, ContentHeight, Y - FScrollBarGrabDelta);
+  SetScrollPosition(Offset);
+end;
+
+procedure TMarkdownViewer.DrawScrollBar(const Painter: IPainter);
+begin
+  if not ScrollBarVisible then
+    Exit;
+
+  const Thumb = TMarkdownScrollBarGeometry.ThumbRect(Width, Height, ContentHeight, FModel.ScrollOffset);
+  Painter.FillRect(Thumb, TMarkdownScrollBarGeometry.ThumbColor);
 end;
 
 function TMarkdownViewer.LineScrollAmount: Single;

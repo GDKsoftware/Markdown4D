@@ -156,6 +156,7 @@
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.ImageSettings.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.Lifetime.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.Model.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.ScrollBar.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.Shared.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>

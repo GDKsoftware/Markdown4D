@@ -24,6 +24,7 @@ uses
   Markdown4D.Editor.Highlighter,
   Markdown4D.Editor.Sync,
   Markdown4D.Viewer.Lifetime,
+  Markdown4D.Viewer.ScrollBar,
   Markdown4D.Fmx.Painter,
   Markdown4D.Fmx.Viewer;
 
@@ -63,6 +64,8 @@ type
       FIndentWidth: Integer;
       FShowLineNumbers: Boolean;
       FSelecting: Boolean;
+      FDraggingScrollBar: Boolean;
+      FScrollBarGrabDelta: Single;
       FSelectionAnchor: Integer;
       FDragPending: Boolean;
       FDraggingSelection: Boolean;
@@ -112,6 +115,9 @@ type
     procedure EnsureSyncCurrent;
     procedure UpdateSync;
     procedure DoSyncScroll(const SourceLine: Integer);
+    function TryBeginScrollBarDrag(const X, Y: Single): Boolean;
+    procedure DragScrollBarTo(const Y: Single);
+    procedure DrawScrollBar;
     procedure RenderContent(const Target: TCanvas; const TargetWidth, TargetHeight, ScrollY: Single;
       const DrawCaret: Boolean);
     procedure RebuildRows;
@@ -809,6 +815,7 @@ begin
 
   const DrawCaret = IsFocused and FCaretVisible;
   RenderContent(Canvas, Width, Height, FScrollOffset, DrawCaret);
+  DrawScrollBar;
 end;
 
 procedure TMarkdownEditor.EnsureDesignSample;
@@ -1310,6 +1317,43 @@ begin
   SyncPreviewToEditor;
 end;
 
+function TMarkdownEditor.TryBeginScrollBarDrag(const X, Y: Single): Boolean;
+begin
+  if not TMarkdownScrollBarGeometry.IsVisible(Height, ContentHeightPx) then
+    Exit(False);
+
+  if not TMarkdownScrollBarGeometry.IsOnLane(Width, X) then
+    Exit(False);
+
+  const Thumb = TMarkdownScrollBarGeometry.ThumbRect(Width, Height, ContentHeightPx, FScrollOffset);
+  const IsOnThumb = (Y >= Thumb.Top) and (Y <= Thumb.Bottom);
+  if IsOnThumb then
+    FScrollBarGrabDelta := Y - Thumb.Top
+  else
+    FScrollBarGrabDelta := Thumb.Height / 2;
+
+  FDraggingScrollBar := True;
+  DragScrollBarTo(Y);
+  Result := True;
+end;
+
+procedure TMarkdownEditor.DragScrollBarTo(const Y: Single);
+begin
+  const Offset = TMarkdownScrollBarGeometry.OffsetForThumbTop(Height, ContentHeightPx, Y - FScrollBarGrabDelta);
+  SetScrollOffset(Offset);
+end;
+
+procedure TMarkdownEditor.DrawScrollBar;
+begin
+  if not TMarkdownScrollBarGeometry.IsVisible(Height, ContentHeightPx) then
+    Exit;
+
+  const Painter = TMarkdownFmxPainter.Create(Canvas);
+  const PainterLifetime: IPainter = Painter;
+  const Thumb = TMarkdownScrollBarGeometry.ThumbRect(Width, Height, ContentHeightPx, FScrollOffset);
+  PainterLifetime.FillRect(Thumb, TMarkdownScrollBarGeometry.ThumbColor);
+end;
+
 procedure TMarkdownEditor.ScrollCaretIntoView;
 begin
   const RowIndex = RowIndexOfOffset(FModel.CaretPosition);
@@ -1471,6 +1515,10 @@ begin
 
   if CanFocus and (Scene <> nil) then
     SetFocus;
+
+  if TryBeginScrollBarDrag(X, Y) then
+    Exit;
+
   FModel.BreakUndoCoalescing;
 
   if HandleFoldClick(X, Y) then
@@ -1527,6 +1575,12 @@ procedure TMarkdownEditor.MouseMove(Shift: TShiftState; X, Y: Single);
 begin
   inherited MouseMove(Shift, X, Y);
 
+  if FDraggingScrollBar then
+  begin
+    DragScrollBarTo(Y);
+    Exit;
+  end;
+
   if FDragPending or FDraggingSelection then
   begin
     UpdateSelectionDrag(X, Y);
@@ -1546,6 +1600,12 @@ begin
 
   if Button <> TMouseButton.mbLeft then
     Exit;
+
+  if FDraggingScrollBar then
+  begin
+    FDraggingScrollBar := False;
+    Exit;
+  end;
 
   if FinishSelectionDrag(X, Y) then
     Exit;

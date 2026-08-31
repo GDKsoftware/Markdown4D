@@ -78,6 +78,9 @@ type
 
     [Test]
     procedure Wheel_ContentOverflowsViewport_ScrollsAndHandles;
+
+    [Test]
+    procedure ScrollBarDrag_OverflowingContent_ScrollsWithoutSelecting;
   end;
 
 implementation
@@ -218,6 +221,20 @@ begin
 
   Assert.IsTrue(Handled, 'A scrollable viewer should claim the wheel');
   Assert.IsTrue(FViewer.ScrollOffset > 0, 'The wheel should have scrolled the content down');
+end;
+
+procedure TMarkdownFmxViewerTests.ScrollBarDrag_OverflowingContent_ScrollsWithoutSelecting;
+begin
+  FViewer.Text := ClipTestMarkdown;
+
+  const Access = TMarkdownViewerAccess(FViewer);
+  const LaneX = FViewer.Width - 3;
+  Access.MouseDown(TMouseButton.mbLeft, [], LaneX, 30);
+  Access.MouseMove([], LaneX, 120);
+  Access.MouseUp(TMouseButton.mbLeft, [], LaneX, 120);
+
+  Assert.IsTrue(FViewer.ScrollOffset > 0, 'Dragging the scrollbar thumb must scroll the content');
+  Assert.AreEqual('', FViewer.SelectedText, 'A scrollbar drag must not select text');
 end;
 
 class function TMarkdownFmxViewerTests.IsBandUntouched(const Bitmap: TBitmap; const BandHeight: Integer): Boolean;

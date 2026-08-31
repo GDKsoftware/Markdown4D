@@ -109,6 +109,7 @@ contains
   Markdown4D.Viewer.ImageSettings in '..\Source\Layout\Markdown4D.Viewer.ImageSettings.pas',
   Markdown4D.Viewer.Lifetime in '..\Source\Layout\Markdown4D.Viewer.Lifetime.pas',
   Markdown4D.Viewer.Model in '..\Source\Layout\Markdown4D.Viewer.Model.pas',
+  Markdown4D.Viewer.ScrollBar in '..\Source\Layout\Markdown4D.Viewer.ScrollBar.pas',
   Markdown4D.Viewer.Shared in '..\Source\Layout\Markdown4D.Viewer.Shared.pas';
 
 end.

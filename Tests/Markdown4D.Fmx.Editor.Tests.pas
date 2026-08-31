@@ -141,6 +141,9 @@ type
     procedure PreviewScroll_AfterPreviewResize_TracksNewLayout;
 
     [Test]
+    procedure ScrollBarDrag_ManyLines_AdvancesViewportWithoutMovingCaret;
+
+    [Test]
     procedure MergeText_KeepsCaretAndUndoHistory;
 
     [Test]
@@ -701,6 +704,26 @@ begin
       Editor.DetachPreview;
       Viewer.Free;
     end;
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.ScrollBarDrag_ManyLines_AdvancesViewportWithoutMovingCaret;
+begin
+  const Editor = TTestableFmxEditor.Create(nil);
+  try
+    Editor.SetBounds(0, 0, PreviewWidth, ShortHeight);
+    Editor.Text := ManyLines(ManyLineCount);
+    Editor.CaretPosition := 0;
+
+    const LaneX = Editor.Width - 3;
+    Editor.SimulateMouseDown(LaneX, 10, []);
+    Editor.SimulateMouseMove(LaneX, 60, []);
+    Editor.SimulateMouseUp(LaneX, 60, []);
+
+    Assert.IsTrue(Editor.FirstVisibleSourceLine > 0, 'Dragging the scrollbar thumb must advance the viewport');
+    Assert.AreEqual(0, Editor.CaretPosition, 'A scrollbar drag must not move the caret');
   finally
     Editor.Free;
   end;

@@ -93,6 +93,7 @@
         <DCCReference Include="Markdown4D.Layout.Incremental.Tests.pas"/>
         <DCCReference Include="Markdown4D.Highlighter.Tests.pas"/>
         <DCCReference Include="Markdown4D.Viewer.Model.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Viewer.ScrollBar.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Render.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Viewer.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Image.Tests.pas"/>
