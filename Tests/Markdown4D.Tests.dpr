@@ -36,6 +36,8 @@ uses
   Markdown4D.Highlighter.Tests in 'Markdown4D.Highlighter.Tests.pas',
   Markdown4D.Viewer.Model.Tests in 'Markdown4D.Viewer.Model.Tests.pas',
   Markdown4D.Viewer.ScrollBar.Tests in 'Markdown4D.Viewer.ScrollBar.Tests.pas',
+  MarkdownPad.SingleInstance in '..\Examples\Shared\MarkdownPad.SingleInstance.pas',
+  MarkdownPad.SingleInstance.Tests in 'MarkdownPad.SingleInstance.Tests.pas',
   Markdown4D.Vcl.Render.Tests in 'Markdown4D.Vcl.Render.Tests.pas',
   Markdown4D.Vcl.Viewer.Tests in 'Markdown4D.Vcl.Viewer.Tests.pas',
   Markdown4D.Vcl.Image.Tests in 'Markdown4D.Vcl.Image.Tests.pas',

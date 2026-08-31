@@ -194,6 +194,7 @@ type
     procedure ExecuteFormatCommand(const Command: TEditorCommand);
     procedure ToggleDarkTheme;
     procedure ToggleTocPane;
+    procedure HandleDocumentHandedOver(const FileName: string);
     procedure SetViewMode(const Mode: TPadViewMode);
     procedure ApplyViewMode;
     procedure ShowFindBar;
@@ -303,7 +304,9 @@ uses
   Winapi.ShellAPI,
   FMX.DialogService.Sync,
   FMX.Platform,
+  FMX.Platform.Win,
   MarkdownPad.Fmx.WinFrame,
+  MarkdownPad.SingleInstance,
   Markdown4D,
   Markdown4D.Defines,
   Markdown4D.Ast.Interfaces,
@@ -368,10 +371,14 @@ begin
   RestoreSession;
 
   FMapDirty := True;
+
+  TPadSingleInstance.OpenChannel(PadInstanceChannelFmx, HandleDocumentHandedOver);
 end;
 
 destructor TMarkdownPadFMXForm.Destroy;
 begin
+  TPadSingleInstance.CloseChannel;
+
   if FEditor <> nil then
     FEditor.DetachPreview;
 
@@ -1472,6 +1479,19 @@ end;
 procedure TMarkdownPadFMXForm.OpenPath(const FileName: string);
 begin
   FController.OpenPath(FileName);
+end;
+
+// A second pad instance handed its document over and exited; open it here and
+// step into the foreground so the user sees where the file went.
+procedure TMarkdownPadFMXForm.HandleDocumentHandedOver(const FileName: string);
+begin
+  if FileName <> '' then
+    OpenPath(FileName);
+
+  const WindowHandle = FormToHWND(Self);
+  if IsIconic(WindowHandle) then
+    ShowWindow(WindowHandle, SW_RESTORE);
+  SetForegroundWindow(WindowHandle);
 end;
 
 procedure TMarkdownPadFMXForm.HandleSaveClick(Sender: TObject);

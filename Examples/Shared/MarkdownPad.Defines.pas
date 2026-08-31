@@ -64,6 +64,10 @@ const
   PaletteVisibleRows = 10;
   ZenMaxTextWidth = 820;
 
+  // Single-instance hand-off channels, one per pad flavour
+  PadInstanceChannelVcl = 'MarkdownPadVCL.Instance';
+  PadInstanceChannelFmx = 'MarkdownPadFMX.Instance';
+
   // Captions, filters and format strings
   TocHeaderCaption = 'Contents';
   FindButtonCaption = 'Find';

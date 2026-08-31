@@ -21,11 +21,15 @@ uses
   MarkdownPadVCL.Defines in 'MarkdownPadVCL.Defines.pas',
   MarkdownPad.Shell in '..\Shared\MarkdownPad.Shell.pas',
   MarkdownPad.CommandLine in '..\Shared\MarkdownPad.CommandLine.pas',
+  MarkdownPad.SingleInstance in '..\Shared\MarkdownPad.SingleInstance.pas',
   MarkdownPad.Controller in '..\Shared\MarkdownPad.Controller.pas';
 
 {$R *.res}
 
 begin
+  if TPadSingleInstance.TryHandOff(PadInstanceChannelVcl, TPadCommandLine.DocumentPath) then
+    Exit;
+
   Application.Initialize;
   Application.MainFormOnTaskbar := True;
   Application.CreateForm(TMarkdownPadVCLForm, MarkdownPadVCLForm);

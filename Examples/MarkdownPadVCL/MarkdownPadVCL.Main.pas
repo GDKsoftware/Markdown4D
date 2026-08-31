@@ -197,6 +197,7 @@ type
     procedure HandleTabReorder(Sender: TObject; const FromIndex, ToIndex: Integer);
     function ActiveDocumentFolder: string;
     procedure OpenPath(const FileName: string);
+    procedure HandleDocumentHandedOver(const FileName: string);
     function GetEditorText: string;
     procedure SetEditorText(const Value: string);
     function MergeEditorText(const Value: string): Boolean;
@@ -295,6 +296,7 @@ uses
   MarkdownPad.Outline,
   MarkdownPad.Workspace,
   MarkdownPad.LinkPolicy,
+  MarkdownPad.SingleInstance,
   MarkdownPad.HtmlExport;
 
 {$R *.dfm}
@@ -327,6 +329,8 @@ begin
 
   tmrTick.Enabled := True;
 
+  TPadSingleInstance.OpenChannel(PadInstanceChannelVcl, HandleDocumentHandedOver);
+
   if FUseCustomTitleBar then
   begin
     TThread.ForceQueue(nil,
@@ -339,6 +343,8 @@ end;
 
 destructor TMarkdownPadVCLForm.Destroy;
 begin
+  TPadSingleInstance.CloseChannel;
+
   // The controller is missing when construction failed halfway; there is no
   // session to save then.
   if FController <> nil then
@@ -1087,6 +1093,18 @@ end;
 procedure TMarkdownPadVCLForm.OpenPath(const FileName: string);
 begin
   FController.OpenPath(FileName);
+end;
+
+// A second pad instance handed its document over and exited; open it here and
+// step into the foreground so the user sees where the file went.
+procedure TMarkdownPadVCLForm.HandleDocumentHandedOver(const FileName: string);
+begin
+  if FileName <> '' then
+    OpenPath(FileName);
+
+  if IsIconic(Handle) then
+    ShowWindow(Handle, SW_RESTORE);
+  SetForegroundWindow(Handle);
 end;
 
 function TMarkdownPadVCLForm.GetEditorText: string;

@@ -23,11 +23,15 @@ uses
   MarkdownPadFMX.Defines in 'MarkdownPadFMX.Defines.pas',
   MarkdownPad.Shell in '..\Shared\MarkdownPad.Shell.pas',
   MarkdownPad.CommandLine in '..\Shared\MarkdownPad.CommandLine.pas',
+  MarkdownPad.SingleInstance in '..\Shared\MarkdownPad.SingleInstance.pas',
   MarkdownPad.Controller in '..\Shared\MarkdownPad.Controller.pas';
 
 {$R *.res}
 
 begin
+  if TPadSingleInstance.TryHandOff(PadInstanceChannelFmx, TPadCommandLine.DocumentPath) then
+    Exit;
+
   // Render through Skia so the editor's source text is crisp on Windows; unlike the
   // GDI+ canvas, Skia keeps accurate text metrics (gutter, caret, selection).
   GlobalUseSkia := True;
