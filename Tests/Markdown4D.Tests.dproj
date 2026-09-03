@@ -82,6 +82,7 @@
         <DCCReference Include="Markdown4D.Performance.Tests.pas"/>
         <DCCReference Include="Markdown4D.Layout.FakeMeasurer.pas"/>
         <DCCReference Include="Markdown4D.Layout.Engine.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Html.Subset.Tests.pas"/>
         <DCCReference Include="Markdown4D.Layout.HitTest.Tests.pas"/>
         <DCCReference Include="Markdown4D.Layout.Renderer.Tests.pas"/>
         <DCCReference Include="Markdown4D.Theme.Tests.pas"/>

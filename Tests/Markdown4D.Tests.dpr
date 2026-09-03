@@ -24,6 +24,7 @@ uses
   Markdown4D.Performance.Tests in 'Markdown4D.Performance.Tests.pas',
   Markdown4D.Layout.FakeMeasurer in 'Markdown4D.Layout.FakeMeasurer.pas',
   Markdown4D.Layout.Engine.Tests in 'Markdown4D.Layout.Engine.Tests.pas',
+  Markdown4D.Html.Subset.Tests in 'Markdown4D.Html.Subset.Tests.pas',
   Markdown4D.Layout.HitTest.Tests in 'Markdown4D.Layout.HitTest.Tests.pas',
   Markdown4D.Layout.Renderer.Tests in 'Markdown4D.Layout.Renderer.Tests.pas',
   Markdown4D.Theme.Tests in 'Markdown4D.Theme.Tests.pas',

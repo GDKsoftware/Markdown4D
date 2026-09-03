@@ -142,6 +142,18 @@ type
     procedure Layout_Image_EmitsPlaceholderWithSourceUrl;
 
     [Test]
+    procedure Layout_HtmlBlock_PaintsNothingForMarkup;
+
+    [Test]
+    procedure Layout_HtmlBlock_DropsScriptEntirely;
+
+    [Test]
+    procedure Layout_HtmlBlock_EmphasisBecomesStyledRun;
+
+    [Test]
+    procedure Layout_HtmlBlock_EmitsImageForImgTag;
+
+    [Test]
     procedure Layout_ThematicBreak_EmitsLinePrimitive;
 
     [Test]
@@ -545,6 +557,60 @@ begin
   Assert.IsNotNull(Image.Node);
   const IsImageNode = (Image.Node.Kind = TMarkdownNodeKind.Image);
   Assert.IsTrue(IsImageNode);
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_HtmlBlock_PaintsNothingForMarkup;
+begin
+  // The markup itself is never painted, but what it wraps still reaches the
+  // reader.
+  const DisplayList = LayoutMarkdown('<div class="note">'#10'  <span>visible</span>'#10'</div>', DefaultWidth);
+
+  const Runs = TextRunsOf(DisplayList);
+  Assert.AreEqual(1, Length(Runs));
+  Assert.AreEqual('visible', Runs[0].Text);
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_HtmlBlock_DropsScriptEntirely;
+begin
+  const DisplayList = LayoutMarkdown('<script>alert(1)</script>', DefaultWidth);
+
+  Assert.AreEqual(0, Length(TextRunsOf(DisplayList)));
+  AssertSingle(0, DisplayList.Height);
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_HtmlBlock_EmphasisBecomesStyledRun;
+begin
+  const DisplayList = LayoutMarkdown('<p>plain <strong>loud</strong></p>', DefaultWidth);
+
+  const Runs = TextRunsOf(DisplayList);
+  Assert.IsTrue(Length(Runs) >= 2, 'expected the bold part to become its own run');
+
+  var FoundBold := False;
+  for var Run in Runs do
+  begin
+    if (Run.Text = 'loud') and Run.Font.Bold then
+      FoundBold := True;
+  end;
+
+  Assert.IsTrue(FoundBold, 'expected a bold run holding the strong text');
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_HtmlBlock_EmitsImageForImgTag;
+begin
+  const ImageUrl = 'docs/images/shot.png';
+  const DisplayList = LayoutMarkdown(
+    '<p align="center">'#10 +
+    '  <img src="' + ImageUrl + '" alt="A screenshot" width="90%">'#10 +
+    '</p>', DefaultWidth);
+
+  Assert.AreEqual(0, Length(TextRunsOf(DisplayList)));
+
+  const Image = FirstImageOf(DisplayList);
+  Assert.IsNotNull(Image);
+  Assert.AreEqual(ImageUrl, Image.Source);
+  Assert.AreEqual('A screenshot', Image.AltText);
+  AssertSingle(ImagePlaceholderWidthValue, Image.Bounds.Width);
+  AssertSingle(ImagePlaceholderHeightValue, Image.Bounds.Height);
 end;
 
 procedure TMarkdownLayoutEngineTests.Layout_ThematicBreak_EmitsLinePrimitive;

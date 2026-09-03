@@ -99,6 +99,7 @@
         <DCCReference Include="..\Source\Core\Markdown4D.Highlighter.TokenBuilder.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Highlighter.Xml.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Html.Entities.pas"/>
+        <DCCReference Include="..\Source\Core\Markdown4D.Html.Subset.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Parser.Blocks.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Parser.HtmlBlocks.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Parser.Incremental.pas"/>

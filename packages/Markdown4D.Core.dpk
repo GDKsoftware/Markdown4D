@@ -1,5 +1,4 @@
 package Markdown4D.Core;
-
 {$R *.res}
 {$IFDEF IMPLICITBUILDING This IFDEF should not be used by users}
 {$ALIGN 8}
@@ -29,10 +28,8 @@ package Markdown4D.Core;
 {$LIBSUFFIX AUTO}
 {$RUNONLY}
 {$IMPLICITBUILD OFF}
-
 requires
   rtl;
-
 contains
   Markdown4D.Ast.Builder in '..\Source\Core\Markdown4D.Ast.Builder.pas',
   Markdown4D.Ast.Interfaces in '..\Source\Core\Markdown4D.Ast.Interfaces.pas',
@@ -52,6 +49,7 @@ contains
   Markdown4D.Highlighter.TokenBuilder in '..\Source\Core\Markdown4D.Highlighter.TokenBuilder.pas',
   Markdown4D.Highlighter.Xml in '..\Source\Core\Markdown4D.Highlighter.Xml.pas',
   Markdown4D.Html.Entities in '..\Source\Core\Markdown4D.Html.Entities.pas',
+  Markdown4D.Html.Subset in '..\Source\Core\Markdown4D.Html.Subset.pas',
   Markdown4D.Parser.Blocks in '..\Source\Core\Markdown4D.Parser.Blocks.pas',
   Markdown4D.Parser.HtmlBlocks in '..\Source\Core\Markdown4D.Parser.HtmlBlocks.pas',
   Markdown4D.Parser.Incremental in '..\Source\Core\Markdown4D.Parser.Incremental.pas',
@@ -112,5 +110,4 @@ contains
   Markdown4D.Viewer.Model in '..\Source\Layout\Markdown4D.Viewer.Model.pas',
   Markdown4D.Viewer.ScrollBar in '..\Source\Layout\Markdown4D.Viewer.ScrollBar.pas',
   Markdown4D.Viewer.Shared in '..\Source\Layout\Markdown4D.Viewer.Shared.pas';
-
 end.

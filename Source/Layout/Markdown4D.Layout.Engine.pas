@@ -45,8 +45,13 @@ uses
   Markdown4D.Defines,
   Markdown4D.Parser.Inlines,
   Markdown4D.Highlighter.Interfaces,
+  Markdown4D,
+  Markdown4D.Html.Subset,
   Markdown4D.Layout.ExtensionCanvas,
   Markdown4D.Layout.Primitives;
+
+const
+  HtmlSubsetCacheKey = 'markdown4d.html.subset';
 
 type
   TMarkdownFontStyleHelper = record helper for TMarkdownFontStyle
@@ -269,6 +274,7 @@ type
     procedure EmitPlainCodeLine(const Command: TLayoutCommand; const LineText: string; const Top, LineHeight: Single;
       const LineStart: Integer);
     class function CodeLanguageOf(const Code: IMarkdownCodeBlock): string;
+    function HtmlBlockDocument(const Node: IMarkdownNode): IMarkdownDocument;
     procedure EmitHtmlBlock(const Command: TLayoutCommand);
     procedure EmitThematicBreak(const Command: TLayoutCommand);
     procedure LayoutTable(const Command: TLayoutCommand);
@@ -915,33 +921,40 @@ begin
   end;
 end;
 
-procedure TLayoutWorker.EmitHtmlBlock(const Command: TLayoutCommand);
+// The markup of an HTML block is never painted as text: the HTML renderer omits
+// raw HTML, and tags in front of a reader are not a document. What the block
+// says is kept, though. The allowed subset is translated to markdown, parsed,
+// and laid out as if it had been written that way, so images, links, emphasis,
+// lists and <details> sections all reach the reader through the ordinary path.
+//
+// The translation is cached on the node, because layout runs again on every
+// resize and on every streamed chunk.
+function TLayoutWorker.HtmlBlockDocument(const Node: IMarkdownNode): IMarkdownDocument;
 begin
-  const Html = Command.Node as IMarkdownText;
-  const Lines = SplitCodeLines(Html.Literal);
-  const LineHeight = FMeasurer.LineHeight(FTheme.BaseFont);
+  Result := nil;
 
-  var LineStart := 0;
-  for var Index := 0 to Length(Lines) - 1 do
+  var Cached: IInterface;
+  if Node.TryGetExtensionData(HtmlSubsetCacheKey, Cached) then
   begin
-    const LineText = Lines[Index];
-    const NextLineStart = LineStart + Length(LineText) + 1;
-    if LineText = '' then
-    begin
-      LineStart := NextLineStart;
-      Continue;
-    end;
-
-    const Size = FMeasurer.MeasureText(LineText, FTheme.BaseFont);
-    const Top = FCurrentY + Index * LineHeight;
-    const Bounds = TLayoutRectF.Create(Command.X, Top, Command.X + Size.Width, Top + LineHeight);
-
-    FItems.Add(TDisplayTextRun.Create(Bounds, Command.Node, LineText, FTheme.BaseFont, Command.TextColor,
-      FMeasurer.Baseline(FTheme.BaseFont), LineStart));
-    LineStart := NextLineStart;
+    Supports(Cached, IMarkdownDocument, Result);
+    Exit;
   end;
 
-  FCurrentY := FCurrentY + Length(Lines) * LineHeight;
+  const Html = Node as IMarkdownText;
+  const Translated = TMarkdownHtmlSubset.ToMarkdown(Html.Literal);
+  if Translated <> '' then
+    Result := TMarkdown.Parse(Translated, TMarkdownDialect.Gfm);
+
+  Node.SetExtensionData(HtmlSubsetCacheKey, Result);
+end;
+
+procedure TLayoutWorker.EmitHtmlBlock(const Command: TLayoutCommand);
+begin
+  const Document = HtmlBlockDocument(Command.Node);
+  if (Document = nil) or (Document.ChildCount = 0) then
+    Exit;
+
+  PushContainerChildren(Document, Command.X, Command.TextColor);
 end;
 
 procedure TLayoutWorker.EmitThematicBreak(const Command: TLayoutCommand);
