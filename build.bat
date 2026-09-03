@@ -77,9 +77,9 @@ if "%FMX_EXIT%"=="0" (
 echo.
 echo === Building example projects ^(Debug, Win32^) ===
 for %%P in (
-    "%ROOT%Examples\MarkdownPadVCL\MarkdownPadVCL.dproj"
+    "%ROOT%Examples\Markdown4DStudioVCL\Markdown4DStudioVCL.dproj"
     "%ROOT%Examples\StreamingMarkdownVCL\StreamingMarkdownVCL.dproj"
-    "%ROOT%Examples\MarkdownPadFMX\MarkdownPadFMX.dproj"
+    "%ROOT%Examples\Markdown4DStudioFMX\Markdown4DStudioFMX.dproj"
     "%ROOT%Examples\StreamingMarkdownFMX\StreamingMarkdownFMX.dproj"
 ) do (
     msbuild "%%~P" /t:Build /p:Config=Debug /p:Platform=Win32 /v:m

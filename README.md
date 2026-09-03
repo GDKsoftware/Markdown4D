@@ -13,12 +13,20 @@ embedded browser.
 [![CommonMark 0.31.2](https://img.shields.io/badge/CommonMark-0.31.2%20652%2F652-1f6feb.svg)](https://spec.commonmark.org/0.31.2/)
 
 <p align="center">
+  <img src="docs/images/streaming-demo.gif" alt="Markdown4D Studio with the markdown source on the left and the live preview on the right, an answer streaming in token by token while a table, a native bar chart and a mermaid flowchart take shape" width="90%">
+</p>
+
+<p align="center"><em>An answer arriving token by token: source on the left, live preview on the right.
+The chart and the diagram are drawn on the canvas as their fences close. Nothing
+here is a browser, and the animation itself is rendered by the library through
+<code>tools\Make-Demo.ps1</code> rather than captured off a screen.</em></p>
+
+<p align="center">
   <img src="docs/images/viewer-light.png" alt="TMarkdownViewer rendering a document with a table and a native bar chart" width="49%">
   <img src="docs/images/viewer-dark.png" alt="The same viewer in its dark theme, rendering a mermaid flowchart and a doughnut chart" width="49%">
 </p>
 
-<p align="center"><em>Both screenshots show the VCL viewer. The charts and the diagram are drawn
-on the canvas directly from the markdown source.</em></p>
+<p align="center"><em>Both screenshots show the VCL viewer.</em></p>
 
 ## Why Markdown4D
 
@@ -150,9 +158,9 @@ The `Examples\` folder contains four runnable projects:
 
 | Project | Framework | Shows |
 |---------|-----------|-------|
-| `MarkdownPadVCL` | VCL | Editor + live preview + table of contents, with native charts and mermaid diagrams |
+| `Markdown4DStudioVCL` | VCL | Editor + live preview + table of contents, with native charts and mermaid diagrams |
 | `StreamingMarkdownVCL` | VCL | Streaming chat with incremental render, async images, live charts and mermaid diagrams |
-| `MarkdownPadFMX` | FMX | Editor + live preview, with native charts and mermaid diagrams |
+| `Markdown4DStudioFMX` | FMX | Editor + live preview, with native charts and mermaid diagrams |
 | `StreamingMarkdownFMX` | FMX | Streaming chat with live charts and mermaid diagrams |
 
 ## Architecture

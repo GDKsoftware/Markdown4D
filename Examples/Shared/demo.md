@@ -2,7 +2,7 @@
 
 This document exercises everything the Markdown4D viewer can render natively on the
 canvas: text formatting, lists, tables, code, charts and diagrams. Open it in either
-the VCL or the FMX MarkdownPad and scroll along with the contents panel on the left.
+the VCL or the FMX Markdown4DStudio and scroll along with the contents panel on the left.
 
 ## Text formatting
 

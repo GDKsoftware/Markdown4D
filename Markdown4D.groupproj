@@ -27,13 +27,13 @@
         <Projects Include="Tests\Markdown4D.Benchmarks.dproj">
             <Dependencies/>
         </Projects>
-        <Projects Include="Examples\MarkdownPadVCL\MarkdownPadVCL.dproj">
+        <Projects Include="Examples\Markdown4DStudioVCL\Markdown4DStudioVCL.dproj">
             <Dependencies/>
         </Projects>
         <Projects Include="Examples\StreamingMarkdownVCL\StreamingMarkdownVCL.dproj">
             <Dependencies/>
         </Projects>
-        <Projects Include="Examples\MarkdownPadFMX\MarkdownPadFMX.dproj">
+        <Projects Include="Examples\Markdown4DStudioFMX\Markdown4DStudioFMX.dproj">
             <Dependencies/>
         </Projects>
         <Projects Include="Examples\StreamingMarkdownFMX\StreamingMarkdownFMX.dproj">
@@ -119,14 +119,14 @@
     <Target Name="Markdown4D_Benchmarks:Make">
         <MSBuild Projects="Tests\Markdown4D.Benchmarks.dproj" Targets="Make"/>
     </Target>
-    <Target Name="MarkdownPadVCL">
-        <MSBuild Projects="Examples\MarkdownPadVCL\MarkdownPadVCL.dproj"/>
+    <Target Name="Markdown4DStudioVCL">
+        <MSBuild Projects="Examples\Markdown4DStudioVCL\Markdown4DStudioVCL.dproj"/>
     </Target>
-    <Target Name="MarkdownPadVCL:Clean">
-        <MSBuild Projects="Examples\MarkdownPadVCL\MarkdownPadVCL.dproj" Targets="Clean"/>
+    <Target Name="Markdown4DStudioVCL:Clean">
+        <MSBuild Projects="Examples\Markdown4DStudioVCL\Markdown4DStudioVCL.dproj" Targets="Clean"/>
     </Target>
-    <Target Name="MarkdownPadVCL:Make">
-        <MSBuild Projects="Examples\MarkdownPadVCL\MarkdownPadVCL.dproj" Targets="Make"/>
+    <Target Name="Markdown4DStudioVCL:Make">
+        <MSBuild Projects="Examples\Markdown4DStudioVCL\Markdown4DStudioVCL.dproj" Targets="Make"/>
     </Target>
     <Target Name="StreamingMarkdownVCL">
         <MSBuild Projects="Examples\StreamingMarkdownVCL\StreamingMarkdownVCL.dproj"/>
@@ -137,14 +137,14 @@
     <Target Name="StreamingMarkdownVCL:Make">
         <MSBuild Projects="Examples\StreamingMarkdownVCL\StreamingMarkdownVCL.dproj" Targets="Make"/>
     </Target>
-    <Target Name="MarkdownPadFMX">
-        <MSBuild Projects="Examples\MarkdownPadFMX\MarkdownPadFMX.dproj"/>
+    <Target Name="Markdown4DStudioFMX">
+        <MSBuild Projects="Examples\Markdown4DStudioFMX\Markdown4DStudioFMX.dproj"/>
     </Target>
-    <Target Name="MarkdownPadFMX:Clean">
-        <MSBuild Projects="Examples\MarkdownPadFMX\MarkdownPadFMX.dproj" Targets="Clean"/>
+    <Target Name="Markdown4DStudioFMX:Clean">
+        <MSBuild Projects="Examples\Markdown4DStudioFMX\Markdown4DStudioFMX.dproj" Targets="Clean"/>
     </Target>
-    <Target Name="MarkdownPadFMX:Make">
-        <MSBuild Projects="Examples\MarkdownPadFMX\MarkdownPadFMX.dproj" Targets="Make"/>
+    <Target Name="Markdown4DStudioFMX:Make">
+        <MSBuild Projects="Examples\Markdown4DStudioFMX\Markdown4DStudioFMX.dproj" Targets="Make"/>
     </Target>
     <Target Name="StreamingMarkdownFMX">
         <MSBuild Projects="Examples\StreamingMarkdownFMX\StreamingMarkdownFMX.dproj"/>
@@ -156,13 +156,13 @@
         <MSBuild Projects="Examples\StreamingMarkdownFMX\StreamingMarkdownFMX.dproj" Targets="Make"/>
     </Target>
     <Target Name="Build">
-        <CallTarget Targets="Markdown4D_Core;Markdown4D_Vcl;Markdown4D_Fmx;Markdown4D_Vcl_Design;Markdown4D_Fmx_Design;Markdown4D_Tests;Markdown4D_Fmx_Tests;Markdown4D_Benchmarks;MarkdownPadVCL;StreamingMarkdownVCL;MarkdownPadFMX;StreamingMarkdownFMX"/>
+        <CallTarget Targets="Markdown4D_Core;Markdown4D_Vcl;Markdown4D_Fmx;Markdown4D_Vcl_Design;Markdown4D_Fmx_Design;Markdown4D_Tests;Markdown4D_Fmx_Tests;Markdown4D_Benchmarks;Markdown4DStudioVCL;StreamingMarkdownVCL;Markdown4DStudioFMX;StreamingMarkdownFMX"/>
     </Target>
     <Target Name="Clean">
-        <CallTarget Targets="Markdown4D_Core:Clean;Markdown4D_Vcl:Clean;Markdown4D_Fmx:Clean;Markdown4D_Vcl_Design:Clean;Markdown4D_Fmx_Design:Clean;Markdown4D_Tests:Clean;Markdown4D_Fmx_Tests:Clean;Markdown4D_Benchmarks:Clean;MarkdownPadVCL:Clean;StreamingMarkdownVCL:Clean;MarkdownPadFMX:Clean;StreamingMarkdownFMX:Clean"/>
+        <CallTarget Targets="Markdown4D_Core:Clean;Markdown4D_Vcl:Clean;Markdown4D_Fmx:Clean;Markdown4D_Vcl_Design:Clean;Markdown4D_Fmx_Design:Clean;Markdown4D_Tests:Clean;Markdown4D_Fmx_Tests:Clean;Markdown4D_Benchmarks:Clean;Markdown4DStudioVCL:Clean;StreamingMarkdownVCL:Clean;Markdown4DStudioFMX:Clean;StreamingMarkdownFMX:Clean"/>
     </Target>
     <Target Name="Make">
-        <CallTarget Targets="Markdown4D_Core:Make;Markdown4D_Vcl:Make;Markdown4D_Fmx:Make;Markdown4D_Vcl_Design:Make;Markdown4D_Fmx_Design:Make;Markdown4D_Tests:Make;Markdown4D_Fmx_Tests:Make;Markdown4D_Benchmarks:Make;MarkdownPadVCL:Make;StreamingMarkdownVCL:Make;MarkdownPadFMX:Make;StreamingMarkdownFMX:Make"/>
+        <CallTarget Targets="Markdown4D_Core:Make;Markdown4D_Vcl:Make;Markdown4D_Fmx:Make;Markdown4D_Vcl_Design:Make;Markdown4D_Fmx_Design:Make;Markdown4D_Tests:Make;Markdown4D_Fmx_Tests:Make;Markdown4D_Benchmarks:Make;Markdown4DStudioVCL:Make;StreamingMarkdownVCL:Make;Markdown4DStudioFMX:Make;StreamingMarkdownFMX:Make"/>
     </Target>
     <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
 </Project>
