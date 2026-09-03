@@ -91,7 +91,6 @@ type
   TSubsetConverter = class
   strict private
     const
-      HeadingLevels = '123456';
       MarkdownSpecials = ['\', '`', '*', '_', '[', ']', '<', '>', '#', '|', '~'];
       ListIndent = '  ';
     var

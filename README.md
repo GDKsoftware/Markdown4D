@@ -8,7 +8,7 @@ embedded browser.
 
 <!-- badges -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Version 2.0.1](https://img.shields.io/badge/version-2.0.1-blue.svg)](https://github.com/GDKsoftware/Markdown4D/releases)
+[![Latest release](https://img.shields.io/github/v/release/GDKsoftware/Markdown4D?label=release&color=blue)](https://github.com/GDKsoftware/Markdown4D/releases)
 [![Delphi 12+](https://img.shields.io/badge/Delphi-12%2B-e62329.svg)](https://www.embarcadero.com/products/delphi)
 [![CommonMark 0.31.2](https://img.shields.io/badge/CommonMark-0.31.2%20652%2F652-1f6feb.svg)](https://spec.commonmark.org/0.31.2/)
 
