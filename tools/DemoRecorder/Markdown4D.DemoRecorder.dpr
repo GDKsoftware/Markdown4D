@@ -827,7 +827,7 @@ end;
 
 procedure WriteSocial(const OutputFolder: string);
 begin
-  const Recorder = TDemoRecorder.Create(OutputFolder, TMarkdownThemePreset.Dark, 'social-preview');
+  const Recorder = TDemoRecorder.Create(OutputFolder, TMarkdownThemePreset.Light, 'social-preview');
   try
     const Path = TPath.Combine(OutputFolder, 'social-preview.png');
     Recorder.WriteSocialCard(Path);
