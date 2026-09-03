@@ -1120,6 +1120,10 @@ begin
     Entry.OnClick := HandleContextItemClick;
   end;
 
+  // Without a popup component the menu has no scene to look its style up in,
+  // which leaves every entry measuring zero and the menu a few pixels wide.
+  FContextMenu.PopupComponent := Self;
+
   const Origin = LocalToAbsolute(TPointF.Create(X, Y));
   const OnScreen = Scene.LocalToScreen(Origin);
   FContextMenu.Popup(OnScreen.X, OnScreen.Y);
