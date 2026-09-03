@@ -10,7 +10,7 @@ type
       'Native **CommonMark** and *GFM* rendering in ~~a browser~~ pure Delphi - ' +
       '[GDK Software](https://github.com/GDKsoftware/Markdown4D).'#10#10 +
       '- [x] Tables, task lists and `inline code`'#10 +
-      '- [ ] Streaming LLM output via *AppendMarkdown*'#10#10 +
+      '- [ ] Streaming text via *AppendMarkdown*'#10#10 +
       '| Feature | VCL | FMX |'#10 +
       '| --- | :-: | :-: |'#10 +
       '| Viewer | yes | yes |'#10 +

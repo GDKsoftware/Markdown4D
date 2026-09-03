@@ -32,8 +32,10 @@ Parsing produces a typed, documented `IMarkdownDocument`. The tree can be
 inspected or transformed and written back to markdown with the round-trip
 writer.
 
-An incremental parser reparses only the region that changed, which keeps
-editors responsive and handles token-by-token LLM output well.
+An incremental parser reparses only the region that changed. That keeps an
+editor responsive on a large document, and it makes text that arrives in pieces
+practical: a log that grows, an import that reports while it runs, a model
+answering a token at a time.
 
 The pipeline builder accepts custom inline and block syntax, delimiter
 processors, renderer hooks and document processors. The bundled chart and
@@ -112,27 +114,32 @@ Viewer.ThemePreset := TMarkdownThemePreset.Dark;
 Viewer.Text := '# Welcome'#10#10 + 'This is **Markdown4D**.';
 ```
 
-Streaming LLM output. The viewer reparses incrementally, debounces relayout
-and follows the tail:
+Text that arrives in pieces. The viewer reparses incrementally, debounces
+relayout and follows the tail:
 
 ```pascal
-procedure TChatForm.OnTokenReceived(const Token: string);
+procedure TReportForm.OnChunkReceived(const Chunk: string);
 begin
-  FAnswerViewer.AppendMarkdown(Token);
+  FViewer.AppendMarkdown(Chunk);
 end;
 ```
+
+A chunk may split a word, a `**bold**` span, a fenced block or a table row; the
+incremental parser reconciles it when the next chunk completes it. That covers a
+log that grows, an import that reports as it runs, a document assembled on the
+fly, and a model that answers token by token.
 
 `AppendMarkdown` is safe to call from a worker thread; it marshals to the UI
 thread for you. See [docs/STREAMING.md](docs/STREAMING.md).
 
 <p align="center">
-  <img src="docs/images/streaming-demo.gif" alt="Markdown4D Studio with the markdown source on the left and the live preview on the right, an answer streaming in token by token while a table, a native bar chart and a mermaid flowchart take shape" width="90%">
+  <img src="docs/images/streaming-demo.gif" alt="Markdown4D Studio with the markdown source on the left and the live preview on the right, text arriving a chunk at a time while a table, a native bar chart and a mermaid flowchart take shape" width="90%">
 </p>
 
-*The same thing running: source on the left, live preview on the right, an answer
-arriving token by token. The chart and the diagram appear as their fences close.
-Nothing here is a browser, and the animation itself is rendered by the library
-through `tools\Make-Demo.ps1` rather than captured off a screen.*
+*The same thing running: source on the left, live preview on the right, text
+arriving a chunk at a time. The chart and the diagram appear as their fences
+close. Nothing here is a browser, and the animation itself is rendered by the
+library through `tools\Make-Demo.ps1` rather than captured off a screen.*
 
 ## Installation
 
@@ -163,9 +170,9 @@ The `Examples\` folder contains four runnable projects:
 | Project | Framework | Shows |
 |---------|-----------|-------|
 | `Markdown4DStudioVCL` | VCL | Editor + live preview + table of contents, with native charts and mermaid diagrams |
-| `StreamingMarkdownVCL` | VCL | Streaming chat with incremental render, async images, live charts and mermaid diagrams |
+| `StreamingMarkdownVCL` | VCL | Text streamed into a chat-style window: incremental render, async images, live charts and mermaid diagrams |
 | `Markdown4DStudioFMX` | FMX | Editor + live preview, with native charts and mermaid diagrams |
-| `StreamingMarkdownFMX` | FMX | Streaming chat with live charts and mermaid diagrams |
+| `StreamingMarkdownFMX` | FMX | The same streaming window on FireMonkey, with live charts and mermaid diagrams |
 
 ## Architecture
 
@@ -239,8 +246,8 @@ and every package, and regenerates the conformance dashboard above.
 - [docs/EXTENSIONS.md](docs/EXTENSIONS.md) explains how to write extensions:
   the `==mark==` parser extension, an admonition custom-rendering walkthrough
   on the `IExtensionCanvas`, and the bundled chart and mermaid extensions.
-- [docs/STREAMING.md](docs/STREAMING.md) is the LLM / streaming integration
-  guide: `AppendMarkdown`, debounce, threading, charts and `Text` semantics.
+- [docs/STREAMING.md](docs/STREAMING.md) is the streaming integration guide:
+  `AppendMarkdown`, debounce, threading, charts and `Text` semantics.
 - [packages/INSTALL.md](packages/INSTALL.md) describes the package build and
   the IDE install.
 

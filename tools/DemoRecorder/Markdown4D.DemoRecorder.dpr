@@ -66,10 +66,10 @@ type
       SourcePadding = 10;
       PreviewPadding = 22;
 
-      // One frame per chunk, so the chunk size decides how fast the answer
+      // One frame per chunk, so the chunk size decides how fast the text
       // appears on screen.
       ChunkCharacters = 9;
-      // Frames held before the first token, once the answer is complete, and
+      // Frames held before the first token, once the text is complete, and
       // again after the rewind, so the loop has a beat of stillness at both
       // ends instead of snapping back to an empty page.
       LeadingHoldFrames = 8;
@@ -101,7 +101,7 @@ type
       FSourceFont: TMarkdownFontStyle;
       FChromeFont: TMarkdownFontStyle;
       FStatusFont: TMarkdownFontStyle;
-    class function DemoAnswer: string; static;
+    class function DemoDocument: string; static;
     function PreviewLeft: Integer;
     function PreviewWidth: Integer;
     function ContentTop: Integer;
@@ -120,7 +120,7 @@ type
     procedure Emit;
     // Keeps the newest text in view the way the viewer's auto-follow does.
     procedure FollowTail;
-    procedure StreamAnswer;
+    procedure StreamDocument;
     procedure RewindToTop;
   public
     constructor Create(const OutputFolder: string; const Preset: TMarkdownThemePreset;
@@ -220,12 +220,12 @@ begin
   inherited;
 end;
 
-class function TDemoRecorder.DemoAnswer: string;
+class function TDemoRecorder.DemoDocument: string;
 begin
   Result :=
-    '## Streaming an LLM answer'#10#10 +
-    'Tokens arrive one at a time. The viewer reparses only'#10 +
-    'the part that changed.'#10#10 +
+    '## Streaming markdown'#10#10 +
+    'Text arrives a chunk at a time. The viewer reparses'#10 +
+    'only the part that changed.'#10#10 +
     '| Renderer | Startup | Streaming |'#10 +
     '| --- | --- | --- |'#10 +
     '| Embedded browser | slow | awkward |'#10 +
@@ -251,15 +251,16 @@ begin
     'So does a mermaid diagram:'#10#10 +
     '```mermaid'#10 +
     'flowchart LR'#10 +
-    '  Prompt[Prompt] --> Model{Model}'#10 +
-    '  Model -->|tokens| View([Viewer])'#10 +
+    '  Source[Markdown] --> Parser{Parser}'#10 +
+    '  Parser -->|AST| Layout([Layout])'#10 +
+    '  Layout --> Canvas'#10 +
     '```'#10#10 +
     'And this is all it takes in your own form:'#10#10 +
     '```pascal'#10 +
-    'procedure TChatForm.OnTokenReceived('#10 +
-    '  const Token: string);'#10 +
+    'procedure TReportForm.OnChunkReceived('#10 +
+    '  const Chunk: string);'#10 +
     'begin'#10 +
-    '  FViewer.AppendMarkdown(Token);'#10 +
+    '  FViewer.AppendMarkdown(Chunk);'#10 +
     'end;'#10 +
     '```'#10#10 +
     'No browser. No DLL. VCL and FMX.'#10;
@@ -296,18 +297,19 @@ end;
 class function TDemoRecorder.PipelineDocument: string;
 begin
   Result :=
-    '# How an answer reaches the screen'#10#10 +
+    '# How markdown reaches the screen'#10#10 +
     '```mermaid'#10 +
     'flowchart LR'#10 +
-    '  Prompt[Prompt] --> Model{Model}'#10 +
-    '  Model -->|tokens| View([Viewer])'#10 +
+    '  Source[Markdown] --> Parser{Parser}'#10 +
+    '  Parser -->|AST| Layout([Layout])'#10 +
+    '  Layout --> Canvas'#10 +
     '```'#10#10 +
-    'Each chunk goes straight into the viewer:'#10#10 +
+    'Text that arrives in pieces goes straight in:'#10#10 +
     '```pascal'#10 +
-    'procedure TChatForm.OnTokenReceived('#10 +
-    '  const Token: string);'#10 +
+    'procedure TReportForm.OnChunkReceived('#10 +
+    '  const Chunk: string);'#10 +
     'begin'#10 +
-    '  FViewer.AppendMarkdown(Token);'#10 +
+    '  FViewer.AppendMarkdown(Chunk);'#10 +
     'end;'#10 +
     '```'#10#10 +
     '| Call | Thread | Effect |'#10 +
@@ -317,8 +319,8 @@ begin
     '- [x] Incremental reparse'#10 +
     '- [x] Debounced relayout'#10 +
     '- [ ] Your next feature'#10#10 +
-    '> Selections survive a relayout, so a reader can copy from an'#10 +
-    '> answer that is still arriving.'#10;
+    '> Selections survive a relayout, so a reader can copy from'#10 +
+    '> text that is still arriving.'#10;
 end;
 
 function TDemoRecorder.PreviewLeft: Integer;
@@ -573,14 +575,14 @@ begin
   FSourceScrollLine := Max(0, SourceLineCount - VisibleSourceLines);
 end;
 
-procedure TDemoRecorder.StreamAnswer;
+procedure TDemoRecorder.StreamDocument;
 begin
-  const Answer = DemoAnswer;
+  const Document = DemoDocument;
 
   var Position := 1;
-  while Position <= Length(Answer) do
+  while Position <= Length(Document) do
   begin
-    const Chunk = Copy(Answer, Position, ChunkCharacters);
+    const Chunk = Copy(Document, Position, ChunkCharacters);
     Inc(Position, ChunkCharacters);
 
     FSource := FSource + Chunk;
@@ -594,7 +596,7 @@ begin
   end;
 end;
 
-// Scrolls both panes back to the top once the answer is complete, so the loop
+// Scrolls both panes back to the top once the text is complete, so the loop
 // ends where it started and the whole document has been seen at least once.
 procedure TDemoRecorder.RewindToTop;
 begin
@@ -638,7 +640,7 @@ begin
   for var Hold := 1 to LeadingHoldFrames do
     Emit;
 
-  StreamAnswer;
+  StreamDocument;
 
   for var Hold := 1 to SettleFrames do
     Emit;
@@ -652,7 +654,7 @@ begin
 end;
 
 const
-  AnimationDocumentName = 'streaming-answer.md';
+  AnimationDocumentName = 'streaming.md';
   StillDocumentName = 'release-notes.md';
   StillsMode = 'stills';
 
