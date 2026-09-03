@@ -3,11 +3,15 @@
     Builds the streaming demo animation from source.
 
 .DESCRIPTION
-    Compiles tools\DemoRecorder and renders everything the README shows: the two
-    screenshots (docs\images\studio-light.png and studio-dark.png), then the
-    frames that ffmpeg folds into a GIF and an MP4. Nothing is screen-captured,
-    so the result is identical on every machine and can be rebuilt after a theme
-    or layout change.
+    Compiles tools\DemoRecorder and renders everything the README shows plus the
+    GitHub social preview card: the two screenshots (docs\images\studio-light.png
+    and studio-dark.png), docs\images\social-preview.png, and the frames that
+    ffmpeg folds into a GIF and an MP4. Nothing is screen-captured, so the result
+    is identical on every machine and can be rebuilt after a theme or layout
+    change.
+
+    The social preview card itself still has to be uploaded by hand: GitHub has
+    no API for it, only Settings > General > Social preview in the browser.
 
     Needs a Delphi install (13 or 12) and ffmpeg on the PATH.
 
@@ -99,6 +103,13 @@ if (-not (Test-Path $imagesFolder)) {
 & $exePath $imagesFolder stills
 if ($LASTEXITCODE -ne 0) {
     throw "The recorder failed while writing the stills, exit code $LASTEXITCODE."
+}
+
+Write-Host '[demo] Rendering the social preview card'
+
+& $exePath $imagesFolder social
+if ($LASTEXITCODE -ne 0) {
+    throw "The recorder failed while writing the social card, exit code $LASTEXITCODE."
 }
 
 Write-Host '[demo] Rendering frames'

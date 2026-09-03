@@ -122,6 +122,10 @@ type
     procedure FollowTail;
     procedure StreamDocument;
     procedure RewindToTop;
+    procedure RenderDocumentAt(const Canvas: TCanvas; const Left, Top, Width, Height: Single);
+    procedure PaintBadge(const Painter: IPainter; const Left, Top: Single; const Caption: string;
+      const Font: TMarkdownFontStyle);
+    class function SocialCardChartDocument: string; static;
   public
     constructor Create(const OutputFolder: string; const Preset: TMarkdownThemePreset;
       const DocumentName: string);
@@ -134,6 +138,10 @@ type
     // the components can do without either one turning into a wall.
     class function ReportDocument: string; static;
     class function PipelineDocument: string; static;
+    // GitHub's social preview card: no studio chrome, just the wordmark and a
+    // chart, at the 1280x640 size GitHub recommends for the link-unfurl image
+    // Slack and LinkedIn show.
+    procedure WriteSocialCard(const FileName: string);
   end;
 
 { TChromePalette }
@@ -635,6 +643,121 @@ begin
   end;
 end;
 
+// Renders the current FModel document into an arbitrary rectangle of Canvas,
+// independent of the studio-window geometry the rest of this class assumes.
+// WriteSocialCard is the only caller; it owns the viewport the model was
+// given, so the viewport and the rectangle always agree.
+procedure TDemoRecorder.RenderDocumentAt(const Canvas: TCanvas; const Left, Top, Width, Height: Single);
+begin
+  const Painter = TMarkdownVclPainter.Create(Canvas);
+  const PainterLifetime: IPainter = Painter;
+
+  SetWindowOrgEx(Canvas.Handle, -Round(Left), -Round(Top), nil);
+  try
+    const Viewport = TLayoutRectF.Create(0, 0, Width, Height);
+    TMarkdownDisplayListRenderer.Render(FModel.DisplayList, PainterLifetime, Viewport, TLayoutColor(0));
+  finally
+    SetWindowOrgEx(Canvas.Handle, 0, 0, nil);
+  end;
+end;
+
+// A small filled square plus a line of text, the same shorthand a task list
+// checkbox uses elsewhere in this project, so a badge reads as "a fact" rather
+// than as chrome.
+procedure TDemoRecorder.PaintBadge(const Painter: IPainter; const Left, Top: Single; const Caption: string;
+  const Font: TMarkdownFontStyle);
+const
+  MarkerSize = 12;
+begin
+  const MarkerTop = Top + (Painter.LineHeight(Font) - MarkerSize) / 2;
+  Painter.FillRect(TLayoutRectF.Create(Left, MarkerTop, Left + MarkerSize, MarkerTop + MarkerSize), FChrome.Accent);
+  Painter.DrawTextRun(TLayoutPointF.Create(Left + MarkerSize + 14, Top), Caption, Font, FChrome.Text);
+end;
+
+class function TDemoRecorder.SocialCardChartDocument: string;
+begin
+  Result :=
+    '```chart'#10 +
+    '{"type":"chart","data":{"type":"bar","data":{"labels":["Q1","Q2","Q3","Q4"],' +
+    '"datasets":[{"label":"Revenue","data":[12,19,14,23]}]}}}'#10 +
+    '```'#10;
+end;
+
+procedure TDemoRecorder.WriteSocialCard(const FileName: string);
+const
+  CardWidth = 1280;
+  CardHeight = 640;
+  Margin = 80;
+  ChartLeft = 660;
+  TitleToTaglineGap = 26;
+  TaglineLineGap = 6;
+  TaglineToBadgesGap = 42;
+  BadgeGap = 14;
+begin
+  const Card = TBitmap.Create;
+  try
+    Card.PixelFormat := pf24bit;
+    Card.SetSize(CardWidth, CardHeight);
+
+    const Painter: IPainter = TMarkdownVclPainter.Create(Card.Canvas);
+    Painter.FillRect(TLayoutRectF.Create(0, 0, CardWidth, CardHeight), FChrome.Background);
+
+    const TitleFont = TMarkdownFontStyle.Create(FTheme.BaseFont.FamilyName, 58, True);
+    const TaglineFont = TMarkdownFontStyle.Create(FTheme.BaseFont.FamilyName, 23);
+    const BadgeFont = TMarkdownFontStyle.Create(FTheme.BaseFont.FamilyName, 20);
+
+    const TitleHeight = Painter.LineHeight(TitleFont);
+    const TaglineHeight = Painter.LineHeight(TaglineFont);
+    const BadgeHeight = Painter.LineHeight(BadgeFont);
+
+    // The left column is stacked from measured line heights and then centred
+    // against the same margin band the chart column centres in, so the two
+    // halves read as one balanced card rather than two separately placed
+    // blocks.
+    const LeftBlockHeight = TitleHeight + TitleToTaglineGap
+      + 2 * TaglineHeight + TaglineLineGap + TaglineToBadgesGap
+      + 3 * BadgeHeight + 2 * BadgeGap;
+
+    var Y := Margin + Max(0, ((CardHeight - 2 * Margin) - LeftBlockHeight) / 2);
+
+    Painter.DrawTextRun(TLayoutPointF.Create(Margin, Y), 'Markdown4D', TitleFont, FChrome.Text);
+    Y := Y + TitleHeight + TitleToTaglineGap;
+
+    Painter.DrawTextRun(TLayoutPointF.Create(Margin, Y), 'CommonMark and GFM markdown for Delphi.',
+      TaglineFont, FChrome.Muted);
+    Y := Y + TaglineHeight + TaglineLineGap;
+
+    Painter.DrawTextRun(TLayoutPointF.Create(Margin, Y), 'VCL and FMX, drawn on the canvas.',
+      TaglineFont, FChrome.Muted);
+    Y := Y + TaglineHeight + TaglineToBadgesGap;
+
+    PaintBadge(Painter, Margin, Y, '652/652 CommonMark examples', BadgeFont);
+    Y := Y + BadgeHeight + BadgeGap;
+    PaintBadge(Painter, Margin, Y, 'No external dependencies', BadgeFont);
+    Y := Y + BadgeHeight + BadgeGap;
+    PaintBadge(Painter, Margin, Y, 'MIT licensed', BadgeFont);
+
+    const ChartWidth = CardWidth - ChartLeft - Margin;
+    const ChartHeight = CardHeight - 2 * Margin;
+    FModel.SetViewport(ChartWidth, ChartHeight);
+    FModel.Text := SocialCardChartDocument;
+    FModel.TryFlush(0);
+
+    const ChartTop = Margin + Max(0, (ChartHeight - FModel.DisplayList.Height) / 2);
+    RenderDocumentAt(Card.Canvas, ChartLeft, ChartTop, ChartWidth, ChartHeight);
+
+    const Png = TPngImage.Create;
+    try
+      Png.Assign(Card);
+      Png.SaveToFile(FileName);
+    finally
+      Png.Free;
+    end;
+  finally
+    Card.Free;
+  end;
+end;
+
 function TDemoRecorder.Run: Integer;
 begin
   for var Hold := 1 to LeadingHoldFrames do
@@ -657,6 +780,7 @@ const
   AnimationDocumentName = 'streaming.md';
   StillDocumentName = 'release-notes.md';
   StillsMode = 'stills';
+  SocialMode = 'social';
 
 function OutputFolderFromCommandLine: string;
 begin
@@ -701,6 +825,18 @@ begin
   end;
 end;
 
+procedure WriteSocial(const OutputFolder: string);
+begin
+  const Recorder = TDemoRecorder.Create(OutputFolder, TMarkdownThemePreset.Dark, 'social-preview');
+  try
+    const Path = TPath.Combine(OutputFolder, 'social-preview.png');
+    Recorder.WriteSocialCard(Path);
+    Writeln('Wrote ' + Path);
+  finally
+    Recorder.Free;
+  end;
+end;
+
 begin
   try
     const OutputFolder = OutputFolderFromCommandLine;
@@ -709,6 +845,8 @@ begin
 
     if SameText(ParamStr(2), StillsMode) then
       WriteStills(OutputFolder)
+    else if SameText(ParamStr(2), SocialMode) then
+      WriteSocial(OutputFolder)
     else
       WriteAnimation(OutputFolder);
   except
