@@ -24,31 +24,32 @@ code are all drawn on the canvas from the markdown you see next to them.*
 
 ## Why Markdown4D
 
-The parser passes all 652 official CommonMark 0.31.2 examples and the GitHub
-Flavored Markdown extension corpora (tables, task list items, strikethrough,
-extended autolinks, disallowed raw HTML).
+Markdown is a handy way to give plain text a visual shape. For Delphi there was
+no component that did that well, not only at runtime but on the form designer
+too.
 
-Parsing produces a typed, documented `IMarkdownDocument`. The tree can be
-inspected or transformed and written back to markdown with the round-trip
-writer.
+Markdown4D passes all 652 official CommonMark examples. The library is
+interface-based throughout: parsing hands you an `IMarkdownDocument`, and you
+carry on from there.
 
-An incremental parser reparses only the region that changed. That keeps an
-editor responsive on a large document, and it makes text that arrives in pieces
-practical: a log that grows, an import that reports while it runs, a model
-answering a token at a time.
+VCL and FMX are both supported, and there are no external dependencies. Not just
+text either: charts and mermaid diagrams are drawn as well, and everything you
+expect from a markdown document is in there, tables, task lists, links, raw
+HTML.
 
-The pipeline builder accepts custom inline and block syntax, delimiter
-processors, renderer hooks and document processors. The bundled chart and
-mermaid extensions are built on this same API.
+The pipeline builder takes inline and block syntax of your own. The renderer
+turns a document into HTML, the writer turns it back into markdown, so a round
+trip through the tree costs you nothing. And it streams, if that is what you
+need.
 
-`TMarkdownViewer` and `TMarkdownEditor` exist for both VCL and FMX. They are
-custom-drawn and support theming, images, selection, search, syntax-highlighted
-code, charts, mermaid diagrams and a design-time preview.
+An incremental parser reparses only the region that changed, which is what makes
+that streaming practical: a log that grows, an import that reports while it
+runs, a model answering a token at a time. It also keeps an editor responsive on
+a large document.
 
-The whole library is written for this project and uses only the RTL. It brings no
-DLL of its own and no package manager is involved; adding the source folders to
-the search path is enough. It supports Delphi 12 Athens and Delphi 13 and is
-MIT licensed.
+Everything under `Source\` was written for this project and uses only the RTL,
+so there is no DLL of its own and no package manager involved. Delphi 12 Athens
+and Delphi 13, MIT licensed.
 
 ## Features
 
