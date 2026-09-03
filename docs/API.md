@@ -377,6 +377,19 @@ The viewer loads `http(s)` images asynchronously and local images relative to
 graphics when the chart block override is registered (see
 [EXTENSIONS.md](EXTENSIONS.md)).
 
+An HTML block in the document is never painted as markup: unlike `ToHtml` and
+`ToUnsafeHtml`, which either omit or emit raw HTML as text, the viewer
+translates an allowed subset to markdown and lays that out through the
+ordinary path, so it gets selection, hit-testing and theming for free. The
+subset covers `p`, `div`, `center`, `section`, `article`, `h1`-`h6`, `hr`,
+`br`, `strong`/`b`, `em`/`i`, `code`/`kbd`/`samp`/`tt`, `del`/`s`/`strike`,
+`a`, `img`, `ul`/`ol`/`li`, `blockquote`, `details`/`summary` and `pre`.
+`script`, `style`, `head`, `iframe` and `object` are dropped along with their
+content; any other tag disappears while its content stays, the way a browser
+would show it with the styling removed. The translation is implemented in
+`Markdown4D.Html.Subset` and cached on the AST node, since layout runs again
+on every resize and every streamed chunk.
+
 The mouse wheel scrolls the control only while its content overflows;
 otherwise the wheel passes through to the parent, so viewers stacked inside a
 scroll box scroll the list they sit in. The VCL controls carry the native

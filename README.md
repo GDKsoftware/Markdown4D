@@ -51,24 +51,19 @@ no DLL of its own, no package manager involved. Delphi 12 Athens and Delphi
 
 ## Features
 
-| Area | Description |
+| Area | What you get |
 |------|-------------|
-| CommonMark 0.31.2 | Full block and inline grammar, 652/652 official examples |
-| GFM extensions | Tables, task list items, strikethrough, extended autolinks, tag filter |
-| Public AST | Typed node interfaces, visitor, source spans, extension data slots |
-| Round-trip writer | `IMarkdownDocument` → clean markdown, lossless editing |
-| Document builder | Fluent, validated API to construct documents in code |
-| Incremental parser | Append / replace-range reparsing for streaming and editors |
-| HTML renderer | Spec-conformant output, safe by default, optional XHTML and tag filter |
-| Raw HTML in the viewer | The allowed subset (images, links, emphasis, headings, lists, `<details>`, `<br>`, `<pre>`) is translated to markdown and rendered; `<script>` and `<style>` are dropped with their content |
-| Table of contents | Slugged anchors with de-duplication from any document |
-| Extension API | Block/inline parsers, delimiter processors, renderer hooks, document processors |
-| Chart extension | `chart` code blocks rendered natively as bar/line/pie/doughnut graphics |
-| Mermaid extension | `mermaid` fences rendered natively as flowchart / sequence / pie diagrams, with code-block fallback |
-| VCL & FMX viewer | Themed rendering, async images, selection, copy, find, links |
-| VCL & FMX editor | Syntax-highlighted source editing with an attachable live preview |
-| SVG images | Shapes, groups, transforms, gradients, patterns, clip paths, masks, filters, `use`, embedded images and text, drawn by our own engine |
-| Design-time | Live sample render on the form designer; components on the **Markdown4D** palette |
+| CommonMark 0.31.2 + GFM | 652/652 official examples; tables, task lists, strikethrough, extended autolinks |
+| Public AST | Typed node interfaces, a visitor, and a round-trip writer back to clean markdown |
+| Incremental parser | Reparses only the changed region, which is what keeps an editor fast and a stream practical |
+| VCL & FMX viewer and editor | One API on both frameworks: theming, selection, find, syntax-highlighted source, a live preview |
+| Chart extension | `chart` fences drawn natively: bar, line, pie, doughnut, radar, scatter |
+| Mermaid extension | `mermaid` fences drawn natively: flowchart, sequence, pie |
+| Raw HTML in the viewer | The allowed subset renders through the ordinary path; `<script>` and `<style>` are dropped with their content |
+| Extension API | Block/inline parsers, delimiter processors, renderer hooks, document processors, block overrides |
+
+The document builder, the table of contents, the HTML renderer's safety modes
+and the SVG engine are documented in [docs/API.md](docs/API.md).
 
 ## Quick start
 
