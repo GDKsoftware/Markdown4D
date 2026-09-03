@@ -144,8 +144,8 @@ library through `tools\Make-Demo.ps1` rather than captured off a screen.*
 
 ## Installation
 
-Markdown4D is distributed as source. Add the source folders to your project's
-search path:
+Markdown4D ships as source, all of it, under the MIT licence. Add these folders
+to your project:
 
 ```
 Source\Core     framework-neutral parser, AST, renderer, writer, extensions
@@ -155,13 +155,10 @@ Source\Vcl      VCL painter, viewer, editor
 Source\Fmx      FMX painter, viewer, editor
 ```
 
-A project that renders to HTML instead of to a control needs only
-`Source\Core`.
+If you only render to HTML, `Source\Core` is all you need.
 
-For a component-palette install, build the runtime and design-time packages in
-`packages\` and install the two design packages in the IDE. `{$LIBSUFFIX AUTO}`
-targets Delphi 12 (`290`) and Delphi 13 (`370`) from the same sources. Full
-build order and step-by-step IDE instructions are in
+For the design-time components, build the packages in `packages\` and install
+the two design packages in the IDE. The full instructions are in
 [packages/INSTALL.md](packages/INSTALL.md).
 
 ## Examples
