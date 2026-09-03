@@ -24,32 +24,30 @@ code are all drawn on the canvas from the markdown you see next to them.*
 
 ## Why Markdown4D
 
-Markdown is a handy way to give plain text a visual shape. For Delphi there was
-no component that did that well, not only at runtime but on the form designer
-too.
+Markdown is a handy way to give plain text a visual shape, and Delphi had no
+component that rendered it well, at runtime or on the form designer.
 
-Markdown4D passes all 652 official CommonMark examples. The library is
-interface-based throughout: parsing hands you an `IMarkdownDocument`, and you
-carry on from there.
+Markdown4D passes all 652 official CommonMark examples, and the library is
+interface-based throughout: parsing hands you a typed `IMarkdownDocument`
+rather than a string of HTML.
 
-VCL and FMX are both supported, and there are no external dependencies. Not just
-text either: charts and mermaid diagrams are drawn as well, and everything you
-expect from a markdown document is in there, tables, task lists, links, raw
-HTML.
+VCL and FMX are both supported, with no external dependencies. Charts and
+mermaid diagrams are drawn natively, alongside the usual markdown constructs:
+tables, task lists, links, raw HTML.
 
-The pipeline builder takes inline and block syntax of your own. The renderer
+The pipeline builder accepts inline and block syntax of your own. The renderer
 turns a document into HTML, the writer turns it back into markdown, so a round
-trip through the tree costs you nothing. And it streams, if that is what you
-need.
+trip through the tree gets you clean markdown out the other end. And it
+streams, if that is what you need.
 
-An incremental parser reparses only the region that changed, which is what makes
-that streaming practical: a log that grows, an import that reports while it
-runs, a model answering a token at a time. It also keeps an editor responsive on
-a large document.
+An incremental parser reparses only the region that changed. That is what
+makes streaming practical: a log that grows, an import reporting as it runs, a
+model answering a token at a time. It is also what keeps an editor responsive
+on a large document.
 
-Everything under `Source\` was written for this project and uses only the RTL,
-so there is no DLL of its own and no package manager involved. Delphi 12 Athens
-and Delphi 13, MIT licensed.
+Everything under `Source\` was written for this project and uses only the RTL:
+no DLL of its own, no package manager involved. Delphi 12 Athens and Delphi
+13, MIT licensed.
 
 ## Features
 
