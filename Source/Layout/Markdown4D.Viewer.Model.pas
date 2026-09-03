@@ -67,6 +67,7 @@ type
       FImageSlotOrder: TList<string>;
     procedure Relayout;
     procedure RegisterImageSlots;
+    function TryFindTextRunBounds(out FirstIndex, LastIndex: Integer): Boolean;
     function TryResolvePosition(const Point: TLayoutPointF; out Position: TTextPosition): Boolean;
     function NearestCharacterBoundary(const Run: IDisplayTextRun; const X: Single): Integer;
     function NormalizeSelection: TTextRange;
@@ -101,6 +102,8 @@ type
     procedure SetSelectionAnchor(const Point: TLayoutPointF);
     procedure SetSelectionExtent(const Point: TLayoutPointF);
     procedure ClearSelection;
+    function SelectAll: Boolean;
+    function HasSelectableText: Boolean;
     function HasSelection: Boolean;
     function SelectionRects: TArray<TLayoutRectF>;
     function SelectedText: string;
@@ -249,6 +252,58 @@ end;
 procedure TMarkdownViewerModel.ClearSelection;
 begin
   FSelectionActive := False;
+end;
+
+// The first and the last text run bracket everything the reader can see, so
+// selecting all covers the same range a drag from above the document to below
+// it would produce. Runs without characters are skipped: they would leave the
+// selection collapsed on an edge and copy nothing.
+function TMarkdownViewerModel.TryFindTextRunBounds(out FirstIndex, LastIndex: Integer): Boolean;
+begin
+  FirstIndex := -1;
+  LastIndex := -1;
+  if FDisplayList = nil then
+    Exit(False);
+
+  for var Index := 0 to FDisplayList.ItemCount - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    if not Supports(FDisplayList.Items[Index], IDisplayTextRun, Run) then
+      Continue;
+
+    if Run.Text = '' then
+      Continue;
+
+    if FirstIndex < 0 then
+      FirstIndex := Index;
+    LastIndex := Index;
+  end;
+
+  Result := FirstIndex >= 0;
+end;
+
+function TMarkdownViewerModel.HasSelectableText: Boolean;
+begin
+  var FirstIndex, LastIndex: Integer;
+  Result := TryFindTextRunBounds(FirstIndex, LastIndex);
+end;
+
+function TMarkdownViewerModel.SelectAll: Boolean;
+begin
+  var FirstIndex, LastIndex: Integer;
+  Result := TryFindTextRunBounds(FirstIndex, LastIndex);
+  if not Result then
+    Exit;
+
+  var LastRun: IDisplayTextRun;
+  if not Supports(FDisplayList.Items[LastIndex], IDisplayTextRun, LastRun) then
+    Exit(False);
+
+  FAnchor.ItemIndex := FirstIndex;
+  FAnchor.CharacterIndex := 0;
+  FExtent.ItemIndex := LastIndex;
+  FExtent.CharacterIndex := Length(LastRun.Text);
+  FSelectionActive := True;
 end;
 
 function TMarkdownViewerModel.HasSelection: Boolean;

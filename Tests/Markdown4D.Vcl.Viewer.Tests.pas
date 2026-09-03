@@ -5,6 +5,7 @@ unit Markdown4D.Vcl.Viewer.Tests;
 interface
 
 uses
+  System.Classes,
   Vcl.Forms,
   DUnitX.TestFramework,
   Markdown4D.Vcl.Viewer;
@@ -13,6 +14,7 @@ type
   TTestableVclViewer = class(TMarkdownViewer)
   public
     function SimulateWheel(const WheelDelta: Integer): Boolean;
+    procedure SimulateKeyDown(const Key: Word; const Shift: TShiftState);
   end;
 
   [TestFixture]
@@ -37,6 +39,12 @@ type
 
     [Test]
     procedure Wheel_ContentOverflowsViewport_ScrollsAndHandles;
+
+    [Test]
+    procedure Keyboard_CtrlA_SelectsWholeDocument;
+
+    [Test]
+    procedure Keyboard_ArrowDown_ScrollsOverflowingContent;
   end;
 
 implementation
@@ -49,6 +57,12 @@ uses
 function TTestableVclViewer.SimulateWheel(const WheelDelta: Integer): Boolean;
 begin
   Result := DoMouseWheel([], WheelDelta, TPoint.Create(0, 0));
+end;
+
+procedure TTestableVclViewer.SimulateKeyDown(const Key: Word; const Shift: TShiftState);
+begin
+  var PressedKey := Key;
+  KeyDown(PressedKey, Shift);
 end;
 
 procedure TMarkdownVclViewerTests.TearDown;
@@ -98,6 +112,26 @@ begin
 
   Assert.IsTrue(Viewer.SimulateWheel(-WHEEL_DELTA), 'A scrollable viewer should claim the wheel');
   Assert.IsTrue(Viewer.ScrollOffset > 0, 'The wheel should have scrolled the content down');
+end;
+
+procedure TMarkdownVclViewerTests.Keyboard_CtrlA_SelectsWholeDocument;
+begin
+  const Viewer = NewHostedViewer;
+  Viewer.Text := ShortMarkdown;
+
+  Viewer.SimulateKeyDown(Ord('A'), [ssCtrl]);
+
+  Assert.AreEqual(ShortMarkdown, Viewer.SelectedText);
+end;
+
+procedure TMarkdownVclViewerTests.Keyboard_ArrowDown_ScrollsOverflowingContent;
+begin
+  const Viewer = NewHostedViewer;
+  Viewer.Text := ManyParagraphs(ParagraphCount);
+
+  Viewer.SimulateKeyDown(VK_DOWN, []);
+
+  Assert.IsTrue(Viewer.ScrollOffset > 0, 'The down arrow should scroll a viewer whose content overflows');
 end;
 
 end.

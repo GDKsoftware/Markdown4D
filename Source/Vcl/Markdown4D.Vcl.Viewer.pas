@@ -14,10 +14,12 @@ uses
   Vcl.Controls,
   Vcl.Graphics,
   Vcl.ExtCtrls,
+  Vcl.Menus,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.DisplayList,
   Markdown4D.Theme,
   Markdown4D.Viewer.Model,
+  Markdown4D.Viewer.ContextMenu,
   Markdown4D.Viewer.ImageDownloader,
   Markdown4D.Viewer.ImageSettings,
   Markdown4D.Viewer.Lifetime,
@@ -56,6 +58,7 @@ type
       CopyLabel = 'Copy';
       CopiedLabel = 'Copied';
       CopyFeedbackMilliseconds = 1200;
+      MenuSeparatorCaption = '-';
     var
       FLifetime: IMarkdownViewerLifetime;
       FImages: TMarkdownViewerImageSettings;
@@ -82,6 +85,7 @@ type
       FCopyButtonRect: TLayoutRectF;
       FCopyFeedback: Boolean;
       FCopyFeedbackTimer: TTimer;
+      FContextMenu: TPopupMenu;
       FPressedLinkUrl: string;
       FHoveredLinkUrl: string;
       FOnLinkClick: TMarkdownLinkClickEvent;
@@ -121,6 +125,8 @@ type
     procedure CopyCodeToClipboard(const Text: string);
     procedure HandleCopyFeedbackTimer(Sender: TObject);
     procedure DrawCopyButton(const Painter: IPainter);
+    procedure ShowContextMenu(const X, Y: Integer);
+    procedure HandleContextItemClick(Sender: TObject);
     function GetContentHeight: Integer;
     function GetScrollOffset: Single;
     function GetDisplayList: IMarkdownDisplayList;
@@ -158,6 +164,8 @@ type
     procedure AppendMarkdown(const Markdown: string);
     function FindText(const Needle: string): Boolean;
     procedure CopySelectionToClipboard;
+    procedure SelectAll;
+    procedure ClearSelection;
     property Theme: TMarkdownTheme read FTheme write SetTheme;
     property ContentHeight: Integer read GetContentHeight;
     property ScrollOffset: Single read GetScrollOffset write SetScrollPosition;
@@ -360,6 +368,64 @@ begin
   end;
 end;
 
+procedure TMarkdownViewer.SelectAll;
+begin
+  if FModel.SelectAll then
+    Invalidate;
+end;
+
+procedure TMarkdownViewer.ClearSelection;
+begin
+  FModel.ClearSelection;
+  Invalidate;
+end;
+
+procedure TMarkdownViewer.ShowContextMenu(const X, Y: Integer);
+begin
+  // A menu assigned by the host wins; the built-in one is the fallback.
+  if PopupMenu <> nil then
+    Exit;
+
+  if FContextMenu = nil then
+    FContextMenu := TPopupMenu.Create(Self);
+
+  FContextMenu.Items.Clear;
+
+  for var Item in TMarkdownViewerContextMenu.Build(FModel) do
+  begin
+    if Item.StartsGroup and (FContextMenu.Items.Count > 0) then
+    begin
+      var Separator := TMenuItem.Create(FContextMenu);
+      Separator.Caption := MenuSeparatorCaption;
+      FContextMenu.Items.Add(Separator);
+    end;
+
+    var Entry := TMenuItem.Create(FContextMenu);
+    Entry.Caption := Item.Caption;
+    Entry.Enabled := Item.Enabled;
+    Entry.Tag := Ord(Item.Command);
+    Entry.OnClick := HandleContextItemClick;
+    FContextMenu.Items.Add(Entry);
+  end;
+
+  const Origin = ClientToScreen(TPoint.Create(X, Y));
+  FContextMenu.Popup(Origin.X, Origin.Y);
+end;
+
+procedure TMarkdownViewer.HandleContextItemClick(Sender: TObject);
+begin
+  const Command = TViewerContextCommand((Sender as TMenuItem).Tag);
+
+  if TMarkdownViewerContextMenu.Execute(FModel, Command) then
+  begin
+    Invalidate;
+    Exit;
+  end;
+
+  if Command = TViewerContextCommand.Copy then
+    CopySelectionToClipboard;
+end;
+
 procedure TMarkdownViewer.CreateParams(var Params: TCreateParams);
 begin
   inherited CreateParams(Params);
@@ -471,10 +537,20 @@ procedure TMarkdownViewer.MouseDown(Button: TMouseButton; Shift: TShiftState; X,
 begin
   inherited MouseDown(Button, Shift, X, Y);
 
+  if Button = TMouseButton.mbRight then
+  begin
+    if CanFocus then
+      SetFocus;
+
+    ShowContextMenu(X, Y);
+    Exit;
+  end;
+
   if Button <> TMouseButton.mbLeft then
     Exit;
 
-  SetFocus;
+  if CanFocus then
+    SetFocus;
 
   const Point = ContentPointOf(X, Y);
   if PointOnCopyButton(Point) then
@@ -585,6 +661,9 @@ begin
       SetScrollPosition(0);
     VK_END:
       ScrollToBottom;
+    Ord('A'):
+      if ssCtrl in Shift then
+        SelectAll;
     Ord('C'):
       if ssCtrl in Shift then
         CopySelectionToClipboard;

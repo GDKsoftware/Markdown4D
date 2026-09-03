@@ -13,10 +13,12 @@ uses
   FMX.Types,
   FMX.Controls,
   FMX.Graphics,
+  FMX.Menus,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.DisplayList,
   Markdown4D.Theme,
   Markdown4D.Viewer.Model,
+  Markdown4D.Viewer.ContextMenu,
   Markdown4D.Viewer.ImageDownloader,
   Markdown4D.Viewer.ImageSettings,
   Markdown4D.Viewer.Lifetime,
@@ -83,6 +85,7 @@ type
       FCodeHoverText: string;
       FCopyButtonRect: TLayoutRectF;
       FCopyFeedback: Boolean;
+      FContextMenu: TPopupMenu;
       FPressedLinkUrl: string;
       FHoveredLinkUrl: string;
       FOnLinkClick: TMarkdownLinkClickEvent;
@@ -115,6 +118,9 @@ type
     procedure CopyCodeToClipboard(const Text: string);
     procedure HandleCopyFeedbackTimer(Sender: TObject);
     procedure DrawCopyButton(const Painter: IPainter);
+    procedure PopupContextMenu(const X, Y: Single);
+    procedure HandleContextItemClick(Sender: TObject);
+    function HandleKey(const Key: Word; const Shift: TShiftState): Boolean;
     procedure ResolvePendingImages;
     procedure ResolvePendingImage(const Source: string);
     function TryResolveImageThroughEvent(const Source, Url: string): Boolean;
@@ -149,6 +155,7 @@ type
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Single); override;
     procedure MouseWheel(Shift: TShiftState; WheelDelta: Integer; var Handled: Boolean); override;
     procedure DoMouseLeave; override;
+    procedure KeyDown(var Key: Word; var KeyChar: WideChar; Shift: TShiftState); override;
 
   public
     constructor Create(Owner: TComponent); override;
@@ -158,6 +165,8 @@ type
     procedure AppendMarkdown(const Markdown: string);
     function FindText(const Needle: string): Boolean;
     procedure CopySelectionToClipboard;
+    procedure SelectAll;
+    procedure ClearSelection;
     property Theme: TMarkdownTheme read FTheme write SetTheme;
     property ContentHeight: Integer read GetContentHeight;
     property ScrollOffset: Single read GetScrollOffset write SetScrollPosition;
@@ -399,6 +408,65 @@ begin
   end;
 end;
 
+procedure TMarkdownViewer.SelectAll;
+begin
+  if FModel.SelectAll then
+    RedrawContent;
+end;
+
+procedure TMarkdownViewer.ClearSelection;
+begin
+  FModel.ClearSelection;
+  RedrawContent;
+end;
+
+procedure TMarkdownViewer.PopupContextMenu(const X, Y: Single);
+begin
+  // A menu assigned by the host wins; the built-in one is the fallback.
+  if PopupMenu <> nil then
+    Exit;
+
+  if Scene = nil then
+    Exit;
+
+  if FContextMenu = nil then
+    FContextMenu := TPopupMenu.Create(Self);
+
+  FContextMenu.Clear;
+
+  for var Item in TMarkdownViewerContextMenu.Build(FModel) do
+  begin
+    var Entry := TMenuItem.Create(FContextMenu);
+    Entry.Parent := FContextMenu;
+    Entry.Text := Item.Caption;
+    Entry.Enabled := Item.Enabled;
+    Entry.Tag := Ord(Item.Command);
+    Entry.OnClick := HandleContextItemClick;
+  end;
+
+  // Without a popup component the menu has no scene to look its style up in,
+  // which leaves every entry measuring zero and the menu a few pixels wide.
+  FContextMenu.PopupComponent := Self;
+
+  const Origin = LocalToAbsolute(TPointF.Create(X, Y));
+  const OnScreen = Scene.LocalToScreen(Origin);
+  FContextMenu.Popup(OnScreen.X, OnScreen.Y);
+end;
+
+procedure TMarkdownViewer.HandleContextItemClick(Sender: TObject);
+begin
+  const Command = TViewerContextCommand((Sender as TMenuItem).Tag);
+
+  if TMarkdownViewerContextMenu.Execute(FModel, Command) then
+  begin
+    RedrawContent;
+    Exit;
+  end;
+
+  if Command = TViewerContextCommand.Copy then
+    CopySelectionToClipboard;
+end;
+
 procedure TMarkdownViewer.Paint;
 begin
   EnsureDesignSample;
@@ -481,10 +549,19 @@ procedure TMarkdownViewer.MouseDown(Button: TMouseButton; Shift: TShiftState; X,
 begin
   inherited MouseDown(Button, Shift, X, Y);
 
+  if Button = TMouseButton.mbRight then
+  begin
+    if CanFocus and (Scene <> nil) then
+      SetFocus;
+
+    PopupContextMenu(X, Y);
+    Exit;
+  end;
+
   if Button <> TMouseButton.mbLeft then
     Exit;
 
-  if CanFocus then
+  if CanFocus and (Scene <> nil) then
     SetFocus;
 
   if TryBeginScrollBarDrag(X, Y) then
@@ -608,6 +685,53 @@ begin
   SetHoveredLinkUrl('');
   FHasLastMousePoint := False;
   ClearCodeHover;
+end;
+
+procedure TMarkdownViewer.KeyDown(var Key: Word; var KeyChar: WideChar; Shift: TShiftState);
+begin
+  inherited KeyDown(Key, KeyChar, Shift);
+
+  if HandleKey(Key, Shift) then
+  begin
+    Key := 0;
+    KeyChar := #0;
+  end;
+end;
+
+function TMarkdownViewer.HandleKey(const Key: Word; const Shift: TShiftState): Boolean;
+begin
+  Result := True;
+
+  if ssCtrl in Shift then
+  begin
+    case Key of
+      vkA:
+        SelectAll;
+      vkC:
+        CopySelectionToClipboard;
+    else
+      Result := False;
+    end;
+
+    Exit;
+  end;
+
+  case Key of
+    vkUp:
+      SetScrollPosition(FModel.ScrollOffset - LineScrollAmount);
+    vkDown:
+      SetScrollPosition(FModel.ScrollOffset + LineScrollAmount);
+    vkPrior:
+      SetScrollPosition(FModel.ScrollOffset - Height);
+    vkNext:
+      SetScrollPosition(FModel.ScrollOffset + Height);
+    vkHome:
+      SetScrollPosition(0);
+    vkEnd:
+      ScrollToBottom;
+  else
+    Result := False;
+  end;
 end;
 
 procedure TMarkdownViewer.ScrollToBottom;

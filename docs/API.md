@@ -353,6 +353,8 @@ same.
 | `LoadFromFile(const FileName)` / `LoadFromStream(const Stream)` | Load a document |
 | `FindText(const Needle): Boolean` | Scroll to the first match |
 | `CopySelectionToClipboard` | Copy the current selection |
+| `SelectAll` | Select the whole document |
+| `ClearSelection` | Drop the selection |
 | `SelectedText: string` | The selected text |
 | `ContentHeight: Integer` | Laid-out document height, for auto-sizing |
 | `ScrollOffset: Single` | Read / set the vertical scroll position |
@@ -380,6 +382,11 @@ otherwise the wheel passes through to the parent, so viewers stacked inside a
 scroll box scroll the list they sit in. The VCL controls carry the native
 window scrollbar; the FMX viewer and editor draw a draggable overlay thumb
 whenever their content overflows.
+
+A focused viewer scrolls on the arrow keys, `PgUp` / `PgDn`, `Home` and `End`.
+`Ctrl+A` selects the document, `Ctrl+C` copies the selection. Right-clicking
+opens a `Copy` / `Select All` menu; assigning `PopupMenu` replaces it with the
+host's own menu.
 
 ### Image settings
 

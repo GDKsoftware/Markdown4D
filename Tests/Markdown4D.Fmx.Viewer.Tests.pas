@@ -6,6 +6,7 @@ interface
 
 uses
   DUnitX.TestFramework,
+  System.Classes,
   System.Types,
   System.UITypes,
   FMX.Graphics,
@@ -28,6 +29,7 @@ type
       ClipTestSelectionBottomY = 40.0;
       ClipTestBandHeight = 60;
       WheelNotchDown = -120;
+      KeyboardMarkdown = 'alpha beta';
       ClipTestMarkdown =
         '# Top'#10#10 +
         'Filler paragraph number one with enough words to wrap across several lines of text at this width.'#10#10 +
@@ -44,6 +46,7 @@ type
       FViewer: TMarkdownViewer;
       FExternalTheme: TMarkdownTheme;
     class function IsBandUntouched(const Bitmap: TBitmap; const BandHeight: Integer): Boolean;
+    procedure PressKey(const Key: Word; const Shift: TShiftState);
 
   public
     [Setup]
@@ -81,6 +84,15 @@ type
 
     [Test]
     procedure ScrollBarDrag_OverflowingContent_ScrollsWithoutSelecting;
+
+    [Test]
+    procedure Keyboard_CtrlA_SelectsWholeDocument;
+
+    [Test]
+    procedure Keyboard_ArrowDown_ScrollsOverflowingContent;
+
+    [Test]
+    procedure Keyboard_PlainCharacter_IsLeftToTheHost;
   end;
 
 implementation
@@ -235,6 +247,43 @@ begin
 
   Assert.IsTrue(FViewer.ScrollOffset > 0, 'Dragging the scrollbar thumb must scroll the content');
   Assert.AreEqual('', FViewer.SelectedText, 'A scrollbar drag must not select text');
+end;
+
+procedure TMarkdownFmxViewerTests.PressKey(const Key: Word; const Shift: TShiftState);
+begin
+  var PressedKey: Word := Key;
+  var PressedChar: WideChar := #0;
+  TMarkdownViewerAccess(FViewer).KeyDown(PressedKey, PressedChar, Shift);
+end;
+
+procedure TMarkdownFmxViewerTests.Keyboard_CtrlA_SelectsWholeDocument;
+begin
+  FViewer.Text := KeyboardMarkdown;
+
+  PressKey(vkA, [ssCtrl]);
+
+  Assert.AreEqual(KeyboardMarkdown, FViewer.SelectedText);
+end;
+
+procedure TMarkdownFmxViewerTests.Keyboard_ArrowDown_ScrollsOverflowingContent;
+begin
+  FViewer.Text := ClipTestMarkdown;
+
+  PressKey(vkDown, []);
+
+  Assert.IsTrue(FViewer.ScrollOffset > 0, 'The down arrow should scroll a viewer whose content overflows');
+end;
+
+procedure TMarkdownFmxViewerTests.Keyboard_PlainCharacter_IsLeftToTheHost;
+begin
+  FViewer.Text := KeyboardMarkdown;
+
+  var PressedKey: Word := vkA;
+  var PressedChar: WideChar := 'a';
+  TMarkdownViewerAccess(FViewer).KeyDown(PressedKey, PressedChar, []);
+
+  Assert.AreEqual(Word(vkA), PressedKey, 'A viewer must not swallow keys it has no use for');
+  Assert.AreEqual('a', string(PressedChar));
 end;
 
 class function TMarkdownFmxViewerTests.IsBandUntouched(const Bitmap: TBitmap; const BandHeight: Integer): Boolean;

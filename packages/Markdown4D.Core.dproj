@@ -155,6 +155,7 @@
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.ImageDownloader.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.ImageSettings.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.Lifetime.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.ContextMenu.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.Model.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.ScrollBar.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.Shared.pas"/>

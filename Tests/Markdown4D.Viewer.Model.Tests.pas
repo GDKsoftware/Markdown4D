@@ -66,6 +66,15 @@ type
     procedure ClearSelection_RemovesSelectionState;
 
     [Test]
+    procedure SelectAll_AcrossBlocks_SelectsWholeDocument;
+
+    [Test]
+    procedure SelectAll_EmptyDocument_LeavesSelectionEmpty;
+
+    [Test]
+    procedure HasSelectableText_FollowsDocumentContent;
+
+    [Test]
     procedure AppendMarkdown_MarksDirtyWithoutRelayout;
 
     [Test]
@@ -286,6 +295,37 @@ begin
   Assert.IsFalse(FModel.HasSelection);
   Assert.AreEqual('', FModel.SelectedText);
   Assert.AreEqual(0, Integer(Length(FModel.SelectionRects)));
+end;
+
+procedure TMarkdownViewerModelTests.SelectAll_AcrossBlocks_SelectsWholeDocument;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'one'#10#10'two';
+
+  Assert.IsTrue(FModel.SelectAll);
+  Assert.IsTrue(FModel.HasSelection);
+  Assert.AreEqual('one' + sLineBreak + 'two', FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.SelectAll_EmptyDocument_LeavesSelectionEmpty;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '';
+
+  Assert.IsFalse(FModel.SelectAll);
+  Assert.IsFalse(FModel.HasSelection);
+  Assert.AreEqual('', FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.HasSelectableText_FollowsDocumentContent;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := '';
+  Assert.IsFalse(FModel.HasSelectableText);
+
+  FModel.Text := 'alpha';
+  Assert.IsTrue(FModel.HasSelectableText);
 end;
 
 procedure TMarkdownViewerModelTests.AppendMarkdown_MarksDirtyWithoutRelayout;
