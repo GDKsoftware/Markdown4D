@@ -59,8 +59,8 @@ foreach ($Fixture in $Fixtures) {
 $Invariant = [System.Globalization.CultureInfo]::InvariantCulture
 
 $Lines = New-Object System.Collections.Generic.List[string]
-$Lines.Add('| Corpus | Tests | Passed | Pass rate |')
-$Lines.Add('|--------|------:|-------:|----------:|')
+$Lines.Add('| Corpus | Test cases | Passed | Pass rate |')
+$Lines.Add('|--------|-----------:|-------:|----------:|')
 
 $GrandTotal = 0
 $GrandPassed = 0

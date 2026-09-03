@@ -13,20 +13,14 @@ embedded browser.
 [![CommonMark 0.31.2](https://img.shields.io/badge/CommonMark-0.31.2%20652%2F652-1f6feb.svg)](https://spec.commonmark.org/0.31.2/)
 
 <p align="center">
-  <img src="docs/images/streaming-demo.gif" alt="Markdown4D Studio with the markdown source on the left and the live preview on the right, an answer streaming in token by token while a table, a native bar chart and a mermaid flowchart take shape" width="90%">
+  <img src="docs/images/studio-light.png" alt="Markdown4D Studio in the light theme, markdown source on the left and a rendered report with a table and a bar chart on the right" width="49%">
+  <img src="docs/images/studio-dark.png" alt="Markdown4D Studio in the dark theme, showing a mermaid flowchart, syntax-highlighted Pascal, a task list and a block quote" width="49%">
 </p>
 
-<p align="center"><em>An answer arriving token by token: source on the left, live preview on the right.
-The chart and the diagram are drawn on the canvas as their fences close. Nothing
-here is a browser, and the animation itself is rendered by the library through
-<code>tools\Make-Demo.ps1</code> rather than captured off a screen.</em></p>
-
-<p align="center">
-  <img src="docs/images/viewer-light.png" alt="TMarkdownViewer rendering a document with a table and a native bar chart" width="49%">
-  <img src="docs/images/viewer-dark.png" alt="The same viewer in its dark theme, rendering a mermaid flowchart and a doughnut chart" width="49%">
-</p>
-
-<p align="center"><em>Both screenshots show the VCL viewer.</em></p>
+*Markdown4D Studio, the editor example, in the light and the dark theme. Source
+on the left, `TMarkdownEditor`; rendered document on the right,
+`TMarkdownViewer`. The table, the bar chart, the flowchart and the highlighted
+code are all drawn on the canvas from the markdown you see next to them.*
 
 ## Why Markdown4D
 
@@ -49,8 +43,8 @@ mermaid extensions are built on this same API.
 custom-drawn and support theming, images, selection, search, syntax-highlighted
 code, charts, mermaid diagrams and a design-time preview.
 
-The whole library is written for this project and uses only the RTL. There is
-no DLL to deploy and no package manager involved; adding the source folders to
+The whole library is written for this project and uses only the RTL. It brings no
+DLL of its own and no package manager is involved; adding the source folders to
 the search path is enough. It supports Delphi 12 Athens and Delphi 13 and is
 MIT licensed.
 
@@ -65,6 +59,7 @@ MIT licensed.
 | Document builder | Fluent, validated API to construct documents in code |
 | Incremental parser | Append / replace-range reparsing for streaming and editors |
 | HTML renderer | Spec-conformant output, safe by default, optional XHTML and tag filter |
+| Raw HTML in the viewer | The allowed subset (images, links, emphasis, headings, lists, `<details>`, `<br>`, `<pre>`) is translated to markdown and rendered; `<script>` and `<style>` are dropped with their content |
 | Table of contents | Slugged anchors with de-duplication from any document |
 | Extension API | Block/inline parsers, delimiter processors, renderer hooks, document processors |
 | Chart extension | `chart` code blocks rendered natively as bar/line/pie/doughnut graphics |
@@ -130,6 +125,15 @@ end;
 `AppendMarkdown` is safe to call from a worker thread; it marshals to the UI
 thread for you. See [docs/STREAMING.md](docs/STREAMING.md).
 
+<p align="center">
+  <img src="docs/images/streaming-demo.gif" alt="Markdown4D Studio with the markdown source on the left and the live preview on the right, an answer streaming in token by token while a table, a native bar chart and a mermaid flowchart take shape" width="90%">
+</p>
+
+*The same thing running: source on the left, live preview on the right, an answer
+arriving token by token. The chart and the diagram appear as their fences close.
+Nothing here is a browser, and the animation itself is rendered by the library
+through `tools\Make-Demo.ps1` rather than captured off a screen.*
+
 ## Installation
 
 Markdown4D is distributed as source. Add the source folders to your project's
@@ -169,31 +173,28 @@ Markdown4D is strictly layered. `Core` and `Layout` are framework-neutral; only
 the outermost layer knows about VCL or FMX.
 
 ```
-             +--------------------+      +--------------------+
-   VCL app   |  Source\Vcl        |      |  Source\Fmx        |  FMX app
-             |  Painter / Viewer  |      |  Painter / Viewer  |
-             |  Editor            |      |  Editor            |
-             +---------+----------+      +----------+---------+
-                       |                            |
-                       +-------------+--------------+
-                                     |
-                       +-------------v--------------+
-                       |  Source\Layout             |   framework-neutral
-                       |  Layout engine, display     |
-                       |  list, theme, hit-testing,  |
-                       |  viewer/editor models,      |
-                       |  block overrides            |
-                       |  (charts, mermaid)          |
-                       +-------------+--------------+
-                                     |
-                       +-------------v--------------+
-                       |  Source\Core               |   framework-neutral
-                       |  Parser (blocks + inlines), |
-                       |  incremental parser, AST,   |
-                       |  HTML renderer, markdown     |
-                       |  writer, TOC, extensions,   |
-                       |  pipeline builder           |
-                       +----------------------------+
+             +----------------------+      +----------------------+
+   VCL app   |  Source\Vcl          |      |  Source\Fmx          |  FMX app
+             |  Painter / Viewer    |      |  Painter / Viewer    |
+             |  Editor              |      |  Editor              |
+             +----------+-----------+      +-----------+----------+
+                        |                              |
+                        +---------------+--------------+
+                                        |
+                  +---------------------v---------------------+
+                  |  Source\Layout                            |  framework-neutral
+                  |  Layout engine, display list, theme,      |
+                  |  hit-testing, viewer and editor models,   |
+                  |  block overrides (charts, mermaid)        |
+                  +---------------------+---------------------+
+                                        |
+                  +---------------------v---------------------+
+                  |  Source\Core                              |  framework-neutral
+                  |  Parser (blocks and inlines), incremental |
+                  |  parser, AST, HTML renderer, markdown     |
+                  |  writer, TOC, extensions, pipeline        |
+                  |  builder                                  |
+                  +-------------------------------------------+
 ```
 
 A single string of markdown flows through
@@ -206,8 +207,8 @@ incremental parsing corpora on every build. The table below is regenerated by
 `build.bat`.
 
 <!-- conformance:start -->
-| Corpus | Tests | Passed | Pass rate |
-|--------|------:|-------:|----------:|
+| Corpus | Test cases | Passed | Pass rate |
+|--------|-----------:|-------:|----------:|
 | CommonMark | 26 | 26 | 100.0% |
 | Gfm | 5 | 5 | 100.0% |
 | RoundTrip | 31 | 31 | 100.0% |
@@ -215,8 +216,10 @@ incremental parsing corpora on every build. The table below is regenerated by
 | **Total** | **124** | **124** | **100.0%** |
 <!-- conformance:end -->
 
-Each corpus row aggregates its specification example groups; the full CommonMark
-0.31.2 corpus covers all 652 official examples.
+A test case runs a group of specification examples rather than a single one, so
+the counts above are groups. The CommonMark corpus behind them covers all 652
+official examples of version 0.31.2, and the GFM corpora cover the extension
+examples.
 
 ## Building & testing
 
@@ -248,8 +251,14 @@ anti-aliased polygon rasterizer and the SVG engine behind the viewers.
 
 Two things an SVG needs from the machine it runs on, glyph outlines and image
 decoding, are reached through seams. The system font engine and the VCL picture
-classes answer them on Windows, and FMX answers them everywhere it runs, so
-nothing has to be deployed beside the application on any platform.
+classes answer them on Windows, and FMX answers them everywhere it runs, so the
+library itself adds nothing to what you deploy.
+
+One footnote, because it is visible in the build output: the FMX examples set
+`GlobalUseSkia := True`, which switches FireMonkey to its Skia canvas for
+accurate text metrics in the editor and brings `sk4d.dll` along. That is a
+choice of those examples, not a requirement of Markdown4D. The VCL examples ship
+as a single executable.
 
 The specification corpora under `Tests\specs` come from the CommonMark and GFM
 specifications; see [Tests/specs/README.md](Tests/specs/README.md) for their
