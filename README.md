@@ -285,6 +285,6 @@ issue.
 
 ## About GDK Software
 
-Markdown4D is developed by [GDK Software](https://gdksoftware.com), a
-Delphi-focused software company building developer tools, MCP integrations,
-and enterprise applications.
+Markdown4D is developed by [GDK Software](https://gdksoftware.com), a software
+company building Delphi developer tools, MCP integrations, and enterprise
+Delphi applications.
