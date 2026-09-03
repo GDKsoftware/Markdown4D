@@ -25,11 +25,11 @@ code are all drawn on the canvas from the markdown you see next to them.*
 ## Why Markdown4D
 
 Markdown is a handy way to give plain text a visual shape, and Delphi had no
-component that rendered it well, at runtime or on the form designer.
-
-Markdown4D passes all 652 official CommonMark examples, and the library is
-interface-based throughout: parsing hands you a typed `IMarkdownDocument`
-rather than a string of HTML.
+component that rendered it well, at runtime or on the form designer. So we
+built one, starting from a parser rather than a shortcut: Markdown4D passes
+all 652 official CommonMark examples, and the library is interface-based
+throughout, handing you a typed `IMarkdownDocument` rather than a string of
+HTML.
 
 VCL and FMX are both supported, with no external dependencies. Charts and
 mermaid diagrams are drawn natively, alongside the usual markdown constructs:
