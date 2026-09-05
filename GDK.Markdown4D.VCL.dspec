@@ -1,0 +1,37 @@
+# DPM package spec file
+min dpm client version: 1.0.0
+metadata:
+  id: GDK.Markdown4D.Vcl
+  version: 2.1.0
+  description: 'Markdown4D is a CommonMark / GFM markdown library written in Delphi. It parses markdown into a typed AST, renders HTML, writes markdown back out, and ships custom-drawn viewer and editor components for VCL and FMX. Everything is plain Object Pascal on top of the RTL; rendering happens on a canvas, without an embedded browser.'
+  authors:
+    - GDKSoftware
+  projectUrl: https://github.com/GDKsoftware/Markdown4D
+  repositoryUrl: https://github.com/GDKsoftware/Markdown4D
+  repositoryCommit: '#HASH#'
+  license: MIT
+  copyright: GDK Software
+  tags:
+    - markdown
+    - html
+  readme: README.md
+targetPlatforms:
+  - compiler: delphi13.0
+    platforms:
+      - win32
+      - win64
+templates:
+  - name: default
+    dependencies:
+      - id: GDK.Markdown4D.Core
+        version: 2.1.0
+    source:
+      - src: ./Source/VCL/*.pas
+      - src: ./packages/Markdown4D.Vcl.dpk
+      - src: ./packages/Markdown4D.Vcl.dproj
+      - src: ./packages/Markdown4D.Vcl.Design.dpk
+      - src: ./packages/Markdown4D.Vcl.Design.dproj
+    build:
+      - project: ./packages/Markdown4D.Vcl.dproj
+    design:
+      - project: ./packages/Markdown4D.Vcl.Design.dproj
