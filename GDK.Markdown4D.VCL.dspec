@@ -16,7 +16,8 @@ metadata:
     - html
   readme: README.md
 targetPlatforms:
-  - compiler: delphi13.0
+  - compiler from: delphi12.0
+    compiler to: delphi13.0
     platforms:
       - win32
       - win64
@@ -31,6 +32,7 @@ templates:
       - src: ./packages/Markdown4D.Vcl.dproj
       - src: ./packages/Markdown4D.Vcl.Design.dpk
       - src: ./packages/Markdown4D.Vcl.Design.dproj
+      - src: ./packages/Markdown4D.Vcl.Icons.dcr
     build:
       - project: ./packages/Markdown4D.Vcl.dproj
     design:

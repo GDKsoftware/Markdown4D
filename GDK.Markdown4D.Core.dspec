@@ -16,7 +16,8 @@ metadata:
     - html
   readme: README.md
 targetPlatforms:
-  - compiler: delphi13.0
+  - compiler from: delphi12.0
+    compiler to: delphi13.0
     platforms:
       - win32
       - win64
@@ -26,5 +27,6 @@ templates:
       - src: ./Source/Core/*.pas
       - src: ./packages/Markdown4D.Core.dpk
       - src: ./packages/Markdown4D.Core.dproj
+      - src: ./Source/Layout/*.pas
     build:
       - project: ./packages/Markdown4D.Core.dproj

@@ -16,7 +16,8 @@ metadata:
     - html
   readme: README.md
 targetPlatforms:
-  - compiler: delphi13.0
+  - compiler from: delphi12.0
+    compiler to: delphi13.0
     platforms:
       - win32
       - win64
