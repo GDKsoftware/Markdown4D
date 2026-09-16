@@ -72,6 +72,9 @@ type
       FItalicButton: TRectangle;
       FLinkButton: TRectangle;
       FCodeButton: TRectangle;
+      FViewEditorButton: TRectangle;
+      FViewSplitButton: TRectangle;
+      FViewPreviewButton: TRectangle;
       FThemeButton: TRectangle;
       FTocButton: TRectangle;
       FZenButton: TRectangle;
@@ -83,6 +86,7 @@ type
       FSeparators: TArray<TRectangle>;
       FToolbarFill: TAlphaColor;
       FHoverColor: TAlphaColor;
+      FActiveColor: TAlphaColor;
       FTocFill: TAlphaColor;
       FTocTextColor: TAlphaColor;
       FChromeTextColor: TAlphaColor;
@@ -157,6 +161,8 @@ type
     procedure AddSeparator;
     procedure HandleIconMouseEnter(Sender: TObject);
     procedure HandleIconMouseLeave(Sender: TObject);
+    function RestingColorFor(const Button: TRectangle): TAlphaColor;
+    procedure UpdateViewModeButtons;
     procedure BuildTitleBar;
     function AddCaptionButton(const Glyph: string; const Hint: string;
       const Handler: TNotifyEvent): TRectangle;
@@ -235,6 +241,9 @@ type
     procedure HandleItalicClick(Sender: TObject);
     procedure HandleLinkClick(Sender: TObject);
     procedure HandleCodeClick(Sender: TObject);
+    procedure HandleViewEditorClick(Sender: TObject);
+    procedure HandleViewSplitClick(Sender: TObject);
+    procedure HandleViewPreviewClick(Sender: TObject);
     procedure HandleThemeClick(Sender: TObject);
     procedure HandleTocClick(Sender: TObject);
     procedure HandleZenClick(Sender: TObject);
@@ -406,6 +415,12 @@ begin
   FTocButton := AddIconButton(GlyphToc, HintToc, HandleTocClick);
   FThemeButton := AddIconButton(GlyphTheme, HintTheme, HandleThemeClick);
 
+  // Left aligned FMX controls stack in reverse of the order they are created, so
+  // these read as editor, split, preview on screen and match the VCL toolbar.
+  FViewPreviewButton := AddIconButton(GlyphViewPreview, HintViewPreview, HandleViewPreviewClick);
+  FViewSplitButton := AddIconButton(GlyphViewSplit, HintViewSplit, HandleViewSplitClick);
+  FViewEditorButton := AddIconButton(GlyphViewEditor, HintViewEditor, HandleViewEditorClick);
+
   AddSeparator;
 
   FCodeButton := AddIconButton(GlyphCode, HintCode, HandleCodeClick);
@@ -536,8 +551,33 @@ end;
 procedure TMarkdown4DStudioFMXForm.HandleIconMouseLeave(Sender: TObject);
 begin
   const Button = Sender as TRectangle;
-  Button.Fill.Color := FToolbarFill;
+  Button.Fill.Color := RestingColorFor(Button);
   HideHint;
+end;
+
+function TMarkdown4DStudioFMXForm.RestingColorFor(const Button: TRectangle): TAlphaColor;
+begin
+  // The view mode buttons carry a pressed state, so they do not fall back to the
+  // plain toolbar fill once the pointer leaves or the theme is swapped.
+  if ((Button = FViewEditorButton) and (FViewMode = TPadViewMode.EditorOnly)) or
+     ((Button = FViewSplitButton) and (FViewMode = TPadViewMode.Split)) or
+     ((Button = FViewPreviewButton) and (FViewMode = TPadViewMode.PreviewOnly)) then
+    Result := FActiveColor
+  else
+    Result := FToolbarFill;
+end;
+
+procedure TMarkdown4DStudioFMXForm.UpdateViewModeButtons;
+begin
+  // Keep the lit button in step with the mode however it was set: toolbar click,
+  // Ctrl+1/2/3, the command palette, session restore or leaving zen mode. The nil
+  // guard covers ApplyViewMode running before BuildToolbar.
+  if FViewSplitButton = nil then
+    Exit;
+
+  FViewEditorButton.Fill.Color := RestingColorFor(FViewEditorButton);
+  FViewSplitButton.Fill.Color := RestingColorFor(FViewSplitButton);
+  FViewPreviewButton.Fill.Color := RestingColorFor(FViewPreviewButton);
 end;
 
 procedure TMarkdown4DStudioFMXForm.BuildTitleBar;
@@ -1212,6 +1252,8 @@ begin
   else
     raise ENotSupportedException.CreateFmt('Unsupported view mode: %d', [Ord(FViewMode)]);
   end;
+
+  UpdateViewModeButtons;
 end;
 
 procedure TMarkdown4DStudioFMXForm.ShowFindBar;
@@ -1608,6 +1650,21 @@ begin
   FEditor.SetFocus;
 end;
 
+procedure TMarkdown4DStudioFMXForm.HandleViewEditorClick(Sender: TObject);
+begin
+  SetViewMode(TPadViewMode.EditorOnly);
+end;
+
+procedure TMarkdown4DStudioFMXForm.HandleViewSplitClick(Sender: TObject);
+begin
+  SetViewMode(TPadViewMode.Split);
+end;
+
+procedure TMarkdown4DStudioFMXForm.HandleViewPreviewClick(Sender: TObject);
+begin
+  SetViewMode(TPadViewMode.PreviewOnly);
+end;
+
 procedure TMarkdown4DStudioFMXForm.HandleThemeClick(Sender: TObject);
 begin
   ToggleDarkTheme;
@@ -1990,6 +2047,7 @@ begin
 
     FToolbarFill := ToolbarDarkColor;
     FHoverColor := HoverDarkColor;
+    FActiveColor := ActiveDarkColor;
     IconColor := IconDarkColor;
     SeparatorColor := SeparatorDarkColor;
   end
@@ -2000,6 +2058,7 @@ begin
 
     FToolbarFill := ToolbarLightColor;
     FHoverColor := HoverLightColor;
+    FActiveColor := ActiveLightColor;
   end;
 
   FTocFill := FToolbarFill;
@@ -2013,7 +2072,7 @@ begin
 
   for var Button in FIconButtons do
   begin
-    Button.Fill.Color := FToolbarFill;
+    Button.Fill.Color := RestingColorFor(Button);
   end;
 
   for var GlyphText in FIconGlyphs do
