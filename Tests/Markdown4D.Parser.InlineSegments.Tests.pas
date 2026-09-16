@@ -25,6 +25,9 @@ type
 
     [Test]
     procedure Segment_IndentedListItem_SkipsTheBullet;
+
+    [Test]
+    procedure Segment_AtxHeading_SkipsTheHashesAndTheSpace;
   end;
 
 implementation
@@ -98,6 +101,15 @@ begin
   const Node = FirstTextNode(Source);
 
   Assert.AreEqual('item one', SourceOf(Source, Node));
+end;
+
+procedure TInlineSegmentTests.Segment_AtxHeading_SkipsTheHashesAndTheSpace;
+begin
+  const Source = '## Some heading';
+
+  const Node = FirstTextNode(Source);
+
+  Assert.AreEqual('Some heading', SourceOf(Source, Node));
 end;
 
 end.

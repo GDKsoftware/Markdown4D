@@ -106,7 +106,8 @@ type
     function TryStartBlockQuote: TMarkdownBlockStart;
     function TryConsumeBlockQuoteMarker: Boolean;
     function TryStartAtxHeading: TMarkdownBlockStart;
-    function TryMatchAtxHeading(out Level: Integer; out Content: string): Boolean;
+    function TryMatchAtxHeading(out Level: Integer; out Content: string;
+      out ContentStart: Integer): Boolean;
     class function StripAtxClosingSequence(const Value: string): string;
     function TryStartFencedCode: TMarkdownBlockStart;
     function TryStartMathBlock: TMarkdownBlockStart;
@@ -554,7 +555,8 @@ begin
 
   var Level: Integer;
   var Content: string;
-  if TryMatchAtxHeading(Level, Content) then
+  var ContentStart: Integer;
+  if TryMatchAtxHeading(Level, Content, ContentStart) then
   begin
     Result := True;
     Exit;
@@ -764,7 +766,8 @@ begin
   var Level: Integer;
   var Content: string;
 
-  if not TryMatchAtxHeading(Level, Content) then
+  var ContentStart := 0;
+  if not TryMatchAtxHeading(Level, Content, ContentStart) then
   begin
     Result := TMarkdownBlockStart.NoMatch;
     Exit;
@@ -776,15 +779,22 @@ begin
 
   const Heading = AddChild(TMarkdownNodeKind.Heading);
   Heading.HeadingLevel := Level;
+
+  var Map := Heading.SourceMap;
+  Map.Add(1, FCurrentLine.StartOffset + ContentStart - 1, Content.Length);
+  Heading.SourceMap := Map;
+
   Heading.Content.Append(Content);
 
   Result := TMarkdownBlockStart.Leaf;
 end;
 
-function TBlockParser.TryMatchAtxHeading(out Level: Integer; out Content: string): Boolean;
+function TBlockParser.TryMatchAtxHeading(out Level: Integer; out Content: string;
+  out ContentStart: Integer): Boolean;
 begin
   Level := 0;
   Content := '';
+  ContentStart := 0;
   const Line = FScanner.Line;
   var Index := FScanner.NextNonSpaceIndex;
 
@@ -809,8 +819,13 @@ begin
     Exit;
   end;
 
-  const RawContent = FScanner.TextFrom(Index).Trim(TrimChars);
+  const Raw = FScanner.TextFrom(Index);
+  const RawContent = Raw.Trim(TrimChars);
   Content := StripAtxClosingSequence(RawContent);
+
+  // Where the caption starts in the line, so the heading can be mapped back to
+  // the source past its hashes and the space after them.
+  ContentStart := Index + (Raw.Length - Raw.TrimLeft(TrimChars).Length);
   Result := True;
 end;
 
