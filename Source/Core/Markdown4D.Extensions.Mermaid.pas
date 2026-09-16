@@ -340,8 +340,6 @@ type
   end;
 
   TMermaidParser = class
-  public
-    class function TryBuild(const Literal: string; out Model: IMermaidModel): Boolean;
   private
     const
       ParticipantKeyword = 'participant ';
@@ -357,10 +355,10 @@ type
     class procedure SkipSpaces(const Line: string; var Index: Integer);
     class function MatchToken(const Line: string; var Index: Integer; const Token: string): Boolean;
     class function TryReadIdentifier(const Line: string; var Index: Integer; out Id: string): Boolean;
-    class function TryReadEnclosed(const Line: string; var Index: Integer; const OpenToken, CloseToken: string;
-      const ShapeKind: TMermaidNodeShape; out Shape: TMermaidNodeShape; out Caption: string; out HasShape: Boolean): Boolean;
     class function TryReadShape(const Line: string; var Index: Integer; out Shape: TMermaidNodeShape;
       out Caption: string; out HasShape: Boolean): Boolean;
+    class function TryReadEnclosed(const Line: string; var Index: Integer; const OpenToken, CloseToken: string;
+      const ShapeKind: TMermaidNodeShape; out Shape: TMermaidNodeShape; out Caption: string; out HasShape: Boolean): Boolean;
     class function TryReadEdge(const Line: string; var Index: Integer; out Stroke: TMermaidEdgeStroke;
       out HasArrowHead: Boolean): Boolean;
     class function ReadEdgeLabel(const Line: string; var Index: Integer): string;
@@ -378,6 +376,8 @@ type
     class function TryParsePie(const Lines: TArray<string>; const StartLine: Integer; const HeaderRest: string;
       const Model: TMermaidModel): Boolean;
     class function TryParsePieSlice(const Line: string; const Model: TMermaidModel): Boolean;
+  public
+    class function TryBuild(const Literal: string; out Model: IMermaidModel): Boolean;
   end;
 
   TMermaidDocumentProcessor = class(TInterfacedObject, IMarkdownDocumentProcessor)
@@ -681,11 +681,15 @@ begin
     if Explicit then
       FNodes[Index] := TMermaidNode.Create(Id, Caption, Shape);
 
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   if FNodes.Count >= TMermaidExtension.MaxNodeCount then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Index := FNodes.Count;
   FNodes.Add(TMermaidNode.Create(Id, Caption, Shape));
@@ -746,7 +750,8 @@ begin
   if SpacePos = 0 then
   begin
     Rest := '';
-    Exit(Trimmed);
+    Result := Trimmed;
+    Exit;
   end;
 
   Result := Copy(Trimmed, 1, SpacePos - 1);
@@ -768,7 +773,10 @@ begin
   else if Normalized = 'RL' then
     Direction := TMermaidDirection.RL
   else
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Result := True;
 end;
@@ -787,7 +795,8 @@ begin
   begin
     Inc(Index, Length(Token));
 
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   Result := False;
@@ -797,10 +806,16 @@ class function TMermaidParser.TryReadIdentifier(const Line: string; var Index: I
 begin
   Id := '';
   if Index > Length(Line) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   if not CharInSet(Line[Index], ['A'..'Z', 'a'..'z', '_']) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Start = Index;
   while (Index <= Length(Line)) and CharInSet(Line[Index], ['A'..'Z', 'a'..'z', '0'..'9', '_']) do
@@ -813,32 +828,6 @@ begin
   Result := True;
 end;
 
-class function TMermaidParser.TryReadEnclosed(const Line: string; var Index: Integer; const OpenToken, CloseToken: string;
-  const ShapeKind: TMermaidNodeShape; out Shape: TMermaidNodeShape; out Caption: string; out HasShape: Boolean): Boolean;
-begin
-  Shape := ShapeKind;
-  Caption := '';
-  HasShape := False;
-
-  if Copy(Line, Index, Length(OpenToken)) <> OpenToken then
-    Exit(False);
-
-  const ContentStart = Index + Length(OpenToken);
-  const ClosePos = PosEx(CloseToken, Line, ContentStart);
-  if ClosePos = 0 then
-    Exit(False);
-
-  var Inner := Copy(Line, ContentStart, ClosePos - ContentStart);
-  if (Length(Inner) >= 2) and (Inner[1] = '"') and (Inner[Length(Inner)] = '"') then
-    Inner := Copy(Inner, 2, Length(Inner) - 2);
-
-  Caption := Inner;
-  HasShape := True;
-  Index := ClosePos + Length(CloseToken);
-
-  Result := True;
-end;
-
 class function TMermaidParser.TryReadShape(const Line: string; var Index: Integer; out Shape: TMermaidNodeShape;
   out Caption: string; out HasShape: Boolean): Boolean;
 begin
@@ -847,7 +836,10 @@ begin
   HasShape := False;
 
   if Index > Length(Line) then
-    Exit(True);
+  begin
+    Result := True;
+    Exit;
+  end;
 
   case Line[Index] of
     '[':
@@ -868,6 +860,38 @@ begin
   end;
 end;
 
+class function TMermaidParser.TryReadEnclosed(const Line: string; var Index: Integer; const OpenToken, CloseToken: string;
+  const ShapeKind: TMermaidNodeShape; out Shape: TMermaidNodeShape; out Caption: string; out HasShape: Boolean): Boolean;
+begin
+  Shape := ShapeKind;
+  Caption := '';
+  HasShape := False;
+
+  if Copy(Line, Index, Length(OpenToken)) <> OpenToken then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  const ContentStart = Index + Length(OpenToken);
+  const ClosePos = PosEx(CloseToken, Line, ContentStart);
+  if ClosePos = 0 then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  var Inner := Copy(Line, ContentStart, ClosePos - ContentStart);
+  if (Length(Inner) >= 2) and (Inner[1] = '"') and (Inner[Length(Inner)] = '"') then
+    Inner := Copy(Inner, 2, Length(Inner) - 2);
+
+  Caption := Inner;
+  HasShape := True;
+  Index := ClosePos + Length(CloseToken);
+
+  Result := True;
+end;
+
 class function TMermaidParser.TryReadEdge(const Line: string; var Index: Integer; out Stroke: TMermaidEdgeStroke;
   out HasArrowHead: Boolean): Boolean;
 begin
@@ -875,42 +899,48 @@ begin
   begin
     Stroke := TMermaidEdgeStroke.Dashed;
     HasArrowHead := True;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   if MatchToken(Line, Index, '-.-') then
   begin
     Stroke := TMermaidEdgeStroke.Dashed;
     HasArrowHead := False;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   if MatchToken(Line, Index, '==>') then
   begin
     Stroke := TMermaidEdgeStroke.Thick;
     HasArrowHead := True;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   if MatchToken(Line, Index, '===') then
   begin
     Stroke := TMermaidEdgeStroke.Thick;
     HasArrowHead := False;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   if MatchToken(Line, Index, '-->') then
   begin
     Stroke := TMermaidEdgeStroke.Solid;
     HasArrowHead := True;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   if MatchToken(Line, Index, '---') then
   begin
     Stroke := TMermaidEdgeStroke.Solid;
     HasArrowHead := False;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   Result := False;
@@ -938,111 +968,51 @@ begin
   begin
     MessageLine := TMermaidMessageLine.Dashed;
     Head := TMermaidMessageHead.Arrow;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   if MatchToken(Line, Index, '-->') then
   begin
     MessageLine := TMermaidMessageLine.Dashed;
     Head := TMermaidMessageHead.Open;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   if MatchToken(Line, Index, '--x') then
   begin
     MessageLine := TMermaidMessageLine.Dashed;
     Head := TMermaidMessageHead.Cross;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   if MatchToken(Line, Index, '->>') then
   begin
     MessageLine := TMermaidMessageLine.Solid;
     Head := TMermaidMessageHead.Arrow;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   if MatchToken(Line, Index, '->') then
   begin
     MessageLine := TMermaidMessageLine.Solid;
     Head := TMermaidMessageHead.Open;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   if MatchToken(Line, Index, '-x') then
   begin
     MessageLine := TMermaidMessageLine.Solid;
     Head := TMermaidMessageHead.Cross;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   Result := False;
-end;
-
-class function TMermaidParser.TryParseFlowchartLine(const Line: string; const Model: TMermaidModel): Boolean;
-begin
-  var Index := 1;
-  SkipSpaces(Line, Index);
-
-  if Index > Length(Line) then
-    Exit(True);
-
-  var PrevId: string;
-  if not TryReadIdentifier(Line, Index, PrevId) then
-    Exit(False);
-
-  var Shape: TMermaidNodeShape;
-  var Caption: string;
-  var HasShape: Boolean;
-  if not TryReadShape(Line, Index, Shape, Caption, HasShape) then
-    Exit(False);
-
-  var EffectiveCaption := PrevId;
-  if HasShape and (Caption <> '') then
-    EffectiveCaption := Caption;
-
-  var PrevIndex: Integer;
-  if not Model.TryEnsureNode(PrevId, Shape, EffectiveCaption, HasShape, PrevIndex) then
-    Exit(False);
-
-  SkipSpaces(Line, Index);
-
-  while Index <= Length(Line) do
-  begin
-    var Stroke: TMermaidEdgeStroke;
-    var HasArrowHead: Boolean;
-    if not TryReadEdge(Line, Index, Stroke, HasArrowHead) then
-      Exit(False);
-
-    const EdgeLabel = ReadEdgeLabel(Line, Index);
-
-    SkipSpaces(Line, Index);
-
-    var NextId: string;
-    if not TryReadIdentifier(Line, Index, NextId) then
-      Exit(False);
-
-    var NextShape: TMermaidNodeShape;
-    var NextCaption: string;
-    var NextHasShape: Boolean;
-    if not TryReadShape(Line, Index, NextShape, NextCaption, NextHasShape) then
-      Exit(False);
-
-    var NextEffectiveCaption := NextId;
-    if NextHasShape and (NextCaption <> '') then
-      NextEffectiveCaption := NextCaption;
-
-    var NextIndex: Integer;
-    if not Model.TryEnsureNode(NextId, NextShape, NextEffectiveCaption, NextHasShape, NextIndex) then
-      Exit(False);
-
-    Model.AddEdge(PrevIndex, NextIndex, EdgeLabel, Stroke, HasArrowHead);
-
-    PrevIndex := NextIndex;
-    SkipSpaces(Line, Index);
-  end;
-
-  Result := True;
 end;
 
 class function TMermaidParser.TryParseFlowchart(const Lines: TArray<string>; const StartLine: Integer;
@@ -1053,7 +1023,10 @@ begin
   if Trim(HeaderRest) = '' then
     Model.FDirection := TMermaidDirection.TB
   else if not TryDirection(HeaderRest, Model.FDirection) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   for var Index := StartLine to High(Lines) do
   begin
@@ -1061,7 +1034,131 @@ begin
       Continue;
 
     if not TryParseFlowchartLine(Lines[Index], Model) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
+  end;
+
+  Result := True;
+end;
+
+class function TMermaidParser.TryParseFlowchartLine(const Line: string; const Model: TMermaidModel): Boolean;
+begin
+  var Index := 1;
+  SkipSpaces(Line, Index);
+
+  if Index > Length(Line) then
+  begin
+    Result := True;
+    Exit;
+  end;
+
+  var PrevId: string;
+  if not TryReadIdentifier(Line, Index, PrevId) then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  var Shape: TMermaidNodeShape;
+  var Caption: string;
+  var HasShape: Boolean;
+  if not TryReadShape(Line, Index, Shape, Caption, HasShape) then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  var EffectiveCaption := PrevId;
+  if HasShape and (Caption <> '') then
+    EffectiveCaption := Caption;
+
+  var PrevIndex: Integer;
+  if not Model.TryEnsureNode(PrevId, Shape, EffectiveCaption, HasShape, PrevIndex) then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  SkipSpaces(Line, Index);
+
+  while Index <= Length(Line) do
+  begin
+    var Stroke: TMermaidEdgeStroke;
+    var HasArrowHead: Boolean;
+    if not TryReadEdge(Line, Index, Stroke, HasArrowHead) then
+    begin
+      Result := False;
+      Exit;
+    end;
+
+    const EdgeLabel = ReadEdgeLabel(Line, Index);
+
+    SkipSpaces(Line, Index);
+
+    var NextId: string;
+    if not TryReadIdentifier(Line, Index, NextId) then
+    begin
+      Result := False;
+      Exit;
+    end;
+
+    var NextShape: TMermaidNodeShape;
+    var NextCaption: string;
+    var NextHasShape: Boolean;
+    if not TryReadShape(Line, Index, NextShape, NextCaption, NextHasShape) then
+    begin
+      Result := False;
+      Exit;
+    end;
+
+    var NextEffectiveCaption := NextId;
+    if NextHasShape and (NextCaption <> '') then
+      NextEffectiveCaption := NextCaption;
+
+    var NextIndex: Integer;
+    if not Model.TryEnsureNode(NextId, NextShape, NextEffectiveCaption, NextHasShape, NextIndex) then
+    begin
+      Result := False;
+      Exit;
+    end;
+
+    Model.AddEdge(PrevIndex, NextIndex, EdgeLabel, Stroke, HasArrowHead);
+
+    PrevIndex := NextIndex;
+    SkipSpaces(Line, Index);
+  end;
+
+  Result := True;
+end;
+
+class function TMermaidParser.TryParseSequence(const Lines: TArray<string>; const StartLine: Integer;
+  const Model: TMermaidModel): Boolean;
+begin
+  Model.FDiagramKind := TMermaidDiagramKind.Sequence;
+
+  for var Index := StartLine to High(Lines) do
+  begin
+    const Trimmed = Trim(Lines[Index]);
+    if Trimmed = '' then
+      Continue;
+
+    var Ok: Boolean;
+    if Trimmed.StartsWith(ParticipantKeyword) then
+      Ok := TryDeclareParticipant(Trimmed.Substring(Length(ParticipantKeyword)), False, Model)
+    else if Trimmed.StartsWith(ActorKeyword) then
+      Ok := TryDeclareParticipant(Trimmed.Substring(Length(ActorKeyword)), True, Model)
+    else if Trimmed.StartsWith(NoteKeyword) then
+      Ok := TryParseNote(Trimmed, Model)
+    else
+      Ok := TryParseMessage(Trimmed, Model);
+
+    if not Ok then
+    begin
+      Result := False;
+      Exit;
+    end;
   end;
 
   Result := True;
@@ -1083,7 +1180,10 @@ begin
   end;
 
   if (Id = '') or (Pos(' ', Id) > 0) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Model.EnsureParticipant(Id, Caption, IsActor);
 
@@ -1097,14 +1197,20 @@ begin
 
   var SourceId: string;
   if not TryReadIdentifier(Line, Index, SourceId) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   SkipSpaces(Line, Index);
 
   var MessageLine: TMermaidMessageLine;
   var Head: TMermaidMessageHead;
   if not TryReadMessageArrow(Line, Index, MessageLine, Head) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var Activate := False;
   var Deactivate := False;
@@ -1123,7 +1229,10 @@ begin
 
   var TargetId: string;
   if not TryReadIdentifier(Line, Index, TargetId) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   SkipSpaces(Line, Index);
 
@@ -1134,7 +1243,10 @@ begin
     Index := Length(Line) + 1;
   end
   else if Index <= Length(Line) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const SourceIndex = Model.EnsureParticipant(SourceId, SourceId, False);
   const TargetIndex = Model.EnsureParticipant(TargetId, TargetId, False);
@@ -1166,86 +1278,40 @@ begin
     Rest := Rest.Substring(Length(NoteOverPlacement));
   end
   else
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const ColonPos = Pos(':', Rest);
   if ColonPos = 0 then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const TargetsPart = Trim(Copy(Rest, 1, ColonPos - 1));
   const Text = Trim(Copy(Rest, ColonPos + 1, MaxInt));
 
   const Parts = TargetsPart.Split([',']);
   if Length(Parts) = 0 then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const FromId = Trim(Parts[0]);
   const ToId = Trim(Parts[High(Parts)]);
   if (FromId = '') or (ToId = '') then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const FromIndex = Model.EnsureParticipant(FromId, FromId, False);
   const ToIndex = Model.EnsureParticipant(ToId, ToId, False);
 
   Model.AddNote(Placement, Text, FromIndex, ToIndex);
-
-  Result := True;
-end;
-
-class function TMermaidParser.TryParseSequence(const Lines: TArray<string>; const StartLine: Integer;
-  const Model: TMermaidModel): Boolean;
-begin
-  Model.FDiagramKind := TMermaidDiagramKind.Sequence;
-
-  for var Index := StartLine to High(Lines) do
-  begin
-    const Trimmed = Trim(Lines[Index]);
-    if Trimmed = '' then
-      Continue;
-
-    var Ok: Boolean;
-    if Trimmed.StartsWith(ParticipantKeyword) then
-      Ok := TryDeclareParticipant(Trimmed.Substring(Length(ParticipantKeyword)), False, Model)
-    else if Trimmed.StartsWith(ActorKeyword) then
-      Ok := TryDeclareParticipant(Trimmed.Substring(Length(ActorKeyword)), True, Model)
-    else if Trimmed.StartsWith(NoteKeyword) then
-      Ok := TryParseNote(Trimmed, Model)
-    else
-      Ok := TryParseMessage(Trimmed, Model);
-
-    if not Ok then
-      Exit(False);
-  end;
-
-  Result := True;
-end;
-
-class function TMermaidParser.TryParsePieSlice(const Line: string; const Model: TMermaidModel): Boolean;
-begin
-  const Trimmed = Trim(Line);
-  if (Trimmed = '') or (Trimmed[1] <> '"') then
-    Exit(False);
-
-  const ClosePos = PosEx('"', Trimmed, 2);
-  if ClosePos = 0 then
-    Exit(False);
-
-  const Caption = Copy(Trimmed, 2, ClosePos - 2);
-
-  var Index := ClosePos + 1;
-  SkipSpaces(Trimmed, Index);
-
-  if (Index > Length(Trimmed)) or (Trimmed[Index] <> ':') then
-    Exit(False);
-
-  const ValueText = Trim(Copy(Trimmed, Index + 1, MaxInt));
-
-  var Value: Double;
-  const FormatSettings = TFormatSettings.Invariant;
-  if not TryStrToFloat(ValueText, Value, FormatSettings) then
-    Exit(False);
-
-  Model.AddSlice(Caption, Value);
 
   Result := True;
 end;
@@ -1261,7 +1327,10 @@ begin
   else if Rest = 'title' then
     Model.FTitle := ''
   else if Rest <> '' then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   for var Index := StartLine to High(Lines) do
   begin
@@ -1269,8 +1338,53 @@ begin
       Continue;
 
     if not TryParsePieSlice(Lines[Index], Model) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
   end;
+
+  Result := True;
+end;
+
+class function TMermaidParser.TryParsePieSlice(const Line: string; const Model: TMermaidModel): Boolean;
+begin
+  const Trimmed = Trim(Line);
+  if (Trimmed = '') or (Trimmed[1] <> '"') then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  const ClosePos = PosEx('"', Trimmed, 2);
+  if ClosePos = 0 then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  const Caption = Copy(Trimmed, 2, ClosePos - 2);
+
+  var Index := ClosePos + 1;
+  SkipSpaces(Trimmed, Index);
+
+  if (Index > Length(Trimmed)) or (Trimmed[Index] <> ':') then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  const ValueText = Trim(Copy(Trimmed, Index + 1, MaxInt));
+
+  var Value: Double;
+  const FormatSettings = TFormatSettings.Invariant;
+  if not TryStrToFloat(ValueText, Value, FormatSettings) then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  Model.AddSlice(Caption, Value);
 
   Result := True;
 end;
@@ -1292,7 +1406,10 @@ begin
   end;
 
   if HeaderLine < 0 then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var Rest: string;
   const FirstWord = FirstToken(Lines[HeaderLine], Rest);
@@ -1311,7 +1428,10 @@ begin
     Ok := False;
 
   if not Ok then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Model := Keep;
 
@@ -1349,7 +1469,10 @@ class function TMermaidExtension.IsMermaidCodeBlock(const Node: IMarkdownNode): 
 begin
   var CachedModel: IMermaidModel;
   if TryGetModel(Node, CachedModel) then
-    Exit(True);
+  begin
+    Result := True;
+    Exit;
+  end;
 
   var Code: IMarkdownCodeBlock;
   Result := Supports(Node, IMarkdownCodeBlock, Code) and Code.IsFenced and IsMermaidInfoString(Code.InfoString);
@@ -1359,7 +1482,10 @@ class function TMermaidExtension.TryParse(const Code: IMarkdownCodeBlock; out Mo
 begin
   Model := nil;
   if Code = nil then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Result := TMermaidParser.TryBuild(Code.Literal, Model);
 end;
@@ -1368,7 +1494,10 @@ class function TMermaidExtension.TryGetModel(const Node: IMarkdownNode; out Mode
 begin
   Model := nil;
   if Node = nil then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var Data: IInterface;
   Result := Node.TryGetExtensionData(MermaidModelExtensionKey, Data) and Supports(Data, IMermaidModel, Model);

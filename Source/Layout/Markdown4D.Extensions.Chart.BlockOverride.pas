@@ -64,7 +64,10 @@ function TChartBlockOverride.LayoutBlock(const Node: IMarkdownNode; const Top: S
 begin
   var Model: IChartModel;
   if not TryResolveModel(Node, Model) then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
 
   const Height = TChartLayouter.PreferredHeight(Context.Width, Context.Theme);
   const Bounds = TLayoutRectF.Create(0, Top, Context.Width, Top + Height);

@@ -286,7 +286,10 @@ class function TBenchmarkScenarios.MedianOf(const Values: TArray<Double>): Doubl
 begin
   const Count = Length(Values);
   if Count = 0 then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
 
   var Sorted := Copy(Values, 0, Count);
   TArray.Sort<Double>(Sorted);

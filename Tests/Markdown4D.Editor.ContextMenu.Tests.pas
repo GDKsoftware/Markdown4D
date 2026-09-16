@@ -74,7 +74,10 @@ begin
   for var Item in TMarkdownEditorContextMenu.Build(FModel, ClipboardHasText) do
   begin
     if Item.Command = Command then
-      Exit(Item);
+    begin
+      Result := Item;
+      Exit;
+    end;
   end;
 
   Assert.Fail('Command missing from the context menu');

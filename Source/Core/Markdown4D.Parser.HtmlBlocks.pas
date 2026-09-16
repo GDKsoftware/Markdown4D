@@ -42,13 +42,18 @@ type
       Attribute = '\s+' + AttributeName + '(?:' + AttributeValueSpec + ')?';
       OpenTag = '<' + TagName + '(?:' + Attribute + ')*\s*/?>';
       CloseTag = '</' + TagName + '\s*>';
+    class function EndsAtBlankLine(const Kind: THtmlBlockKind): Boolean;
     constructor Create;
     function TryMatchStart(const LineRest: string; const AllowInterruptingKind: Boolean; out Kind: THtmlBlockKind): Boolean;
     function EndsOnSameLine(const Kind: THtmlBlockKind; const LineRest: string): Boolean;
-    class function EndsAtBlankLine(const Kind: THtmlBlockKind): Boolean;
   end;
 
 implementation
+
+class function THtmlBlockScanner.EndsAtBlankLine(const Kind: THtmlBlockKind): Boolean;
+begin
+  Result := (Kind > LastLineTerminatedKind);
+end;
 
 constructor THtmlBlockScanner.Create;
 begin
@@ -83,7 +88,8 @@ begin
     if FOpenPatterns[Candidate].IsMatch(LineRest) then
     begin
       Kind := Candidate;
-      Exit(True);
+      Result := True;
+      Exit;
     end;
   end;
 
@@ -94,14 +100,12 @@ function THtmlBlockScanner.EndsOnSameLine(const Kind: THtmlBlockKind; const Line
 begin
   const IsLineTerminated = (Kind >= FirstKind) and (Kind <= LastLineTerminatedKind);
   if not IsLineTerminated then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Result := FClosePatterns[Kind].IsMatch(LineRest);
-end;
-
-class function THtmlBlockScanner.EndsAtBlankLine(const Kind: THtmlBlockKind): Boolean;
-begin
-  Result := (Kind > LastLineTerminatedKind);
 end;
 
 end.

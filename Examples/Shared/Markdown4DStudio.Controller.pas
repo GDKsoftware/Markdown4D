@@ -211,7 +211,10 @@ end;
 function TPadController.SaveActiveDocument: Boolean;
 begin
   if FActiveDoc = nil then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   FActiveDoc.Text := FEditor.EditorText;
 
@@ -219,9 +222,13 @@ begin
   begin
     var FileName: string;
     if not FShell.PromptSaveFile('', FileName) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
-    Exit(SaveToFile(FileName));
+    Result := SaveToFile(FileName);
+    Exit;
   end;
 
   Result := SaveToFile(FActiveDoc.FileName);
@@ -243,7 +250,8 @@ begin
     on E: Exception do
     begin
       FShell.ShowSaveError(FileName, E.Message);
-      Exit(False);
+      Result := False;
+      Exit;
     end;
   end;
 
@@ -372,13 +380,13 @@ begin
   FCommands := TPadCommandRegistry.Create;
   FActions := Actions;
 
-  RegisterStaticPadCommands(FCommands, FActions);
+  TPadCommandSet.Register(FCommands, FActions);
 end;
 
 procedure TPadController.RebuildPaletteCommands;
 begin
   FCommands.Clear;
-  RegisterStaticPadCommands(FCommands, FActions);
+  TPadCommandSet.Register(FCommands, FActions);
 
   for var Path in FSession.RecentFiles do
   begin
@@ -610,10 +618,18 @@ begin
 
     case FShell.ConfirmCloseDocument(Document.DisplayName) of
       TPadCloseChoice.Cancel:
-        Exit(False);
+      begin
+        Result := False;
+        Exit;
+      end;
       TPadCloseChoice.Save:
         if not SaveActiveDocument then
-          Exit(False);
+        begin
+          Result := False;
+          Exit;
+        end;
+      TPadCloseChoice.Discard:
+        ; // The loop still marks the document unmodified just below.
     end;
 
     Document.Modified := False;
@@ -624,16 +640,23 @@ end;
 
 procedure TPadController.DoFileChanged(const Document: IPadDocument);
 begin
-  var Format: TMarkdownTextFormat;
+  var TextFormat: TMarkdownTextFormat;
   var NewText: string;
   try
-    NewText := TMarkdownTextFile.Load(Document.FileName, Format);
+    NewText := TMarkdownTextFile.Load(Document.FileName, TextFormat);
   except
-    Document.DiskTimestampUtc := 0;
-    Exit;
+    on E: EInOutError do
+    begin
+      // DiskTimestampUtc was already updated by the watcher before this call,
+      // so leaving it (rather than resetting to 0) stops this dialog from
+      // reappearing on every poll while the file stays locked; the next real
+      // external change retriggers a reload attempt.
+      FShell.ShowOpenError(Document.FileName, E.Message);
+      Exit;
+    end;
   end;
 
-  Document.TextFormat := Format;
+  Document.TextFormat := TextFormat;
 
   // Unsaved edits are never thrown away behind the user's back: the document is
   // flagged instead, and saving asks what should win.
@@ -734,15 +757,19 @@ begin
   if (FActiveDoc = nil) or FActiveDoc.IsUntitled then
     Exit;
 
-  var Format: TMarkdownTextFormat;
+  var TextFormat: TMarkdownTextFormat;
   var NewText: string;
   try
-    NewText := TMarkdownTextFile.Load(FActiveDoc.FileName, Format);
+    NewText := TMarkdownTextFile.Load(FActiveDoc.FileName, TextFormat);
   except
-    Exit;
+    on E: EInOutError do
+    begin
+      FShell.ShowOpenError(FActiveDoc.FileName, E.Message);
+      Exit;
+    end;
   end;
 
-  FActiveDoc.TextFormat := Format;
+  FActiveDoc.TextFormat := TextFormat;
   ApplyDiskText(FActiveDoc, NewText);
   FWatcher.Reset(FActiveDoc);
 end;
@@ -752,7 +779,10 @@ begin
   const OverwritesChangedFile = (FActiveDoc <> nil) and FActiveDoc.DiskConflict and
     SameText(FileName, FActiveDoc.FileName);
   if not OverwritesChangedFile then
-    Exit(True);
+  begin
+    Result := True;
+    Exit;
+  end;
 
   const Choice = FShell.ConfirmSaveOverChangedFile(FActiveDoc.DisplayName);
 

@@ -191,6 +191,12 @@ type
 
     [Test]
     procedure UpdateLayout_SmallEdit_CompletesWithinBudget;
+
+    [Test]
+    procedure LayoutDocument_NilDocument_RaisesMarkdownError;
+
+    [Test]
+    procedure BlockInfos_IndexOutOfRange_RaisesMarkdownError;
   end;
 
 implementation
@@ -890,6 +896,37 @@ begin
   end;
 end;
 
+procedure TMarkdownLayoutEngineTests.LayoutDocument_NilDocument_RaisesMarkdownError;
+begin
+  const Theme = CreateTestTheme;
+  try
+    const Measurer: ITextMeasurer = TFakeTextMeasurer.Create;
+
+    Assert.WillRaise(
+      procedure
+      begin
+        TMarkdownLayoutEngine.LayoutDocument(nil, DefaultWidth, Theme, Measurer);
+      end,
+      EMarkdownError,
+      'LayoutDocument must raise EMarkdownError when the document is nil');
+  finally
+    Theme.Free;
+  end;
+end;
+
+procedure TMarkdownLayoutEngineTests.BlockInfos_IndexOutOfRange_RaisesMarkdownError;
+begin
+  const DisplayList = LayoutMarkdown('a paragraph', DefaultWidth);
+
+  Assert.WillRaise(
+    procedure
+    begin
+      DisplayList.BlockInfos[DisplayList.BlockCount];
+    end,
+    EMarkdownError,
+    'BlockInfos must raise EMarkdownError when the index is out of range');
+end;
+
 class function TMarkdownLayoutEngineTests.CreateTestTheme: TMarkdownTheme;
 begin
   Result := TMarkdownTheme.CreateLight;
@@ -1002,7 +1039,10 @@ begin
   begin
     const Matches = Run.Text.StartsWith(Prefix);
     if Matches then
-      Exit(Run);
+    begin
+      Result := Run;
+      Exit;
+    end;
   end;
 
   Result := nil;
@@ -1017,7 +1057,10 @@ begin
     const HasExpectedFill = Supports(DisplayList.Items[Index], IDisplayRectangle, Rectangle) and
       (Rectangle.FillColor = FillColor);
     if HasExpectedFill then
-      Exit(Rectangle);
+    begin
+      Result := Rectangle;
+      Exit;
+    end;
   end;
 
   Result := nil;
@@ -1047,7 +1090,10 @@ begin
     const HasExpectedFill = Supports(DisplayList.Items[Index], IDisplayRectangle, Rectangle) and
       (Rectangle.FillColor = FillColor);
     if HasExpectedFill then
-      Exit(Index);
+    begin
+      Result := Index;
+      Exit;
+    end;
   end;
 
   Result := -1;
@@ -1061,7 +1107,10 @@ begin
     var Run: IDisplayTextRun;
     const Matches = Supports(DisplayList.Items[Index], IDisplayTextRun, Run) and Run.Text.StartsWith(Prefix);
     if Matches then
-      Exit(Index);
+    begin
+      Result := Index;
+      Exit;
+    end;
   end;
 
   Result := -1;
@@ -1074,7 +1123,10 @@ begin
     var Image: IDisplayImage;
     const IsImage = Supports(DisplayList.Items[Index], IDisplayImage, Image);
     if IsImage then
-      Exit(Image);
+    begin
+      Result := Image;
+      Exit;
+    end;
   end;
 
   Result := nil;
@@ -1100,7 +1152,10 @@ begin
     var Line: IDisplayLine;
     const IsLine = Supports(DisplayList.Items[Index], IDisplayLine, Line);
     if IsLine then
-      Exit(Line);
+    begin
+      Result := Line;
+      Exit;
+    end;
   end;
 
   Result := nil;

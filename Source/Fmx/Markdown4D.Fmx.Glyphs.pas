@@ -36,6 +36,10 @@ type
       // A capital H is flat along the bottom and rests on the baseline in every
       // Latin face, so where its outline ends is where the baseline runs.
       BaselineProbe = 'H';
+    // Reached only from image decoding and SVG text drawing, both of which run
+    // on the main thread: image bytes are decoded after TThread.Queue hands the
+    // download back, and everything else that ends up here is synchronous
+    // layout/paint work. No lock is needed as long as that stays true.
     class var FBaselines: TDictionary<string, Single>;
     class function LayoutFor(const FamilyName: string; const PixelSize: Single;
       const Bold, Italic: Boolean; const Text: string): TTextLayout; static;
@@ -128,7 +132,10 @@ begin
       try
         Layout.ConvertToPath(Path);
         if Path.IsEmpty then
-          Exit(False);
+        begin
+          Result := False;
+          Exit;
+        end;
 
         for var SubPath in TSvgPathParser.Parse(Path.Data) do
         begin

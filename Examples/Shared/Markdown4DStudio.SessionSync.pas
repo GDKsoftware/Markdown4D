@@ -55,7 +55,9 @@ begin
     try
       Workspace.OpenFile(FileName);
     except
-      // A file that fails to open is skipped; the rest of the session restores.
+      // A file that vanishes or becomes locked between the Exists check above
+      // and the actual load is skipped; the rest of the session still restores.
+      on EInOutError do;
     end;
   end;
 

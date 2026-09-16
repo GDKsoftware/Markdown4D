@@ -8,6 +8,7 @@ uses
   System.JSON,
   Markdown4D.Defines,
   Markdown4D.Highlighter.Interfaces,
+  Markdown4D.Layout.Defaults,
   Markdown4D.Layout.Interfaces;
 
 type
@@ -25,6 +26,7 @@ type
       TThemeData = record
         BaseFont: TMarkdownFontStyle;
         CodeFont: TMarkdownFontStyle;
+        MathFont: TMarkdownFontStyle;
         HeadingFonts: THeadingFontArray;
         HeadingSpacingsAbove: THeadingSpacingArray;
         HeadingSpacingsBelow: THeadingSpacingArray;
@@ -39,6 +41,7 @@ type
         TableHeaderBackgroundColor: TLayoutColor;
         TableBorderColor: TLayoutColor;
         ThematicBreakColor: TLayoutColor;
+        MathErrorColor: TLayoutColor;
         ParagraphSpacing: Single;
         ListIndent: Single;
         ListMarkerWidth: Single;
@@ -62,6 +65,9 @@ type
     const
       DefaultTextFamilyName = 'Segoe UI';
       DefaultCodeFamilyName = 'Consolas';
+      // The generic math family; the painters resolve it to the bundled or
+      // the platform's math font (see Markdown4D.Math.Font).
+      DefaultMathFamilyName = MathFamilyName;
       DefaultBaseFontSize = 16.0;
       DefaultHeadingSizes: THeadingSpacingArray = (32, 28, 24, 20, 18, 16);
       DefaultHeadingSpacingsAbove: THeadingSpacingArray = (24, 20, 16, 12, 10, 8);
@@ -85,10 +91,12 @@ type
       LightBackgroundColor = $FFFFFFFF;
       LightSurfaceColor = $FFF6F8FA;
       LightBorderColor = $FFD0D7DE;
+      LightMathErrorColor = $FFCF222E;
       DarkInkColor = $FFE6EDF3;
       DarkBackgroundColor = $FF0D1117;
       DarkSurfaceColor = $FF161B22;
       DarkBorderColor = $FF3D444D;
+      DarkMathErrorColor = $FFFF7B72;
       LightChartPaletteColors: array[0..7] of TLayoutColor = ($FF4E79A7, $FFF28E2B, $FFE15759, $FF76B7B2, $FF59A14F,
         $FFEDC948, $FFB07AA1, $FFFF9DA7);
       DarkChartPaletteColors: array[0..7] of TLayoutColor = ($FF6FA8DC, $FFF6B26B, $FFE06666, $FF76D7C4, $FF93C47D,
@@ -100,6 +108,8 @@ type
       TokenColorCount = Ord(High(TSyntaxTokenKind)) + 1;
       BaseFontKey = 'baseFont';
       CodeFontKey = 'codeFont';
+      MathFontKey = 'mathFont';
+      MathErrorColorKey = 'mathErrorColor';
       HeadingFontsKey = 'headingFonts';
       HeadingSpacingsAboveKey = 'headingSpacingsAbove';
       HeadingSpacingsBelowKey = 'headingSpacingsBelow';
@@ -142,6 +152,7 @@ type
     var
       FBaseFont: TMarkdownFontStyle;
       FCodeFont: TMarkdownFontStyle;
+      FMathFont: TMarkdownFontStyle;
       FHeadingFonts: THeadingFontArray;
       FHeadingSpacingsAbove: THeadingSpacingArray;
       FHeadingSpacingsBelow: THeadingSpacingArray;
@@ -156,6 +167,7 @@ type
       FTableHeaderBackgroundColor: TLayoutColor;
       FTableBorderColor: TLayoutColor;
       FThematicBreakColor: TLayoutColor;
+      FMathErrorColor: TLayoutColor;
       FParagraphSpacing: Single;
       FListIndent: Single;
       FListMarkerWidth: Single;
@@ -190,7 +202,11 @@ type
     class function ReadPalette(const Root: TJSONObject): TArray<TLayoutColor>;
     class function ReadTokenColors(const Root: TJSONObject): TTokenColorArray;
     class function JsonToFont(const Value: TJSONValue; const Name: string): TMarkdownFontStyle;
+    class function ReadFontOrDefault(const Root: TJSONObject; const Name: string;
+      const Default: TMarkdownFontStyle): TMarkdownFontStyle;
     class function ReadColor(const Root: TJSONObject; const Name: string): TLayoutColor;
+    class function ReadColorOrDefault(const Root: TJSONObject; const Name: string;
+      const Default: TLayoutColor): TLayoutColor;
     class function ReadSingle(const Root: TJSONObject; const Name: string): Single;
     class function RequireArray(const Root: TJSONObject; const Name: string; const ExpectedCount: Integer): TJSONArray;
     class function RequireValue(const Root: TJSONObject; const Name: string): TJSONValue;
@@ -218,6 +234,9 @@ type
     procedure LoadFromJson(const Json: string);
     property BaseFont: TMarkdownFontStyle read FBaseFont write FBaseFont;
     property CodeFont: TMarkdownFontStyle read FCodeFont write FCodeFont;
+    // Family and size of formulas; bold and italic are set per symbol by the
+    // formula layouter. Inline formulas take the size of the surrounding text.
+    property MathFont: TMarkdownFontStyle read FMathFont write FMathFont;
     property HeadingFonts[const Level: Integer]: TMarkdownFontStyle read GetHeadingFont write SetHeadingFont;
     property HeadingSpacingAbove[const Level: Integer]: Single read GetHeadingSpacingAbove write SetHeadingSpacingAbove;
     property HeadingSpacingBelow[const Level: Integer]: Single read GetHeadingSpacingBelow write SetHeadingSpacingBelow;
@@ -232,6 +251,8 @@ type
     property TableHeaderBackgroundColor: TLayoutColor read FTableHeaderBackgroundColor write FTableHeaderBackgroundColor;
     property TableBorderColor: TLayoutColor read FTableBorderColor write FTableBorderColor;
     property ThematicBreakColor: TLayoutColor read FThematicBreakColor write FThematicBreakColor;
+    // Unknown LaTeX commands are drawn by name in this colour.
+    property MathErrorColor: TLayoutColor read FMathErrorColor write FMathErrorColor;
     property ParagraphSpacing: Single read FParagraphSpacing write FParagraphSpacing;
     property ListIndent: Single read FListIndent write FListIndent;
     property ListMarkerWidth: Single read FListMarkerWidth write FListMarkerWidth;
@@ -288,6 +309,7 @@ begin
   Result.FTableHeaderBackgroundColor := DarkSurfaceColor;
   Result.FTableBorderColor := DarkBorderColor;
   Result.FThematicBreakColor := DarkBorderColor;
+  Result.FMathErrorColor := DarkMathErrorColor;
   Result.FChartBackgroundColor := DarkBackgroundColor;
   Result.FChartGridLineColor := $FF30363D;
   Result.FChartTextColor := $FFC9D1D9;
@@ -301,6 +323,7 @@ begin
 
   FBaseFont := TMarkdownFontStyle.Create(DefaultTextFamilyName, DefaultBaseFontSize);
   FCodeFont := TMarkdownFontStyle.Create(DefaultCodeFamilyName, DefaultBaseFontSize);
+  FMathFont := TMarkdownFontStyle.Create(DefaultMathFamilyName, DefaultBaseFontSize);
 
   for var Level := MinHeadingLevel to MaxHeadingLevel do
   begin
@@ -335,6 +358,7 @@ begin
   FTableHeaderBackgroundColor := LightSurfaceColor;
   FTableBorderColor := LightBorderColor;
   FThematicBreakColor := LightBorderColor;
+  FMathErrorColor := LightMathErrorColor;
   FChartBackgroundColor := LightBackgroundColor;
   FChartGridLineColor := $FFE5E7EB;
   FChartTextColor := $FF374151;
@@ -358,6 +382,7 @@ begin
   try
     Root.AddPair(BaseFontKey, FontToJson(FBaseFont));
     Root.AddPair(CodeFontKey, FontToJson(FCodeFont));
+    Root.AddPair(MathFontKey, FontToJson(FMathFont));
     Root.AddPair(HeadingFontsKey, HeadingFontsToJson);
     Root.AddPair(HeadingSpacingsAboveKey, SpacingsToJson(FHeadingSpacingsAbove));
     Root.AddPair(HeadingSpacingsBelowKey, SpacingsToJson(FHeadingSpacingsBelow));
@@ -373,6 +398,7 @@ begin
     AddColorPair(Root, TableHeaderBackgroundColorKey, FTableHeaderBackgroundColor);
     AddColorPair(Root, TableBorderColorKey, FTableBorderColor);
     AddColorPair(Root, ThematicBreakColorKey, FThematicBreakColor);
+    AddColorPair(Root, MathErrorColorKey, FMathErrorColor);
 
     AddSinglePair(Root, ParagraphSpacingKey, FParagraphSpacing);
     AddSinglePair(Root, ListIndentKey, FListIndent);
@@ -488,6 +514,9 @@ begin
 
   Result.BaseFont := JsonToFont(RequireValue(Root, BaseFontKey), BaseFontKey);
   Result.CodeFont := JsonToFont(RequireValue(Root, CodeFontKey), CodeFontKey);
+  // Math keys arrived after 2.1, so a theme saved before then still loads.
+  Result.MathFont := ReadFontOrDefault(Root, MathFontKey,
+    TMarkdownFontStyle.Create(DefaultMathFamilyName, DefaultBaseFontSize));
   Result.HeadingFonts := ReadHeadingFonts(Root);
   Result.HeadingSpacingsAbove := ReadSpacings(Root, HeadingSpacingsAboveKey);
   Result.HeadingSpacingsBelow := ReadSpacings(Root, HeadingSpacingsBelowKey);
@@ -503,6 +532,7 @@ begin
   Result.TableHeaderBackgroundColor := ReadColor(Root, TableHeaderBackgroundColorKey);
   Result.TableBorderColor := ReadColor(Root, TableBorderColorKey);
   Result.ThematicBreakColor := ReadColor(Root, ThematicBreakColorKey);
+  Result.MathErrorColor := ReadColorOrDefault(Root, MathErrorColorKey, LightMathErrorColor);
 
   Result.ParagraphSpacing := ReadSingle(Root, ParagraphSpacingKey);
   Result.ListIndent := ReadSingle(Root, ListIndentKey);
@@ -530,6 +560,7 @@ procedure TMarkdownTheme.ApplyThemeData(const Data: TThemeData);
 begin
   FBaseFont := Data.BaseFont;
   FCodeFont := Data.CodeFont;
+  FMathFont := Data.MathFont;
   FHeadingFonts := Data.HeadingFonts;
   FHeadingSpacingsAbove := Data.HeadingSpacingsAbove;
   FHeadingSpacingsBelow := Data.HeadingSpacingsBelow;
@@ -545,6 +576,7 @@ begin
   FTableHeaderBackgroundColor := Data.TableHeaderBackgroundColor;
   FTableBorderColor := Data.TableBorderColor;
   FThematicBreakColor := Data.ThematicBreakColor;
+  FMathErrorColor := Data.MathErrorColor;
 
   FParagraphSpacing := Data.ParagraphSpacing;
   FListIndent := Data.ListIndent;
@@ -621,9 +653,35 @@ begin
   Result.Strikeout := RequireBool(RequireValue(FontObject, StrikeoutKey), StrikeoutKey).AsBoolean;
 end;
 
+class function TMarkdownTheme.ReadFontOrDefault(const Root: TJSONObject; const Name: string;
+  const Default: TMarkdownFontStyle): TMarkdownFontStyle;
+begin
+  const Value = Root.GetValue(Name);
+  if Value = nil then
+  begin
+    Result := Default;
+    Exit;
+  end;
+
+  Result := JsonToFont(Value, Name);
+end;
+
 class function TMarkdownTheme.ReadColor(const Root: TJSONObject; const Name: string): TLayoutColor;
 begin
   Result := TLayoutColor(RequireNumber(RequireValue(Root, Name), Name).AsInt64);
+end;
+
+class function TMarkdownTheme.ReadColorOrDefault(const Root: TJSONObject; const Name: string;
+  const Default: TLayoutColor): TLayoutColor;
+begin
+  const Value = Root.GetValue(Name);
+  if Value = nil then
+  begin
+    Result := Default;
+    Exit;
+  end;
+
+  Result := TLayoutColor(RequireNumber(Value, Name).AsInt64);
 end;
 
 class function TMarkdownTheme.ReadSingle(const Root: TJSONObject; const Name: string): Single;

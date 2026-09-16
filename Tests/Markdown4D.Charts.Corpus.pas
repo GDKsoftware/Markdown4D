@@ -87,12 +87,18 @@ begin
   begin
     const DirectCandidate = TPath.Combine(TPath.Combine(Directory, SpecsFolderName), FileName);
     if TFile.Exists(DirectCandidate) then
-      Exit(DirectCandidate);
+    begin
+      Result := DirectCandidate;
+      Exit;
+    end;
 
     const NestedCandidate = TPath.Combine(TPath.Combine(TPath.Combine(Directory, TestsFolderName), SpecsFolderName),
       FileName);
     if TFile.Exists(NestedCandidate) then
-      Exit(NestedCandidate);
+    begin
+      Result := NestedCandidate;
+      Exit;
+    end;
 
     const Parent = TPath.GetDirectoryName(Directory);
     const ReachedRoot = (Parent = Directory);
@@ -121,7 +127,10 @@ begin
   for var Item in FCases do
   begin
     if Item.Name = Name then
-      Exit(Item);
+    begin
+      Result := Item;
+      Exit;
+    end;
   end;
 
   raise EChartCorpusError.CreateFmt('Chart corpus does not contain a case named "%s"', [Name]);

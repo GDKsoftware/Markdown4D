@@ -8,13 +8,42 @@ Markdown4D VCL and FMX components available on the RAD Studio component palette.
 | Package | Kind | Requires | Contains |
 |---------|------|----------|----------|
 | `Markdown4D.Core` | runtime | `rtl` | all `Source\Core` + `Source\Layout` units (framework-neutral) |
-| `Markdown4D.Vcl` | runtime | `rtl`, `vcl`, `vclimg`, `Markdown4D.Core` | `Source\Vcl` painter/viewer/editor |
-| `Markdown4D.Fmx` | runtime | `rtl`, `fmx`, `Markdown4D.Core` | `Source\Fmx` painter/viewer/editor |
+| `Markdown4D.Vcl` | runtime | `rtl`, `vcl`, `vclimg`, `Markdown4D.Core` | `Source\Vcl` painter/viewer/editor, plus the formula font loader `Markdown4D.Vcl.MathFont` |
+| `Markdown4D.Fmx` | runtime | `rtl`, `fmx`, `Markdown4D.Core` | `Source\Fmx` painter/viewer/editor, plus the formula font loader `Markdown4D.Fmx.MathFont` |
 | `Markdown4D.Vcl.Design` | design-time | `designide`, `Markdown4D.Vcl` | `Markdown4D.Vcl.Register` (+ palette icons) |
 | `Markdown4D.Fmx.Design` | design-time | `designide`, `Markdown4D.Fmx` | `Markdown4D.Fmx.Register` (+ palette icons) |
 
 Both design packages register `TMarkdownViewer` and `TMarkdownEditor` on a
 component palette page named **Markdown4D**.
+
+## Formula font
+
+The two framework packages carry `Source\Fonts\STIXTwoMath-Regular.otf` as a
+resource (`Source\Fonts\STIXTwoMath.rc`, compiled to `STIXTwoMath.res`, about
+840 KB). Nothing installs it by itself: an application that wants the bundled
+font for its formulas adds `Markdown4D.Vcl.MathFont` or `Markdown4D.Fmx.MathFont`
+to a uses clause, which registers the font for that process only. The
+registration runs when the first viewer or editor is created. Without the
+unit, formulas use the math font the platform ships with: Cambria Math on
+Windows, STIX Two Math on macOS 13 and later.
+
+What the FMX loader can do depends on the platform's font manager:
+
+| Platform | Without Skia | With Skia (`GlobalUseSkia := True`) |
+|---|---|---|
+| Windows | installs (GDI+ and DirectWrite) | installs |
+| macOS | installs (CoreText) | installs |
+| iOS, Android, Linux | no font manager service; formulas fall back | installs through the Skia font manager |
+
+The fallback family exists only on Windows and macOS; on the other platforms
+the OS substitutes its default font, which carries the Unicode math symbols
+but not the metrics the formula layout is tuned for.
+
+On Windows the FMX font manager finishes a registration with a synchronous
+`WM_FONTCHANGE` broadcast to every top-level window, so an unresponsive
+application elsewhere on the desktop stalls the FMX loader until that
+application responds again. The VCL loader registers through
+`AddFontMemResourceEx`, which does not broadcast.
 
 ## Build outputs
 

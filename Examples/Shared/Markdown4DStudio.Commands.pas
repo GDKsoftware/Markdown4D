@@ -140,7 +140,10 @@ begin
   Score := 0;
 
   if Query = '' then
-    Exit(True);
+  begin
+    Result := True;
+    Exit;
+  end;
 
   var QueryCursor := 1;
   var PreviousMatchedIndex := -1;
@@ -150,7 +153,7 @@ begin
     if QueryCursor > Length(Query) then
       Break;
 
-    const IsMatch = Candidate[Index].ToLower = Query[QueryCursor].ToLower;
+    const IsMatch = (Candidate[Index].ToLower = Query[QueryCursor].ToLower);
     if not IsMatch then
       Continue;
 
@@ -175,13 +178,19 @@ end;
 class function TPadFuzzyMatcher.IsWordStart(const Candidate: string; const Index: Integer): Boolean;
 begin
   if Index = 1 then
-    Exit(True);
+  begin
+    Result := True;
+    Exit;
+  end;
 
   const PreviousChar = Candidate[Index - 1];
   const CurrentChar = Candidate[Index];
 
   if not PreviousChar.IsLetterOrDigit then
-    Exit(True);
+  begin
+    Result := True;
+    Exit;
+  end;
 
   Result := PreviousChar.IsLower and CurrentChar.IsUpper;
 end;

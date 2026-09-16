@@ -51,7 +51,10 @@ begin
     const IsLinkNode = (Node.Kind = TMarkdownNodeKind.Link) or (Node.Kind = TMarkdownNodeKind.Autolink);
     const FoundLink = IsLinkNode and Supports(Node, IMarkdownLink, Link);
     if FoundLink then
-      Exit(True);
+    begin
+      Result := True;
+      Exit;
+    end;
   end;
 
   Result := False;
@@ -65,13 +68,15 @@ begin
   for var Index := 0 to DisplayList.ItemCount - 1 do
   begin
     var Run: IDisplayTextRun;
-    const IsTextRunHit = Supports(DisplayList.Items[Index], IDisplayTextRun, Run) and Run.Bounds.Contains(Point);
+    const IsTextRunHit = Supports(DisplayList.Items[Index], IDisplayTextRun, Run) and
+      (Run.Role <> TDisplayTextRunRole.Drawing) and Run.Bounds.Contains(Point);
     if not IsTextRunHit then
       Continue;
 
     Hit.Run := Run;
     Hit.CharacterIndex := NearestCharacterIndex(Run, Point, Measurer);
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   Result := False;

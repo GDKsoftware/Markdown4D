@@ -2,6 +2,7 @@ program Markdown4DStudioFMX;
 
 uses
   FMX.Forms,
+  Markdown4D.Fmx.MathFont,
   FMX.Skia,
   Markdown4DStudio.Workspace.Interfaces in '..\Shared\Markdown4DStudio.Workspace.Interfaces.pas',
   Markdown4DStudio.Workspace in '..\Shared\Markdown4DStudio.Workspace.pas',

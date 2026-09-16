@@ -70,6 +70,8 @@ type
     function TryFindTextRunBounds(out FirstIndex, LastIndex: Integer): Boolean;
     function TryResolvePosition(const Point: TLayoutPointF; out Position: TTextPosition): Boolean;
     function NearestCharacterBoundary(const Run: IDisplayTextRun; const X: Single): Integer;
+    function TrySelectableRun(const Index: Integer; out Run: IDisplayTextRun): Boolean;
+    class function CaseInsensitiveIndexOf(const Needle, Haystack: string; const StartIndex: Integer): Integer; static;
     function NormalizeSelection: TTextRange;
     class function ComparePositions(const Left, Right: TTextPosition): Integer;
     function SelectedCharacterRange(const Run: IDisplayTextRun; const ItemIndex: Integer;
@@ -198,7 +200,10 @@ end;
 function TMarkdownViewerModel.IsScrolledToBottom: Boolean;
 begin
   if FDisplayList = nil then
-    Exit(True);
+  begin
+    Result := True;
+    Exit;
+  end;
 
   Result := (FScrollOffset + FViewportHeight) >= (FDisplayList.Height - BottomEpsilon);
 end;
@@ -218,11 +223,17 @@ end;
 function TMarkdownViewerModel.TryFlush(const NowMilliseconds: Int64): Boolean;
 begin
   if not FDirty then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const IsTooEarly = ((NowMilliseconds - FDirtySince) < FFlushIntervalMilliseconds);
   if IsTooEarly then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   FShouldAutoFollow := IsScrolledToBottom;
   FText := FText + FPendingMarkdown;
@@ -263,12 +274,15 @@ begin
   FirstIndex := -1;
   LastIndex := -1;
   if FDisplayList = nil then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   for var Index := 0 to FDisplayList.ItemCount - 1 do
   begin
     var Run: IDisplayTextRun;
-    if not Supports(FDisplayList.Items[Index], IDisplayTextRun, Run) then
+    if not TrySelectableRun(Index, Run) then
       Continue;
 
     if Run.Text = '' then
@@ -296,8 +310,11 @@ begin
     Exit;
 
   var LastRun: IDisplayTextRun;
-  if not Supports(FDisplayList.Items[LastIndex], IDisplayTextRun, LastRun) then
-    Exit(False);
+  if not TrySelectableRun(LastIndex, LastRun) then
+  begin
+    Result := False;
+    Exit;
+  end;
 
   FAnchor.ItemIndex := FirstIndex;
   FAnchor.CharacterIndex := 0;
@@ -309,7 +326,10 @@ end;
 function TMarkdownViewerModel.HasSelection: Boolean;
 begin
   if not FSelectionActive or (FDisplayList = nil) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const AreIndexesValid = (FAnchor.ItemIndex < FDisplayList.ItemCount) and
     (FExtent.ItemIndex < FDisplayList.ItemCount);
@@ -327,7 +347,7 @@ begin
   for var Index := Range.StartPosition.ItemIndex to Range.EndPosition.ItemIndex do
   begin
     var Run: IDisplayTextRun;
-    if not Supports(FDisplayList.Items[Index], IDisplayTextRun, Run) then
+    if not TrySelectableRun(Index, Run) then
       Continue;
 
     var CharFrom, CharTo: Integer;
@@ -365,7 +385,7 @@ begin
   for var Index := Range.StartPosition.ItemIndex to Range.EndPosition.ItemIndex do
   begin
     var Run: IDisplayTextRun;
-    if not Supports(FDisplayList.Items[Index], IDisplayTextRun, Run) then
+    if not TrySelectableRun(Index, Run) then
       Continue;
 
     var CharFrom, CharTo: Integer;
@@ -433,7 +453,10 @@ function TMarkdownViewerModel.ImageSlotState(const Source: string): TMarkdownIma
 begin
   var Slot: TImageSlot;
   if FImageSlots.TryGetValue(Source, Slot) then
-    Exit(Slot.State);
+  begin
+    Result := Slot.State;
+    Exit;
+  end;
 
   Result := TMarkdownImageSlotState.Unknown;
 end;
@@ -448,7 +471,8 @@ begin
     Size := Slot.Size;
 end;
 
-function CaseInsensitiveIndexOf(const Needle, Haystack: string; const StartIndex: Integer): Integer;
+class function TMarkdownViewerModel.CaseInsensitiveIndexOf(const Needle, Haystack: string;
+  const StartIndex: Integer): Integer;
 begin
   const NeedleLength = Length(Needle);
   const LastStart = Length(Haystack) - NeedleLength + 1;
@@ -466,7 +490,10 @@ begin
     end;
 
     if Matches then
-      Exit(Start);
+    begin
+      Result := Start;
+      Exit;
+    end;
   end;
 
   Result := 0;
@@ -485,7 +512,7 @@ begin
   for var Index := 0 to FDisplayList.ItemCount - 1 do
   begin
     var Run: IDisplayTextRun;
-    if not Supports(FDisplayList.Items[Index], IDisplayTextRun, Run) then
+    if not TrySelectableRun(Index, Run) then
       Continue;
 
     const RunText = Run.Text;
@@ -509,7 +536,8 @@ begin
     if Candidate.Rect.Contains(Point) then
     begin
       Region := Candidate;
-      Exit(True);
+      Result := True;
+      Exit;
     end;
   end;
 
@@ -586,7 +614,10 @@ function TMarkdownViewerModel.TryResolvePosition(const Point: TLayoutPointF; out
 begin
   Position := Default(TTextPosition);
   if FDisplayList = nil then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var BestIndex := -1;
   var BestRun: IDisplayTextRun := nil;
@@ -596,7 +627,7 @@ begin
   for var Index := 0 to FDisplayList.ItemCount - 1 do
   begin
     var Run: IDisplayTextRun;
-    if not Supports(FDisplayList.Items[Index], IDisplayTextRun, Run) then
+    if not TrySelectableRun(Index, Run) then
       Continue;
 
     const Bounds = Run.Bounds;
@@ -624,16 +655,43 @@ begin
   end;
 
   if BestIndex < 0 then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Position.ItemIndex := BestIndex;
   Position.CharacterIndex := NearestCharacterBoundary(BestRun, Point.X);
   Result := True;
 end;
 
+// Glyphs that belong to a drawing, such as a formula, are text runs for the
+// painter but not for the reader: selecting, searching and copying skip them.
+// The drawing's source run takes their place.
+function TMarkdownViewerModel.TrySelectableRun(const Index: Integer; out Run: IDisplayTextRun): Boolean;
+begin
+  Result := Supports(FDisplayList.Items[Index], IDisplayTextRun, Run) and (Run.Role <> TDisplayTextRunRole.Drawing);
+end;
+
+// A source run is selected whole or not at all: the pointer picks the edge
+// nearest to it, never a character inside the formula.
 function TMarkdownViewerModel.NearestCharacterBoundary(const Run: IDisplayTextRun; const X: Single): Integer;
 begin
   const LocalX = X - Run.Bounds.Left;
+
+  const IsAtomic = (Run.Role = TDisplayTextRunRole.Source);
+  if IsAtomic then
+  begin
+    const PastMiddle = (LocalX > Run.Bounds.Width / 2);
+    if PastMiddle then
+    begin
+      Result := Length(Run.Text);
+      Exit;
+    end;
+
+    Result := 0;
+    Exit;
+  end;
 
   Result := 0;
   var BestDistance := Abs(LocalX);
@@ -690,7 +748,10 @@ begin
     const Info = FDisplayList.BlockInfos[BlockIndex];
     const IsInsideBlock = (ItemIndex >= Info.FirstItemIndex) and (ItemIndex < Info.FirstItemIndex + Info.ItemCount);
     if IsInsideBlock then
-      Exit(BlockIndex);
+    begin
+      Result := BlockIndex;
+      Exit;
+    end;
   end;
 
   Result := -1;
@@ -699,7 +760,18 @@ end;
 function TMarkdownViewerModel.PrefixWidth(const Run: IDisplayTextRun; const CharacterCount: Integer): Single;
 begin
   if CharacterCount <= 0 then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
+
+  // The source of a drawing is as wide as the drawing, whatever its text measures.
+  const IsAtomic = (Run.Role = TDisplayTextRunRole.Source);
+  if IsAtomic then
+  begin
+    Result := Run.Bounds.Width;
+    Exit;
+  end;
 
   Result := FMeasurer.MeasureText(Copy(Run.Text, 1, CharacterCount), Run.Font).Width;
 end;

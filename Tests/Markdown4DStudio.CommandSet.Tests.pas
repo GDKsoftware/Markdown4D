@@ -116,20 +116,20 @@ end;
 
 procedure TPadCommandSetTests.Register_AddsEveryCommand;
 begin
-  RegisterStaticPadCommands(FRegistry, BuildActions);
+  TPadCommandSet.Register(FRegistry, BuildActions);
   Assert.AreEqual(35, FRegistry.Count);
 end;
 
 procedure TPadCommandSetTests.NewCommand_InvokesNewDocument;
 begin
-  RegisterStaticPadCommands(FRegistry, BuildActions);
+  TPadCommandSet.Register(FRegistry, BuildActions);
   Invoke(CmdNewName);
   Assert.AreEqual('New', FFired);
 end;
 
 procedure TPadCommandSetTests.BoldCommand_InvokesFormatWithBold;
 begin
-  RegisterStaticPadCommands(FRegistry, BuildActions);
+  TPadCommandSet.Register(FRegistry, BuildActions);
   Invoke(CmdBoldName);
   Assert.AreEqual('Format', FFired);
   Assert.IsTrue(FLastFormat = TEditorCommand.Bold, 'bold not bound');
@@ -137,7 +137,7 @@ end;
 
 procedure TPadCommandSetTests.TableCommand_InvokesFormatWithTable;
 begin
-  RegisterStaticPadCommands(FRegistry, BuildActions);
+  TPadCommandSet.Register(FRegistry, BuildActions);
   Invoke(CmdTableName);
   Assert.AreEqual('Format', FFired);
   Assert.IsTrue(FLastFormat = TEditorCommand.Table, 'table not bound');
@@ -145,7 +145,7 @@ end;
 
 procedure TPadCommandSetTests.EditingCommands_AreDiscoverableFromThePalette;
 begin
-  RegisterStaticPadCommands(FRegistry, BuildActions);
+  TPadCommandSet.Register(FRegistry, BuildActions);
 
   // Anything that is only reachable through a keystroke would be invisible, so
   // the palette carries every editing command with its shortcut spelled out.
@@ -169,21 +169,21 @@ end;
 
 procedure TPadCommandSetTests.UndoCommand_InvokesUndo;
 begin
-  RegisterStaticPadCommands(FRegistry, BuildActions);
+  TPadCommandSet.Register(FRegistry, BuildActions);
   Invoke(CmdUndoName);
   Assert.AreEqual('Undo', FFired);
 end;
 
 procedure TPadCommandSetTests.IndentCommand_InvokesIndent;
 begin
-  RegisterStaticPadCommands(FRegistry, BuildActions);
+  TPadCommandSet.Register(FRegistry, BuildActions);
   Invoke(CmdIndentName);
   Assert.AreEqual('Indent', FFired);
 end;
 
 procedure TPadCommandSetTests.EveryCommand_HasNameAndCategory;
 begin
-  RegisterStaticPadCommands(FRegistry, BuildActions);
+  TPadCommandSet.Register(FRegistry, BuildActions);
   for var Command in FRegistry.Commands do
   begin
     Assert.IsTrue(Command.Name <> '', 'empty command name');

@@ -44,6 +44,8 @@ type
       CarriageReturnEntity = '&#13;';
       SpaceEntity = '&#32;';
       StrikethroughMarker = '~~';
+      InlineMathMarker = '$';
+      DisplayMathMarker = '$$';
       TaskCheckedText = '[x]';
       TaskUncheckedText = '[ ]';
       TablePipe = '|';
@@ -91,6 +93,10 @@ type
     procedure WriteAutolink(const Node: IMarkdownNode);
     class function AutolinkLabel(const Node: IMarkdownNode): string;
     procedure WriteInlineHtml(const Node: IMarkdownText);
+    procedure WriteMath(const Task: TWriteTask);
+    procedure WriteInlineMath(const Node: IMarkdownMath);
+    procedure WriteMathBlock(const Task: TWriteTask; const Node: IMarkdownMath);
+    class function IsBlockContainer(const Kind: TMarkdownNodeKind): Boolean;
     procedure EnterCustomInline(const Task: TWriteTask);
     procedure EnterTable(const Task: TWriteTask);
     procedure EnterTableRow(const Task: TWriteTask);
@@ -233,7 +239,13 @@ begin
       EnterTableRow(Task);
     TMarkdownNodeKind.TableCell:
       EnterTableCell(Task);
+    TMarkdownNodeKind.Math:
+      WriteMath(Task);
   else
+    // Render pushes only Document's children (see PushChildren), so Document
+    // itself never reaches EnterNode; this guards a future node kind added
+    // without updating this dispatcher.
+    raise ENotSupportedException.CreateFmt('Unsupported node kind: %d', [Ord(Task.Node.Kind)]);
   end;
 end;
 
@@ -263,6 +275,9 @@ begin
     TMarkdownNodeKind.TableCell:
       WriteRaw(Space + TablePipe);
   else
+    // Document is never scheduled here either (see EnterNode above), and
+    // every other kind that reaches a Leave task is handled above.
+    raise ENotSupportedException.CreateFmt('Unsupported node kind: %d', [Ord(Task.Node.Kind)]);
   end;
 end;
 
@@ -371,13 +386,20 @@ begin
   if List.IsOrdered then
   begin
     if Alternate then
-      Exit(AlternateOrderedDelimiter);
+    begin
+      Result := AlternateOrderedDelimiter;
+      Exit;
+    end;
 
-    Exit(OrderedDelimiter);
+    Result := OrderedDelimiter;
+    Exit;
   end;
 
   if Alternate then
-    Exit(AlternateBulletMarker);
+  begin
+    Result := AlternateBulletMarker;
+    Exit;
+  end;
 
   Result := BulletMarker;
 end;
@@ -430,11 +452,17 @@ function TMarkdownWriter.FollowsRawAutolink(const Task: TWriteTask): Boolean;
 begin
   const HasPreviousSibling = (Task.Parent <> nil) and (Task.Index > 0);
   if not HasPreviousSibling then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Previous = Task.Parent.Children[Task.Index - 1];
   if Previous.Kind <> TMarkdownNodeKind.Autolink then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Result := AutolinkLabel(Previous).StartsWith(WwwPrefix);
 end;
@@ -470,10 +498,16 @@ end;
 function TMarkdownWriter.PreviousContextChar: Char;
 begin
   if FPendingSpace then
-    Exit(Space);
+  begin
+    Result := Space;
+    Exit;
+  end;
 
   if FAtLineStart or (FOutput.Length = 0) then
-    Exit(LineFeed);
+  begin
+    Result := LineFeed;
+    Exit;
+  end;
 
   Result := FOutput.Chars[FOutput.Length - 1];
 end;
@@ -539,7 +573,10 @@ begin
   end;
 
   if NeedsAngleBrackets then
-    Exit(LessThan + EscapeCharacters(Encoded, [LessThan, GreaterThan, Ampersand, Backslash]) + GreaterThan);
+  begin
+    Result := LessThan + EscapeCharacters(Encoded, [LessThan, GreaterThan, Ampersand, Backslash]) + GreaterThan;
+    Exit;
+  end;
 
   Result := EscapeCharacters(Encoded,
     [OpenParen, CloseParen, LessThan, GreaterThan, Ampersand, Backslash]);
@@ -567,7 +604,10 @@ end;
 class function TMarkdownWriter.FormatTitle(const Value: string): string;
 begin
   if Value = '' then
-    Exit('');
+  begin
+    Result := '';
+    Exit;
+  end;
 
   Result := Space + TitleQuote + EscapeCharacters(Value, [TitleQuote, Ampersand, Backslash]) + TitleQuote;
 end;
@@ -589,7 +629,10 @@ class function TMarkdownWriter.AutolinkLabel(const Node: IMarkdownNode): string;
 begin
   const HasTextChild = (Node.ChildCount > 0) and (Node.Children[0].Kind = TMarkdownNodeKind.Text);
   if HasTextChild then
-    Exit((Node.Children[0] as IMarkdownText).Literal);
+  begin
+    Result := (Node.Children[0] as IMarkdownText).Literal;
+    Exit;
+  end;
 
   Result := (Node as IMarkdownLink).Destination;
 end;
@@ -602,6 +645,57 @@ begin
     Content := StringReplace(Content, TablePipe, EscapedPipe, [rfReplaceAll]);
 
   WriteText(Content);
+end;
+
+// A formula that sits directly in a container came from a $$ block (or a
+// ```math fence) and goes back out as a block; anything inside a paragraph,
+// heading or cell is written inline with one or two dollars.
+procedure TMarkdownWriter.WriteMath(const Task: TWriteTask);
+begin
+  const Node = Task.Node as IMarkdownMath;
+
+  const IsBlock = (Task.Parent <> nil) and IsBlockContainer(Task.Parent.Kind);
+  if IsBlock then
+    WriteMathBlock(Task, Node)
+  else
+    WriteInlineMath(Node);
+end;
+
+procedure TMarkdownWriter.WriteInlineMath(const Node: IMarkdownMath);
+begin
+  var Marker: string := InlineMathMarker;
+  if Node.IsDisplay then
+    Marker := DisplayMathMarker;
+
+  var Content := Node.Literal;
+  if FInTable then
+    Content := StringReplace(Content, TablePipe, EscapedPipe, [rfReplaceAll]);
+
+  WriteRaw(Marker + Content + Marker);
+end;
+
+procedure TMarkdownWriter.WriteMathBlock(const Task: TWriteTask; const Node: IMarkdownMath);
+begin
+  BeginBlock(Task);
+
+  WriteRaw(DisplayMathMarker);
+  WriteLineBreak;
+
+  const HasContent = (Node.Literal <> '');
+  if HasContent then
+  begin
+    WriteText(Node.Literal);
+    WriteLineBreak;
+  end;
+
+  WriteRaw(DisplayMathMarker);
+  EnsureLineBreak;
+end;
+
+class function TMarkdownWriter.IsBlockContainer(const Kind: TMarkdownNodeKind): Boolean;
+begin
+  Result := (Kind = TMarkdownNodeKind.Document) or (Kind = TMarkdownNodeKind.BlockQuote) or
+    (Kind = TMarkdownNodeKind.ListItem);
 end;
 
 procedure TMarkdownWriter.EnterCustomInline(const Task: TWriteTask);
@@ -857,7 +951,10 @@ begin
       const IsBreak = (Current.Kind = TMarkdownNodeKind.SoftLineBreak) or
         (Current.Kind = TMarkdownNodeKind.HardLineBreak);
       if IsBreak then
-        Exit(True);
+      begin
+        Result := True;
+        Exit;
+      end;
 
       for var Index := 0 to Current.ChildCount - 1 do
       begin
@@ -928,14 +1025,20 @@ end;
 class function TMarkdownWriter.SplitCodeLines(const Literal: string): TArray<string>;
 begin
   if Literal = '' then
-    Exit(nil);
+  begin
+    Result := nil;
+    Exit;
+  end;
 
   var Content := Literal;
   if Content.EndsWith(LineFeed) then
     SetLength(Content, Length(Content) - 1);
 
   if Content = '' then
-    Exit(TArray<string>.Create(''));
+  begin
+    Result := TArray<string>.Create('');
+    Exit;
+  end;
 
   Result := Content.Split([LineFeed]);
 end;

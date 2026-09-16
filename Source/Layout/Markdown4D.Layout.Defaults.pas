@@ -22,6 +22,7 @@ const
   MonospaceFamilyName = 'monospace';
   SansSerifFamilyName = 'sans-serif';
   SerifFamilyName = 'serif';
+  MathFamilyName = 'math';
   MonospaceFallbackFamilyName = 'Consolas';
   SerifFallbackFamilyName = 'Georgia';
   DefaultFallbackFamilyName = 'Segoe UI';

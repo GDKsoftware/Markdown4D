@@ -52,7 +52,10 @@ begin
   Run := Default(TMarkdownGlyphRun);
 
   if (not Assigned(FOutliner)) or (Text = '') or (PixelSize <= 0) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Result := FOutliner(FamilyName, PixelSize, Bold, Italic, Text, Run);
 end;

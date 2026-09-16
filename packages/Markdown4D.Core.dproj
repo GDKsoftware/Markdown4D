@@ -89,6 +89,8 @@
         <DCCReference Include="..\Source\Core\Markdown4D.Extensions.Chart.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Extensions.Mermaid.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Extensions.Gfm.pas"/>
+        <DCCReference Include="..\Source\Core\Markdown4D.Extensions.Math.pas"/>
+        <DCCReference Include="..\Source\Core\Markdown4D.Math.Syntax.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Extensions.Interfaces.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Extensions.Sample.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Highlighter.Interfaces.pas"/>
@@ -135,6 +137,8 @@
         <DCCReference Include="..\Source\Layout\Markdown4D.Extensions.Mermaid.BlockOverride.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Extensions.Mermaid.Layout.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.BlockOverride.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Math.Layout.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Math.Font.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.Defaults.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.DisplayList.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.Engine.pas"/>

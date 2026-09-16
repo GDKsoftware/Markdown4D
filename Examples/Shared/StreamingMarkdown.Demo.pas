@@ -15,6 +15,8 @@ type
     FText: string;
     FPosition: Integer;
   public
+    // The canned markdown answer both chat demos stream out.
+    class function BuildSampleAnswer: string; static;
     // Loads the text and rewinds to the start.
     procedure Reset(const Text: string);
     // True while there is still text left to emit.
@@ -24,9 +26,6 @@ type
     function NextChunk(const RequestedLength: Integer): string;
   end;
 
-// The canned markdown answer both chat demos stream out.
-function BuildStreamingSampleAnswer: string;
-
 implementation
 
 uses
@@ -34,26 +33,7 @@ uses
 
 { TMarkdownStreamer }
 
-procedure TMarkdownStreamer.Reset(const Text: string);
-begin
-  FText := Text;
-  FPosition := 1;
-end;
-
-function TMarkdownStreamer.HasMore: Boolean;
-begin
-  Result := FPosition <= Length(FText);
-end;
-
-function TMarkdownStreamer.NextChunk(const RequestedLength: Integer): string;
-begin
-  const Remaining = Length(FText) - FPosition + 1;
-  const ChunkLength = Min(Remaining, Max(0, RequestedLength));
-  Result := Copy(FText, FPosition, ChunkLength);
-  Inc(FPosition, ChunkLength);
-end;
-
-function BuildStreamingSampleAnswer: string;
+class function TMarkdownStreamer.BuildSampleAnswer: string;
 begin
   Result :=
     '# Streaming Markdown'#10#10 +
@@ -121,6 +101,25 @@ begin
     '> Try selecting text while the answer is still streaming - the selection survives relayouts.'#10#10 +
     'Read more in the [CommonMark spec](https://spec.commonmark.org) or the ' +
     '[GFM spec](https://github.github.com/gfm/).'#10;
+end;
+
+procedure TMarkdownStreamer.Reset(const Text: string);
+begin
+  FText := Text;
+  FPosition := 1;
+end;
+
+function TMarkdownStreamer.HasMore: Boolean;
+begin
+  Result := FPosition <= Length(FText);
+end;
+
+function TMarkdownStreamer.NextChunk(const RequestedLength: Integer): string;
+begin
+  const Remaining = Length(FText) - FPosition + 1;
+  const ChunkLength = Min(Remaining, Max(0, RequestedLength));
+  Result := Copy(FText, FPosition, ChunkLength);
+  Inc(FPosition, ChunkLength);
 end;
 
 end.

@@ -111,7 +111,10 @@ function TJsonLineScanner.IsKeyString(const Start: Integer): Boolean;
 begin
   const CloseIndex = FindStringClose(Start);
   if CloseIndex = 0 then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var Probe := CloseIndex + 1;
   while (Probe <= Length(FLine)) and CharInSet(FLine[Probe], WhitespaceCharacters) do
@@ -137,7 +140,10 @@ begin
     end;
 
     if Current = QuoteCharacter then
-      Exit(Probe);
+    begin
+      Result := Probe;
+      Exit;
+    end;
 
     Inc(Probe);
   end;

@@ -20,6 +20,12 @@ type
     procedure WriteFile(const RelativePath: string);
 
   public
+    [Setup]
+    procedure Setup;
+
+    [TearDown]
+    procedure TearDown;
+
     [Test]
     [TestCase('http', 'http://example.com')]
     [TestCase('https', 'https://example.com/page?a=1')]
@@ -43,12 +49,6 @@ type
 
     [Test]
     procedure RefusalMessage_AnyUrl_NamesTheDestination;
-
-    [Setup]
-    procedure Setup;
-
-    [TearDown]
-    procedure TearDown;
 
     [Test]
     procedure TryResolveDocument_NeighbouringMarkdownFile_ResolvesToFullPath;

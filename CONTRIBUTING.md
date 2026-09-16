@@ -61,7 +61,8 @@ will not be merged:
 
 Follow what is already there. In short: descriptive names without
 abbreviations, `const` for parameters that are not written to, guard clauses
-instead of deep nesting, one blank line between the logical steps of a method,
+instead of deep nesting (assign `Result` and then a bare `Exit`, never
+`Exit(Value)`), one blank line between the logical steps of a method,
 an explicit `else` on every `case` over an enum, and a comment only where it
 explains *why*, never *what*.
 

@@ -194,7 +194,7 @@ begin
       const Current = Pending.Pop;
 
       case Current.Kind of
-        TMarkdownNodeKind.Text, TMarkdownNodeKind.CodeSpan:
+        TMarkdownNodeKind.Text, TMarkdownNodeKind.CodeSpan, TMarkdownNodeKind.Math:
           CaptionText.Append((Current as IMarkdownText).Literal);
         TMarkdownNodeKind.SoftLineBreak, TMarkdownNodeKind.HardLineBreak:
           CaptionText.Append(CaptionSeparator);
@@ -220,7 +220,10 @@ begin
   FAnchorUsage.AddOrSetValue(Anchor, UsedCount + 1);
 
   if UsedCount = 0 then
-    Exit(Anchor);
+  begin
+    Result := Anchor;
+    Exit;
+  end;
 
   Result := Format(AnchorSuffixFormat, [Anchor, UsedCount]);
 end;

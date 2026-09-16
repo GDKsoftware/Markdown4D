@@ -292,7 +292,10 @@ begin
 
   var Data: TBitmapData;
   if not Bitmap.Map(TMapAccess.Read, Data) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   try
     for var YIndex := 0 to BandHeight - 1 do
@@ -301,7 +304,10 @@ begin
       begin
         const IsWhite = (Data.GetPixel(XIndex, YIndex) = TAlphaColorRec.White);
         if not IsWhite then
-          Exit(False);
+        begin
+          Result := False;
+          Exit;
+        end;
       end;
     end;
   finally

@@ -54,7 +54,8 @@ begin
     if Assigned(FOnDocument) then
       FOnDocument(FileName);
 
-    Exit(1);
+    Result := 1;
+    Exit;
   end;
 
   Result := DefWindowProc(Wnd, Msg, WParam, LParam);
@@ -71,7 +72,10 @@ class function TPadSingleInstance.TryHandOff(const ChannelName, FileName: string
 begin
   const Channel = FindChannel(ChannelName);
   if Channel = 0 then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var Data := Default(TCopyDataStruct);
   Data.cbData := Length(FileName) * SizeOf(Char);
@@ -94,9 +98,23 @@ begin
   WindowClass.lpfnWndProc := @ChannelWndProc;
   WindowClass.hInstance := HInstance;
   WindowClass.lpszClassName := PChar(FChannelName);
-  Winapi.Windows.RegisterClass(WindowClass);
+
+  // A registration or window-creation failure here just turns off the "open
+  // with lands in an existing tab" hand-off; the studio still starts as an
+  // ordinary (non-single-instance) window instead of failing to launch.
+  const ClassRegistered = (Winapi.Windows.RegisterClass(WindowClass) <> 0);
+  if not ClassRegistered then
+  begin
+    FChannelName := '';
+    Exit;
+  end;
 
   FWindow := CreateWindowEx(0, PChar(FChannelName), nil, 0, 0, 0, 0, 0, HWND_MESSAGE, 0, HInstance, nil);
+  if FWindow = 0 then
+  begin
+    Winapi.Windows.UnregisterClass(PChar(FChannelName), HInstance);
+    FChannelName := '';
+  end;
 end;
 
 class procedure TPadSingleInstance.CloseChannel;

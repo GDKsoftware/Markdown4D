@@ -75,10 +75,16 @@ begin
   // AltGr arrives as Ctrl+Alt. Claiming those would swallow the characters that
   // layouts put behind AltGr, so the keystroke is left to the character path.
   if ssAlt in Shift then
-    Exit(TEditorKeyStroke.Create(TEditorKeyAction.None, False));
+  begin
+    Result := TEditorKeyStroke.Create(TEditorKeyAction.None, False);
+    Exit;
+  end;
 
   if ssCtrl in Shift then
-    Exit(ResolveControl(Key, Extend));
+  begin
+    Result := ResolveControl(Key, Extend);
+    Exit;
+  end;
 
   Result := ResolvePlain(Key, Extend);
 end;

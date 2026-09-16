@@ -57,14 +57,40 @@ const
   HeightAttribute = 'height';
   LeftAttribute = 'x';
   TopAttribute = 'y';
+  RadiusAttribute = 'r';
   RadiusXAttribute = 'rx';
   RadiusYAttribute = 'ry';
   CentreXAttribute = 'cx';
   CentreYAttribute = 'cy';
+  X1Attribute = 'x1';
+  Y1Attribute = 'y1';
+  X2Attribute = 'x2';
+  Y2Attribute = 'y2';
+  PointsAttribute = 'points';
+  StyleAttribute = 'style';
+  MaskAttribute = 'mask';
+  HrefAttribute = 'href';
+  XlinkHrefAttribute = 'xlink:href';
   FilterAttribute = 'filter';
   InputAttribute = 'in';
   ZeroLength = '0';
+
+  // The element names read more than once.
   FilterElement = 'filter';
+  StyleElement = 'style';
+  MaskElement = 'mask';
+  SvgElement = 'svg';
+  LineElement = 'line';
+  PolylineElement = 'polyline';
+  LinearGradientElement = 'lineargradient';
+
+  // The presentation values compared more than once, spelled exactly as the
+  // SVG specification writes them.
+  NoneValue = 'none';
+  CurrentColorValue = 'currentcolor';
+  RoundValue = 'round';
+  ObjectBoundingBoxValue = 'objectBoundingBox';
+  UserSpaceOnUseValue = 'userSpaceOnUse';
 
 type
   // Reads the values an SVG writes into its attributes: lengths, fractions,
@@ -166,8 +192,8 @@ type
       MaxFragmentDepth = 8;
       RadiansPerDegree = Pi / 180;
       OpaqueAlpha = $FF000000;
-      SkippedElements: array[0..6] of string = ('defs', 'clippath', 'mask', 'marker', FilterElement, 'style',
-        'pattern');
+      SkippedElements: array[0..6] of string = ('defs', 'clippath', MaskElement, 'marker', FilterElement,
+        StyleElement, 'pattern');
       UnsupportedElements: array[0..0] of string = ('foreignobject');
     var
       FRaster: TMarkdownPixelRaster;
@@ -326,7 +352,10 @@ const
 begin
   var Trimmed := Text.Trim;
   if Trimmed = '' then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   for var Suffix in Suffixes do
   begin
@@ -346,7 +375,10 @@ begin
 
   const Trimmed = Text.Trim;
   if Trimmed = '' then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   if Trimmed.EndsWith('%') then
   begin
@@ -373,7 +405,10 @@ begin
   Color := $FF000000;
   const Trimmed = Text.Trim.ToLowerInvariant;
   if Trimmed = '' then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   if Trimmed.StartsWith('#') then
   begin
@@ -383,18 +418,28 @@ begin
     if Length(Digits) = 3 then
     begin
       if not TryStrToInt('$' + Digits[1] + Digits[1] + Digits[2] + Digits[2] + Digits[3] + Digits[3], Value) then
-        Exit(False);
+      begin
+        Result := False;
+        Exit;
+      end;
     end
     else if Length(Digits) = 6 then
     begin
       if not TryStrToInt('$' + Digits, Value) then
-        Exit(False);
+      begin
+        Result := False;
+        Exit;
+      end;
     end
     else
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     Color := TLayoutColor(Cardinal(Value) or $FF000000);
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   if Trimmed.StartsWith('rgb(') and Trimmed.EndsWith(')') then
@@ -406,11 +451,15 @@ begin
     var Green: Single;
     var Blue: Single;
     if not (Reader.TryReadNumber(Red) and Reader.TryReadNumber(Green) and Reader.TryReadNumber(Blue)) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     Color := TLayoutColor($FF000000 or (Cardinal(Round(EnsureRange(Red, 0, 255))) shl 16) or
       (Cardinal(Round(EnsureRange(Green, 0, 255))) shl 8) or Cardinal(Round(EnsureRange(Blue, 0, 255))));
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   for var Entry in Named do
@@ -418,7 +467,8 @@ begin
     if Entry.Name = Trimmed then
     begin
       Color := TLayoutColor(Entry.Value);
-      Exit(True);
+      Result := True;
+      Exit;
     end;
   end;
 
@@ -432,7 +482,10 @@ begin
 
   const Trimmed = Text.Trim;
   if not (Trimmed.StartsWith('url(', True) and Trimmed.EndsWith(')')) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var Inner := Copy(Trimmed, 5, Length(Trimmed) - 5).Trim;
   if Inner.StartsWith('#') then
@@ -451,13 +504,23 @@ begin
       Continue;
 
     if SameText(Trimmed, 'sans-serif') then
-      Exit('Segoe UI');
+    begin
+      Result := 'Segoe UI';
+      Exit;
+    end;
     if SameText(Trimmed, 'serif') then
-      Exit('Times New Roman');
+    begin
+      Result := 'Times New Roman';
+      Exit;
+    end;
     if SameText(Trimmed, 'monospace') then
-      Exit('Consolas');
+    begin
+      Result := 'Consolas';
+      Exit;
+    end;
 
-    Exit(Trimmed);
+    Result := Trimmed;
+    Exit;
   end;
 
   Result := 'Segoe UI';
@@ -476,7 +539,10 @@ begin
       Continue;
 
     if SameText(Copy(Part, 1, Separator - 1).Trim, Name) then
-      Exit(Copy(Part, Separator + 1, MaxInt).Trim);
+    begin
+      Result := Copy(Part, Separator + 1, MaxInt).Trim;
+      Exit;
+    end;
   end;
 end;
 
@@ -484,7 +550,7 @@ end;
 // with the style winning, so both are read through one lookup.
 class function TSvgValue.PresentationValue(const Element: TSvgXmlElement; const Name: string): string;
 begin
-  const Style = Element.Attribute('style');
+  const Style = Element.Attribute(StyleAttribute);
 
   Result := TSvgValue.StyleValue(Style, Name);
   if Result = '' then
@@ -574,7 +640,7 @@ begin
   if Fill <> '' then
   begin
     var Reference := '';
-    if SameText(Fill.Trim, 'none') then
+    if SameText(Fill.Trim, NoneValue) then
       Result.HasFill := False
     else if TSvgValue.TryParseReference(Fill, Reference) then
     begin
@@ -586,7 +652,7 @@ begin
       Result.FillPaintId := '';
       Result.HasFill := True;
     end
-    else if not SameText(Fill.Trim, 'currentcolor') then
+    else if not SameText(Fill.Trim, CurrentColorValue) then
       raise ESvgUnsupported.CreateFmt('fill "%s"', [Fill]);
   end;
 
@@ -594,7 +660,7 @@ begin
   if Stroke <> '' then
   begin
     var Reference := '';
-    if SameText(Stroke.Trim, 'none') then
+    if SameText(Stroke.Trim, NoneValue) then
       Result.HasStroke := False
     else if TSvgValue.TryParseReference(Stroke, Reference) then
     begin
@@ -606,7 +672,7 @@ begin
       Result.StrokePaintId := '';
       Result.HasStroke := True;
     end
-    else if not SameText(Stroke.Trim, 'currentcolor') then
+    else if not SameText(Stroke.Trim, CurrentColorValue) then
       raise ESvgUnsupported.CreateFmt('stroke "%s"', [Stroke]);
   end;
 
@@ -628,11 +694,11 @@ begin
   else if SameText(TSvgValue.PresentationValue(Element, 'fill-rule').Trim, 'nonzero') then
     Result.FillRule := TMarkdownFillRule.NonZero;
 
-  Result.RoundCaps := SameText(TSvgValue.PresentationValue(Element, 'stroke-linecap').Trim, 'round');
+  Result.RoundCaps := SameText(TSvgValue.PresentationValue(Element, 'stroke-linecap').Trim, RoundValue);
 
   const Join = TSvgValue.PresentationValue(Element, 'stroke-linejoin').Trim;
   if Join <> '' then
-    Result.RoundJoins := SameText(Join, 'round');
+    Result.RoundJoins := SameText(Join, RoundValue);
 
   // Font properties are inherited, and a document that sets them on a group
   // expects the text inside it to pick them up.
@@ -689,6 +755,10 @@ begin
   Result := FStack[High(FStack)];
 end;
 
+// Pushed once so that MaskFor's own Frame lookup already sees this element's
+// depth, matrix and clip-path mask while it renders the referenced <mask>
+// markup, popped again because Next is a value and the mask MaskFor resolves
+// still has to land on it, then pushed for real now that Next carries it.
 procedure TNativeSvgRenderer.Push(const Element: TSvgXmlElement);
 begin
   var Next := Frame;
@@ -702,7 +772,7 @@ begin
 
   FStack := FStack + [Next];
   try
-    if TSvgValue.TryParseReference(TSvgValue.PresentationValue(Element, 'mask'), Reference) then
+    if TSvgValue.TryParseReference(TSvgValue.PresentationValue(Element, MaskAttribute), Reference) then
       Next.Mask := MaskFor(Reference, Next.Mask);
   finally
     Pop;
@@ -788,7 +858,10 @@ class function TNativeSvgRenderer.RectanglePath(const Left, Top, Width, Height,
   RadiusX, RadiusY: Single): TArray<TSvgSubPath>;
 begin
   if (Width <= 0) or (Height <= 0) then
-    Exit(nil);
+  begin
+    Result := nil;
+    Exit;
+  end;
 
   const Rx = Min(Max(0, RadiusX), Width / 2);
   const Ry = Min(Max(0, RadiusY), Height / 2);
@@ -824,7 +897,10 @@ const
   Segments = 72;
 begin
   if (RadiusX <= 0) or (RadiusY <= 0) then
-    Exit(nil);
+  begin
+    Result := nil;
+    Exit;
+  end;
 
   var Points: TArray<TLayoutPointF>;
   SetLength(Points, Segments);
@@ -853,7 +929,10 @@ begin
   end;
 
   if Length(Points) < 2 then
-    Exit(nil);
+  begin
+    Result := nil;
+    Exit;
+  end;
 
   var SubPath: TSvgSubPath;
   SubPath.Points := Points;
@@ -874,7 +953,10 @@ begin
   var Height: Single;
 
   if Name = 'path' then
-    Exit(TSvgPathParser.Parse(Element.Attribute('d')));
+  begin
+    Result := TSvgPathParser.Parse(Element.Attribute('d'));
+    Exit;
+  end;
 
   if Name = 'rect' then
   begin
@@ -896,20 +978,22 @@ begin
     if RadiusX = 0 then
       RadiusX := RadiusY;
 
-    Exit(RectanglePath(Left, Top, Width, Height, RadiusX, RadiusY));
+    Result := RectanglePath(Left, Top, Width, Height, RadiusX, RadiusY);
+    Exit;
   end;
 
   if Name = 'circle' then
   begin
     var Radius: Single;
-    if not TSvgValue.TryParseLength(Element.Attribute('r'), Radius) then
+    if not TSvgValue.TryParseLength(Element.Attribute(RadiusAttribute), Radius) then
       Exit;
     if not TSvgValue.TryParseLength(Element.Attribute(CentreXAttribute, ZeroLength), Left) then
       Left := 0;
     if not TSvgValue.TryParseLength(Element.Attribute(CentreYAttribute, ZeroLength), Top) then
       Top := 0;
 
-    Exit(EllipsePath(Left, Top, Radius, Radius));
+    Result := EllipsePath(Left, Top, Radius, Radius);
+    Exit;
   end;
 
   if Name = 'ellipse' then
@@ -924,15 +1008,16 @@ begin
     if not TSvgValue.TryParseLength(Element.Attribute(CentreYAttribute, ZeroLength), Top) then
       Top := 0;
 
-    Exit(EllipsePath(Left, Top, RadiusX, RadiusY));
+    Result := EllipsePath(Left, Top, RadiusX, RadiusY);
+    Exit;
   end;
 
-  if Name = 'line' then
+  if Name = LineElement then
   begin
-    if not (TSvgValue.TryParseLength(Element.Attribute('x1', '0'), Left) and
-      TSvgValue.TryParseLength(Element.Attribute('y1', '0'), Top) and
-      TSvgValue.TryParseLength(Element.Attribute('x2', '0'), Width) and
-      TSvgValue.TryParseLength(Element.Attribute('y2', '0'), Height)) then
+    if not (TSvgValue.TryParseLength(Element.Attribute(X1Attribute, ZeroLength), Left) and
+      TSvgValue.TryParseLength(Element.Attribute(Y1Attribute, ZeroLength), Top) and
+      TSvgValue.TryParseLength(Element.Attribute(X2Attribute, ZeroLength), Width) and
+      TSvgValue.TryParseLength(Element.Attribute(Y2Attribute, ZeroLength), Height)) then
       Exit;
 
     var SubPath: TSvgSubPath;
@@ -943,11 +1028,17 @@ begin
     Exit;
   end;
 
-  if Name = 'polyline' then
-    Exit(PointsPath(Element.Attribute('points'), False));
+  if Name = PolylineElement then
+  begin
+    Result := PointsPath(Element.Attribute(PointsAttribute), False);
+    Exit;
+  end;
 
   if Name = 'polygon' then
-    Exit(PointsPath(Element.Attribute('points'), True));
+  begin
+    Result := PointsPath(Element.Attribute(PointsAttribute), True);
+    Exit;
+  end;
 end;
 
 procedure TNativeSvgRenderer.DrawElement(const Element: TSvgXmlElement);
@@ -972,7 +1063,7 @@ begin
 
   // A line or an open polyline has no inside to fill, whatever the style says.
   const Name = Element.Name.ToLowerInvariant;
-  if (Name = 'line') or (Name = 'polyline') then
+  if (Name = LineElement) or (Name = PolylineElement) then
     Style.HasFill := False;
 
   DrawSubPaths(SubPaths, Style, Frame.Matrix);
@@ -1043,20 +1134,31 @@ begin
 
   const Trimmed = Reference.Trim;
   if not Trimmed.StartsWith('data:', True) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Separator = Pos(',', Trimmed);
   if Separator = 0 then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Header = Copy(Trimmed, 1, Separator - 1);
   if not Header.ToLowerInvariant.Contains('base64') then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   try
     Data := TNetEncoding.Base64.DecodeStringToBytes(Copy(Trimmed, Separator + 1, MaxInt));
     Result := Length(Data) > 0;
   except
+    // The payload comes from the document; malformed base64 is the host's
+    // problem to report, not a reason to take the renderer down with it.
     on Exception do
       Result := False;
   end;
@@ -1067,9 +1169,9 @@ end;
 // special case: the matrix is simply read backwards.
 procedure TNativeSvgRenderer.DrawImage(const Element: TSvgXmlElement);
 begin
-  var Reference := Element.Attribute('href');
+  var Reference := Element.Attribute(HrefAttribute);
   if Reference = '' then
-    Reference := Element.Attribute('xlink:href');
+    Reference := Element.Attribute(XlinkHrefAttribute);
 
   var Data: TBytes;
   if not TryDecodeDataUri(Reference, Data) then
@@ -1124,7 +1226,7 @@ begin
   const LastRow = Min(FRaster.Height - 1, Ceil(Bounds.Bottom));
 
   const Opacity = EnsureRange(Style.Opacity, 0, 1);
-  const HasMask = Length(Frame.Mask) = FRaster.Width * FRaster.Height;
+  const HasMask = (Length(Frame.Mask) = FRaster.Width * FRaster.Height);
 
   for var Row := FirstRow to LastRow do
   begin
@@ -1134,8 +1236,8 @@ begin
       const SourceColumn = Trunc(Origin.X);
       const SourceRow = Trunc(Origin.Y);
 
-      const Outside = (Origin.X < 0) or (Origin.Y < 0) or (SourceColumn >= Source.Width) or
-        (SourceRow >= Source.Height);
+      const Outside = ((Origin.X < 0) or (Origin.Y < 0) or (SourceColumn >= Source.Width) or
+        (SourceRow >= Source.Height));
       if Outside then
         Continue;
 
@@ -1194,19 +1296,28 @@ begin
 
   var Definition := '';
   if not FDefinitions.TryGetValue(Reference, Definition) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Scanner = TSvgXmlScanner.Create(Definition);
   var Wrapper: TSvgXmlElement;
   try
     if not Scanner.ReadElement(Wrapper) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
   finally
     Scanner.Free;
   end;
 
   if not SameText(Wrapper.Name, 'pattern') then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var Left: Single := 0;
   var Top: Single := 0;
@@ -1216,9 +1327,12 @@ begin
   TSvgValue.TryParseFraction(Wrapper.Attribute(TopAttribute, ZeroLength), Top);
   if not (TSvgValue.TryParseFraction(Wrapper.Attribute(WidthAttribute), Width) and
     TSvgValue.TryParseFraction(Wrapper.Attribute(HeightAttribute), Height)) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
-  const OnBoundingBox = not SameText(Wrapper.Attribute('patternUnits', 'objectBoundingBox'), 'userSpaceOnUse');
+  const OnBoundingBox = not SameText(Wrapper.Attribute('patternUnits', ObjectBoundingBoxValue), UserSpaceOnUseValue);
   const Bounds = BoundsOf(Contours);
 
   var TileWidth: Single;
@@ -1246,11 +1360,17 @@ begin
   const PixelWidth = Round(TileWidth);
   const PixelHeight = Round(TileHeight);
   if (PixelWidth <= 0) or (PixelHeight <= 0) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Markup = InnerMarkup(Definition);
   if Markup = '' then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Beneath = FRaster;
   FRaster := TMarkdownPixelRaster.Create(PixelWidth, PixelHeight);
@@ -1282,12 +1402,18 @@ begin
   begin
     var Tile: TMarkdownPaint;
     if TryTilePaint(PaintId, Contours, Matrix, Tile) then
-      Exit(Tile);
+    begin
+      Result := Tile;
+      Exit;
+    end;
   end;
 
   var Gradient: TSvgGradient;
   if (PaintId = '') or (not FGradients.TryGetValue(PaintId, Gradient)) then
-    Exit(TMarkdownPaint.SolidColor(TSvgValue.WithOpacity(Color, Opacity)));
+  begin
+    Result := TMarkdownPaint.SolidColor(TSvgValue.WithOpacity(Color, Opacity));
+    Exit;
+  end;
 
   var Stops := Gradient.Stops;
   for var Index := 0 to High(Stops) do
@@ -1319,7 +1445,10 @@ begin
   end;
 
   if Gradient.Kind = TMarkdownPaintKind.RadialGradient then
-    Exit(TMarkdownPaint.Radial(First, Radius, Stops));
+  begin
+    Result := TMarkdownPaint.Radial(First, Radius, Stops);
+    Exit;
+  end;
 
   Result := TMarkdownPaint.Linear(First, Second, Stops);
 end;
@@ -1347,7 +1476,10 @@ begin
     TMarkdownFillRule.NonZero);
 
   if Length(Parent) <> Length(Coverage) then
-    Exit(Coverage);
+  begin
+    Result := Coverage;
+    Exit;
+  end;
 
   // Two clips in force at once hold a shape to what they have in common.
   var Combined: TMarkdownClipMask;
@@ -1398,7 +1530,7 @@ begin
           Pop;
         end;
 
-        if SameText(Name, 'svg') or (FDepth < BaseDepth) then
+        if SameText(Name, SvgElement) or (FDepth < BaseDepth) then
           Break;
 
         Continue;
@@ -1470,9 +1602,9 @@ end;
 // A use element draws what it points at, moved to where it was put.
 procedure TNativeSvgRenderer.DrawUse(const Element: TSvgXmlElement);
 begin
-  var Reference := Element.Attribute('href');
+  var Reference := Element.Attribute(HrefAttribute);
   if Reference = '' then
-    Reference := Element.Attribute('xlink:href');
+    Reference := Element.Attribute(XlinkHrefAttribute);
 
   Reference := Reference.Trim;
   if Reference.StartsWith('#') then
@@ -1508,7 +1640,10 @@ begin
   const Closing = Markup.LastIndexOf('<') + 1;
 
   if (Opening = 0) or (Closing <= Opening) then
-    Exit('');
+  begin
+    Result := '';
+    Exit;
+  end;
 
   Result := Copy(Markup, Opening + 1, Closing - Opening - 1);
 end;
@@ -1547,7 +1682,10 @@ begin
   const Coverage = TMarkdownRasterFilters.LuminanceMask(Painted);
 
   if Length(Parent) <> Length(Coverage) then
-    Exit(Coverage);
+  begin
+    Result := Coverage;
+    Exit;
+  end;
 
   var Combined: TMarkdownClipMask;
   SetLength(Combined, Length(Coverage));
@@ -1702,6 +1840,7 @@ begin
             Current := Merged;
           end;
       else
+        raise ENotSupportedException.CreateFmt('Unhandled filter kind: %d', [Ord(Step.Kind)]);
       end;
 
       if Step.ResultName <> '' then
@@ -1772,7 +1911,7 @@ end;
 
 function TSvgGradientCollector.TryCollect(const Element: TSvgXmlElement; const Name: string): Boolean;
 begin
-  const IsGradient = (Name = 'lineargradient') or (Name = 'radialgradient');
+  const IsGradient = (Name = LinearGradientElement) or (Name = 'radialgradient');
 
   if Element.IsClosing then
   begin
@@ -1786,7 +1925,8 @@ begin
   if IsGradient then
   begin
     Start(Element, Name);
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   Result := (Name = 'stop') and (FId <> '');
@@ -1798,22 +1938,22 @@ procedure TSvgGradientCollector.Start(const Element: TSvgXmlElement; const Name:
 begin
   FGradient := Default(TSvgGradient);
   FId := Element.Attribute(IdAttribute);
-  FGradient.OnBoundingBox := not SameText(Element.Attribute('gradientUnits', 'objectBoundingBox'),
-    'userSpaceOnUse');
+  FGradient.OnBoundingBox := not SameText(Element.Attribute('gradientUnits', ObjectBoundingBoxValue),
+    UserSpaceOnUseValue);
 
   var Value: Single;
-  if Name = 'lineargradient' then
+  if Name = LinearGradientElement then
   begin
     FGradient.Kind := TMarkdownPaintKind.LinearGradient;
     FGradient.First := TLayoutPointF.Create(0, 0);
     FGradient.Second := TLayoutPointF.Create(1, 0);
-    if TSvgValue.TryParseFraction(Element.Attribute('x1'), Value) then
+    if TSvgValue.TryParseFraction(Element.Attribute(X1Attribute), Value) then
       FGradient.First.X := Value;
-    if TSvgValue.TryParseFraction(Element.Attribute('y1'), Value) then
+    if TSvgValue.TryParseFraction(Element.Attribute(Y1Attribute), Value) then
       FGradient.First.Y := Value;
-    if TSvgValue.TryParseFraction(Element.Attribute('x2'), Value) then
+    if TSvgValue.TryParseFraction(Element.Attribute(X2Attribute), Value) then
       FGradient.Second.X := Value;
-    if TSvgValue.TryParseFraction(Element.Attribute('y2'), Value) then
+    if TSvgValue.TryParseFraction(Element.Attribute(Y2Attribute), Value) then
       FGradient.Second.Y := Value;
 
     Exit;
@@ -1826,7 +1966,7 @@ begin
     FGradient.First.X := Value;
   if TSvgValue.TryParseFraction(Element.Attribute(CentreYAttribute), Value) then
     FGradient.First.Y := Value;
-  if TSvgValue.TryParseFraction(Element.Attribute('r'), Value) then
+  if TSvgValue.TryParseFraction(Element.Attribute(RadiusAttribute), Value) then
     FGradient.Radius := Value;
 end;
 
@@ -1909,29 +2049,38 @@ end;
 function TSvgFilterCollector.TryCollect(const Element: TSvgXmlElement; const Name: string): Boolean;
 begin
   if Element.IsClosing then
-    Exit(TryCollectClosing(Name));
+  begin
+    Result := TryCollectClosing(Name);
+    Exit;
+  end;
 
   if Name = FilterElement then
   begin
     FId := Element.Attribute(IdAttribute);
     FFilter := nil;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   if FId = '' then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   if Name = 'femerge' then
   begin
     FInMerge := True;
     FMergeInputs := nil;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   if (Name = 'femergenode') and FInMerge then
   begin
     FMergeInputs := FMergeInputs + [Element.Attribute(InputAttribute)];
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   FFilter := FFilter + [ReadStep(Element, Name)];
@@ -1943,7 +2092,8 @@ begin
   if Name = FilterElement then
   begin
     Finish;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   Result := Name = 'femerge';
@@ -2068,7 +2218,7 @@ begin
     var Found := False;
     while Scanner.ReadElement(Root) do
     begin
-      if (not Root.IsClosing) and SameText(Root.Name, 'svg') then
+      if (not Root.IsClosing) and SameText(Root.Name, SvgElement) then
       begin
         Found := True;
         Break;

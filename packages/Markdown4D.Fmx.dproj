@@ -92,6 +92,7 @@
         <DCCReference Include="..\Source\Fmx\Markdown4D.Fmx.ImageDecoder.pas"/>
         <DCCReference Include="..\Source\Fmx\Markdown4D.Fmx.Viewer.pas"/>
         <DCCReference Include="..\Source\Fmx\Markdown4D.Fmx.Editor.pas"/>
+        <DCCReference Include="..\Source\Fmx\Markdown4D.Fmx.MathFont.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

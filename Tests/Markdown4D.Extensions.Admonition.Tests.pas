@@ -5,11 +5,18 @@ unit Markdown4D.Extensions.Admonition.Tests;
 interface
 
 uses
-  DUnitX.TestFramework;
+  DUnitX.TestFramework,
+  Markdown4D.Ast.Interfaces,
+  Markdown4D.Extensions.Interfaces;
 
 type
   [TestFixture]
   TAdmonitionExtensionTests = class
+  private
+    class function BuildPipeline: IMarkdownPipeline;
+    class function FindFirstBlockQuote(const Document: IMarkdownDocument): IMarkdownNode;
+    class function TryGetAdmonitionKind(const Node: IMarkdownNode; out Kind: string): Boolean;
+
   public
     [Test]
     procedure NoteAlert_TagsBlockQuoteWithKind;
@@ -54,8 +61,6 @@ implementation
 uses
   System.SysUtils,
   System.Generics.Collections,
-  Markdown4D.Ast.Interfaces,
-  Markdown4D.Extensions.Interfaces,
   Markdown4D.Pipeline,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.DisplayList,
@@ -217,13 +222,19 @@ begin
   Kind := '';
 
   const Trimmed = FirstLine.Trim;
-  const HasMarker = Trimmed.StartsWith(MarkerOpen) and Trimmed.EndsWith(MarkerClose);
+  const HasMarker = (Trimmed.StartsWith(MarkerOpen) and Trimmed.EndsWith(MarkerClose));
   if not HasMarker then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Inner = Trimmed.Substring(Length(MarkerOpen), Length(Trimmed) - Length(MarkerOpen) - Length(MarkerClose));
   if not IsKnownKind(Inner) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Kind := Inner;
   Result := True;
@@ -234,35 +245,44 @@ begin
   for var Known in KnownKinds do
   begin
     if Known = Kind then
-      Exit(True);
+    begin
+      Result := True;
+      Exit;
+    end;
   end;
 
   Result := False;
 end;
 
-function BuildPipeline: IMarkdownPipeline;
+class function TAdmonitionExtensionTests.BuildPipeline: IMarkdownPipeline;
 begin
   Result := TMarkdownPipeline.Create.UseCommonMark.Use(TAdmonitionExtension.Create).Build;
 end;
 
-function FindFirstBlockQuote(const Document: IMarkdownDocument): IMarkdownNode;
+class function TAdmonitionExtensionTests.FindFirstBlockQuote(const Document: IMarkdownDocument): IMarkdownNode;
 begin
   Result := nil;
 
   for var Index := 0 to Document.ChildCount - 1 do
   begin
     if Document.Children[Index].Kind = TMarkdownNodeKind.BlockQuote then
-      Exit(Document.Children[Index]);
+    begin
+      Result := Document.Children[Index];
+      Exit;
+    end;
   end;
 end;
 
-function TryGetAdmonitionKind(const Node: IMarkdownNode; out Kind: string): Boolean;
+class function TAdmonitionExtensionTests.TryGetAdmonitionKind(const Node: IMarkdownNode; out Kind: string): Boolean;
 begin
   Kind := '';
 
   var Data: IInterface;
   if not Node.TryGetExtensionData(ExtensionDataKey, Data) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var Tag: IAdmonitionTag;
   Result := Supports(Data, IAdmonitionTag, Tag);
@@ -376,15 +396,18 @@ begin
   const IsBlockQuote = (Node.Kind = TMarkdownNodeKind.BlockQuote);
 
   var Kind: string;
-  Result := IsBlockQuote and TryGetAdmonitionKind(Node, Kind);
+  Result := IsBlockQuote and TAdmonitionExtensionTests.TryGetAdmonitionKind(Node, Kind);
 end;
 
 function TAdmonitionBlockOverride.LayoutBlock(const Node: IMarkdownNode; const Top: Single;
   const Context: ILayoutBlockContext): Single;
 begin
   var Kind: string;
-  if not TryGetAdmonitionKind(Node, Kind) then
-    Exit(0);
+  if not TAdmonitionExtensionTests.TryGetAdmonitionKind(Node, Kind) then
+  begin
+    Result := 0;
+    Exit;
+  end;
 
   const Canvas = Context.Canvas;
   const Bounds = TLayoutRectF.Create(0, Top, Context.Width, Top + BannerHeight);
@@ -402,7 +425,7 @@ end;
 
 procedure TAdmonitionLayoutTests.Canvas_DrawsBannerRectangleAndKindText;
 begin
-  const Document = BuildPipeline.Parse('> [!NOTE]'#10'> Body text.');
+  const Document = TAdmonitionExtensionTests.BuildPipeline.Parse('> [!NOTE]'#10'> Body text.');
   const Theme = TMarkdownTheme.CreateLight;
   try
     var Measurer: ITextMeasurer := TFakeTextMeasurer.Create;
@@ -434,10 +457,10 @@ end;
 
 procedure TAdmonitionLayoutTests.PlainBlockQuote_IsNotClaimed;
 begin
-  const Document = BuildPipeline.Parse('> Just a quote.');
-  const BlockQuote = FindFirstBlockQuote(Document);
+  const Document = TAdmonitionExtensionTests.BuildPipeline.Parse('> Just a quote.');
+  const BlockQuote = TAdmonitionExtensionTests.FindFirstBlockQuote(Document);
 
-  const Override = TAdmonitionBlockOverride.Create;
+  const Override: ILayoutBlockOverride = TAdmonitionBlockOverride.Create;
   Assert.IsFalse(Override.Handles(BlockQuote),
     'An untagged block quote must not be claimed by the admonition override');
 end;

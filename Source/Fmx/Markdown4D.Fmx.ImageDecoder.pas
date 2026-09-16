@@ -38,23 +38,32 @@ begin
       try
         Bitmap.LoadFromStream(Stream);
         if Bitmap.IsEmpty then
-          Exit(False);
+        begin
+          Result := False;
+          Exit;
+        end;
 
         Raster := TMarkdownPixelRaster.Create(Bitmap.Width, Bitmap.Height);
         if Raster.IsEmpty then
-          Exit(False);
+        begin
+          Result := False;
+          Exit;
+        end;
 
         var Pixels: TBitmapData;
         if not Bitmap.Map(TMapAccess.Read, Pixels) then
-          Exit(False);
+        begin
+          Result := False;
+          Exit;
+        end;
 
         try
           // FMX keeps a bitmap premultiplied, which is the shape the rasterizer
           // composites in, so the rows move across as they are.
           const RowBytes = Bitmap.Width * 4;
-          for var Y := 0 to Bitmap.Height - 1 do
+          for var Row := 0 to Bitmap.Height - 1 do
           begin
-            Move(Pixels.GetScanline(Y)^, Raster.Pixels[Y * RowBytes], RowBytes);
+            Move(Pixels.GetScanline(Row)^, Raster.Pixels[Row * RowBytes], RowBytes);
           end;
         finally
           Bitmap.Unmap(Pixels);

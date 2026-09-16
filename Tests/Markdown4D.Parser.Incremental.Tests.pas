@@ -123,6 +123,9 @@ type
     [TestCase('Autolinks (extension)', 'Autolinks (extension)')]
     [TestCase('Disallowed Raw HTML (extension)', 'Disallowed Raw HTML (extension)')]
     procedure ReplaceRange_GfmSectionMutations_MatchesFullParseHtml(const Section: string);
+
+    [Test]
+    procedure ReplaceRange_StartIndexOutOfBounds_RaisesMarkdownError;
   end;
 
 implementation
@@ -215,7 +218,10 @@ begin
     var FullParseHtml: string;
     const FullParseMatchesSpec = CheckFullParseMatchesSpec(Example, Dialect, FullParseHtml, FailureDetail);
     if not FullParseMatchesSpec then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     const Parser = CreateSpecParser(Dialect);
     AppendInChunks(Parser, Example.Markdown, SeedForExample(Example.Number));
@@ -241,7 +247,10 @@ begin
     var FullParseHtml: string;
     const FullParseMatchesSpec = CheckFullParseMatchesSpec(Example, Dialect, FullParseHtml, FailureDetail);
     if not FullParseMatchesSpec then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     const Parser = CreateSpecParser(Dialect);
     Parser.Append(Example.Markdown);
@@ -252,15 +261,24 @@ begin
 
     State := DeleteSlice(Parser, State);
     if not TryVerifyMutation(Parser, State.Content, Dialect, 'delete', FailureDetail) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     State := InsertMarker(Parser, State);
     if not TryVerifyMutation(Parser, State.Content, Dialect, 'insert', FailureDetail) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     State := ReplaceSlice(Parser, State);
     if not TryVerifyMutation(Parser, State.Content, Dialect, 'replace', FailureDetail) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     Result := True;
   except
@@ -315,7 +333,10 @@ class function TIncrementalEquivalenceTests.DeleteSlice(const Parser: IMarkdownI
 begin
   const ContentLength = Length(State.Content);
   if ContentLength = 0 then
-    Exit(State);
+  begin
+    Result := State;
+    Exit;
+  end;
 
   const StartSeed = NextSeed(State.Seed);
   const StartIndex = 1 + ValueFromSeed(StartSeed, ContentLength);
@@ -341,7 +362,10 @@ class function TIncrementalEquivalenceTests.ReplaceSlice(const Parser: IMarkdown
 begin
   const ContentLength = Length(State.Content);
   if ContentLength = 0 then
-    Exit(State);
+  begin
+    Result := State;
+    Exit;
+  end;
 
   const StartSeed = NextSeed(State.Seed);
   const StartIndex = 1 + ValueFromSeed(StartSeed, ContentLength);
@@ -386,6 +410,20 @@ class function TIncrementalEquivalenceTests.ValueFromSeed(const Seed: Cardinal; 
 begin
   const Mixed = Seed xor (Seed shr 16);
   Result := Integer(Mixed mod Cardinal(Range));
+end;
+
+procedure TIncrementalEquivalenceTests.ReplaceRange_StartIndexOutOfBounds_RaisesMarkdownError;
+begin
+  const Parser = CreateSpecParser(TMarkdownDialect.CommonMark);
+  Parser.Append('hello');
+
+  Assert.WillRaise(
+    procedure
+    begin
+      Parser.ReplaceRange(100, 1, 'x');
+    end,
+    EMarkdownError,
+    'ReplaceRange must raise EMarkdownError when the start index is out of bounds');
 end;
 
 end.

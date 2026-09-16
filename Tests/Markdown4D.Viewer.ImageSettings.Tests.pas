@@ -23,34 +23,20 @@ type
     procedure Assign_PopulatedSettings_CopiesEveryField;
 
     [Test]
-    procedure ResolveImageUrl_RelativePath_ResolvesAgainstDocumentFolder;
+    [TestCase('Relative path', 'logo.png')]
+    [TestCase('Parent segments collapse', 'sub\..\logo.png')]
+    procedure ResolveImageUrl_UnrestrictedOverload_ResolvesAgainstDocumentFolder(const Source: string);
 
     [Test]
-    procedure ResolveImageUrl_ParentSegments_CollapseToCanonicalPath;
-
-    [Test]
-    procedure ResolveImageUrl_RestrictedAndEscaping_Fails;
-
-    [Test]
-    procedure ResolveImageUrl_RestrictedAndInsideFolder_Succeeds;
-
-    [Test]
-    procedure ResolveImageUrl_RestrictedAndSiblingFolderPrefix_Fails;
-
-    [Test]
-    procedure ResolveImageUrl_UnrestrictedAndEscaping_Succeeds;
-
-    [Test]
-    procedure ResolveImageUrl_RemoteSource_IsLeftAlone;
-
-    [Test]
-    procedure ResolveImageUrl_LocalBaseUrlEscapingWhileRestricted_Fails;
-
-    [Test]
-    procedure ResolveImageUrl_LocalBaseUrlInsideFolderWhileRestricted_Succeeds;
-
-    [Test]
-    procedure ResolveImageUrl_RemoteBaseUrlWhileRestricted_IsLeftAlone;
+    [TestCase('Restricted and escaping fails', '..\..\Windows\win.ini,,True,False,')]
+    [TestCase('Restricted and inside folder succeeds', 'images\logo.png,,True,True,C:\docs\project\images\logo.png')]
+    [TestCase('Restricted and sibling folder prefix fails', '..\project-private\logo.png,,True,False,')]
+    [TestCase('Unrestricted and escaping succeeds', '..\other\logo.png,,False,True,C:\docs\other\logo.png')]
+    [TestCase('Remote source is left alone', 'https://example.com/logo.png,,True,True,https://example.com/logo.png')]
+    [TestCase('Local base url escaping while restricted fails', 'logo.png,C:\elsewhere,True,False,')]
+    [TestCase('Local base url inside folder while restricted succeeds', 'logo.png,C:\docs\project\images,True,True,C:\docs\project\images\logo.png')]
+    [TestCase('Remote base url while restricted is left alone', 'logo.png,https://example.com/img/,True,True,https://example.com/img/logo.png')]
+    procedure ResolveImageUrl_RestrictedOverload_ResolvesOrFailsAsExpected(const Source, BaseUrl: string; const Restrict, ExpectedResolved: Boolean; const ExpectedUrl: string);
   end;
 
 implementation
@@ -98,102 +84,26 @@ begin
   end;
 end;
 
-procedure TViewerImageSettingsTests.ResolveImageUrl_RelativePath_ResolvesAgainstDocumentFolder;
+procedure TViewerImageSettingsTests.ResolveImageUrl_UnrestrictedOverload_ResolvesAgainstDocumentFolder(const Source: string);
 begin
   var Url: string;
-  const Resolved = TMarkdownViewerShared.TryResolveImageUrl('logo.png', '', DocumentFolder, Url);
+  const Resolved = TMarkdownViewerShared.TryResolveImageUrl(Source, '', DocumentFolder, Url);
 
   Assert.IsTrue(Resolved);
   Assert.AreEqual(TPath.Combine(DocumentFolder, 'logo.png'), Url);
-end;
-
-procedure TViewerImageSettingsTests.ResolveImageUrl_ParentSegments_CollapseToCanonicalPath;
-begin
-  var Url: string;
-  const Resolved = TMarkdownViewerShared.TryResolveImageUrl('sub\..\logo.png', '', DocumentFolder, Url);
-
-  Assert.IsTrue(Resolved);
-  Assert.AreEqual(TPath.Combine(DocumentFolder, 'logo.png'), Url);
-end;
-
-procedure TViewerImageSettingsTests.ResolveImageUrl_RestrictedAndEscaping_Fails;
-begin
-  var Url: string;
-  const Resolved = TMarkdownViewerShared.TryResolveImageUrl('..\..\Windows\win.ini', '', DocumentFolder, True, Url);
-
-  Assert.IsFalse(Resolved, 'A path leaving the document folder must not resolve');
-  Assert.AreEqual('', Url);
-end;
-
-procedure TViewerImageSettingsTests.ResolveImageUrl_RestrictedAndInsideFolder_Succeeds;
-begin
-  var Url: string;
-  const Resolved = TMarkdownViewerShared.TryResolveImageUrl('images\logo.png', '', DocumentFolder, True, Url);
-
-  Assert.IsTrue(Resolved);
-  Assert.AreEqual(TPath.Combine(DocumentFolder, 'images\logo.png'), Url);
 end;
 
 // "C:\docs\project-private" starts with "C:\docs\project" as text but is a
-// different folder, so the check has to compare on the separator.
-procedure TViewerImageSettingsTests.ResolveImageUrl_RestrictedAndSiblingFolderPrefix_Fails;
+// different folder, so the check has to compare on the separator. A base that
+// names a folder resolves to a path like any other, so the document folder
+// restriction applies to it as well. Every failure path leaves Url empty.
+procedure TViewerImageSettingsTests.ResolveImageUrl_RestrictedOverload_ResolvesOrFailsAsExpected(const Source, BaseUrl: string; const Restrict, ExpectedResolved: Boolean; const ExpectedUrl: string);
 begin
   var Url: string;
-  const Resolved = TMarkdownViewerShared.TryResolveImageUrl('..\project-private\logo.png', '', DocumentFolder,
-    True, Url);
+  const Resolved = TMarkdownViewerShared.TryResolveImageUrl(Source, BaseUrl, DocumentFolder, Restrict, Url);
 
-  Assert.IsFalse(Resolved, Format('A sibling folder must not pass as a child, got <%s>', [Url]));
-end;
-
-procedure TViewerImageSettingsTests.ResolveImageUrl_UnrestrictedAndEscaping_Succeeds;
-begin
-  var Url: string;
-  const Resolved = TMarkdownViewerShared.TryResolveImageUrl('..\other\logo.png', '', DocumentFolder, False, Url);
-
-  Assert.IsTrue(Resolved);
-  Assert.AreEqual('C:\docs\other\logo.png', Url);
-end;
-
-procedure TViewerImageSettingsTests.ResolveImageUrl_RemoteSource_IsLeftAlone;
-begin
-  const Remote = 'https://example.com/logo.png';
-
-  var Url: string;
-  const Resolved = TMarkdownViewerShared.TryResolveImageUrl(Remote, '', DocumentFolder, True, Url);
-
-  Assert.IsTrue(Resolved);
-  Assert.AreEqual(Remote, Url);
-end;
-
-// A base that names a folder resolves to a path like any other, so the document
-// folder restriction applies to the result.
-procedure TViewerImageSettingsTests.ResolveImageUrl_LocalBaseUrlEscapingWhileRestricted_Fails;
-begin
-  var Url: string;
-  const Resolved = TMarkdownViewerShared.TryResolveImageUrl('logo.png', 'C:\elsewhere', DocumentFolder, True, Url);
-
-  Assert.IsFalse(Resolved, Format('A base outside the document folder must not resolve, got <%s>', [Url]));
-  Assert.AreEqual('', Url);
-end;
-
-procedure TViewerImageSettingsTests.ResolveImageUrl_LocalBaseUrlInsideFolderWhileRestricted_Succeeds;
-begin
-  var Url: string;
-  const Resolved = TMarkdownViewerShared.TryResolveImageUrl('logo.png', DocumentFolder + '\images',
-    DocumentFolder, True, Url);
-
-  Assert.IsTrue(Resolved);
-  Assert.AreEqual(TPath.Combine(DocumentFolder, 'images\logo.png'), Url);
-end;
-
-procedure TViewerImageSettingsTests.ResolveImageUrl_RemoteBaseUrlWhileRestricted_IsLeftAlone;
-begin
-  var Url: string;
-  const Resolved = TMarkdownViewerShared.TryResolveImageUrl('logo.png', 'https://example.com/img/',
-    DocumentFolder, True, Url);
-
-  Assert.IsTrue(Resolved);
-  Assert.AreEqual('https://example.com/img/logo.png', Url);
+  Assert.AreEqual(ExpectedResolved, Resolved);
+  Assert.AreEqual(ExpectedUrl, Url);
 end;
 
 end.

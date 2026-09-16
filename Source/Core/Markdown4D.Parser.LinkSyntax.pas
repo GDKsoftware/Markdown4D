@@ -59,7 +59,10 @@ begin
 
   const StartsWithBracket = (PeekChar = OpenBracket);
   if not StartsWithBracket then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var Index := FPosition + 1;
   var Units := 0;
@@ -73,13 +76,18 @@ begin
       LabelContent := Copy(FContent, FPosition + 1, Index - FPosition - 1);
       ConsumedLength := Index - FPosition + 1;
       FPosition := Index + 1;
-      Exit(True);
+      Result := True;
+      Exit;
     end;
 
     if Current = OpenBracket then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
-    if (Current = Backslash) and (Index < Length(FContent)) then
+    const HasEscapedChar = (Current = Backslash) and (Index < Length(FContent));
+    if HasEscapedChar then
       Inc(Index, 2)
     else
       Inc(Index);
@@ -87,7 +95,10 @@ begin
     Inc(Units);
 
     if Units > MaxLabelUnits then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
   end;
 
   Result := False;
@@ -117,7 +128,10 @@ begin
   Destination := '';
 
   if PeekChar = LessThan then
-    Exit(TryParsePointyDestination(Destination));
+  begin
+    Result := TryParsePointyDestination(Destination);
+    Exit;
+  end;
 
   const StartPosition = FPosition;
   var OpenParens := 0;
@@ -126,8 +140,9 @@ begin
   begin
     const Current = FContent[FPosition];
 
-    if (Current = Backslash) and (FPosition < Length(FContent)) and
-       TMarkdownUnescape.IsAsciiPunctuation(FContent[FPosition + 1]) then
+    const IsEscapedPunctuation = (Current = Backslash) and (FPosition < Length(FContent)) and
+      TMarkdownUnescape.IsAsciiPunctuation(FContent[FPosition + 1]);
+    if IsEscapedPunctuation then
     begin
       Inc(FPosition, 2);
       Continue;
@@ -158,11 +173,17 @@ begin
 
   const ConsumedNothing = (FPosition = StartPosition) and (PeekChar <> CloseParen);
   if ConsumedNothing then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Unbalanced = (OpenParens <> 0);
   if Unbalanced then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Destination := Copy(FContent, StartPosition, FPosition - StartPosition);
   Result := True;
@@ -181,12 +202,16 @@ begin
     begin
       Destination := Copy(FContent, FPosition + 1, Index - FPosition - 1);
       FPosition := Index + 1;
-      Exit(True);
+      Result := True;
+      Exit;
     end;
 
     const IsForbidden = (Current = LessThan) or (Current = LineFeed);
     if IsForbidden then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     const SkipsEscapedChar = (Current = Backslash) and (Index < Length(FContent)) and
       (FContent[Index + 1] <> LineFeed);
@@ -205,14 +230,18 @@ begin
   const Opener = PeekChar;
 
   var Closer := #0;
-  if (Opener = DoubleQuote) or (Opener = SingleQuote) then
+  const IsQuoteOpener = (Opener = DoubleQuote) or (Opener = SingleQuote);
+  if IsQuoteOpener then
     Closer := Opener
   else if Opener = OpenParen then
     Closer := CloseParen;
 
   const HasOpener = (Closer <> #0);
   if not HasOpener then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var Index := FPosition + 1;
 
@@ -224,15 +253,20 @@ begin
     begin
       Title := Copy(FContent, FPosition + 1, Index - FPosition - 1);
       FPosition := Index + 1;
-      Exit(True);
+      Result := True;
+      Exit;
     end;
 
     const IsNestedParen = (Closer = CloseParen) and (Current = OpenParen);
     if IsNestedParen then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
-    if (Current = Backslash) and (Index < Length(FContent)) and
-       TMarkdownUnescape.IsAsciiPunctuation(FContent[Index + 1]) then
+    const IsEscapedPunctuation = (Current = Backslash) and (Index < Length(FContent)) and
+      TMarkdownUnescape.IsAsciiPunctuation(FContent[Index + 1]);
+    if IsEscapedPunctuation then
       Inc(Index, 2)
     else
       Inc(Index);
@@ -254,14 +288,16 @@ begin
   if AtContentEnd then
   begin
     FPosition := Index;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   const AtLineEnd = (FContent[Index] = LineFeed);
   if AtLineEnd then
   begin
     FPosition := Index + 1;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   Result := False;
@@ -271,7 +307,10 @@ function TLinkSyntaxScanner.PeekChar: Char;
 begin
   const OutOfRange = (FPosition > Length(FContent));
   if OutOfRange then
-    Exit(#0);
+  begin
+    Result := #0;
+    Exit;
+  end;
 
   Result := FContent[FPosition];
 end;

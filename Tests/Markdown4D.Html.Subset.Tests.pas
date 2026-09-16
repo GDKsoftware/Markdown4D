@@ -213,17 +213,17 @@ begin
   const Converted = TMarkdownHtmlSubset.ToMarkdown(
     '<details><summary>Show more</summary><p>The hidden part.</p></details>');
 
-  Assert.IsTrue(Converted.Contains('**Show more**'), 'summary should survive in bold: ' + Converted);
-  Assert.IsTrue(Converted.Contains('The hidden part.'), 'body should survive: ' + Converted);
+  Assert.IsTrue(Converted.Contains('**Show more**'), Format('summary should survive in bold: %s', [Converted]));
+  Assert.IsTrue(Converted.Contains('The hidden part.'), Format('body should survive: %s', [Converted]));
 end;
 
 procedure TMarkdownHtmlSubsetTests.Convert_Preformatted_BecomesFencedBlock;
 begin
   const Converted = TMarkdownHtmlSubset.ToMarkdown('<pre><code>begin'#10'  Run;'#10'end;</code></pre>');
 
-  Assert.IsTrue(Converted.StartsWith('```'), 'should open a fence: ' + Converted);
-  Assert.IsTrue(Converted.Contains('  Run;'), 'should keep indentation: ' + Converted);
-  Assert.IsTrue(Converted.TrimRight.EndsWith('```'), 'should close the fence: ' + Converted);
+  Assert.IsTrue(Converted.StartsWith('```'), Format('should open a fence: %s', [Converted]));
+  Assert.IsTrue(Converted.Contains('  Run;'), Format('should keep indentation: %s', [Converted]));
+  Assert.IsTrue(Converted.TrimRight.EndsWith('```'), Format('should close the fence: %s', [Converted]));
 end;
 
 procedure TMarkdownHtmlSubsetTests.Convert_Entities_AreDecoded;

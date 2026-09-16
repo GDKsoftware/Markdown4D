@@ -151,7 +151,8 @@ type
 implementation
 
 uses
-  System.Math;
+  System.Math,
+  System.Generics.Collections;
 
 class function TMarkdownPaint.SolidColor(const Color: TLayoutColor): TMarkdownPaint;
 begin
@@ -198,7 +199,10 @@ begin
   if Kind = TMarkdownPaintKind.Tile then
   begin
     if (TileWidth <= 0) or (TileHeight <= 0) then
-      Exit(0);
+    begin
+      Result := 0;
+      Exit;
+    end;
 
     var Column := Trunc(X - StartPoint.X) mod TileWidth;
     if Column < 0 then
@@ -210,20 +214,27 @@ begin
     const Offset = (Row * TileWidth + Column) * 4;
     const Alpha = TilePixels[Offset + 3];
     if Alpha = 0 then
-      Exit(0);
+    begin
+      Result := 0;
+      Exit;
+    end;
 
     // The tile is premultiplied and a paint hands back plain colours, so the
     // coverage baked into the channels is taken back out here.
     const Scale = 255 / Alpha;
 
-    Exit(TLayoutColor((Cardinal(Alpha) shl 24) or
+    Result := TLayoutColor((Cardinal(Alpha) shl 24) or
       (Cardinal(Min(255, Round(TilePixels[Offset + 2] * Scale))) shl 16) or
       (Cardinal(Min(255, Round(TilePixels[Offset + 1] * Scale))) shl 8) or
-      Cardinal(Min(255, Round(TilePixels[Offset] * Scale)))));
+      Cardinal(Min(255, Round(TilePixels[Offset] * Scale))));
+    Exit;
   end;
 
   if (Kind = TMarkdownPaintKind.Solid) or (Length(Stops) = 0) then
-    Exit(Color);
+  begin
+    Result := Color;
+    Exit;
+  end;
 
   var Position: Single := 0;
 
@@ -239,11 +250,17 @@ begin
     Position := Sqrt(Sqr(X - StartPoint.X) + Sqr(Y - StartPoint.Y)) / Radius;
 
   if Position <= Stops[0].Offset then
-    Exit(Stops[0].Color);
+  begin
+    Result := Stops[0].Color;
+    Exit;
+  end;
 
   const Last = High(Stops);
   if Position >= Stops[Last].Offset then
-    Exit(Stops[Last].Color);
+  begin
+    Result := Stops[Last].Color;
+    Exit;
+  end;
 
   for var Index := 1 to Last do
   begin
@@ -271,7 +288,8 @@ begin
       Blended := Blended or (Cardinal(Channel) shl Bits);
     end;
 
-    Exit(TLayoutColor(Blended));
+    Result := TLayoutColor(Blended);
+    Exit;
   end;
 
   Result := Stops[Last].Color;
@@ -367,7 +385,8 @@ begin
   if Rule = TMarkdownFillRule.EvenOdd then
   begin
     Total := Total + 1;
-    Exit(Odd(Total));
+    Result := Odd(Total);
+    Exit;
   end;
 
   Total := Total + Crossing.Direction;
@@ -449,11 +468,11 @@ begin
   if Raster.IsEmpty or (Length(Contours) = 0) then
     Exit;
 
-  const IsSolid = Paint.Kind = TMarkdownPaintKind.Solid;
+  const IsSolid = (Paint.Kind = TMarkdownPaintKind.Solid);
   if IsSolid and (Paint.Color shr 24 = 0) then
     Exit;
 
-  const HasMask = Length(Mask) = Raster.Width * Raster.Height;
+  const HasMask = (Length(Mask) = Raster.Width * Raster.Height);
   const SampleWeight = FullCoverage / SubScanlines;
 
   var Crossings: TArray<TEdgeCrossing>;
@@ -577,61 +596,70 @@ begin
   if Length(Points) < 2 then
     Exit;
 
-  var LastSegment := High(Points) - 1;
-  if Closed then
-    LastSegment := High(Points);
+  // Collected in a list rather than grown one concatenation at a time: a
+  // flattened curve can leave the source path with a great many points, and
+  // each of those contributes at least one contour here.
+  const Contours = TList<TArray<TLayoutPointF>>.Create;
+  try
+    var LastSegment := High(Points) - 1;
+    if Closed then
+      LastSegment := High(Points);
 
-  for var Index := 0 to LastSegment do
-  begin
-    const Start = Points[Index];
-    var StopIndex := Index + 1;
-    if StopIndex > High(Points) then
-      StopIndex := 0;
-    const Stop = Points[StopIndex];
+    for var Index := 0 to LastSegment do
+    begin
+      const Start = Points[Index];
+      var StopIndex := Index + 1;
+      if StopIndex > High(Points) then
+        StopIndex := 0;
+      const Stop = Points[StopIndex];
 
-    const DeltaX = Stop.X - Start.X;
-    const DeltaY = Stop.Y - Start.Y;
-    const Span = Sqrt(DeltaX * DeltaX + DeltaY * DeltaY);
-    if Span = 0 then
-      Continue;
+      const DeltaX = Stop.X - Start.X;
+      const DeltaY = Stop.Y - Start.Y;
+      const Span = Sqrt(DeltaX * DeltaX + DeltaY * DeltaY);
+      if Span = 0 then
+        Continue;
 
-    const NormalX = -DeltaY / Span * HalfWidth;
-    const NormalY = DeltaX / Span * HalfWidth;
+      const NormalX = -DeltaY / Span * HalfWidth;
+      const NormalY = DeltaX / Span * HalfWidth;
 
-    Result := Result + [Anticlockwise([TLayoutPointF.Create(Start.X + NormalX, Start.Y + NormalY),
-      TLayoutPointF.Create(Stop.X + NormalX, Stop.Y + NormalY),
-      TLayoutPointF.Create(Stop.X - NormalX, Stop.Y - NormalY),
-      TLayoutPointF.Create(Start.X - NormalX, Start.Y - NormalY)])];
+      Contours.Add(Anticlockwise([TLayoutPointF.Create(Start.X + NormalX, Start.Y + NormalY),
+        TLayoutPointF.Create(Stop.X + NormalX, Stop.Y + NormalY),
+        TLayoutPointF.Create(Stop.X - NormalX, Stop.Y - NormalY),
+        TLayoutPointF.Create(Start.X - NormalX, Start.Y - NormalY)]));
+    end;
+
+    var FirstCorner := 1;
+    var LastCorner := High(Points) - 1;
+    if Closed then
+    begin
+      FirstCorner := 0;
+      LastCorner := High(Points);
+    end;
+
+    for var Corner := FirstCorner to LastCorner do
+    begin
+      var PreviousIndex := Corner - 1;
+      if PreviousIndex < 0 then
+        PreviousIndex := High(Points);
+      var NextIndex := Corner + 1;
+      if NextIndex > High(Points) then
+        NextIndex := 0;
+
+      if RoundJoins then
+        Contours.Add(Anticlockwise(Disc(Points[Corner], HalfWidth)))
+      else
+        Contours.AddRange(JoinContours(Points[PreviousIndex], Points[Corner], Points[NextIndex], HalfWidth));
+    end;
+
+    if Closed or (not RoundCaps) then
+      Exit;
+
+    Contours.Add(Anticlockwise(Disc(Points[0], HalfWidth)));
+    Contours.Add(Anticlockwise(Disc(Points[High(Points)], HalfWidth)));
+  finally
+    Result := Contours.ToArray;
+    Contours.Free;
   end;
-
-  var FirstCorner := 1;
-  var LastCorner := High(Points) - 1;
-  if Closed then
-  begin
-    FirstCorner := 0;
-    LastCorner := High(Points);
-  end;
-
-  for var Corner := FirstCorner to LastCorner do
-  begin
-    var PreviousIndex := Corner - 1;
-    if PreviousIndex < 0 then
-      PreviousIndex := High(Points);
-    var NextIndex := Corner + 1;
-    if NextIndex > High(Points) then
-      NextIndex := 0;
-
-    if RoundJoins then
-      Result := Result + [Anticlockwise(Disc(Points[Corner], HalfWidth))]
-    else
-      Result := Result + JoinContours(Points[PreviousIndex], Points[Corner], Points[NextIndex], HalfWidth);
-  end;
-
-  if Closed or (not RoundCaps) then
-    Exit;
-
-  Result := Result + [Anticlockwise(Disc(Points[0], HalfWidth))];
-  Result := Result + [Anticlockwise(Disc(Points[High(Points)], HalfWidth))];
 end;
 
 // Closes the wedge two segments leave between them. The bevel triangle covers

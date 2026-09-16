@@ -262,6 +262,7 @@ type
 implementation
 
 uses
+  Markdown4D.Math.Font,
   Markdown4D.DesignSample,
   System.SysUtils,
   System.Math,
@@ -274,6 +275,8 @@ uses
 constructor TMarkdownEditor.Create(Owner: TComponent);
 begin
   inherited Create(Owner);
+
+  TMarkdownMathFont.EnsureInstalled;
 
   FLifetime := TMarkdownViewerLifetime.Create;
 
@@ -577,7 +580,10 @@ end;
 function TMarkdownEditor.FirstVisibleSourceLine: Integer;
 begin
   if Length(FRows) = 0 then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
 
   const RowIndex = EnsureRange(FScrollOffset div LineHeightPx, 0, High(FRows));
   Result := FRows[RowIndex].LineIndex;
@@ -644,12 +650,12 @@ end;
 
 function TMarkdownEditor.FindMatchCount(const Needle: string): Integer;
 begin
-  Result := FModel.FindText(Needle);
+  Result := FModel.FindMatchCount(Needle);
 end;
 
 function TMarkdownEditor.FindMatchCount(const Needle: string; const Options: TMarkdownFindOptions): Integer;
 begin
-  Result := FModel.FindText(Needle, Options);
+  Result := FModel.FindMatchCount(Needle, Options);
 end;
 
 function TMarkdownEditor.FindNext(const Needle: string): Boolean;
@@ -660,12 +666,18 @@ end;
 function TMarkdownEditor.FindNext(const Needle: string; const Options: TMarkdownFindOptions): Boolean;
 begin
   if Needle = '' then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const StartAfter = FModel.SelectionStart + FModel.SelectionLength - 1;
   const Offset = FModel.FindNext(Needle, StartAfter, Options);
   if Offset < 0 then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   FModel.SetSelection(Offset, System.Length(Needle));
   RevealSelection;
@@ -676,11 +688,17 @@ end;
 function TMarkdownEditor.FindPrevious(const Needle: string; const Options: TMarkdownFindOptions): Boolean;
 begin
   if Needle = '' then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Offset = FModel.FindPrevious(Needle, FModel.SelectionStart, Options);
   if Offset < 0 then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   FModel.SetSelection(Offset, System.Length(Needle));
   RevealSelection;
@@ -692,7 +710,10 @@ function TMarkdownEditor.ReplaceCurrent(const Needle, Replacement: string;
   const Options: TMarkdownFindOptions): Boolean;
 begin
   if Needle = '' then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Result := FModel.ReplaceCurrent(Needle, Replacement, Options);
   RevealSelection;
@@ -702,7 +723,10 @@ function TMarkdownEditor.ReplaceAll(const Needle, Replacement: string;
   const Options: TMarkdownFindOptions): Integer;
 begin
   if Needle = '' then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
 
   Result := FModel.ReplaceAll(Needle, Replacement, Options);
   RevealSelection;
@@ -914,6 +938,7 @@ begin
   FRowModel.Rebuild(WrapWidthPx);
   FRows := FRowModel.Items;
 end;
+
 function TMarkdownEditor.WrapWidthPx: Integer;
 begin
   var ControlWidth := Width;
@@ -934,14 +959,17 @@ function TMarkdownEditor.RowText(const Row: TVisualRow): string;
 begin
   Result := FRowModel.TextOf(Row);
 end;
+
 function TMarkdownEditor.RowIndexOfOffset(const Offset: Integer): Integer;
 begin
   Result := FRowModel.IndexOfOffset(Offset);
 end;
+
 function TMarkdownEditor.OffsetAtRowX(const RowIndex: Integer; const TargetX: Integer): Integer;
 begin
   Result := FRowModel.OffsetAtX(RowIndex, TargetX);
 end;
+
 procedure TMarkdownEditor.DrawGutterNumber(const Painter: IPainter; const LineIndex, GutterWidth, Top: Integer);
 begin
   const Number = IntToStr(LineIndex + 1);
@@ -1104,10 +1132,14 @@ begin
   begin
     try
       if not Clipboard.HasFormat(CF_UNICODETEXT) then
-        Exit(False);
+      begin
+        Result := False;
+        Exit;
+      end;
 
       Value := Clipboard.AsText;
-      Exit(True);
+      Result := True;
+      Exit;
     except
       on EClipboardException do
         Sleep(ClipboardPauseMilliseconds);
@@ -1123,7 +1155,8 @@ begin
   begin
     try
       Clipboard.AsText := Value;
-      Exit(True);
+      Result := True;
+      Exit;
     except
       on EClipboardException do
         Sleep(ClipboardPauseMilliseconds);
@@ -1171,11 +1204,13 @@ begin
     TMarkdownSourceTokenKind.CodeSpanDelimiter,
     TMarkdownSourceTokenKind.BlockQuoteMarker,
     TMarkdownSourceTokenKind.ListMarker,
-    TMarkdownSourceTokenKind.LinkBracket:
+    TMarkdownSourceTokenKind.LinkBracket,
+    TMarkdownSourceTokenKind.MathDelimiter:
       Result := FTheme.BlockQuoteTextColor;
     TMarkdownSourceTokenKind.CodeSpanText,
     TMarkdownSourceTokenKind.FenceLine,
-    TMarkdownSourceTokenKind.FenceContent:
+    TMarkdownSourceTokenKind.FenceContent,
+    TMarkdownSourceTokenKind.MathText:
       Result := FTheme.CodeTextColor;
     TMarkdownSourceTokenKind.LinkText,
     TMarkdownSourceTokenKind.LinkUrl:
@@ -1239,14 +1274,19 @@ function TMarkdownEditor.LineTextAt(const LineIndex: Integer): string;
 begin
   Result := FRowModel.LineTextAt(LineIndex);
 end;
+
 function TMarkdownEditor.LineStartOffset(const LineIndex: Integer): Integer;
 begin
   Result := FRowModel.LineStartOffset(LineIndex);
 end;
+
 function TMarkdownEditor.OffsetFromPoint(const X, Y: Integer): Integer;
 begin
   if Length(FRows) = 0 then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
 
   const RowIndex = EnsureRange((Y + FScrollOffset) div LineHeightPx, 0, High(FRows));
   const LocalX = X - TextLeftPx;
@@ -1337,7 +1377,10 @@ function TMarkdownEditor.CaretPixelPos: TPoint;
 begin
   const Caret = FModel.CaretPosition;
   if Length(FRows) = 0 then
-    Exit(TPoint.Create(TextLeftPx, -FScrollOffset));
+  begin
+    Result := TPoint.Create(TextLeftPx, -FScrollOffset);
+    Exit;
+  end;
 
   const RowIndex = RowIndexOfOffset(Caret);
   const Row = FRows[RowIndex];
@@ -1664,7 +1707,10 @@ end;
 function TMarkdownEditor.ApplyKeyStroke(const Stroke: TEditorKeyStroke): Boolean;
 begin
   if TMarkdownEditorKeyDispatch.Apply(FModel, Stroke, FIndentWidth) then
-    Exit(True);
+  begin
+    Result := True;
+    Exit;
+  end;
 
   // What is left needs the wrapped layout on screen or the host clipboard.
   const Extend = Stroke.Extend;

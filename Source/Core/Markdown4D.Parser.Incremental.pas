@@ -198,11 +198,17 @@ begin
     const Current = FTail[Index];
 
     if Current = LineFeed then
-      Exit(Index);
+    begin
+      Result := Index;
+      Exit;
+    end;
 
     const IsSettledCarriageReturn = (Current = CarriageReturn) and (Index < TailLength);
     if IsSettledCarriageReturn then
-      Exit(Index);
+    begin
+      Result := Index;
+      Exit;
+    end;
   end;
 
   Result := 0;
@@ -220,7 +226,10 @@ begin
     const Document = ParseWithReferences(CompleteText, Working);
     const HasFreezableBlocks = (Document.ChildCount >= MinimumFreezableBlockCount);
     if not HasFreezableBlocks then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     SetLength(ChildOffsets, Document.ChildCount - 1);
     for var Index := 0 to Document.ChildCount - 2 do
@@ -467,7 +476,8 @@ begin
           ChildOffsets[Preceding] := Document.Children[Preceding].Segment.StartOffset;
         end;
 
-        Exit(True);
+        Result := True;
+        Exit;
       end;
 
       const PassedBoundary = (ChildStart > BoundaryOffset);
@@ -548,7 +558,10 @@ function TStreamingIncrementalParser.ToHtml: string;
 begin
   const IsCurrent = (FRenderedGeneration = FGeneration);
   if IsCurrent then
-    Exit(FCachedHtml);
+  begin
+    Result := FCachedHtml;
+    Exit;
+  end;
 
   const Working = TLinkReferenceMap.Create;
   try
@@ -594,7 +607,10 @@ begin
 
   const HasTailResolvableMisses = AnyLabelAvailable(EffectiveMissedLabels, AvailableReferences);
   if not HasTailResolvableMisses then
-    Exit(EffectiveHtml);
+  begin
+    Result := EffectiveHtml;
+    Exit;
+  end;
 
   const Document = ParseWithReferences(Segment.Source, AvailableReferences);
   Result := RenderHtml(Document);
@@ -614,7 +630,10 @@ begin
   for var CurrentLabel in Labels do
   begin
     if References.ContainsNormalizedLabel(CurrentLabel) then
-      Exit(True);
+    begin
+      Result := True;
+      Exit;
+    end;
   end;
 
   Result := False;

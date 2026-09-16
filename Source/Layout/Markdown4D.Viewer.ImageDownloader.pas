@@ -224,7 +224,10 @@ begin
   for var Code in RedirectStatusCodes do
   begin
     if Code = StatusCode then
-      Exit(True);
+    begin
+      Result := True;
+      Exit;
+    end;
   end;
 
   Result := False;
@@ -241,14 +244,23 @@ end;
 class function TMarkdownImageDownloader.ResolvedLocation(const BaseUrl, Location: string): string;
 begin
   if Location.Contains(SchemeSeparator) then
-    Exit(Location);
+  begin
+    Result := Location;
+    Exit;
+  end;
 
   const SchemeEnd = BaseUrl.IndexOf(SchemeSeparator);
   if SchemeEnd < 0 then
-    Exit('');
+  begin
+    Result := '';
+    Exit;
+  end;
 
   if Location.StartsWith(SchemeRelativePrefix) then
-    Exit(BaseUrl.Substring(0, SchemeEnd + 1) + Location);
+  begin
+    Result := BaseUrl.Substring(0, SchemeEnd + 1) + Location;
+    Exit;
+  end;
 
   const HostStart = SchemeEnd + Length(SchemeSeparator);
   var HostEnd := BaseUrl.IndexOf(PathSeparator, HostStart);
@@ -256,11 +268,17 @@ begin
     HostEnd := BaseUrl.Length;
 
   if Location.StartsWith(PathSeparator) then
-    Exit(BaseUrl.Substring(0, HostEnd) + Location);
+  begin
+    Result := BaseUrl.Substring(0, HostEnd) + Location;
+    Exit;
+  end;
 
   const LastSeparator = BaseUrl.LastIndexOf(PathSeparator);
   if LastSeparator < HostEnd then
-    Exit(BaseUrl.Substring(0, HostEnd) + PathSeparator + Location);
+  begin
+    Result := BaseUrl.Substring(0, HostEnd) + PathSeparator + Location;
+    Exit;
+  end;
 
   Result := BaseUrl.Substring(0, LastSeparator + 1) + Location;
 end;

@@ -53,12 +53,11 @@ type
     procedure BlendRaster(const Raster: TMarkdownPixelRaster; const Left, Top: Integer);
     procedure DrawImagePlaceholder(const Bounds: TLayoutRectF);
     procedure DrawBrokenImagePlaceholder(const Bounds: TLayoutRectF);
-    procedure FillDevicePolygonOpaque(const Points: TArray<TPoint>; const Color: TLayoutColor);
-    procedure FillDevicePolygonBlended(const Points: TArray<TPoint>; const Bounds: TLayoutRectF;
-      const Color: TLayoutColor);
     procedure BlendContours(const Contours: TArray<TArray<TLayoutPointF>>; const Color: TLayoutColor);
     class function WedgeOutlineLoops(const Center: TLayoutPointF;
       const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single): TArray<TArray<TLayoutPointF>>;
+    class function WedgePath(const Center: TLayoutPointF;
+      const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single): TArray<TLayoutPointF>;
     class function PremultipliedPixel(const Color: TLayoutColor): Cardinal;
     class function ToVclColor(const Color: TLayoutColor): TColor;
     class function ToDeviceRect(const Bounds: TLayoutRectF): TRect;
@@ -98,11 +97,6 @@ uses
   Vcl.Forms,
   Markdown4D.Defines,
   Markdown4D.Viewer.Shared;
-
-// Builds an anti-aliasable float path for a pie slice or doughnut sector, using
-// a 0deg-at-3-o'clock clockwise polar convention that matches the chart labels.
-function WedgePath(const Center: TLayoutPointF;
-  const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single): TArray<TLayoutPointF>; forward;
 
 constructor TMarkdownVclPainter.Create(const Canvas: TCanvas; const PixelsPerInch: Integer);
 begin
@@ -406,7 +400,9 @@ begin
   end;
 end;
 
-function WedgePath(const Center: TLayoutPointF;
+// Builds an anti-aliasable float path for a pie slice or doughnut sector, using
+// a 0deg-at-3-o'clock clockwise polar convention that matches the chart labels.
+class function TMarkdownVclPainter.WedgePath(const Center: TLayoutPointF;
   const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single): TArray<TLayoutPointF>;
 const
   DegreesToRadians = Pi / 180;
@@ -452,55 +448,10 @@ begin
   if (Alpha = 0) or (Length(Points) < 3) then
     Exit;
 
-  var Device: TArray<TPoint>;
-  SetLength(Device, Length(Points));
-
-  var MinX := Points[0].X;
-  var MinY := Points[0].Y;
-  var MaxX := Points[0].X;
-  var MaxY := Points[0].Y;
-
-  for var Index := 0 to High(Points) do
-  begin
-    Device[Index] := TPoint.Create(Round(Points[Index].X), Round(Points[Index].Y));
-
-    MinX := Min(MinX, Points[Index].X);
-    MinY := Min(MinY, Points[Index].Y);
-    MaxX := Max(MaxX, Points[Index].X);
-    MaxY := Max(MaxY, Points[Index].Y);
-  end;
-
-  if Alpha = OpaqueAlpha then
-    FillDevicePolygonOpaque(Device, Color)
-  else
-    FillDevicePolygonBlended(Device, TLayoutRectF.Create(MinX, MinY, MaxX, MaxY), Color);
-end;
-
-procedure TMarkdownVclPainter.FillDevicePolygonOpaque(const Points: TArray<TPoint>; const Color: TLayoutColor);
-begin
-  FCanvas.Brush.Style := bsSolid;
-  FCanvas.Brush.Color := ToVclColor(Color);
-  FCanvas.Pen.Style := psSolid;
-  FCanvas.Pen.Color := ToVclColor(Color);
-  FCanvas.Pen.Width := 1;
-  FCanvas.Polygon(Points);
-end;
-
-procedure TMarkdownVclPainter.FillDevicePolygonBlended(const Points: TArray<TPoint>; const Bounds: TLayoutRectF;
-  const Color: TLayoutColor);
-begin
-  const Saved = SaveDC(FCanvas.Handle);
-  try
-    const Region = CreatePolygonRgn(Points[0], Length(Points), WINDING);
-    try
-      ExtSelectClipRgn(FCanvas.Handle, Region, RGN_AND);
-      FillRectBlended(Bounds, Color);
-    finally
-      DeleteObject(Region);
-    end;
-  finally
-    RestoreDC(FCanvas.Handle, Saved);
-  end;
+  // GDI fills a polygon without anti-aliasing, which shows on the slanted
+  // strokes of a radical sign or a stretched parenthesis. The same coverage
+  // rasterizer that draws the wedges gives every polygon smooth edges.
+  BlendContours([Points], Color);
 end;
 
 // Strokes a polygon by turning it into the same kind of stroke band the SVG
@@ -674,7 +625,10 @@ begin
     Exit;
 
   if IsFamilyInstalled(FamilyName) then
-    Exit(FamilyName);
+  begin
+    Result := FamilyName;
+    Exit;
+  end;
 
   Result := DefaultFallbackFamilyName;
 end;

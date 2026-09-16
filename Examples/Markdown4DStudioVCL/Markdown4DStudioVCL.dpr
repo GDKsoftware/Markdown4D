@@ -2,6 +2,7 @@ program Markdown4DStudioVCL;
 
 uses
   Vcl.Forms,
+  Markdown4D.Vcl.MathFont,
   Markdown4DStudio.Workspace.Interfaces in '..\Shared\Markdown4DStudio.Workspace.Interfaces.pas',
   Markdown4DStudio.Workspace in '..\Shared\Markdown4DStudio.Workspace.pas',
   Markdown4DStudio.Session in '..\Shared\Markdown4DStudio.Session.pas',

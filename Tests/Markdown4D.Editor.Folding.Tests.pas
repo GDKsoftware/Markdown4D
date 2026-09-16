@@ -46,7 +46,10 @@ begin
   for var Region in Regions do
   begin
     if Region.HeaderLine = HeaderLine then
-      Exit(Region);
+    begin
+      Result := Region;
+      Exit;
+    end;
   end;
 
   Assert.Fail(Format('No fold region with header line %d', [HeaderLine]));
@@ -58,7 +61,10 @@ begin
   for var Region in Regions do
   begin
     if Region.HeaderLine = HeaderLine then
-      Exit(True);
+    begin
+      Result := True;
+      Exit;
+    end;
   end;
 
   Result := False;

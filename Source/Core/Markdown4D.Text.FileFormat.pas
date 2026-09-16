@@ -110,13 +110,20 @@ begin
     begin
       const FollowedByFeed = (Index < Length(Text)) and (Text[Index + 1] = LineFeed);
       if FollowedByFeed then
-        Exit(TMarkdownLineEnding.CrLf);
+      begin
+        Result := TMarkdownLineEnding.CrLf;
+        Exit;
+      end;
 
-      Exit(TMarkdownLineEnding.Cr);
+      Result := TMarkdownLineEnding.Cr;
+      Exit;
     end;
 
     if Text[Index] = LineFeed then
-      Exit(TMarkdownLineEnding.Lf);
+    begin
+      Result := TMarkdownLineEnding.Lf;
+      Exit;
+    end;
   end;
 
   Result := TMarkdownTextFormat.Default.LineEnding;
@@ -132,7 +139,10 @@ class function TMarkdownTextFile.ApplyLineEnding(const Text: string;
   const LineEnding: TMarkdownLineEnding): string;
 begin
   if LineEnding = TMarkdownLineEnding.Lf then
-    Exit(Text);
+  begin
+    Result := Text;
+    Exit;
+  end;
 
   const Format = TMarkdownTextFormat.Create(TMarkdownTextEncoding.Utf8, LineEnding);
   Result := StringReplace(Text, LineFeed, Format.NewLine, [rfReplaceAll]);
@@ -148,7 +158,8 @@ begin
   if StartsWithUtf8Bom then
   begin
     Encoding := TMarkdownTextEncoding.Utf8Bom;
-    Exit(TEncoding.UTF8.GetString(Bytes, 3, Count - 3));
+    Result := TEncoding.UTF8.GetString(Bytes, 3, Count - 3);
+    Exit;
   end;
 
   const StartsWithUtf16LeBom = (Count >= 2) and (Bytes[0] = Utf16LeBomBytes[0]) and
@@ -156,7 +167,8 @@ begin
   if StartsWithUtf16LeBom then
   begin
     Encoding := TMarkdownTextEncoding.Utf16Le;
-    Exit(TEncoding.Unicode.GetString(Bytes, 2, Count - 2));
+    Result := TEncoding.Unicode.GetString(Bytes, 2, Count - 2);
+    Exit;
   end;
 
   const StartsWithUtf16BeBom = (Count >= 2) and (Bytes[0] = Utf16BeBomBytes[0]) and
@@ -164,7 +176,8 @@ begin
   if StartsWithUtf16BeBom then
   begin
     Encoding := TMarkdownTextEncoding.Utf16Be;
-    Exit(TEncoding.BigEndianUnicode.GetString(Bytes, 2, Count - 2));
+    Result := TEncoding.BigEndianUnicode.GetString(Bytes, 2, Count - 2);
+    Exit;
   end;
 
   // No mark: UTF-8 is the safe reading unless the bytes cannot be UTF-8 at all,
@@ -172,7 +185,8 @@ begin
   if TUtf8Scanner.IsValid(Bytes) then
   begin
     Encoding := TMarkdownTextEncoding.Utf8;
-    Exit(TEncoding.UTF8.GetString(Bytes));
+    Result := TEncoding.UTF8.GetString(Bytes);
+    Exit;
   end;
 
   Encoding := TMarkdownTextEncoding.Ansi;
@@ -205,15 +219,25 @@ begin
   begin
     const Extra = SequenceLength(Bytes[Index]);
     if Extra < 0 then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     if Index + Extra >= Count then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     for var Offset := 1 to Extra do
     begin
-      if (Bytes[Index + Offset] and ContinuationMask) <> ContinuationMarker then
-        Exit(False);
+      const IsInvalidContinuationByte = (Bytes[Index + Offset] and ContinuationMask) <> ContinuationMarker;
+      if IsInvalidContinuationByte then
+      begin
+        Result := False;
+        Exit;
+      end;
     end;
 
     Index := Index + Extra + 1;
@@ -225,16 +249,31 @@ end;
 class function TUtf8Scanner.SequenceLength(const Lead: Byte): Integer;
 begin
   if Lead < $80 then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
 
-  if (Lead >= $C2) and (Lead <= $DF) then
-    Exit(1);
+  const IsTwoByteLead = (Lead >= $C2) and (Lead <= $DF);
+  if IsTwoByteLead then
+  begin
+    Result := 1;
+    Exit;
+  end;
 
-  if (Lead >= $E0) and (Lead <= $EF) then
-    Exit(2);
+  const IsThreeByteLead = (Lead >= $E0) and (Lead <= $EF);
+  if IsThreeByteLead then
+  begin
+    Result := 2;
+    Exit;
+  end;
 
-  if (Lead >= $F0) and (Lead <= $F4) then
-    Exit(3);
+  const IsFourByteLead = (Lead >= $F0) and (Lead <= $F4);
+  if IsFourByteLead then
+  begin
+    Result := 3;
+    Exit;
+  end;
 
   Result := -1;
 end;

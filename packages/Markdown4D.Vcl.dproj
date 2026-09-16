@@ -88,6 +88,7 @@
         <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.ImageDecoder.pas"/>
         <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.Viewer.pas"/>
         <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.Editor.pas"/>
+        <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.MathFont.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

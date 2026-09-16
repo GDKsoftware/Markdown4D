@@ -24,19 +24,12 @@ type
     procedure Gfm_Corpus_ContainsAllExamples;
 
     [Test]
-    procedure Gfm_Tables_MatchesSpec;
-
-    [Test]
-    procedure Gfm_TaskListItems_MatchesSpec;
-
-    [Test]
-    procedure Gfm_Strikethrough_MatchesSpec;
-
-    [Test]
-    procedure Gfm_Autolinks_MatchesSpec;
-
-    [Test]
-    procedure Gfm_DisallowedRawHtml_MatchesSpec;
+    [TestCase('Tables (extension)', 'Tables (extension)')]
+    [TestCase('Task list items (extension)', 'Task list items (extension)')]
+    [TestCase('Strikethrough (extension)', 'Strikethrough (extension)')]
+    [TestCase('Autolinks (extension)', 'Autolinks (extension)')]
+    [TestCase('Disallowed Raw HTML (extension)', 'Disallowed Raw HTML (extension)')]
+    procedure Gfm_Section_MatchesSpec(const Section: string);
   end;
 
 implementation
@@ -60,29 +53,9 @@ begin
   Assert.AreEqual(24, FCorpus.Count, Format('%s must contain 24 examples', [TSpecCorpus.GfmCorpusFileName]));
 end;
 
-procedure TGfmSpecTests.Gfm_Tables_MatchesSpec;
+procedure TGfmSpecTests.Gfm_Section_MatchesSpec(const Section: string);
 begin
-  VerifySection('Tables (extension)');
-end;
-
-procedure TGfmSpecTests.Gfm_TaskListItems_MatchesSpec;
-begin
-  VerifySection('Task list items (extension)');
-end;
-
-procedure TGfmSpecTests.Gfm_Strikethrough_MatchesSpec;
-begin
-  VerifySection('Strikethrough (extension)');
-end;
-
-procedure TGfmSpecTests.Gfm_Autolinks_MatchesSpec;
-begin
-  VerifySection('Autolinks (extension)');
-end;
-
-procedure TGfmSpecTests.Gfm_DisallowedRawHtml_MatchesSpec;
-begin
-  VerifySection('Disallowed Raw HTML (extension)');
+  VerifySection(Section);
 end;
 
 procedure TGfmSpecTests.VerifySection(const Section: string);

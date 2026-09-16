@@ -2168,7 +2168,8 @@ begin
     if Comparison = 0 then
     begin
       Decoded := Entities[MidIndex].Value;
-      Exit(True);
+      Result := True;
+      Exit;
     end;
 
     if Comparison < 0 then
@@ -2189,7 +2190,10 @@ begin
     Digits := Digits.Substring(1);
 
   if Digits = '' then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const IsHex = (Digits[1] = 'x') or (Digits[1] = 'X');
   if IsHex then
@@ -2197,7 +2201,10 @@ begin
 
   var CodePoint: Integer;
   if not TryParseCodePoint(Digits, IsHex, CodePoint) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Decoded := DecodeCodePoint(CodePoint);
   Result := True;
@@ -2215,7 +2222,10 @@ begin
     MaxDigits := MaxHexDigits;
 
   if (Digits = '') or (Digits.Length > MaxDigits) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var Base := 10;
   if IsHex then
@@ -2232,7 +2242,10 @@ begin
     else if IsHex and (Digit >= 'A') and (Digit <= 'F') then
       DigitValue := Ord(Digit) - Ord('A') + 10
     else
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     CodePoint := (CodePoint * Base) + DigitValue;
   end;
@@ -2249,7 +2262,10 @@ const
 begin
   const IsSurrogate = (CodePoint >= MinSurrogate) and (CodePoint <= MaxSurrogate);
   if (CodePoint = 0) or IsSurrogate or (CodePoint > MaxCodePoint) then
-    Exit(ReplacementCharacter);
+  begin
+    Result := ReplacementCharacter;
+    Exit;
+  end;
 
   Result := Char.ConvertFromUtf32(UCS4Char(CodePoint));
 end;

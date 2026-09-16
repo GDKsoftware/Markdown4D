@@ -47,7 +47,6 @@ type
       FSavedClipboard: IInterface;
       FClipboardReplaced: Boolean;
     class function ManyLines(const Count: Integer): string; static;
-    class function ManyParagraphs(const Count: Integer): string; static;
     class function OneWrappedLine: string; static;
     procedure ReplaceClipboardWithFake;
     procedure RestoreClipboard;
@@ -211,7 +210,8 @@ uses
   System.Rtti,
   FMX.Types,
   FMX.Platform,
-  FMX.Graphics;
+  FMX.Graphics,
+  Markdown4D.Tests.Pipeline.Helpers;
 
 type
   // In-memory clipboard so the copy/cut/paste tests never touch the real OS
@@ -304,18 +304,6 @@ begin
     if Index > 0 then
       Builder := Builder + #10;
     Builder := Builder + Format('L%.2d', [Index]);
-  end;
-  Result := Builder;
-end;
-
-class function TMarkdownFmxEditorTests.ManyParagraphs(const Count: Integer): string;
-begin
-  var Builder := '';
-  for var Index := 0 to Count - 1 do
-  begin
-    if Index > 0 then
-      Builder := Builder + #10#10;
-    Builder := Builder + Format('Paragraph %.2d', [Index]);
   end;
   Result := Builder;
 end;
@@ -690,7 +678,7 @@ begin
     const Viewer = TMarkdownViewer.Create(nil);
     try
       Editor.Height := ShortHeight;
-      Editor.Text := ManyParagraphs(ManyLineCount);
+      Editor.Text := TMarkdownTestPipelineHelpers.ManyParagraphs(ManyLineCount);
       Editor.AttachPreview(Viewer);
 
       Viewer.SetBounds(0, 0, PreviewWidth, ShortHeight);

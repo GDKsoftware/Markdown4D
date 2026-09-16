@@ -6,6 +6,7 @@ interface
 
 uses
   DUnitX.TestFramework,
+  Markdown4D.Editor.Model,
   Markdown4D.Editor.Keys;
 
 type
@@ -13,49 +14,77 @@ type
   TMarkdownEditorKeymapTests = class
   public
     [Test]
-    procedure PlainArrow_MovesCaret;
+    procedure Resolve_PlainLeftArrow_ReturnsMoveLeft;
 
     [Test]
-    procedure ShiftArrow_ExtendsSelection;
+    procedure Resolve_ShiftRightArrow_ReturnsMoveRightWithExtend;
 
     [Test]
-    procedure CtrlArrow_MovesByWord;
+    procedure Resolve_CtrlArrows_ReturnsMoveWordActions;
 
     [Test]
-    procedure CtrlBackspace_DeletesWordLeft;
+    procedure Resolve_CtrlBackspace_ReturnsDeleteWordLeft;
 
     [Test]
-    procedure CtrlDelete_DeletesWordRight;
+    procedure Resolve_CtrlDelete_ReturnsDeleteWordRight;
 
     [Test]
-    procedure Tab_Indents;
+    procedure Resolve_PlainTab_ReturnsIndent;
 
     [Test]
-    procedure ShiftTab_Outdents;
+    procedure Resolve_ShiftTab_ReturnsOutdent;
 
     [Test]
-    procedure CtrlShiftZ_Redoes;
+    procedure Resolve_CtrlZVariants_ReturnsUndoOrRedo;
 
     [Test]
-    procedure CtrlY_Redoes;
+    procedure Resolve_CtrlY_ReturnsRedo;
 
     [Test]
-    procedure ShiftInsert_Pastes;
+    procedure Resolve_ShiftInsert_ReturnsPaste;
 
     [Test]
-    procedure CtrlInsert_Copies;
+    procedure Resolve_CtrlInsert_ReturnsCopy;
 
     [Test]
-    procedure ShiftDelete_Cuts;
+    procedure Resolve_ShiftDelete_ReturnsCut;
 
     [Test]
-    procedure AltGrLetter_IsLeftToTheCharacterPath;
+    procedure Resolve_CtrlAltLetter_IsNotHandled;
 
     [Test]
-    procedure PlainAltKey_IsIgnored;
+    procedure Resolve_PlainAltArrow_IsNotHandled;
 
     [Test]
-    procedure UnknownKey_IsNotHandled;
+    procedure Resolve_UnmappedKey_IsNotHandled;
+  end;
+
+  [TestFixture]
+  TMarkdownEditorKeyDispatchTests = class
+  private
+    const
+      IndentWidth = 2;
+    var
+      FModel: TMarkdownEditorModel;
+
+  public
+    [Setup]
+    procedure Setup;
+
+    [TearDown]
+    procedure TearDown;
+
+    [Test]
+    procedure Apply_MoveRightAction_MovesCaretRightAndReturnsHandled;
+
+    [Test]
+    procedure Apply_IndentAction_InsertsIndentWidthSpaces;
+
+    [Test]
+    procedure Apply_BoldAction_WrapsSelectionInBoldMarkers;
+
+    [Test]
+    procedure Apply_NoneAction_ReturnsNotHandled;
   end;
 
 implementation
@@ -64,75 +93,75 @@ uses
   System.Classes,
   System.UITypes;
 
-procedure TMarkdownEditorKeymapTests.PlainArrow_MovesCaret;
+procedure TMarkdownEditorKeymapTests.Resolve_PlainLeftArrow_ReturnsMoveLeft;
 begin
   const Stroke = TMarkdownEditorKeymap.Resolve(vkLeft, []);
 
-  Assert.IsTrue(Stroke.Action = TEditorKeyAction.MoveLeft);
+  Assert.AreEqual<TEditorKeyAction>(TEditorKeyAction.MoveLeft, Stroke.Action);
   Assert.IsFalse(Stroke.Extend);
 end;
 
-procedure TMarkdownEditorKeymapTests.ShiftArrow_ExtendsSelection;
+procedure TMarkdownEditorKeymapTests.Resolve_ShiftRightArrow_ReturnsMoveRightWithExtend;
 begin
   const Stroke = TMarkdownEditorKeymap.Resolve(vkRight, [ssShift]);
 
-  Assert.IsTrue(Stroke.Action = TEditorKeyAction.MoveRight);
+  Assert.AreEqual<TEditorKeyAction>(TEditorKeyAction.MoveRight, Stroke.Action);
   Assert.IsTrue(Stroke.Extend);
 end;
 
-procedure TMarkdownEditorKeymapTests.CtrlArrow_MovesByWord;
+procedure TMarkdownEditorKeymapTests.Resolve_CtrlArrows_ReturnsMoveWordActions;
 begin
-  Assert.IsTrue(TMarkdownEditorKeymap.Resolve(vkLeft, [ssCtrl]).Action = TEditorKeyAction.MoveWordLeft);
-  Assert.IsTrue(TMarkdownEditorKeymap.Resolve(vkRight, [ssCtrl]).Action = TEditorKeyAction.MoveWordRight);
+  Assert.AreEqual<TEditorKeyAction>(TEditorKeyAction.MoveWordLeft, TMarkdownEditorKeymap.Resolve(vkLeft, [ssCtrl]).Action);
+  Assert.AreEqual<TEditorKeyAction>(TEditorKeyAction.MoveWordRight, TMarkdownEditorKeymap.Resolve(vkRight, [ssCtrl]).Action);
 end;
 
-procedure TMarkdownEditorKeymapTests.CtrlBackspace_DeletesWordLeft;
+procedure TMarkdownEditorKeymapTests.Resolve_CtrlBackspace_ReturnsDeleteWordLeft;
 begin
-  Assert.IsTrue(TMarkdownEditorKeymap.Resolve(vkBack, [ssCtrl]).Action = TEditorKeyAction.DeleteWordLeft);
+  Assert.AreEqual<TEditorKeyAction>(TEditorKeyAction.DeleteWordLeft, TMarkdownEditorKeymap.Resolve(vkBack, [ssCtrl]).Action);
 end;
 
-procedure TMarkdownEditorKeymapTests.CtrlDelete_DeletesWordRight;
+procedure TMarkdownEditorKeymapTests.Resolve_CtrlDelete_ReturnsDeleteWordRight;
 begin
-  Assert.IsTrue(TMarkdownEditorKeymap.Resolve(vkDelete, [ssCtrl]).Action = TEditorKeyAction.DeleteWordRight);
+  Assert.AreEqual<TEditorKeyAction>(TEditorKeyAction.DeleteWordRight, TMarkdownEditorKeymap.Resolve(vkDelete, [ssCtrl]).Action);
 end;
 
-procedure TMarkdownEditorKeymapTests.Tab_Indents;
+procedure TMarkdownEditorKeymapTests.Resolve_PlainTab_ReturnsIndent;
 begin
-  Assert.IsTrue(TMarkdownEditorKeymap.Resolve(vkTab, []).Action = TEditorKeyAction.Indent);
+  Assert.AreEqual<TEditorKeyAction>(TEditorKeyAction.Indent, TMarkdownEditorKeymap.Resolve(vkTab, []).Action);
 end;
 
-procedure TMarkdownEditorKeymapTests.ShiftTab_Outdents;
+procedure TMarkdownEditorKeymapTests.Resolve_ShiftTab_ReturnsOutdent;
 begin
-  Assert.IsTrue(TMarkdownEditorKeymap.Resolve(vkTab, [ssShift]).Action = TEditorKeyAction.Outdent);
+  Assert.AreEqual<TEditorKeyAction>(TEditorKeyAction.Outdent, TMarkdownEditorKeymap.Resolve(vkTab, [ssShift]).Action);
 end;
 
-procedure TMarkdownEditorKeymapTests.CtrlShiftZ_Redoes;
+procedure TMarkdownEditorKeymapTests.Resolve_CtrlZVariants_ReturnsUndoOrRedo;
 begin
-  Assert.IsTrue(TMarkdownEditorKeymap.Resolve(vkZ, [ssCtrl]).Action = TEditorKeyAction.Undo);
-  Assert.IsTrue(TMarkdownEditorKeymap.Resolve(vkZ, [ssCtrl, ssShift]).Action = TEditorKeyAction.Redo);
+  Assert.AreEqual<TEditorKeyAction>(TEditorKeyAction.Undo, TMarkdownEditorKeymap.Resolve(vkZ, [ssCtrl]).Action);
+  Assert.AreEqual<TEditorKeyAction>(TEditorKeyAction.Redo, TMarkdownEditorKeymap.Resolve(vkZ, [ssCtrl, ssShift]).Action);
 end;
 
-procedure TMarkdownEditorKeymapTests.CtrlY_Redoes;
+procedure TMarkdownEditorKeymapTests.Resolve_CtrlY_ReturnsRedo;
 begin
-  Assert.IsTrue(TMarkdownEditorKeymap.Resolve(vkY, [ssCtrl]).Action = TEditorKeyAction.Redo);
+  Assert.AreEqual<TEditorKeyAction>(TEditorKeyAction.Redo, TMarkdownEditorKeymap.Resolve(vkY, [ssCtrl]).Action);
 end;
 
-procedure TMarkdownEditorKeymapTests.ShiftInsert_Pastes;
+procedure TMarkdownEditorKeymapTests.Resolve_ShiftInsert_ReturnsPaste;
 begin
-  Assert.IsTrue(TMarkdownEditorKeymap.Resolve(vkInsert, [ssShift]).Action = TEditorKeyAction.Paste);
+  Assert.AreEqual<TEditorKeyAction>(TEditorKeyAction.Paste, TMarkdownEditorKeymap.Resolve(vkInsert, [ssShift]).Action);
 end;
 
-procedure TMarkdownEditorKeymapTests.CtrlInsert_Copies;
+procedure TMarkdownEditorKeymapTests.Resolve_CtrlInsert_ReturnsCopy;
 begin
-  Assert.IsTrue(TMarkdownEditorKeymap.Resolve(vkInsert, [ssCtrl]).Action = TEditorKeyAction.Copy);
+  Assert.AreEqual<TEditorKeyAction>(TEditorKeyAction.Copy, TMarkdownEditorKeymap.Resolve(vkInsert, [ssCtrl]).Action);
 end;
 
-procedure TMarkdownEditorKeymapTests.ShiftDelete_Cuts;
+procedure TMarkdownEditorKeymapTests.Resolve_ShiftDelete_ReturnsCut;
 begin
-  Assert.IsTrue(TMarkdownEditorKeymap.Resolve(vkDelete, [ssShift]).Action = TEditorKeyAction.Cut);
+  Assert.AreEqual<TEditorKeyAction>(TEditorKeyAction.Cut, TMarkdownEditorKeymap.Resolve(vkDelete, [ssShift]).Action);
 end;
 
-procedure TMarkdownEditorKeymapTests.AltGrLetter_IsLeftToTheCharacterPath;
+procedure TMarkdownEditorKeymapTests.Resolve_CtrlAltLetter_IsNotHandled;
 begin
   // AltGr reaches the control as Ctrl+Alt; claiming it would eat the character
   // the layout puts behind that combination.
@@ -141,14 +170,67 @@ begin
   Assert.IsFalse(Stroke.Handled);
 end;
 
-procedure TMarkdownEditorKeymapTests.PlainAltKey_IsIgnored;
+procedure TMarkdownEditorKeymapTests.Resolve_PlainAltArrow_IsNotHandled;
 begin
   Assert.IsFalse(TMarkdownEditorKeymap.Resolve(vkLeft, [ssAlt]).Handled);
 end;
 
-procedure TMarkdownEditorKeymapTests.UnknownKey_IsNotHandled;
+procedure TMarkdownEditorKeymapTests.Resolve_UnmappedKey_IsNotHandled;
 begin
   Assert.IsFalse(TMarkdownEditorKeymap.Resolve(vkF5, []).Handled);
+end;
+
+procedure TMarkdownEditorKeyDispatchTests.Setup;
+begin
+  FModel := TMarkdownEditorModel.Create;
+end;
+
+procedure TMarkdownEditorKeyDispatchTests.TearDown;
+begin
+  FModel.Free;
+end;
+
+procedure TMarkdownEditorKeyDispatchTests.Apply_MoveRightAction_MovesCaretRightAndReturnsHandled;
+begin
+  FModel.LoadText('hello');
+  FModel.CaretPosition := 0;
+  const Stroke = TEditorKeyStroke.Create(TEditorKeyAction.MoveRight, False);
+
+  const Handled = TMarkdownEditorKeyDispatch.Apply(FModel, Stroke, IndentWidth);
+
+  Assert.IsTrue(Handled);
+  Assert.AreEqual(1, FModel.CaretPosition);
+end;
+
+procedure TMarkdownEditorKeyDispatchTests.Apply_IndentAction_InsertsIndentWidthSpaces;
+begin
+  FModel.LoadText('line');
+  FModel.CaretPosition := 0;
+  const Stroke = TEditorKeyStroke.Create(TEditorKeyAction.Indent, False);
+
+  TMarkdownEditorKeyDispatch.Apply(FModel, Stroke, IndentWidth);
+
+  Assert.AreEqual('  line', FModel.Text);
+end;
+
+procedure TMarkdownEditorKeyDispatchTests.Apply_BoldAction_WrapsSelectionInBoldMarkers;
+begin
+  FModel.LoadText('Hello');
+  FModel.SetSelection(0, 5);
+  const Stroke = TEditorKeyStroke.Create(TEditorKeyAction.Bold, False);
+
+  TMarkdownEditorKeyDispatch.Apply(FModel, Stroke, IndentWidth);
+
+  Assert.AreEqual('**Hello**', FModel.Text);
+end;
+
+procedure TMarkdownEditorKeyDispatchTests.Apply_NoneAction_ReturnsNotHandled;
+begin
+  const Stroke = TEditorKeyStroke.Create(TEditorKeyAction.None, False);
+
+  const Handled = TMarkdownEditorKeyDispatch.Apply(FModel, Stroke, IndentWidth);
+
+  Assert.IsFalse(Handled);
 end;
 
 end.

@@ -102,6 +102,12 @@ end;
 
 class procedure TMarkdownDisplayListRenderer.RenderTextRun(const Run: IDisplayTextRun; const Painter: IPainter);
 begin
+  // A source run exists for selection and copy; the drawing it stands for is
+  // painted by the runs around it.
+  const IsSource = (Run.Role = TDisplayTextRunRole.Source);
+  if IsSource then
+    Exit;
+
   const TopY = Run.Bounds.Top + Run.Baseline - Painter.Baseline(Run.Font);
   Painter.DrawTextRun(TLayoutPointF.Create(Run.Bounds.Left, TopY), Run.Text, Run.Font, Run.Color);
 end;

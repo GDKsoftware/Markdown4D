@@ -127,7 +127,8 @@ begin
     if not MatchesSpec then
     begin
       FailureDetail := Format('direct HTML differs from the spec expected HTML. Expected: <%s>, direct: <%s>', [SpecHtml, DirectHtml]);
-      Exit(False);
+      Result := False;
+      Exit;
     end;
 
     const Document = TMarkdown.Parse(Example.Markdown, Dialect);

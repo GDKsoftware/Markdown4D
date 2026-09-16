@@ -37,7 +37,10 @@ implementation
 class function TPadTabLayout.ComputeTabWidth(const AvailableWidth, ATabCount: Integer): Integer;
 begin
   if ATabCount <= 0 then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
 
   var Avail := AvailableWidth - PlusButtonWidth;
   if Avail < 0 then
@@ -61,7 +64,10 @@ end;
 class function TPadTabLayout.TabIndexAt(const X, TabWidth, ATabCount: Integer): Integer;
 begin
   if (ATabCount <= 0) or (TabWidth <= 0) then
-    Exit(-1);
+  begin
+    Result := -1;
+    Exit;
+  end;
 
   Result := X div TabWidth;
   if Result < 0 then

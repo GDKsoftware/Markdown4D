@@ -121,7 +121,10 @@ begin
   end;
 
   if BestIndex < 0 then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Handler := FRegistrations[BestIndex].Handler;
   Result := True;

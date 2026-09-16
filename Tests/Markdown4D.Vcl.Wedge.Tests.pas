@@ -24,8 +24,6 @@ type
       ClipInside = 40.0;
       ProbeX = 150;
       ProbeY = 20;
-    class procedure FillWhite(const Bitmap: TBitmap);
-    class function DistinctColorCount(const Bitmap: TBitmap): Integer;
 
   public
     [Test]
@@ -39,35 +37,9 @@ implementation
 
 uses
   System.SysUtils,
-  System.Types,
-  System.Generics.Collections,
   Markdown4D.Layout.Interfaces,
-  Markdown4D.Vcl.Painter;
-
-class procedure TMarkdownVclWedgeTests.FillWhite(const Bitmap: TBitmap);
-begin
-  Bitmap.Canvas.Brush.Style := bsSolid;
-  Bitmap.Canvas.Brush.Color := clWhite;
-  Bitmap.Canvas.FillRect(Rect(0, 0, Bitmap.Width, Bitmap.Height));
-end;
-
-class function TMarkdownVclWedgeTests.DistinctColorCount(const Bitmap: TBitmap): Integer;
-begin
-  const Seen = TDictionary<TColor, Boolean>.Create;
-  try
-    for var Y := 0 to Bitmap.Height - 1 do
-    begin
-      for var X := 0 to Bitmap.Width - 1 do
-      begin
-        Seen.AddOrSetValue(Bitmap.Canvas.Pixels[X, Y], True);
-      end;
-    end;
-
-    Result := Seen.Count;
-  finally
-    Seen.Free;
-  end;
-end;
+  Markdown4D.Vcl.Painter,
+  Markdown4D.Tests.Vcl.BitmapHelpers;
 
 procedure TMarkdownVclWedgeTests.FillWedge_ProducesNonBlankPixels;
 begin
@@ -75,13 +47,13 @@ begin
   try
     Bitmap.PixelFormat := pf32bit;
     Bitmap.SetSize(BitmapWidth, BitmapHeight);
-    FillWhite(Bitmap);
+    TMarkdownVclTestBitmapHelpers.FillWhite(Bitmap);
 
     var Painter: IPainter := TMarkdownVclPainter.Create(Bitmap.Canvas);
     Painter.FillWedge(TLayoutPointF.Create(CenterX, CenterY), OuterRadius, InnerRadius, StartAngle, SweepAngle,
       TLayoutColor($FF0000FF));
 
-    Assert.IsTrue(DistinctColorCount(Bitmap) > 1, 'A filled wedge must paint non-blank pixels');
+    Assert.IsTrue(TMarkdownVclTestBitmapHelpers.DistinctColorCount(Bitmap) > 1, 'A filled wedge must paint non-blank pixels');
   finally
     Bitmap.Free;
   end;
@@ -93,7 +65,7 @@ begin
   try
     Bitmap.PixelFormat := pf32bit;
     Bitmap.SetSize(BitmapWidth, BitmapHeight);
-    FillWhite(Bitmap);
+    TMarkdownVclTestBitmapHelpers.FillWhite(Bitmap);
 
     var Painter: IPainter := TMarkdownVclPainter.Create(Bitmap.Canvas);
     Painter.SaveState;

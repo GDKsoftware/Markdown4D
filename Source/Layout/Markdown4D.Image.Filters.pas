@@ -54,7 +54,10 @@ uses
 class function TMarkdownRasterFilters.BoxRadius(const Deviation: Single): Integer;
 begin
   if Deviation <= 0 then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
 
   Result := Max(1, Round(Deviation * 3 * Sqrt(2 * Pi) / 4 / 2));
 end;
@@ -200,7 +203,10 @@ class function TMarkdownRasterFilters.Over(const Top, Bottom: TMarkdownPixelRast
 begin
   Result := TMarkdownPixelRaster.Create(Top.Width, Top.Height);
   if Length(Bottom.Pixels) <> Length(Top.Pixels) then
-    Exit(Top);
+  begin
+    Result := Top;
+    Exit;
+  end;
 
   for var Offset := 0 to High(Result.Pixels) div BytesPerPixel do
   begin
@@ -219,7 +225,10 @@ class function TMarkdownRasterFilters.InsideOf(const Source, Shape: TMarkdownPix
 begin
   Result := TMarkdownPixelRaster.Create(Source.Width, Source.Height);
   if Length(Shape.Pixels) <> Length(Source.Pixels) then
-    Exit(Source);
+  begin
+    Result := Source;
+    Exit;
+  end;
 
   for var Offset := 0 to High(Result.Pixels) div BytesPerPixel do
   begin

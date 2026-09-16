@@ -64,7 +64,10 @@ function TMermaidBlockOverride.LayoutBlock(const Node: IMarkdownNode; const Top:
 begin
   var Model: IMermaidModel;
   if not TryResolveModel(Node, Model) then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
 
   const Height = TMermaidLayouter.PreferredHeight(Model, Context.Width, Context.Theme, Context.Measurer);
   const Bounds = TLayoutRectF.Create(0, Top, Context.Width, Top + Height);

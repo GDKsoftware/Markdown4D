@@ -81,7 +81,7 @@ begin
 
   Randomize;
   FMessageViewers := TList<TMarkdownViewer>.Create;
-  FCannedResponse := BuildStreamingSampleAnswer;
+  FCannedResponse := TMarkdownStreamer.BuildSampleAnswer;
   FStreamer := TMarkdownStreamer.Create;
 end;
 

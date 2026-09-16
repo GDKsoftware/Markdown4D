@@ -71,6 +71,8 @@
         </DelphiCompile>
         <DCCReference Include="..\Source\Fmx\Markdown4D.Fmx.Painter.pas"/>
         <DCCReference Include="..\Source\Fmx\Markdown4D.Fmx.Viewer.pas"/>
+        <DCCReference Include="Markdown4D.Tests.Pipeline.Helpers.pas"/>
+        <DCCReference Include="Markdown4D.Tests.Fmx.BitmapHelpers.pas"/>
         <DCCReference Include="Markdown4D.Fmx.Render.Tests.pas"/>
         <DCCReference Include="Markdown4D.Fmx.Viewer.Tests.pas"/>
         <DCCReference Include="Markdown4D.Fmx.Wedge.Tests.pas"/>
@@ -78,6 +80,7 @@
         <DCCReference Include="..\Source\Fmx\Markdown4D.Fmx.Editor.pas"/>
         <DCCReference Include="Markdown4D.Fmx.Editor.Tests.pas"/>
         <DCCReference Include="Markdown4D.Fmx.Design.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Tests.Runner.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

@@ -51,10 +51,19 @@ type
       DisallowedTagPattern =
         '<(?=/?(?:title|textarea|style|xmp|iframe|noembed|noframes|script|plaintext)[\s/>])';
       InfoSplitChars: array[0..1] of Char = (' ', #9);
+      MathSpanOpenTag = '<span class="math">';
+      MathSpanCloseTag = '</span>';
+      MathDivOpenTag = '<div class="math">';
+      MathDivCloseTag = '</div>';
+      InlineMathOpen = '\(';
+      InlineMathClose = '\)';
+      DisplayMathOpen = '\[';
+      DisplayMathClose = '\]';
     var
       FOutput: TStringBuilder;
       FTasks: TStack<TRenderTask>;
       FTightList: Boolean;
+      FInlineDepth: Integer;
       FTableInHeader: Boolean;
       FTableInBody: Boolean;
       FOptions: TMarkdownRendererOptions;
@@ -75,6 +84,9 @@ type
     procedure EnterTable(const Node: IMarkdownNode);
     procedure EnterTableRow(const Node: IMarkdownTableRow);
     procedure EnterTableCell(const Node: IMarkdownTableCell);
+    procedure WriteMath(const Node: IMarkdownMath);
+    procedure WriteInlineMath(const Node: IMarkdownMath);
+    procedure WriteMathBlock(const Node: IMarkdownMath);
     function CurrentTableCellTag: string;
     function RawHtmlOutput(const Literal: string): string;
     procedure EnterCustomInline(const Node: IMarkdownNode);
@@ -232,7 +244,12 @@ begin
       EnterTableRow(Node as IMarkdownTableRow);
     TMarkdownNodeKind.TableCell:
       EnterTableCell(Node as IMarkdownTableCell);
+    TMarkdownNodeKind.Math:
+      WriteMath(Node as IMarkdownMath);
   else
+    // Document is only ever scheduled for a Leave task (see Render), so this
+    // guards a future node kind added without updating this dispatcher.
+    raise ENotSupportedException.CreateFmt('Unsupported node kind: %d', [Ord(Node.Kind)]);
   end;
 end;
 
@@ -264,6 +281,8 @@ begin
     TMarkdownNodeKind.TableCell:
       LeaveTableCell;
   else
+    // Document is the root passed to Render; it closes nothing of its own.
+    // Every other kind that reaches a Leave task is handled above.
   end;
 end;
 
@@ -275,6 +294,7 @@ begin
     FOutput.Append('<p>');
   end;
 
+  Inc(FInlineDepth);
   ScheduleLeaveAndChildren(Node, FTightList);
 end;
 
@@ -283,6 +303,7 @@ begin
   AppendLineBreak;
   FOutput.Append(Format(HeadingOpenFormat, [Node.Level]));
 
+  Inc(FInlineDepth);
   ScheduleLeaveAndChildren(Node, FTightList);
 end;
 
@@ -397,13 +418,61 @@ begin
 
   FOutput.Append(TagCloseBracket);
 
+  Inc(FInlineDepth);
   ScheduleLeaveAndChildren(Node, FTightList);
+end;
+
+// A formula inside a paragraph, heading or table cell stays inline HTML, even
+// when it is display math, because a div inside a p is not valid HTML. KaTeX
+// and MathJax read the \( \) and \[ \] delimiters, so the span and the div
+// carry the same class and the delimiters decide the style.
+procedure TMarkdownHtmlRenderer.WriteMath(const Node: IMarkdownMath);
+begin
+  const IsInline = (FInlineDepth > 0);
+  if IsInline then
+    WriteInlineMath(Node)
+  else
+    WriteMathBlock(Node);
+end;
+
+procedure TMarkdownHtmlRenderer.WriteInlineMath(const Node: IMarkdownMath);
+begin
+  var OpenDelimiter := InlineMathOpen;
+  var CloseDelimiter := InlineMathClose;
+
+  if Node.IsDisplay then
+  begin
+    OpenDelimiter := DisplayMathOpen;
+    CloseDelimiter := DisplayMathClose;
+  end;
+
+  FOutput.Append(MathSpanOpenTag);
+  FOutput.Append(OpenDelimiter);
+  FOutput.Append(EscapeHtml(Node.Literal));
+  FOutput.Append(CloseDelimiter);
+  FOutput.Append(MathSpanCloseTag);
+end;
+
+procedure TMarkdownHtmlRenderer.WriteMathBlock(const Node: IMarkdownMath);
+begin
+  AppendLineBreak;
+  FOutput.Append(MathDivOpenTag);
+  FOutput.Append(DisplayMathOpen);
+  FOutput.Append(LineFeed);
+  FOutput.Append(EscapeHtml(Node.Literal));
+  FOutput.Append(LineFeed);
+  FOutput.Append(DisplayMathClose);
+  FOutput.Append(MathDivCloseTag);
+  AppendLineBreak;
 end;
 
 function TMarkdownHtmlRenderer.CurrentTableCellTag: string;
 begin
   if FTableInHeader then
-    Exit(TableHeaderCellTag);
+  begin
+    Result := TableHeaderCellTag;
+    Exit;
+  end;
 
   Result := TableDataCellTag;
 end;
@@ -411,10 +480,16 @@ end;
 function TMarkdownHtmlRenderer.RawHtmlOutput(const Literal: string): string;
 begin
   if not FOptions.AllowRawHtml then
-    Exit(OmittedHtmlComment);
+  begin
+    Result := OmittedHtmlComment;
+    Exit;
+  end;
 
   if FOptions.ApplyTagFilter then
-    Exit(FTagFilterRegex.Replace(Literal, EscapedLessThan));
+  begin
+    Result := FTagFilterRegex.Replace(Literal, EscapedLessThan);
+    Exit;
+  end;
 
   Result := Literal;
 end;
@@ -442,7 +517,10 @@ begin
   Hook := nil;
 
   if FHooks = nil then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Result := FHooks.TryGetValue((Node as IMarkdownCustomInline).NodeName, Hook);
 end;
@@ -491,7 +569,10 @@ end;
 function TMarkdownHtmlRenderer.DestinationOutput(const Destination: string): string;
 begin
   if FOptions.AllowUnsafeLinks then
-    Exit(Destination);
+  begin
+    Result := Destination;
+    Exit;
+  end;
 
   Result := TMarkdownUrlSafety.Sanitized(Destination);
 end;
@@ -511,7 +592,7 @@ begin
         // plain text: markup is escaped whatever the raw HTML option says,
         // because an unescaped quote would end the attribute, and a line break
         // becomes a space because an attribute carries no lines.
-        TMarkdownNodeKind.Text, TMarkdownNodeKind.CodeSpan, TMarkdownNodeKind.InlineHtml:
+        TMarkdownNodeKind.Text, TMarkdownNodeKind.CodeSpan, TMarkdownNodeKind.InlineHtml, TMarkdownNodeKind.Math:
           FOutput.Append(EscapeHtml((Current as IMarkdownText).Literal));
         TMarkdownNodeKind.SoftLineBreak, TMarkdownNodeKind.HardLineBreak:
           FOutput.Append(Space);
@@ -541,6 +622,8 @@ end;
 
 procedure TMarkdownHtmlRenderer.LeaveParagraph;
 begin
+  Dec(FInlineDepth);
+
   if FTightList then
     Exit;
 
@@ -550,6 +633,8 @@ end;
 
 procedure TMarkdownHtmlRenderer.LeaveHeading(const Node: IMarkdownHeading);
 begin
+  Dec(FInlineDepth);
+
   FOutput.Append(Format(HeadingCloseFormat, [Node.Level]));
   AppendLineBreak;
 end;
@@ -609,6 +694,8 @@ end;
 
 procedure TMarkdownHtmlRenderer.LeaveTableCell;
 begin
+  Dec(FInlineDepth);
+
   FOutput.Append(Format(TableCellCloseFormat, [CurrentTableCellTag]));
   AppendLineBreak;
 end;
@@ -644,7 +731,10 @@ begin
   const Parts = InfoString.Split(InfoSplitChars, TStringSplitOptions.ExcludeEmpty);
 
   if Length(Parts) = 0 then
-    Exit('');
+  begin
+    Result := '';
+    Exit;
+  end;
 
   Result := Parts[0];
 end;

@@ -22,7 +22,8 @@ uses
   Markdown4D.Parser.Blocks,
   Markdown4D.Parser.Inlines,
   Markdown4D.Renderer.Html,
-  Markdown4D.Extensions.Gfm;
+  Markdown4D.Extensions.Gfm,
+  Markdown4D.Extensions.Math;
 
 type
   TMarkdownPipelineInstance = class(TInterfacedObject, IMarkdownPipeline, IMarkdownPipelineConfigurationProvider)
@@ -245,6 +246,7 @@ begin
     Use(TGfmStrikethroughExtension.Create);
     Use(TGfmAutolinkExtension.Create);
     Use(TGfmTagFilterExtension.Create);
+    Use(TMathExtension.Create);
     FGfmRegistered := True;
   end;
 

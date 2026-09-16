@@ -23,6 +23,9 @@ iOSDevice64/
 *.bpl
 *.dcp
 *.res
+# The bundled formula font ships precompiled, like the palette icons (.dcr),
+# so a fresh clone builds without a resource compiler step.
+!Source/Fonts/STIXTwoMath.res
 *.map
 *.drc
 *.rsm

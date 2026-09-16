@@ -120,7 +120,8 @@ begin
     if FoundIndex < 0 then
     begin
       Highlighter := nil;
-      Exit(False);
+      Result := False;
+      Exit;
     end;
 
     Highlighter := FEntries[FoundIndex].Highlighter;
@@ -144,10 +145,16 @@ class function THighlighterRegistry.TokenizeLine(const Language, Line: string; c
 begin
   var Highlighter: IMarkdownSyntaxHighlighter;
   if TryGet(Language, Highlighter) then
-    Exit(Highlighter.TokenizeLine(Line, State));
+  begin
+    Result := Highlighter.TokenizeLine(Line, State);
+    Exit;
+  end;
 
   if Line = '' then
-    Exit(TSyntaxLine.Create(nil, State));
+  begin
+    Result := TSyntaxLine.Create(nil, State);
+    Exit;
+  end;
 
   Result := TSyntaxLine.Create([TSyntaxToken.Create(TSyntaxTokenKind.PlainText, 1, Length(Line))], State);
 end;
@@ -157,7 +164,10 @@ begin
   for var Index := 0 to High(FEntries) do
   begin
     if SameText(FEntries[Index].Language, Language) then
-      Exit(Index);
+    begin
+      Result := Index;
+      Exit;
+    end;
   end;
 
   Result := -1;

@@ -19,6 +19,7 @@ type
     class function CreateSql: IMarkdownSyntaxHighlighter;
     class function CreateJson: IMarkdownSyntaxHighlighter;
     class function CreateXml: IMarkdownSyntaxHighlighter;
+    class function CreateHighlighterFor(const Language: string): IMarkdownSyntaxHighlighter;
     class function DescribeTokens(const Tokens: TArray<TSyntaxToken>): string;
     class procedure AssertCoverage(const Tokens: TArray<TSyntaxToken>; const LineLength: Integer);
     class procedure AssertLineTokens(const Line: TSyntaxLine; const LineText, Expected: string);
@@ -44,10 +45,11 @@ type
     procedure Pascal_Directive_IsDistinctFromComment;
 
     [Test]
-    procedure Pascal_BraceComment_CarriesStateAcrossLines;
-
-    [Test]
-    procedure Pascal_StarComment_CarriesStateAcrossLines;
+    [TestCase('Pascal brace comment', 'Pascal,x := 1; { open,still } done,Plain@1+5 Number@6+1 Plain@7+2 Comment@9+6,Comment@1+7 Plain@8+5')]
+    [TestCase('Pascal star comment', 'Pascal,(* open,close *) x,Comment@1+7,Comment@1+8 Plain@9+2')]
+    [TestCase('Sql block comment', 'Sql,a /* open,end */ b,Plain@1+2 Comment@3+7,Comment@1+6 Plain@7+2')]
+    [TestCase('Xml comment', 'Xml,<!-- open,done -->,Comment@1+9,Comment@1+8')]
+    procedure Highlighter_CommentAcrossLines_CarriesStateThenResets(const Language, FirstLineText, SecondLineText, FirstExpected, SecondExpected: string);
 
     [Test]
     procedure Sql_KeywordsAndNumbers_AreTokenized;
@@ -63,9 +65,6 @@ type
 
     [Test]
     procedure Sql_BlockComment_WithinSingleLine;
-
-    [Test]
-    procedure Sql_BlockComment_CarriesStateAcrossLines;
 
     [Test]
     procedure Json_Keys_DifferFromStringValues;
@@ -87,9 +86,6 @@ type
 
     [Test]
     procedure Xml_Comment_WithinSingleLine;
-
-    [Test]
-    procedure Xml_Comment_CarriesStateAcrossLines;
 
     [Test]
     procedure Xml_CDataSection_IsSingleToken;
@@ -165,37 +161,17 @@ begin
   AssertTokenizes(CreatePascal, '{$IFDEF DEBUG} X {$ENDIF}', 'Directive@1+14 Plain@15+3 Directive@18+8');
 end;
 
-procedure TSyntaxHighlighterTests.Pascal_BraceComment_CarriesStateAcrossLines;
-const
-  FirstLineText = 'x := 1; { open';
-  SecondLineText = 'still } done';
+procedure TSyntaxHighlighterTests.Highlighter_CommentAcrossLines_CarriesStateThenResets(const Language, FirstLineText, SecondLineText, FirstExpected, SecondExpected: string);
 begin
-  const Highlighter = CreatePascal;
+  const Highlighter = CreateHighlighterFor(Language);
 
   const FirstLine = Highlighter.TokenizeLine(FirstLineText, Highlighter.InitialState);
-  AssertLineTokens(FirstLine, FirstLineText, 'Plain@1+5 Number@6+1 Plain@7+2 Comment@9+6');
+  AssertLineTokens(FirstLine, FirstLineText, FirstExpected);
   const StateCarriesOver = (FirstLine.NextState <> Highlighter.InitialState);
   Assert.IsTrue(StateCarriesOver);
 
   const SecondLine = Highlighter.TokenizeLine(SecondLineText, FirstLine.NextState);
-  AssertLineTokens(SecondLine, SecondLineText, 'Comment@1+7 Plain@8+5');
-  Assert.AreEqual(Highlighter.InitialState, SecondLine.NextState);
-end;
-
-procedure TSyntaxHighlighterTests.Pascal_StarComment_CarriesStateAcrossLines;
-const
-  FirstLineText = '(* open';
-  SecondLineText = 'close *) x';
-begin
-  const Highlighter = CreatePascal;
-
-  const FirstLine = Highlighter.TokenizeLine(FirstLineText, Highlighter.InitialState);
-  AssertLineTokens(FirstLine, FirstLineText, 'Comment@1+7');
-  const StateCarriesOver = (FirstLine.NextState <> Highlighter.InitialState);
-  Assert.IsTrue(StateCarriesOver);
-
-  const SecondLine = Highlighter.TokenizeLine(SecondLineText, FirstLine.NextState);
-  AssertLineTokens(SecondLine, SecondLineText, 'Comment@1+8 Plain@9+2');
+  AssertLineTokens(SecondLine, SecondLineText, SecondExpected);
   Assert.AreEqual(Highlighter.InitialState, SecondLine.NextState);
 end;
 
@@ -223,23 +199,6 @@ end;
 procedure TSyntaxHighlighterTests.Sql_BlockComment_WithinSingleLine;
 begin
   AssertTokenizes(CreateSql, 'a /* c */ b', 'Plain@1+2 Comment@3+7 Plain@10+2');
-end;
-
-procedure TSyntaxHighlighterTests.Sql_BlockComment_CarriesStateAcrossLines;
-const
-  FirstLineText = 'a /* open';
-  SecondLineText = 'end */ b';
-begin
-  const Highlighter = CreateSql;
-
-  const FirstLine = Highlighter.TokenizeLine(FirstLineText, Highlighter.InitialState);
-  AssertLineTokens(FirstLine, FirstLineText, 'Plain@1+2 Comment@3+7');
-  const StateCarriesOver = (FirstLine.NextState <> Highlighter.InitialState);
-  Assert.IsTrue(StateCarriesOver);
-
-  const SecondLine = Highlighter.TokenizeLine(SecondLineText, FirstLine.NextState);
-  AssertLineTokens(SecondLine, SecondLineText, 'Comment@1+6 Plain@7+2');
-  Assert.AreEqual(Highlighter.InitialState, SecondLine.NextState);
 end;
 
 procedure TSyntaxHighlighterTests.Json_Keys_DifferFromStringValues;
@@ -279,23 +238,6 @@ end;
 procedure TSyntaxHighlighterTests.Xml_Comment_WithinSingleLine;
 begin
   AssertTokenizes(CreateXml, '<!-- hi -->', 'Comment@1+11');
-end;
-
-procedure TSyntaxHighlighterTests.Xml_Comment_CarriesStateAcrossLines;
-const
-  FirstLineText = '<!-- open';
-  SecondLineText = 'done -->';
-begin
-  const Highlighter = CreateXml;
-
-  const FirstLine = Highlighter.TokenizeLine(FirstLineText, Highlighter.InitialState);
-  AssertLineTokens(FirstLine, FirstLineText, 'Comment@1+9');
-  const StateCarriesOver = (FirstLine.NextState <> Highlighter.InitialState);
-  Assert.IsTrue(StateCarriesOver);
-
-  const SecondLine = Highlighter.TokenizeLine(SecondLineText, FirstLine.NextState);
-  AssertLineTokens(SecondLine, SecondLineText, 'Comment@1+8');
-  Assert.AreEqual(Highlighter.InitialState, SecondLine.NextState);
 end;
 
 procedure TSyntaxHighlighterTests.Xml_CDataSection_IsSingleToken;
@@ -371,6 +313,18 @@ end;
 class function TSyntaxHighlighterTests.CreateXml: IMarkdownSyntaxHighlighter;
 begin
   Result := TXmlSyntaxHighlighter.Create;
+end;
+
+class function TSyntaxHighlighterTests.CreateHighlighterFor(const Language: string): IMarkdownSyntaxHighlighter;
+begin
+  if SameText(Language, 'Pascal') then
+    Result := CreatePascal
+  else if SameText(Language, 'Sql') then
+    Result := CreateSql
+  else if SameText(Language, 'Xml') then
+    Result := CreateXml
+  else
+    raise ENotSupportedException.CreateFmt('Unsupported highlighter language: %s', [Language]);
 end;
 
 class function TSyntaxHighlighterTests.DescribeTokens(const Tokens: TArray<TSyntaxToken>): string;

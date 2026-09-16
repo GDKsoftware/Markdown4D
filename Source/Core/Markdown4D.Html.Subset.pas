@@ -272,7 +272,10 @@ end;
 class function TSubsetConverter.DecodeEntities(const Value: string): string;
 begin
   if not Value.Contains('&') then
-    Exit(Value);
+  begin
+    Result := Value;
+    Exit;
+  end;
 
   const Builder = TStringBuilder.Create;
   try
@@ -450,11 +453,17 @@ begin
   Tag := Default(TParsedTag);
 
   if (FPosition > Length(FSource)) or (FSource[FPosition] <> '<') then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var Scan := FPosition + 1;
   if Scan > Length(FSource) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   // Comments and declarations carry nothing for a reader.
   if Copy(FSource, Scan, 3) = '!--' then
@@ -465,7 +474,8 @@ begin
     else
       FPosition := CommentEnd + 3;
 
-    Exit(False);
+    Result := False;
+    Exit;
   end;
 
   if FSource[Scan] = '!' then
@@ -476,7 +486,8 @@ begin
     else
       FPosition := Terminator + 1;
 
-    Exit(False);
+    Result := False;
+    Exit;
   end;
 
   Tag.IsClosing := FSource[Scan] = '/';
@@ -488,7 +499,10 @@ begin
     Inc(Scan);
 
   if Scan = NameStart then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Tag.Name := Copy(FLowered, NameStart, Scan - NameStart);
   Tag.Attributes := TDictionary<string, string>.Create;
@@ -586,7 +600,7 @@ begin
   var AltText := '';
   Tag.Attributes.TryGetValue('alt', AltText);
 
-  Write('![' + EscapeText(DecodeEntities(AltText)) + '](' + FormatDestination(Source) + ')');
+  Write(Format('![%s](%s)', [EscapeText(DecodeEntities(AltText)), FormatDestination(Source)]));
 end;
 
 procedure TSubsetConverter.HandleListItem;
@@ -691,6 +705,10 @@ begin
         end;
         Exit;
       end;
+  else
+    // Every other kind (Transparent, Paragraph, headings, inline styles,
+    // anchors, Details/Summary, ...) shares the generic block/opener/closer
+    // handling below instead of a dedicated branch here.
   end;
 
   if Info.IsBlock then
@@ -706,7 +724,7 @@ begin
     if Destination.Trim <> '' then
     begin
       Write('[');
-      FOpen.Add(TOpenTag.Create(Tag.Name, Info.Kind, '](' + FormatDestination(Destination) + ')'));
+      FOpen.Add(TOpenTag.Create(Tag.Name, Info.Kind, Format('](%s)', [FormatDestination(Destination)])));
       Exit;
     end;
   end;
@@ -766,6 +784,9 @@ begin
           StartLine;
           FPendingBlank := True;
         end;
+    else
+      // Inline kinds (Strong, Emphasis, CodeSpan, Strikethrough, Anchor, ...)
+      // only need their Closer text, already written above; nothing more to do.
     end;
   end;
 end;

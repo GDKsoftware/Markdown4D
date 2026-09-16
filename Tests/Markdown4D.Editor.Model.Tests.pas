@@ -29,6 +29,7 @@ type
       FChangeCount: Integer;
       FCaretDuringChange: Integer;
     procedure HandleChange(const Sender: TObject; const Range: TEditorReplaceRange);
+    class function CommandNamed(const Name: string): TEditorCommand;
 
   public
     [Setup]
@@ -161,10 +162,9 @@ type
     procedure Change_EmitsReplayableReplaceRange;
 
     [Test]
-    procedure ExecuteBold_WrapsSelection;
-
-    [Test]
-    procedure ExecuteBold_OnBoldSelection_Unwraps;
+    [TestCase('Wraps selection', 'Hello world,5,**Hello** world')]
+    [TestCase('On bold selection unwraps', '**Hello** world,9,Hello world')]
+    procedure ExecuteBold_Various_TogglesBoldMarkers(const Text: string; const SelectionEnd: Integer; const Expected: string);
 
     [Test]
     procedure ExecuteLink_InsertsPlaceholderWithCaretInUrl;
@@ -191,16 +191,16 @@ type
     procedure SelectLineAt_MiddleLine_SelectsLineWithoutNewline;
 
     [Test]
-    procedure FindText_EmptyNeedle_ReturnsZero;
+    procedure FindMatchCount_EmptyNeedle_ReturnsZero;
 
     [Test]
-    procedure FindText_NeedleLongerThanText_ReturnsZero;
+    procedure FindMatchCount_NeedleLongerThanText_ReturnsZero;
 
     [Test]
-    procedure FindText_CountsCaseInsensitive;
+    procedure FindMatchCount_CountsCaseInsensitive;
 
     [Test]
-    procedure FindText_NonOverlapping;
+    procedure FindMatchCount_NonOverlapping;
 
     [Test]
     procedure FindNext_EmptyNeedle_ReturnsMinusOne;
@@ -224,10 +224,10 @@ type
     procedure FindNext_CaseInsensitive;
 
     [Test]
-    procedure FindText_MatchCase_CountsOnlyExactCase;
+    procedure FindMatchCount_MatchCase_CountsOnlyExactCase;
 
     [Test]
-    procedure FindText_WholeWord_IgnoresPartialMatches;
+    procedure FindMatchCount_WholeWord_IgnoresPartialMatches;
 
     [Test]
     procedure FindNext_MatchCase_SkipsWrongCase;
@@ -278,13 +278,10 @@ type
     procedure Fold_ExpandAt_RevealsContainingRegion;
 
     [Test]
-    procedure ExecuteHeading1_AddsPrefix;
-
-    [Test]
-    procedure ExecuteHeading1_OnHeading1_Removes;
-
-    [Test]
-    procedure ExecuteHeading2_OnHeading1_ReplacesLevel;
+    [TestCase('Adds prefix', 'Hello,Heading1,# Hello')]
+    [TestCase('On heading1 removes', '# Hello,Heading1,Hello')]
+    [TestCase('On heading1 replaces level', '# Hello,Heading2,## Hello')]
+    procedure ExecuteHeading_Various_TogglesOrChangesLevel(const Text, CommandName, Expected: string);
 
     [Test]
     procedure ExecuteHeading1_MultiLine_AddsToEachNonBlank;
@@ -293,34 +290,28 @@ type
     procedure ExecuteHeading1_OnEmptyLine_AddsPrefix;
 
     [Test]
-    procedure ExecuteBullet_AddsDash;
-
-    [Test]
-    procedure ExecuteBullet_OnBulleted_Removes;
+    [TestCase('Adds dash', 'Hello,- Hello')]
+    [TestCase('On bulleted removes', '- Hello,Hello')]
+    procedure ExecuteBullet_Various_TogglesDashMarker(const Text, Expected: string);
 
     [Test]
     procedure ExecuteBullet_MultiLine_SkipsBlankLines;
 
     [Test]
-    procedure ExecuteNumbered_NumbersSequentially;
+    [TestCase('Numbers sequentially', 'a'#10'b'#10'c,1. a'#10'2. b'#10'3. c')]
+    [TestCase('On numbered removes', '1. a'#10'2. b,a'#10'b')]
+    [TestCase('Multi line blank line not numbered', 'a'#10#10'b,1. a'#10#10'2. b')]
+    procedure ExecuteNumbered_Various_TogglesNumbering(const Text, Expected: string);
 
     [Test]
-    procedure ExecuteNumbered_OnNumbered_Removes;
+    [TestCase('Adds marker', 'Hello,> Hello')]
+    [TestCase('On quoted removes', '> Hello,Hello')]
+    procedure ExecuteQuote_Various_TogglesQuoteMarker(const Text, Expected: string);
 
     [Test]
-    procedure ExecuteNumbered_MultiLine_BlankLineNotNumbered;
-
-    [Test]
-    procedure ExecuteQuote_AddsMarker;
-
-    [Test]
-    procedure ExecuteQuote_OnQuoted_Removes;
-
-    [Test]
-    procedure ExecuteStrikethrough_WrapsSelection;
-
-    [Test]
-    procedure ExecuteStrikethrough_OnStruck_Unwraps;
+    [TestCase('Wraps selection', 'Hello,5,~~Hello~~')]
+    [TestCase('On struck selection unwraps', '~~Hello~~,9,Hello')]
+    procedure ExecuteStrikethrough_Various_TogglesStrikethroughMarkers(const Text: string; const SelectionEnd: Integer; const Expected: string);
 
     [Test]
     procedure ExecuteTable_InsertsSkeletonOnNewLine;
@@ -765,20 +756,12 @@ begin
   Assert.AreEqual(FModel.Text, FMirror);
 end;
 
-procedure TMarkdownEditorModelTests.ExecuteBold_WrapsSelection;
+procedure TMarkdownEditorModelTests.ExecuteBold_Various_TogglesBoldMarkers(const Text: string; const SelectionEnd: Integer; const Expected: string);
 begin
-  FModel.LoadText(SampleText);
-  FModel.SetSelection(0, 5);
+  FModel.LoadText(Text);
+  FModel.SetSelection(0, SelectionEnd);
   FModel.ExecuteCommand(TEditorCommand.Bold);
-  Assert.AreEqual('**Hello** world', FModel.Text);
-end;
-
-procedure TMarkdownEditorModelTests.ExecuteBold_OnBoldSelection_Unwraps;
-begin
-  FModel.LoadText('**Hello** world');
-  FModel.SetSelection(0, 9);
-  FModel.ExecuteCommand(TEditorCommand.Bold);
-  Assert.AreEqual('Hello world', FModel.Text);
+  Assert.AreEqual(Expected, FModel.Text);
 end;
 
 procedure TMarkdownEditorModelTests.ExecuteLink_InsertsPlaceholderWithCaretInUrl;
@@ -839,28 +822,28 @@ begin
   Assert.AreEqual('second line', FModel.SelectedText);
 end;
 
-procedure TMarkdownEditorModelTests.FindText_EmptyNeedle_ReturnsZero;
+procedure TMarkdownEditorModelTests.FindMatchCount_EmptyNeedle_ReturnsZero;
 begin
   FModel.LoadText(SampleText);
-  Assert.AreEqual(0, FModel.FindText(''));
+  Assert.AreEqual(0, FModel.FindMatchCount(''));
 end;
 
-procedure TMarkdownEditorModelTests.FindText_NeedleLongerThanText_ReturnsZero;
+procedure TMarkdownEditorModelTests.FindMatchCount_NeedleLongerThanText_ReturnsZero;
 begin
   FModel.LoadText('ab');
-  Assert.AreEqual(0, FModel.FindText('abcdef'));
+  Assert.AreEqual(0, FModel.FindMatchCount('abcdef'));
 end;
 
-procedure TMarkdownEditorModelTests.FindText_CountsCaseInsensitive;
+procedure TMarkdownEditorModelTests.FindMatchCount_CountsCaseInsensitive;
 begin
   FModel.LoadText('One one ONE');
-  Assert.AreEqual(3, FModel.FindText('one'));
+  Assert.AreEqual(3, FModel.FindMatchCount('one'));
 end;
 
-procedure TMarkdownEditorModelTests.FindText_NonOverlapping;
+procedure TMarkdownEditorModelTests.FindMatchCount_NonOverlapping;
 begin
   FModel.LoadText('aaaa');
-  Assert.AreEqual(2, FModel.FindText('aa'));
+  Assert.AreEqual(2, FModel.FindMatchCount('aa'));
 end;
 
 procedure TMarkdownEditorModelTests.FindNext_EmptyNeedle_ReturnsMinusOne;
@@ -907,16 +890,16 @@ begin
   Assert.AreEqual(0, FModel.FindNext('HELLO', -1));
 end;
 
-procedure TMarkdownEditorModelTests.FindText_MatchCase_CountsOnlyExactCase;
+procedure TMarkdownEditorModelTests.FindMatchCount_MatchCase_CountsOnlyExactCase;
 begin
   FModel.LoadText('One one ONE');
-  Assert.AreEqual(1, FModel.FindText('one', TMarkdownFindOptions.Create(True, False)));
+  Assert.AreEqual(1, FModel.FindMatchCount('one', TMarkdownFindOptions.Create(True, False)));
 end;
 
-procedure TMarkdownEditorModelTests.FindText_WholeWord_IgnoresPartialMatches;
+procedure TMarkdownEditorModelTests.FindMatchCount_WholeWord_IgnoresPartialMatches;
 begin
   FModel.LoadText('cat category cat');
-  Assert.AreEqual(2, FModel.FindText('cat', TMarkdownFindOptions.Create(False, True)));
+  Assert.AreEqual(2, FModel.FindMatchCount('cat', TMarkdownFindOptions.Create(False, True)));
 end;
 
 procedure TMarkdownEditorModelTests.FindNext_MatchCase_SkipsWrongCase;
@@ -1060,28 +1043,22 @@ begin
   Assert.IsFalse(FModel.IsRegionCollapsed(0), 'ExpandAt must reveal the region containing the offset');
 end;
 
-procedure TMarkdownEditorModelTests.ExecuteHeading1_AddsPrefix;
+procedure TMarkdownEditorModelTests.ExecuteHeading_Various_TogglesOrChangesLevel(const Text, CommandName, Expected: string);
 begin
-  FModel.LoadText('Hello');
+  FModel.LoadText(Text);
   FModel.CaretPosition := 0;
-  FModel.ExecuteCommand(TEditorCommand.Heading1);
-  Assert.AreEqual('# Hello', FModel.Text);
+  FModel.ExecuteCommand(CommandNamed(CommandName));
+  Assert.AreEqual(Expected, FModel.Text);
 end;
 
-procedure TMarkdownEditorModelTests.ExecuteHeading1_OnHeading1_Removes;
+class function TMarkdownEditorModelTests.CommandNamed(const Name: string): TEditorCommand;
 begin
-  FModel.LoadText('# Hello');
-  FModel.CaretPosition := 0;
-  FModel.ExecuteCommand(TEditorCommand.Heading1);
-  Assert.AreEqual('Hello', FModel.Text);
-end;
-
-procedure TMarkdownEditorModelTests.ExecuteHeading2_OnHeading1_ReplacesLevel;
-begin
-  FModel.LoadText('# Hello');
-  FModel.CaretPosition := 0;
-  FModel.ExecuteCommand(TEditorCommand.Heading2);
-  Assert.AreEqual('## Hello', FModel.Text);
+  if SameText(Name, 'Heading1') then
+    Result := TEditorCommand.Heading1
+  else if SameText(Name, 'Heading2') then
+    Result := TEditorCommand.Heading2
+  else
+    raise ENotSupportedException.CreateFmt('Unsupported command name in test case: %s', [Name]);
 end;
 
 procedure TMarkdownEditorModelTests.ExecuteHeading1_MultiLine_AddsToEachNonBlank;
@@ -1099,20 +1076,12 @@ begin
   Assert.AreEqual('# ', FModel.Text);
 end;
 
-procedure TMarkdownEditorModelTests.ExecuteBullet_AddsDash;
+procedure TMarkdownEditorModelTests.ExecuteBullet_Various_TogglesDashMarker(const Text, Expected: string);
 begin
-  FModel.LoadText('Hello');
+  FModel.LoadText(Text);
   FModel.CaretPosition := 0;
   FModel.ExecuteCommand(TEditorCommand.BulletList);
-  Assert.AreEqual('- Hello', FModel.Text);
-end;
-
-procedure TMarkdownEditorModelTests.ExecuteBullet_OnBulleted_Removes;
-begin
-  FModel.LoadText('- Hello');
-  FModel.CaretPosition := 0;
-  FModel.ExecuteCommand(TEditorCommand.BulletList);
-  Assert.AreEqual('Hello', FModel.Text);
+  Assert.AreEqual(Expected, FModel.Text);
 end;
 
 procedure TMarkdownEditorModelTests.ExecuteBullet_MultiLine_SkipsBlankLines;
@@ -1123,60 +1092,28 @@ begin
   Assert.AreEqual('- a'#10#10'- b', FModel.Text);
 end;
 
-procedure TMarkdownEditorModelTests.ExecuteNumbered_NumbersSequentially;
+procedure TMarkdownEditorModelTests.ExecuteNumbered_Various_TogglesNumbering(const Text, Expected: string);
 begin
-  FModel.LoadText('a'#10'b'#10'c');
+  FModel.LoadText(Text);
   FModel.SelectAll;
   FModel.ExecuteCommand(TEditorCommand.NumberedList);
-  Assert.AreEqual('1. a'#10'2. b'#10'3. c', FModel.Text);
+  Assert.AreEqual(Expected, FModel.Text);
 end;
 
-procedure TMarkdownEditorModelTests.ExecuteNumbered_OnNumbered_Removes;
+procedure TMarkdownEditorModelTests.ExecuteQuote_Various_TogglesQuoteMarker(const Text, Expected: string);
 begin
-  FModel.LoadText('1. a'#10'2. b');
-  FModel.SelectAll;
-  FModel.ExecuteCommand(TEditorCommand.NumberedList);
-  Assert.AreEqual('a'#10'b', FModel.Text);
-end;
-
-procedure TMarkdownEditorModelTests.ExecuteNumbered_MultiLine_BlankLineNotNumbered;
-begin
-  FModel.LoadText('a'#10#10'b');
-  FModel.SelectAll;
-  FModel.ExecuteCommand(TEditorCommand.NumberedList);
-  Assert.AreEqual('1. a'#10#10'2. b', FModel.Text);
-end;
-
-procedure TMarkdownEditorModelTests.ExecuteQuote_AddsMarker;
-begin
-  FModel.LoadText('Hello');
+  FModel.LoadText(Text);
   FModel.CaretPosition := 0;
   FModel.ExecuteCommand(TEditorCommand.Quote);
-  Assert.AreEqual('> Hello', FModel.Text);
+  Assert.AreEqual(Expected, FModel.Text);
 end;
 
-procedure TMarkdownEditorModelTests.ExecuteQuote_OnQuoted_Removes;
+procedure TMarkdownEditorModelTests.ExecuteStrikethrough_Various_TogglesStrikethroughMarkers(const Text: string; const SelectionEnd: Integer; const Expected: string);
 begin
-  FModel.LoadText('> Hello');
-  FModel.CaretPosition := 0;
-  FModel.ExecuteCommand(TEditorCommand.Quote);
-  Assert.AreEqual('Hello', FModel.Text);
-end;
-
-procedure TMarkdownEditorModelTests.ExecuteStrikethrough_WrapsSelection;
-begin
-  FModel.LoadText('Hello');
-  FModel.SetSelection(0, 5);
+  FModel.LoadText(Text);
+  FModel.SetSelection(0, SelectionEnd);
   FModel.ExecuteCommand(TEditorCommand.Strikethrough);
-  Assert.AreEqual('~~Hello~~', FModel.Text);
-end;
-
-procedure TMarkdownEditorModelTests.ExecuteStrikethrough_OnStruck_Unwraps;
-begin
-  FModel.LoadText('~~Hello~~');
-  FModel.SetSelection(0, 9);
-  FModel.ExecuteCommand(TEditorCommand.Strikethrough);
-  Assert.AreEqual('Hello', FModel.Text);
+  Assert.AreEqual(Expected, FModel.Text);
 end;
 
 procedure TMarkdownEditorModelTests.ExecuteTable_InsertsSkeletonOnNewLine;

@@ -220,6 +220,7 @@ type
     procedure HandleNewClick(Sender: TObject);
     procedure HandleOpenClick(Sender: TObject);
     procedure HandleRecentClick(Sender: TObject);
+    procedure BuildRecentMenu;
     procedure HandleRecentItemClick(Sender: TObject);
     procedure OpenPath(const FileName: string);
     procedure HandleSaveClick(Sender: TObject);
@@ -973,15 +974,22 @@ end;
 function TMarkdown4DStudioFMXForm.HandleFormKey(const Key: Word; const Shift: TShiftState): Boolean;
 begin
   if FPalette.Visible then
-    Exit(TryHandlePaletteKey(Key, Shift));
+  begin
+    Result := TryHandlePaletteKey(Key, Shift);
+    Exit;
+  end;
 
   const WantsShortcut = (ssCtrl in Shift);
   if WantsShortcut then
   begin
     if ssShift in Shift then
-      Exit(TryHandleFormatShortcut(Key));
+    begin
+      Result := TryHandleFormatShortcut(Key);
+      Exit;
+    end;
 
-    Exit(TryHandleCommandShortcut(Key));
+    Result := TryHandleCommandShortcut(Key);
+    Exit;
   end;
 
   Result := TryHandleGlobalKey(Key);
@@ -1002,7 +1010,10 @@ begin
     vkEscape:
       ClosePalette;
   else
-    Exit(ssCtrl in Shift);
+  begin
+    Result := ssCtrl in Shift;
+    Exit;
+  end;
   end;
 
   Result := True;
@@ -1039,7 +1050,10 @@ begin
         SwitchToDocument(FWorkspace.ActiveIndex);
       end;
   else
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
   end;
 
   Result := True;
@@ -1074,7 +1088,10 @@ begin
         SwitchToDocument(FWorkspace.ActiveIndex);
       end;
   else
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
   end;
 
   Result := True;
@@ -1088,7 +1105,10 @@ begin
     vkF3:
       begin
         if not FFindBar.Visible then
-          Exit(False);
+        begin
+          Result := False;
+          Exit;
+        end;
 
         FindInEditor;
       end;
@@ -1099,10 +1119,16 @@ begin
         else if FZenActive then
           ExitZen
         else
-          Exit(False);
+        begin
+          Result := False;
+          Exit;
+        end;
       end;
   else
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
   end;
 
   Result := True;
@@ -1183,6 +1209,8 @@ begin
         FMainSplitter.Visible := False;
         FPreview.Visible := True;
       end;
+  else
+    raise ENotSupportedException.CreateFmt('Unsupported view mode: %d', [Ord(FViewMode)]);
   end;
 end;
 
@@ -1443,6 +1471,14 @@ end;
 
 procedure TMarkdown4DStudioFMXForm.HandleRecentClick(Sender: TObject);
 begin
+  BuildRecentMenu;
+
+  const ScreenPos = FRecentButton.LocalToScreen(TPointF.Create(0, FRecentButton.Height));
+  FRecentMenu.Popup(ScreenPos.X, ScreenPos.Y);
+end;
+
+procedure TMarkdown4DStudioFMXForm.BuildRecentMenu;
+begin
   FRecentMenu.Free;
   FRecentMenu := TPopupMenu.Create(Self);
 
@@ -1465,9 +1501,6 @@ begin
       Item.OnClick := HandleRecentItemClick;
     end;
   end;
-
-  const ScreenPos = FRecentButton.LocalToScreen(TPointF.Create(0, FRecentButton.Height));
-  FRecentMenu.Popup(ScreenPos.X, ScreenPos.Y);
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleRecentItemClick(Sender: TObject);
@@ -1664,7 +1697,10 @@ function TMarkdown4DStudioFMXForm.ActiveDocumentFolder: string;
 begin
   const Document = FController.ActiveDocument;
   if (Document = nil) or Document.IsUntitled then
-    Exit('');
+  begin
+    Result := '';
+    Exit;
+  end;
 
   Result := TPath.GetDirectoryName(Document.FileName);
 end;

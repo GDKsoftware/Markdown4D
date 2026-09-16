@@ -104,6 +104,9 @@ type
 
     [Test]
     procedure Build_HundredNestedBlockQuotes_RendersEveryLevel;
+
+    [Test]
+    procedure BeginTableRow_WithoutOpenTable_RaisesMarkdownError;
   end;
 
 implementation
@@ -497,6 +500,17 @@ begin
   end;
 
   Assert.AreEqual(ExpectedHtml, RoundTripHtml(Builder.Build));
+end;
+
+procedure TMarkdownAstBuilderTests.BeginTableRow_WithoutOpenTable_RaisesMarkdownError;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      TMarkdownDocumentBuilder.Create.BeginTableRow;
+    end,
+    EMarkdownError,
+    'BeginTableRow must raise EMarkdownError when no table is open');
 end;
 
 class function TMarkdownAstBuilderTests.RoundTripHtml(const Document: IMarkdownDocument;

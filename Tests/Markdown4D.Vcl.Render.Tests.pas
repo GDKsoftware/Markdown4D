@@ -323,7 +323,8 @@ begin
     if Child.Kind = TMarkdownNodeKind.CodeBlock then
     begin
       Code := Child as IMarkdownCodeBlock;
-      Exit(True);
+      Result := True;
+      Exit;
     end;
   end;
 

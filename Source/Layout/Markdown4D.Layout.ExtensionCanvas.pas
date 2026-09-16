@@ -17,10 +17,15 @@ type
     FMeasurer: ITextMeasurer;
     FItems: TList<IDisplayItem>;
     FNode: IMarkdownNode;
+    FTextRole: TDisplayTextRunRole;
     class function BoundingRect(const Points: TArray<TLayoutPointF>): TLayoutRectF; static;
 
   public
-    constructor Create(const Measurer: ITextMeasurer; const Items: TList<IDisplayItem>; const Node: IMarkdownNode);
+    // Text drawn on the canvas is selectable and searchable like paragraph
+    // text unless the role says otherwise, which a drawing such as a formula
+    // asks for.
+    constructor Create(const Measurer: ITextMeasurer; const Items: TList<IDisplayItem>; const Node: IMarkdownNode;
+      const TextRole: TDisplayTextRunRole = TDisplayTextRunRole.Text);
     function MeasureText(const Text: string; const Font: TMarkdownFontStyle): TLayoutSizeF;
     procedure DrawText(const TopLeft: TLayoutPointF; const Text: string; const Font: TMarkdownFontStyle;
       const Color: TLayoutColor);
@@ -55,13 +60,14 @@ uses
   Markdown4D.Layout.Primitives;
 
 constructor TDisplayListExtensionCanvas.Create(const Measurer: ITextMeasurer; const Items: TList<IDisplayItem>;
-  const Node: IMarkdownNode);
+  const Node: IMarkdownNode; const TextRole: TDisplayTextRunRole);
 begin
   inherited Create;
 
   FMeasurer := Measurer;
   FItems := Items;
   FNode := Node;
+  FTextRole := TextRole;
 end;
 
 class function TDisplayListExtensionCanvas.BoundingRect(const Points: TArray<TLayoutPointF>): TLayoutRectF;
@@ -93,7 +99,7 @@ begin
   const Size = FMeasurer.MeasureText(Text, Font);
   const Bounds = TLayoutRectF.CreateFromOrigin(TopLeft, Size);
 
-  FItems.Add(TDisplayTextRun.Create(Bounds, FNode, Text, Font, Color, FMeasurer.Baseline(Font), 0));
+  FItems.Add(TDisplayTextRun.Create(Bounds, FNode, Text, Font, Color, FMeasurer.Baseline(Font), 0, FTextRole));
 end;
 
 procedure TDisplayListExtensionCanvas.DrawLine(const StartPoint, EndPoint: TLayoutPointF; const Color: TLayoutColor;
@@ -191,6 +197,12 @@ begin
   FItems.Add(TDisplayImage.Create(Bounds, FNode, Source, AltText));
 end;
 
+// This canvas only records fully-resolved display items (each already carrying
+// its own bounds) into FItems; it holds no live paint state such as a clip
+// region or a graphics-state stack to save and later restore. The concrete
+// Vcl/Fmx painter applies clipping and save/restore semantics itself when it
+// replays the recorded items on a real device context, so these are
+// legitimate no-ops here.
 procedure TDisplayListExtensionCanvas.SaveState;
 begin
 end;
