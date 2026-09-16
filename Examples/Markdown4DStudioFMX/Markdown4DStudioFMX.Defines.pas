@@ -38,6 +38,10 @@ const
   SeparatorDarkColor = TAlphaColor($FF505050);
   HoverLightColor = TAlphaColor($FFE0E0E0);
   HoverDarkColor = TAlphaColor($FF3E3E3E);
+  // A pressed toolbar button sits one step beyond hover, so the active view mode
+  // stays readable while the pointer rests on one of its neighbours.
+  ActiveLightColor = TAlphaColor($FFCBCBCB);
+  ActiveDarkColor = TAlphaColor($FF525252);
   TabActiveLightColor = TAlphaColor($FFFFFFFF);
   TabActiveDarkColor = TAlphaColor($FF3F3F3F);
   TabHoverLightColor = TAlphaColor($FFEAEAEA);
