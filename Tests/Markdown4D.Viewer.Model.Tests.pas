@@ -8,7 +8,8 @@ uses
   DUnitX.TestFramework,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Theme,
-  Markdown4D.Viewer.Model;
+  Markdown4D.Viewer.Model,
+  Markdown4D.Parser.SourceMap;
 
 type
   [TestFixture]
@@ -52,6 +53,15 @@ type
 
     [Test]
     procedure Selection_WithinSingleRun_ProducesSingleRectAndText;
+
+    [Test]
+    procedure TrySelectedSourceSpan_PlainWords_PointsAtThoseCharactersInTheSource;
+
+    [Test]
+    procedure TrySelectedSourceSpan_SelectionAfterEmphasis_SkipsTheMarkers;
+
+    [Test]
+    procedure TrySelectedSourceSpan_WithoutASelection_Refuses;
 
     [Test]
     procedure Selection_AcrossWrappedLines_ProducesRectPerLine;
@@ -661,6 +671,44 @@ end;
 class procedure TMarkdownViewerModelTests.AssertSingle(const Expected, Actual: Single);
 begin
   Assert.AreEqual(Double(Expected), Double(Actual), SingleTolerance);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectedSourceSpan_PlainWords_PointsAtThoseCharactersInTheSource;
+begin
+  const Source = 'alpha beta';
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := Source;
+
+  SelectFromTo(1, 10, 48, 10);
+
+  var Span: TMarkdownSourceSpan;
+  Assert.IsTrue(FModel.TrySelectedSourceSpan(Span), 'expected a source span');
+  Assert.AreEqual('alpha', Copy(Source, Span.StartOffset, Span.Length));
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectedSourceSpan_SelectionAfterEmphasis_SkipsTheMarkers;
+begin
+  // The asterisks are in the source but never on screen, so the span for a word
+  // after them has to sit further along than the rendered position suggests.
+  const Source = '*ab* cd';
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := Source;
+
+  // Select the two characters after the emphasised word and the space.
+  SelectFromTo(31, 10, 48, 10);
+
+  var Span: TMarkdownSourceSpan;
+  Assert.IsTrue(FModel.TrySelectedSourceSpan(Span), 'expected a source span');
+  Assert.AreEqual('cd', Copy(Source, Span.StartOffset, Span.Length));
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectedSourceSpan_WithoutASelection_Refuses;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'alpha beta';
+
+  var Span: TMarkdownSourceSpan;
+  Assert.IsFalse(FModel.TrySelectedSourceSpan(Span));
 end;
 
 procedure TMarkdownViewerModelTests.SelectFromTo(const AnchorX, AnchorY, ExtentX, ExtentY: Single);

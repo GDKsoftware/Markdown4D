@@ -9,7 +9,8 @@ uses
   Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.DisplayList,
-  Markdown4D.Theme;
+  Markdown4D.Theme,
+  Markdown4D.Parser.SourceMap;
 
 type
   TMarkdownImageSlotState = (Unknown, Requested, Loaded, Failed);
@@ -109,6 +110,7 @@ type
     function HasSelection: Boolean;
     function SelectionRects: TArray<TLayoutRectF>;
     function SelectedText: string;
+    function TrySelectedSourceSpan(out Span: TMarkdownSourceSpan): Boolean;
     function PendingImageSources: TArray<string>;
     procedure NotifyImageArrived(const Source: string; const Size: TLayoutSizeF);
     procedure NotifyImageFailed(const Source: string);
@@ -368,6 +370,60 @@ begin
     else
       Result := Result + [RunRect];
   end;
+end;
+
+function TMarkdownViewerModel.TrySelectedSourceSpan(out Span: TMarkdownSourceSpan): Boolean;
+begin
+  Span := TMarkdownSourceSpan.Create(0, 0);
+
+  if not HasSelection then
+    Exit(False);
+
+  const Range = NormalizeSelection;
+
+  var First := 0;
+  var Last := 0;
+  var Found := False;
+
+  for var Index := Range.StartPosition.ItemIndex to Range.EndPosition.ItemIndex do
+  begin
+    var Run: IDisplayTextRun;
+    if not TrySelectableRun(Index, Run) then
+      Continue;
+
+    var CharFrom, CharTo: Integer;
+    if not SelectedCharacterRange(Run, Index, Range.StartPosition, Range.EndPosition, CharFrom, CharTo) then
+      Continue;
+
+    var Text: IMarkdownText;
+    if not Supports(Run.Node, IMarkdownText, Text) then
+      Exit(False);
+
+    var RunFrom, RunTo: Integer;
+    if not TMarkdownSourceLookup.TryMapCharacter(Run.Node.Segment, Length(Text.Literal),
+         Run.StartOffset, CharFrom, RunFrom) then
+      Exit(False);
+
+    if not TMarkdownSourceLookup.TryMapCharacter(Run.Node.Segment, Length(Text.Literal),
+         Run.StartOffset, CharTo - 1, RunTo) then
+      Exit(False);
+
+    if not Found then
+    begin
+      First := RunFrom;
+      Found := True;
+    end;
+
+    Last := RunTo;
+  end;
+
+  // Every run the selection touches has to map, otherwise the span would quietly
+  // cover the wrong characters.
+  if not Found or (Last < First) then
+    Exit(False);
+
+  Span := TMarkdownSourceSpan.Create(First, Last - First + 1);
+  Result := True;
 end;
 
 function TMarkdownViewerModel.SelectedText: string;

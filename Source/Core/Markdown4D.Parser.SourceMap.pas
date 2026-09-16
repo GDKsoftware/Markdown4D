@@ -12,6 +12,9 @@ unit Markdown4D.Parser.SourceMap;
 
 interface
 
+uses
+  Markdown4D.Ast.Interfaces;
+
 type
   TMarkdownSourceSpan = record
     StartOffset: Integer;
@@ -60,7 +63,48 @@ type
     function IsEmpty: Boolean;
   end;
 
+  /// <summary>
+  ///   Turns a position inside a laid out piece of text back into a position in
+  ///   the markdown, using the source range recorded on the node it came from.
+  /// </summary>
+  TMarkdownSourceLookup = record
+  public
+    /// <param name="NodeSegment">Source range recorded on the node.</param>
+    /// <param name="NodeTextLength">Length of the node's rendered text.</param>
+    /// <param name="RunOffset">
+    ///   Where this run starts inside the node's text, zero based, which is how a
+    ///   wrapped paragraph splits one node across several runs.
+    /// </param>
+    /// <param name="OffsetInRun">Character within the run, zero based.</param>
+    class function TryMapCharacter(const NodeSegment: TMarkdownSegment;
+      const NodeTextLength, RunOffset, OffsetInRun: Integer;
+      out SourceOffset: Integer): Boolean; static;
+  end;
+
 implementation
+
+class function TMarkdownSourceLookup.TryMapCharacter(const NodeSegment: TMarkdownSegment;
+  const NodeTextLength, RunOffset, OffsetInRun: Integer; out SourceOffset: Integer): Boolean;
+begin
+  SourceOffset := 0;
+
+  // No segment means the parser could not place this node in the source.
+  if (NodeSegment.StartOffset <= 0) or (NodeSegment.Length <= 0) then
+    Exit(False);
+
+  // Escapes and entities make the rendered text a different length from the
+  // characters it came from, and then positions inside it no longer line up. Refuse
+  // rather than land on the wrong character.
+  if NodeSegment.Length <> NodeTextLength then
+    Exit(False);
+
+  const OffsetInNode = RunOffset + OffsetInRun;
+  if (OffsetInRun < 0) or (RunOffset < 0) or (OffsetInNode >= NodeTextLength) then
+    Exit(False);
+
+  SourceOffset := NodeSegment.StartOffset + OffsetInNode;
+  Result := True;
+end;
 
 class function TMarkdownSourceSpan.Create(const StartOffset, Length: Integer): TMarkdownSourceSpan;
 begin

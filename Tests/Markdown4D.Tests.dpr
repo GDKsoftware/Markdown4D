@@ -18,6 +18,7 @@ uses
   Markdown4D.Parser.SourceMap in '..\Source\Core\Markdown4D.Parser.SourceMap.pas',
   Markdown4D.Parser.SourceMap.Tests in 'Markdown4D.Parser.SourceMap.Tests.pas',
   Markdown4D.Parser.InlineSegments.Tests in 'Markdown4D.Parser.InlineSegments.Tests.pas',
+  Markdown4D.Layout.SourceLookup.Tests in 'Markdown4D.Layout.SourceLookup.Tests.pas',
   Markdown4D.Pipeline.Tests in 'Markdown4D.Pipeline.Tests.pas',
   Markdown4D.Extensions.Sample.Tests in 'Markdown4D.Extensions.Sample.Tests.pas',
   Markdown4D.Toc.Tests in 'Markdown4D.Toc.Tests.pas',
