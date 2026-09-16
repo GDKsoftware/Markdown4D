@@ -142,8 +142,8 @@ type
     procedure MoveSelectionTo(const Target: Integer);
     // Every match in document order, for hosts that highlight all of them.
     function FindAllMatches(const Needle: string; const Options: TMarkdownFindOptions): TArray<Integer>;
-    function FindText(const Needle: string): Integer; overload;
-    function FindText(const Needle: string; const Options: TMarkdownFindOptions): Integer; overload;
+    function FindMatchCount(const Needle: string): Integer; overload;
+    function FindMatchCount(const Needle: string; const Options: TMarkdownFindOptions): Integer; overload;
     function FindNext(const Needle: string; const StartAfter: Integer): Integer; overload;
     function FindNext(const Needle: string; const StartAfter: Integer;
       const Options: TMarkdownFindOptions): Integer; overload;
@@ -239,7 +239,10 @@ function TMarkdownEditorModel.MergeText(const Value: string): Boolean;
 begin
   const Incoming = NormalizeLineEndings(Value);
   if Incoming = FText then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Start = CommonPrefixLength(FText, Incoming);
   const TailLength = CommonSuffixLength(FText, Incoming, Start);
@@ -299,19 +302,21 @@ end;
 
 function TMarkdownEditorModel.LineIndexOfOffset(const Offset: Integer): Integer;
 begin
-  var Lo := 0;
-  var Hi := High(FLineStarts);
+  var LowerBound := 0;
+  var UpperBound := High(FLineStarts);
   Result := 0;
-  while Lo <= Hi do
+  while LowerBound <= UpperBound do
   begin
-    const Mid = (Lo + Hi) div 2;
-    if FLineStarts[Mid] <= Offset then
+    const Candidate = (LowerBound + UpperBound) div 2;
+    if FLineStarts[Candidate] <= Offset then
     begin
-      Result := Mid;
-      Lo := Mid + 1;
+      Result := Candidate;
+      LowerBound := Candidate + 1;
     end
     else
-      Hi := Mid - 1;
+    begin
+      UpperBound := Candidate - 1;
+    end;
   end;
 end;
 
@@ -534,12 +539,12 @@ begin
   Result := CollectMatches(Needle, Options);
 end;
 
-function TMarkdownEditorModel.FindText(const Needle: string): Integer;
+function TMarkdownEditorModel.FindMatchCount(const Needle: string): Integer;
 begin
-  Result := FindText(Needle, Default(TMarkdownFindOptions));
+  Result := FindMatchCount(Needle, Default(TMarkdownFindOptions));
 end;
 
-function TMarkdownEditorModel.FindText(const Needle: string; const Options: TMarkdownFindOptions): Integer;
+function TMarkdownEditorModel.FindMatchCount(const Needle: string; const Options: TMarkdownFindOptions): Integer;
 begin
   Result := System.Length(CollectMatches(Needle, Options));
 end;
@@ -553,14 +558,23 @@ function TMarkdownEditorModel.FindNext(const Needle: string; const StartAfter: I
   const Options: TMarkdownFindOptions): Integer;
 begin
   if Needle = '' then
-    Exit(-1);
+  begin
+    Result := -1;
+    Exit;
+  end;
 
   if System.Length(Needle) > System.Length(FText) then
-    Exit(-1);
+  begin
+    Result := -1;
+    Exit;
+  end;
 
   const Primary = IndexOfNeedle(Needle, StartAfter + 1, Options);
   if Primary >= 0 then
-    Exit(Primary);
+  begin
+    Result := Primary;
+    Exit;
+  end;
 
   Result := IndexOfNeedle(Needle, 0, Options);
 end;
@@ -570,7 +584,10 @@ function TMarkdownEditorModel.FindPrevious(const Needle: string; const StartBefo
 begin
   const Matches = CollectMatches(Needle, Options);
   if System.Length(Matches) = 0 then
-    Exit(-1);
+  begin
+    Result := -1;
+    Exit;
+  end;
 
   var Best := -1;
   for var Start in Matches do
@@ -580,7 +597,10 @@ begin
   end;
 
   if Best >= 0 then
-    Exit(Best);
+  begin
+    Result := Best;
+    Exit;
+  end;
 
   Result := Matches[High(Matches)];
 end;
@@ -589,7 +609,10 @@ function TMarkdownEditorModel.ReplaceCurrent(const Needle, Replacement: string;
   const Options: TMarkdownFindOptions): Boolean;
 begin
   if Needle = '' then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Result := (SelectionLength = System.Length(Needle)) and MatchesAt(Needle, SelectionStart, Options);
   if Result then
@@ -691,7 +714,10 @@ begin
   for var Region in FoldRegions do
   begin
     if Region.HeaderLine = LineIndex then
-      Exit(True);
+    begin
+      Result := True;
+      Exit;
+    end;
   end;
 
   Result := False;
@@ -710,7 +736,10 @@ begin
     RebuildHiddenLines;
 
   if (LineIndex < 0) or (LineIndex > High(FHiddenLines)) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Result := FHiddenLines[LineIndex];
 end;
@@ -721,7 +750,9 @@ begin
   SetLength(FHiddenLines, LineCount);
 
   for var Index := 0 to High(FHiddenLines) do
+  begin
     FHiddenLines[Index] := False;
+  end;
 
   if System.Length(FCollapsedFolds) = 0 then
     Exit;
@@ -732,7 +763,9 @@ begin
       Continue;
 
     for var Line := Region.StartLine to Min(Region.EndLine, High(FHiddenLines)) do
+    begin
       FHiddenLines[Line] := True;
+    end;
   end;
 end;
 
@@ -825,7 +858,10 @@ begin
   for var Index := 0 to High(FCollapsedFolds) do
   begin
     if FCollapsedFolds[Index] = HeaderOffset then
-      Exit(Index);
+    begin
+      Result := Index;
+      Exit;
+    end;
   end;
 
   Result := -1;
@@ -838,7 +874,8 @@ begin
     if Candidate.HeaderLine = HeaderLine then
     begin
       Region := Candidate;
-      Exit(True);
+      Result := True;
+      Exit;
     end;
   end;
 
@@ -934,10 +971,16 @@ end;
 class function TMarkdownEditorModel.OffsetAfterEdit(const Offset, Start, OldLength, Delta: Integer): Integer;
 begin
   if Offset <= Start then
-    Exit(Offset);
+  begin
+    Result := Offset;
+    Exit;
+  end;
 
   if Offset >= Start + OldLength then
-    Exit(Offset + Delta);
+  begin
+    Result := Offset + Delta;
+    Exit;
+  end;
 
   Result := Start + OldLength + Delta;
 end;
@@ -1008,7 +1051,7 @@ end;
 procedure TMarkdownEditorModel.RecordUndo(const Start: Integer; const Removed, Inserted: string;
   const Coalescable: Boolean);
 begin
-  const CanMerge = Coalescable and not FCoalesceBroken and (System.Length(FUndoStack) > 0);
+  const CanMerge = (Coalescable and not FCoalesceBroken and (System.Length(FUndoStack) > 0));
   if CanMerge then
   begin
     var Top := FUndoStack[High(FUndoStack)];
@@ -1068,7 +1111,10 @@ end;
 function TMarkdownEditorModel.NextCaret(const Offset: Integer): Integer;
 begin
   if Offset >= System.Length(FText) then
-    Exit(System.Length(FText));
+  begin
+    Result := System.Length(FText);
+    Exit;
+  end;
 
   const IsPair = FText[Offset + 1].IsHighSurrogate and (Offset + 2 <= System.Length(FText)) and
     FText[Offset + 2].IsLowSurrogate;
@@ -1081,7 +1127,10 @@ end;
 function TMarkdownEditorModel.PrevCaret(const Offset: Integer): Integer;
 begin
   if Offset <= 0 then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
 
   const IsPair = FText[Offset].IsLowSurrogate and (Offset - 1 >= 1) and FText[Offset - 1].IsHighSurrogate;
   if IsPair then
@@ -1117,7 +1166,10 @@ begin
   for var CandidateStart := Start to LastStart do
   begin
     if MatchesAt(Needle, CandidateStart, Options) then
-      Exit(CandidateStart);
+    begin
+      Result := CandidateStart;
+      Exit;
+    end;
   end;
 
   Result := -1;
@@ -1130,7 +1182,10 @@ begin
   const TextLen = System.Length(FText);
 
   if (CandidateStart < 0) or (CandidateStart + NeedleLen > TextLen) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   for var Index := 1 to NeedleLen do
   begin
@@ -1139,10 +1194,16 @@ begin
     if Options.MatchCase then
     begin
       if TextChar <> NeedleChar then
-        Exit(False);
+      begin
+        Result := False;
+        Exit;
+      end;
     end
     else if TextChar.ToLower <> NeedleChar.ToLower then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
   end;
 
   if Options.WholeWord then
@@ -1151,7 +1212,10 @@ begin
     const RightIndex = CandidateStart + NeedleLen + 1;
     const HasRightBoundary = (RightIndex > TextLen) or not IsWordChar(FText[RightIndex]);
     if not (HasLeftBoundary and HasRightBoundary) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
   end;
 
   Result := True;
@@ -1186,7 +1250,10 @@ begin
     Dec(Offset);
 
   if Offset = 0 then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
 
   const Category = CategoryOfChar(FText[Offset]);
   while (Offset > 0) and (CategoryOfChar(FText[Offset]) = Category) do
@@ -1369,7 +1436,9 @@ begin
         Line := Copy(Line, MarkerLen + 1, System.Length(Line) - MarkerLen);
     end
     else
+    begin
       Line := Marker + Line;
+    end;
 
     Lines[Index] := Line;
   end;

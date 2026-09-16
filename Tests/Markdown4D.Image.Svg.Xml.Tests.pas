@@ -24,7 +24,7 @@ type
     procedure ReadElement_SelfClosing_IsMarked;
 
     [Test]
-    procedure ReadElement_CommentsAndDoctype_AreStepped0ver;
+    procedure ReadElement_CommentsAndDoctype_AreSteppedOver;
 
     [Test]
     procedure ReadElement_Entities_AreDecodedInAttributeValues;
@@ -96,7 +96,7 @@ begin
   end;
 end;
 
-procedure TSvgXmlScannerTests.ReadElement_CommentsAndDoctype_AreStepped0ver;
+procedure TSvgXmlScannerTests.ReadElement_CommentsAndDoctype_AreSteppedOver;
 begin
   const Text = '<?xml version="1.0"?><!DOCTYPE svg><!-- <rect/> --><svg><![CDATA[ <g/> ]]><path/></svg>';
 

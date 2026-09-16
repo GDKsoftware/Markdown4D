@@ -201,6 +201,7 @@ type
 implementation
 
 uses
+  Markdown4D.Math.Font,
   Markdown4D.DesignSample,
   System.Math,
   System.UITypes,
@@ -221,6 +222,8 @@ uses
 constructor TMarkdownViewer.Create(Owner: TComponent);
 begin
   inherited Create(Owner);
+
+  TMarkdownMathFont.EnsureInstalled;
 
   FLifetime := TMarkdownViewerLifetime.Create;
 
@@ -261,7 +264,10 @@ end;
 function TMarkdownViewer.InvokeOnMainThread(const Action: TThreadProcedure): Boolean;
 begin
   if GetCurrentThreadId = MainThreadID then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Lifetime = FLifetime;
   TThread.Queue(nil,
@@ -636,7 +642,10 @@ begin
   // unhandled lets a surrounding scroll box move the viewer itself instead.
   const CanScroll = ContentHeight > ClientHeight;
   if not CanScroll then
-    Exit(inherited DoMouseWheel(Shift, WheelDelta, MousePos));
+  begin
+    Result := inherited DoMouseWheel(Shift, WheelDelta, MousePos);
+    Exit;
+  end;
 
   const Notches = WheelDelta / WHEEL_DELTA;
   SetScrollPosition(FModel.ScrollOffset - (Notches * WheelLinesPerNotch * LineScrollAmount));
@@ -790,7 +799,10 @@ function TMarkdownViewer.TryFindLinkUrl(const Point: TLayoutPointF; out Url: str
 begin
   Url := '';
   if FModel.DisplayList = nil then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var Link: IMarkdownLink;
   Result := TMarkdownHitTester.TryFindLink(FModel.DisplayList, Point, Link);
@@ -945,14 +957,20 @@ end;
 function TMarkdownViewer.TryResolveImageThroughEvent(const Source, Url: string): Boolean;
 begin
   if not Assigned(FOnResolveImage) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Picture = TPicture.Create;
   try
     var Handled := False;
     FOnResolveImage(Self, Url, Picture, Handled);
     if not Handled then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     ApplyLoadedPicture(Source, Picture);
     Result := True;
@@ -985,6 +1003,10 @@ begin
     try
       Picture.LoadFromFile(FilePath);
     except
+      // PNG, JPEG, GIF and BMP each fail decoding through their own exception
+      // hierarchy (EPngError does not descend from EInvalidGraphic, unlike
+      // EJPEG and GIFException), so no single specific type covers a corrupt
+      // file across the registered graphic classes.
       on Exception do
       begin
         ApplyFailedImage(Source);
@@ -1016,6 +1038,9 @@ begin
       try
         Picture.LoadFromStream(Stream);
       except
+        // Same reasoning as LoadLocalImage: a downloaded image is an outside
+        // boundary, and its format's decoder does not share a specific
+        // exception with the others registered on TPicture.
         on Exception do
         begin
           ApplyFailedImage(Source);
@@ -1042,7 +1067,10 @@ function TMarkdownViewer.TryLoadSvg(const Source: string; const Data: TBytes): B
 begin
   var Raster: TMarkdownSvgRaster;
   if not TMarkdownSvgSupport.TryRasterize(Data, 0, 0, Raster) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Picture = TPicture.Create;
   try
@@ -1053,10 +1081,10 @@ begin
       Bitmap.AlphaFormat := afPremultiplied;
 
       const RowBytes = Raster.Width * 4;
-      for var Y := 0 to Raster.Height - 1 do
+      for var Row := 0 to Raster.Height - 1 do
       begin
-        const DestRow: PByte = Bitmap.ScanLine[Y];
-        System.Move(Raster.Pixels[Y * RowBytes], DestRow^, RowBytes);
+        const DestRow: PByte = Bitmap.ScanLine[Row];
+        System.Move(Raster.Pixels[Row * RowBytes], DestRow^, RowBytes);
       end;
 
       Picture.Bitmap.Assign(Bitmap);

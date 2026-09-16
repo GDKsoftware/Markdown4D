@@ -2,7 +2,7 @@
 
 This document describes the public surface of Markdown4D: the facade, the
 pipeline builder, the abstract syntax tree, the document builder, the table of
-contents, the theme, and the VCL / FMX viewer and editor components.
+contents, the theme, math, and the VCL / FMX viewer and editor components.
 
 All public enumerations are scoped (`{$SCOPEDENUMS ON}`), so qualify them:
 `TMarkdownDialect.Gfm`, `TMarkdownNodeKind.Heading`, and so on.
@@ -15,6 +15,7 @@ All public enumerations are scoped (`{$SCOPEDENUMS ON}`), so qualify them:
 - [Document builder](#document-builder)
 - [Table of contents](#table-of-contents)
 - [Theme](#theme)
+- [Math](#math)
 - [Incremental parser](#incremental-parser)
 - [Viewer components](#viewer-components)
 - [Editor components](#editor-components)
@@ -170,7 +171,7 @@ type
 `TMarkdownNodeKind` enumerates every node type: `Document, Paragraph, Heading,
 ThematicBreak, CodeBlock, BlockQuote, List, ListItem, HtmlBlock, Text, Emphasis,
 Strong, CodeSpan, Link, Image, Autolink, SoftLineBreak, HardLineBreak,
-InlineHtml, CustomInline, Table, TableRow, TableCell`.
+InlineHtml, CustomInline, Table, TableRow, TableCell, Math`.
 
 `TMarkdownSegment` (`StartOffset`, `EndOffset`, `Length`) locates the node in
 the source string. `SetExtensionData` / `TryGetExtensionData` attach arbitrary
@@ -188,6 +189,7 @@ Query a node for a richer interface with `as` or `Supports`:
 | `IMarkdownList` | `IsOrdered`, `StartNumber`, `IsTight` |
 | `IMarkdownText` | `Literal` (also used for code spans, HTML blocks, inline HTML) |
 | `IMarkdownLink` | `Destination`, `Title` (also used for images and autolinks) |
+| `IMarkdownMath` | `Literal` (the LaTeX source), `IsDisplay`; extends `IMarkdownText` |
 | `IMarkdownCustomInline` | `NodeName` (extension inline nodes such as strikethrough) |
 | `IMarkdownTableRow` | `IsHeader` |
 | `IMarkdownTableCell` | `Alignment` (`TMarkdownTableColumnAlignment`) |
@@ -207,7 +209,8 @@ end;
 ```
 
 `IMarkdownVisitor` offers a `Visit*` method per node kind for double-dispatch
-traversal via `Node.Accept(Visitor)`.
+traversal via `Node.Accept(Visitor)`. Version 2.2 added `VisitMath`; a visitor
+written against an earlier version needs that one method to compile again.
 
 ## Document builder
 
@@ -215,8 +218,8 @@ Unit `Markdown4D.Ast.Builder`. Constructs a valid document in code, then hands
 it to the writer or the layout engine. `TMarkdownDocumentBuilder.Create` returns
 a fluent `IMarkdownDocumentBuilder`.
 
-Convenience methods (`Heading`, `Paragraph`, `Bold`, `Italic`, `Code`, `Link`,
-`Image`, `Cell`, …) emit a complete node in one call. `Begin…` / `End…` pairs
+Convenience methods (`Heading`, `Paragraph`, `Bold`, `Italic`, `Code`, `Math`,
+`MathBlock`, `Link`, `Image`, `Cell`, …) emit a complete node in one call. `Begin…` / `End…` pairs
 open a container you fill with nested content (`BeginParagraph`,
 `BeginBulletList`, `BeginOrderedList`, `BeginListItem`, `BeginTaskListItem`,
 `BeginTable`, `BeginTableRow`, `BeginTableCell`, `BeginBlockQuote`,
@@ -270,12 +273,13 @@ the layout engine uses. Construct one with `CreateLight`, `CreateDark` or
 `CreatePreset(TMarkdownThemePreset)`; you own the instance and must `Free` it
 (the viewer/editor take ownership when you assign their `Theme` property).
 
-Selected properties: `BaseFont`, `CodeFont`, `HeadingFonts[Level]`, `TextColor`,
-`BackgroundColor`, `LinkColor`, `CodeTextColor`, `CodeBackgroundColor`,
-`BlockQuoteBarColor`, `TableHeaderBackgroundColor`, `TableBorderColor`,
-`ThematicBreakColor`, `ParagraphSpacing`, `ListIndent`, `ContentPadding`, the
-`Chart*` colours and `ChartPalette`, and `TokenColors[Kind]` for code
-highlighting. Colours are `TLayoutColor` (`$AARRGGBB`).
+Selected properties: `BaseFont`, `CodeFont`, `MathFont`, `HeadingFonts[Level]`,
+`TextColor`, `BackgroundColor`, `LinkColor`, `CodeTextColor`,
+`CodeBackgroundColor`, `BlockQuoteBarColor`, `TableHeaderBackgroundColor`,
+`TableBorderColor`, `ThematicBreakColor`, `MathErrorColor`, `ParagraphSpacing`,
+`ListIndent`, `ContentPadding`, the `Chart*` colours and `ChartPalette`, and
+`TokenColors[Kind]` for code highlighting. Colours are `TLayoutColor`
+(`$AARRGGBB`).
 
 `SaveToJson` / `LoadFromJson` serialise a complete theme so you can ship it as a
 resource or let users edit it.
@@ -292,6 +296,79 @@ finally
   Theme.Free;
 end;
 ```
+
+## Math
+
+Formulas are part of the GFM dialect, so `TMarkdown.Parse(Source,
+TMarkdownDialect.Gfm)`, `ToHtml` with that dialect, and both viewers recognise
+them. The CommonMark dialect leaves dollars alone.
+
+### Syntax
+
+The rules follow Pandoc, GitHub and Markdig, so a document written for those
+renders the same here.
+
+| Form | Example | Rule |
+|------|---------|------|
+| Inline | `$E = mc^2$` | The opening `$` may not follow a letter or digit and may not be followed by whitespace; the closing `$` may not follow whitespace and may not be followed by a letter or digit. `$100 and $200` therefore stays text. |
+| Inline, display style | `$$\sum_{i=1}^n i$$` | Same rules; the formula stays on the line but takes display style, with limits above and below. |
+| Block | `$$` on a line of its own, the formula, `$$` again | A block, centred in the column. `$$x$$` on one line is inline display math. |
+| Fence alias | ```` ```math ```` | The GitHub and GitLab form; same result as the block. |
+| GitLab inline | ``$`x^2`$`` | The backticks fence the formula off from the markdown around it. |
+
+Backslash escapes work as usual: `\$` is a dollar sign. Inside a formula a
+backslash escapes the character after it, so `\$` never closes one. A code span
+outranks math: `` `$x$` `` is code, and a formula never runs into one.
+
+### In the tree, in HTML, in markdown
+
+A formula is a node of kind `TMarkdownNodeKind.Math`; query it as
+`IMarkdownMath` for `Literal` (the LaTeX source, untouched) and `IsDisplay`.
+The HTML renderer writes `<span class="math">\(...\)</span>` inline,
+`<span class="math">\[...\]</span>` for inline display math, and
+`<div class="math">\[...\]</div>` for a block, which is what KaTeX and MathJax
+pick up without configuration. The markdown writer round-trips both forms, the
+table of contents and image alt text carry the source, and the document builder
+has `Math(Literal, IsDisplay)` and `MathBlock(Literal)`.
+
+### In the viewers
+
+The viewers set formulas themselves, with TeX's box model: the eight atom
+classes and their spacing, fractions on the math axis, super- and subscripts
+with the clearance rules, limits above and below large operators in display
+style, radicals with an optional index, delimiters that grow into drawn shapes
+when a glyph is too short, accents, and matrix environments. An inline formula
+sits on the text baseline and pushes the lines apart when it is tall; a display
+formula is centred in the column. A formula selects as one unit and copies as
+its markdown, `$...$` or a `$$` block, so a paste lands back in a document as
+the same formula; find searches the LaTeX source, not the drawn glyphs.
+
+`Theme.MathFont` names the family and size; the default family is the generic
+`math`, which the painters resolve to the bundled STIX Two Math when
+`Markdown4D.Vcl.MathFont` or `Markdown4D.Fmx.MathFont` is in a uses clause, and
+to the platform's math font otherwise (Cambria Math on Windows, STIX Two Math
+on macOS 13 and later; see `packages/INSTALL.md` for the other platforms).
+Inline formulas take the size of the surrounding
+text. An unknown command is drawn by name in `Theme.MathErrorColor`.
+
+The parser never raises: an unclosed group closes at the end, a stray closing
+brace is dropped, `\right` without `\left` keeps its delimiter. A formula
+streaming in token by token therefore draws at every flush and only grows.
+
+### Supported LaTeX
+
+| Area | Commands |
+|------|----------|
+| Structure | `\frac`, `\dfrac`, `\tfrac`, `\binom`, `\sqrt[n]{}`, `^`, `_`, `'`, `{}` groups, `\left ... \right` with `( ) [ ] \{ \} \| \langle \rangle \lfloor \rfloor \lceil \rceil .` |
+| Environments | `matrix`, `pmatrix`, `bmatrix`, `Bmatrix`, `vmatrix`, `Vmatrix`, `cases`, `aligned`, `align`, `gathered`; `\\` at the top level breaks a display formula into lines |
+| Operators | `\sum`, `\prod`, `\int`, `\iint`, `\oint`, `\bigcup`, `\bigcap`, `\lim`, `\max`, `\min`, `\sup`, `\inf`, `\det`, `\gcd`, `\sin` and the other function names, `\operatorname{}`, `\limits`, `\nolimits` |
+| Symbols | The Greek alphabet, `\pm \times \cdot \div \circ \cup \cap \wedge \vee \oplus \otimes`, `\leq \geq \neq \approx \equiv \sim \subset \subseteq \in \notin \perp \parallel \mid`, the arrows, `\infty \partial \nabla \forall \exists \emptyset \neg \hbar \ell \aleph \ldots \cdots \vdots \ddots \prime \angle` |
+| Alphabets | `\mathrm`, `\mathbf`, `\boldsymbol`, `\mathit`, `\mathbb`, `\mathcal`, `\mathfrak`, `\mathsf`, `\mathtt`, `\text`, `\textit`, `\textbf` |
+| Accents | `\hat`, `\bar`, `\vec`, `\dot`, `\ddot`, `\tilde`, `\check`, `\breve`, `\acute`, `\grave`, `\overline` |
+| Spacing | `\,`, `\:`, `\;`, `\!`, `\ `, `~`, `\quad`, `\qquad` |
+
+Anything else comes out as its name, in the error colour, so the author sees
+what did not resolve.
 
 ## Incremental parser
 

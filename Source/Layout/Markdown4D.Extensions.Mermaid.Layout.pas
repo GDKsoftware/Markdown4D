@@ -62,6 +62,15 @@ type
   // from an edge into an already-finished subtree.
   TMermaidDfsState = (Unvisited, InProgress, Done);
 
+  // One frame of the depth-first walk's own call stack, kept explicit instead
+  // of on the real one: which node, and which of its successor edges to
+  // resume from. A frame comes off only once every edge from that node has
+  // been visited, the same point the recursive version would set Done.
+  TMermaidDfsFrame = record
+    NodeIndex: Integer;
+    NextEdgePosition: Integer;
+  end;
+
   TMermaidBuilderBase = class
   protected
     const
@@ -117,6 +126,7 @@ type
       EdgeLabelPadding = 3.0;
       EdgeLabelStub = 10.0;
       ParallelEdgeSpacing = 16.0;
+      UnhandledNodeShapeMessage = 'Unhandled node shape: %d';
     var
       FBounds: TLayoutRectF;
       FBoxes: TArray<TMermaidNodeBox>;
@@ -627,7 +637,7 @@ begin
       TMermaidNodeShape.Rectangle:
         ;
     else
-      raise EMarkdownError.CreateFmt('Unhandled node shape: %d', [Ord(MermaidNode.Shape)]);
+      raise EMarkdownError.CreateFmt(UnhandledNodeShapeMessage, [Ord(MermaidNode.Shape)]);
     end;
 
     FBoxes[Index].Width := Width;
@@ -658,42 +668,45 @@ begin
   const IsBackEdge = FindBackEdges(IsEdgeValid);
 
   const SuccessorLists = TObjectList<TList<Integer>>.Create(True);
-  const PredecessorLists = TObjectList<TList<Integer>>.Create(True);
   try
-    for var Index := 0 to NodeCount - 1 do
-    begin
-      SuccessorLists.Add(TList<Integer>.Create);
-      PredecessorLists.Add(TList<Integer>.Create);
-    end;
-
-    for var Index := 0 to FModel.EdgeCount - 1 do
-    begin
-      if not IsEdgeValid[Index] then
-        Continue;
-
-      const Edge = FModel.Edges[Index];
-      var RankSource := Edge.SourceIndex;
-      var RankTarget := Edge.TargetIndex;
-      if IsBackEdge[Index] then
+    const PredecessorLists = TObjectList<TList<Integer>>.Create(True);
+    try
+      for var Index := 0 to NodeCount - 1 do
       begin
-        RankSource := Edge.TargetIndex;
-        RankTarget := Edge.SourceIndex;
+        SuccessorLists.Add(TList<Integer>.Create);
+        PredecessorLists.Add(TList<Integer>.Create);
       end;
 
-      SuccessorLists[RankSource].Add(RankTarget);
-      PredecessorLists[RankTarget].Add(RankSource);
-    end;
+      for var Index := 0 to FModel.EdgeCount - 1 do
+      begin
+        if not IsEdgeValid[Index] then
+          Continue;
 
-    SetLength(FSuccessors, NodeCount);
-    SetLength(FPredecessors, NodeCount);
+        const Edge = FModel.Edges[Index];
+        var RankSource := Edge.SourceIndex;
+        var RankTarget := Edge.TargetIndex;
+        if IsBackEdge[Index] then
+        begin
+          RankSource := Edge.TargetIndex;
+          RankTarget := Edge.SourceIndex;
+        end;
 
-    for var Index := 0 to NodeCount - 1 do
-    begin
-      FSuccessors[Index] := SuccessorLists[Index].ToArray;
-      FPredecessors[Index] := PredecessorLists[Index].ToArray;
+        SuccessorLists[RankSource].Add(RankTarget);
+        PredecessorLists[RankTarget].Add(RankSource);
+      end;
+
+      SetLength(FSuccessors, NodeCount);
+      SetLength(FPredecessors, NodeCount);
+
+      for var Index := 0 to NodeCount - 1 do
+      begin
+        FSuccessors[Index] := SuccessorLists[Index].ToArray;
+        FPredecessors[Index] := PredecessorLists[Index].ToArray;
+      end;
+    finally
+      PredecessorLists.Free;
     end;
   finally
-    PredecessorLists.Free;
     SuccessorLists.Free;
   end;
 end;
@@ -744,29 +757,62 @@ begin
   end;
 end;
 
+// Walked with an explicit TMermaidDfsFrame stack rather than self-recursion,
+// so a long chain of nodes (a flowchart can have as many as the diagram
+// source declares) cannot grow the call stack one frame per node.
 procedure TMermaidFlowchartBuilder.MarkBackEdges(const NodeIndex: Integer;
   const SuccessorEdges: TArray<TList<Integer>>; const State: TArray<TMermaidDfsState>;
   const IsBackEdge: TArray<Boolean>);
 begin
-  State[NodeIndex] := TMermaidDfsState.InProgress;
+  const Stack = TList<TMermaidDfsFrame>.Create;
+  try
+    State[NodeIndex] := TMermaidDfsState.InProgress;
 
-  for var EdgeIndex in SuccessorEdges[NodeIndex] do
-  begin
-    const Target = FModel.Edges[EdgeIndex].TargetIndex;
+    var StartFrame: TMermaidDfsFrame;
+    StartFrame.NodeIndex := NodeIndex;
+    StartFrame.NextEdgePosition := 0;
+    Stack.Add(StartFrame);
 
-    case State[Target] of
-      TMermaidDfsState.InProgress:
-        IsBackEdge[EdgeIndex] := True;
-      TMermaidDfsState.Unvisited:
-        MarkBackEdges(Target, SuccessorEdges, State, IsBackEdge);
-      TMermaidDfsState.Done:
-        ; // A forward or cross edge: it does not close a cycle, ranking keeps it as authored.
-    else
-      raise EMarkdownError.CreateFmt('Unhandled depth-first search state: %d', [Ord(State[Target])]);
+    while Stack.Count > 0 do
+    begin
+      const TopIndex = Stack.Count - 1;
+      const CurrentNode = Stack.List[TopIndex].NodeIndex;
+      const Edges = SuccessorEdges[CurrentNode];
+
+      const HasMoreEdges = Stack.List[TopIndex].NextEdgePosition < Edges.Count;
+      if not HasMoreEdges then
+      begin
+        State[CurrentNode] := TMermaidDfsState.Done;
+        Stack.Delete(TopIndex);
+        Continue;
+      end;
+
+      const EdgeIndex = Edges[Stack.List[TopIndex].NextEdgePosition];
+      Inc(Stack.List[TopIndex].NextEdgePosition);
+
+      const Target = FModel.Edges[EdgeIndex].TargetIndex;
+
+      case State[Target] of
+        TMermaidDfsState.InProgress:
+          IsBackEdge[EdgeIndex] := True;
+        TMermaidDfsState.Unvisited:
+          begin
+            State[Target] := TMermaidDfsState.InProgress;
+
+            var NextFrame: TMermaidDfsFrame;
+            NextFrame.NodeIndex := Target;
+            NextFrame.NextEdgePosition := 0;
+            Stack.Add(NextFrame);
+          end;
+        TMermaidDfsState.Done:
+          ; // A forward or cross edge: it does not close a cycle, ranking keeps it as authored.
+      else
+        raise EMarkdownError.CreateFmt('Unhandled depth-first search state: %d', [Ord(State[Target])]);
+      end;
     end;
+  finally
+    Stack.Free;
   end;
-
-  State[NodeIndex] := TMermaidDfsState.Done;
 end;
 
 // Reversing every back edge for ranking (see BuildAdjacency) always leaves an
@@ -789,25 +835,29 @@ begin
   end;
 
   const Order = TList<Integer>.Create;
-  const Ready = TQueue<Integer>.Create;
   try
-    for var Index := 0 to NodeCount - 1 do
-    begin
-      if Indegree[Index] = 0 then
-        Ready.Enqueue(Index);
-    end;
-
-    while Ready.Count > 0 do
-    begin
-      const Current = Ready.Dequeue;
-      Order.Add(Current);
-
-      for var Next in FSuccessors[Current] do
+    const Ready = TQueue<Integer>.Create;
+    try
+      for var Index := 0 to NodeCount - 1 do
       begin
-        Dec(Indegree[Next]);
-        if Indegree[Next] = 0 then
-          Ready.Enqueue(Next);
+        if Indegree[Index] = 0 then
+          Ready.Enqueue(Index);
       end;
+
+      while Ready.Count > 0 do
+      begin
+        const Current = Ready.Dequeue;
+        Order.Add(Current);
+
+        for var Next in FSuccessors[Current] do
+        begin
+          Dec(Indegree[Next]);
+          if Indegree[Next] = 0 then
+            Ready.Enqueue(Next);
+        end;
+      end;
+    finally
+      Ready.Free;
     end;
 
     if Order.Count < NodeCount then
@@ -828,7 +878,6 @@ begin
       MaxRank := Max(MaxRank, FBoxes[Index].Rank);
     end;
   finally
-    Ready.Free;
     Order.Free;
   end;
 end;
@@ -1131,7 +1180,7 @@ begin
     TMermaidNodeShape.Diamond:
       EmitDiamondNode(Box);
   else
-    raise EMarkdownError.CreateFmt('Unhandled node shape: %d', [Ord(FModel.Nodes[Index].Shape)]);
+    raise EMarkdownError.CreateFmt(UnhandledNodeShapeMessage, [Ord(FModel.Nodes[Index].Shape)]);
   end;
 end;
 
@@ -1305,7 +1354,10 @@ begin
   end;
 
   if Count <= 1 then
-    Exit(TLayoutPointF.Create(0, 0));
+  begin
+    Result := TLayoutPointF.Create(0, 0);
+    Exit;
+  end;
 
   const Offset = (Position - (Count - 1) / 2) * ParallelEdgeSpacing;
 
@@ -1315,7 +1367,10 @@ begin
   const DeltaY = HighCenter.Y - LowCenter.Y;
   const Distance = Sqrt(DeltaX * DeltaX + DeltaY * DeltaY);
   if Distance = 0 then
-    Exit(TLayoutPointF.Create(0, 0));
+  begin
+    Result := TLayoutPointF.Create(0, 0);
+    Exit;
+  end;
 
   Result := TLayoutPointF.Create(-DeltaY / Distance * Offset, DeltaX / Distance * Offset);
 end;
@@ -1361,7 +1416,10 @@ begin
   const DeltaY = Toward.Y - CenterY;
 
   if (DeltaX = 0) and (DeltaY = 0) then
-    Exit(TLayoutPointF.Create(CenterX, CenterY));
+  begin
+    Result := TLayoutPointF.Create(CenterX, CenterY);
+    Exit;
+  end;
 
   const HalfWidth = Box.Width / 2;
   const HalfHeight = Box.Height / 2;
@@ -1857,7 +1915,10 @@ begin
   const Palette = FTheme.ChartPalette;
   const Count = Length(Palette);
   if Count = 0 then
-    Exit(FTheme.ChartTextColor);
+  begin
+    Result := FTheme.ChartTextColor;
+    Exit;
+  end;
 
   Result := Palette[Index mod Count];
 end;

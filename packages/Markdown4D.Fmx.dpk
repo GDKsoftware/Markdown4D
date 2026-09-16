@@ -40,6 +40,7 @@ contains
   Markdown4D.Fmx.Glyphs in '..\Source\Fmx\Markdown4D.Fmx.Glyphs.pas',
   Markdown4D.Fmx.ImageDecoder in '..\Source\Fmx\Markdown4D.Fmx.ImageDecoder.pas',
   Markdown4D.Fmx.Viewer in '..\Source\Fmx\Markdown4D.Fmx.Viewer.pas',
-  Markdown4D.Fmx.Editor in '..\Source\Fmx\Markdown4D.Fmx.Editor.pas';
+  Markdown4D.Fmx.Editor in '..\Source\Fmx\Markdown4D.Fmx.Editor.pas',
+  Markdown4D.Fmx.MathFont in '..\Source\Fmx\Markdown4D.Fmx.MathFont.pas';
 
 end.

@@ -70,6 +70,10 @@
         </DelphiCompile>
         <DCCReference Include="Markdown4D.Parser.Spec.Tests.pas"/>
         <DCCReference Include="Markdown4D.Parser.Gfm.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Parser.Math.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Math.Syntax.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Math.Layout.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Math.Integration.Tests.pas"/>
         <DCCReference Include="Markdown4D.Writer.RoundTrip.Tests.pas"/>
         <DCCReference Include="Markdown4D.Writer.Canonical.Tests.pas"/>
         <DCCReference Include="Markdown4D.Ast.Builder.Tests.pas"/>
@@ -102,6 +106,8 @@
         <DCCReference Include="Markdown4D.Vcl.Render.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Viewer.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Image.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Tests.Pipeline.Helpers.pas"/>
+        <DCCReference Include="Markdown4D.Tests.Vcl.BitmapHelpers.pas"/>
         <DCCReference Include="Markdown4D.Charts.Corpus.pas"/>
         <DCCReference Include="Markdown4D.Extensions.Chart.Tests.pas"/>
         <DCCReference Include="Markdown4D.Extensions.Chart.Layout.Tests.pas"/>
@@ -118,6 +124,7 @@
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Actions.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.ContextMenu.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Highlights.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Rows.pas"/>
         <DCCReference Include="Markdown4D.Editor.Model.Tests.pas"/>
         <DCCReference Include="Markdown4D.Editor.Keys.Tests.pas"/>
         <DCCReference Include="Markdown4D.Editor.Actions.Tests.pas"/>
@@ -126,6 +133,7 @@
         <DCCReference Include="Markdown4D.Editor.Folding.Tests.pas"/>
         <DCCReference Include="Markdown4D.Editor.Highlighter.Tests.pas"/>
         <DCCReference Include="Markdown4D.Editor.Sync.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Editor.Rows.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Editor.Tests.pas"/>
         <DCCReference Include="Markdown4D.Editor.Performance.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Design.Tests.pas"/>
@@ -151,6 +159,7 @@
         <DCCReference Include="..\Examples\Shared\Markdown4DStudio.EditorView.pas"/>
         <DCCReference Include="..\Examples\Shared\Markdown4DStudio.Controller.pas"/>
         <DCCReference Include="..\Examples\Shared\StreamingMarkdown.Demo.pas"/>
+        <DCCReference Include="Markdown4DStudio.Outline.Tests.pas"/>
         <DCCReference Include="Markdown4DStudio.Workspace.Tests.pas"/>
         <DCCReference Include="Markdown4DStudio.TabStrip.Tests.pas"/>
         <DCCReference Include="Markdown4DStudio.Session.Tests.pas"/>
@@ -164,6 +173,7 @@
         <DCCReference Include="Markdown4D.Text.UrlSafety.Tests.pas"/>
         <DCCReference Include="Markdown4D.Viewer.ImageSettings.Tests.pas"/>
         <DCCReference Include="StreamingMarkdown.Demo.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Tests.Runner.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

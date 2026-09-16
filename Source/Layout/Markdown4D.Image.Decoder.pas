@@ -41,7 +41,10 @@ begin
   Raster := Default(TMarkdownPixelRaster);
 
   if (not Assigned(FDecoder)) or (Length(Data) = 0) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Result := FDecoder(Data, Raster);
 end;

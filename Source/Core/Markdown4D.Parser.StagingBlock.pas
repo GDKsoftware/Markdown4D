@@ -112,7 +112,10 @@ end;
 function TStagingBlock.LastChild: TStagingBlock;
 begin
   if FChildren.Count = 0 then
-    Exit(nil);
+  begin
+    Result := nil;
+    Exit;
+  end;
 
   Result := FChildren[FChildren.Count - 1];
 end;

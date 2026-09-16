@@ -35,6 +35,8 @@ type
       MetricTimeBudgetMilliseconds = 50.0;
       MetricFontSize = 16.0;
       MetricFamilyName = 'Segoe UI';
+      MathMarkdown = 'Area $\pi r^2$ and'#10#10'$$'#10'\frac{a}{b} = \sqrt{x}'#10'$$';
+      MinimumFormulaGlyphRuns = 6;
       RepresentativeMarkdown =
         '# Heading One'#10#10 +
         '## Heading Two'#10#10 +
@@ -49,11 +51,9 @@ type
     class function AverageSampledLuminance(const Bitmap: TBitmap): Double;
     class function DistinctCodeRunColorCount(const DisplayList: IMarkdownDisplayList;
       const CodeFamilyName: string): Integer;
-    class function ReadPixel(const Bitmap: TBitmap; const X, Y: Integer): TAlphaColor;
-    class procedure FillWhite(const Bitmap: TBitmap);
+    class function DrawingRunCount(const DisplayList: IMarkdownDisplayList): Integer;
     class function CreateCropSourceBitmap: TBitmap;
     class function IsRed(const Color: TAlphaColor): Boolean;
-    class function IsWhite(const Color: TAlphaColor): Boolean;
 
   public
     [Test]
@@ -64,6 +64,9 @@ type
 
     [Test]
     procedure Render_DarkTheme_YieldsDarkBackgroundPixels;
+
+    [Test]
+    procedure Render_Math_PaintsFormulaGlyphsThroughFmxPainter;
 
     [Test]
     procedure DrawImage_WithSourceRect_CropsToSourceRegion;
@@ -85,6 +88,7 @@ uses
   Markdown4D.Defines,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.Engine,
+  Markdown4D.Tests.Fmx.BitmapHelpers,
   Markdown4D.Layout.Renderer,
   Markdown4D.Highlighter.Interfaces,
   Markdown4D.Highlighter.Pascal,
@@ -136,6 +140,41 @@ begin
   end;
 end;
 
+procedure TMarkdownFmxRenderTests.Render_Math_PaintsFormulaGlyphsThroughFmxPainter;
+begin
+  const Theme = TMarkdownTheme.CreateLight;
+  try
+    const Bitmap = TBitmap.Create;
+    try
+      const DisplayList = RenderToBitmap(MathMarkdown, Theme, Bitmap);
+
+      const GlyphRuns = DrawingRunCount(DisplayList);
+      Assert.IsTrue(GlyphRuns >= MinimumFormulaGlyphRuns,
+        Format('Expected at least %d formula glyph runs but found %d', [MinimumFormulaGlyphRuns, GlyphRuns]));
+      const DistinctColors = DistinctSampledColorCount(Bitmap);
+      Assert.IsTrue(DistinctColors >= MinimumDistinctColors,
+        Format('Expected at least %d distinct colors but found %d', [MinimumDistinctColors, DistinctColors]));
+    finally
+      Bitmap.Free;
+    end;
+  finally
+    Theme.Free;
+  end;
+end;
+
+class function TMarkdownFmxRenderTests.DrawingRunCount(const DisplayList: IMarkdownDisplayList): Integer;
+begin
+  Result := 0;
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    const IsFormulaGlyph = (Supports(DisplayList.Items[Index], IDisplayTextRun, Run) and
+      (Run.Role = TDisplayTextRunRole.Drawing));
+    if IsFormulaGlyph then
+      Inc(Result);
+  end;
+end;
+
 procedure TMarkdownFmxRenderTests.Render_DarkTheme_YieldsDarkBackgroundPixels;
 const
   DarkMarkdown = '# Hello'#10#10'Dark mode body text.';
@@ -162,7 +201,7 @@ begin
   const Target = TBitmap.Create;
   try
     Target.SetSize(BitmapWidth, BitmapHeight);
-    FillWhite(Target);
+    TMarkdownFmxTestBitmapHelpers.FillWhite(Target);
 
     const Source = CreateCropSourceBitmap;
     try
@@ -182,7 +221,7 @@ begin
         Target.Canvas.EndScene;
       end;
 
-      const Center = ReadPixel(Target, Round(ImageBoundsSize / 2), Round(ImageBoundsSize / 2));
+      const Center = TMarkdownFmxTestBitmapHelpers.ReadPixel(Target, Round(ImageBoundsSize / 2), Round(ImageBoundsSize / 2));
       Assert.IsTrue(IsRed(Center), 'Expected the cropped source region to paint red pixels');
     finally
       Source.Free;
@@ -197,7 +236,7 @@ begin
   const Target = TBitmap.Create;
   try
     Target.SetSize(BitmapWidth, BitmapHeight);
-    FillWhite(Target);
+    TMarkdownFmxTestBitmapHelpers.FillWhite(Target);
 
     var Painter: IPainter := TMarkdownFmxPainter.Create(Target.Canvas);
 
@@ -214,8 +253,8 @@ begin
       Target.Canvas.EndScene;
     end;
 
-    const Probe = ReadPixel(Target, ClipProbeX, ClipProbeY);
-    Assert.IsTrue(IsWhite(Probe), 'Expected pixels outside the clip region to remain untouched');
+    const Probe = TMarkdownFmxTestBitmapHelpers.ReadPixel(Target, ClipProbeX, ClipProbeY);
+    Assert.IsTrue(TMarkdownFmxTestBitmapHelpers.IsWhite(Probe), 'Expected pixels outside the clip region to remain untouched');
   finally
     Target.Free;
   end;
@@ -273,7 +312,10 @@ begin
   try
     var Data: TBitmapData;
     if not Bitmap.Map(TMapAccess.Read, Data) then
-      Exit(0);
+    begin
+      Result := 0;
+      Exit;
+    end;
 
     try
       for var YIndex := 0 to (Bitmap.Height - 1) div SampleStep do
@@ -300,7 +342,10 @@ begin
 
   var Data: TBitmapData;
   if not Bitmap.Map(TMapAccess.Read, Data) then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
 
   try
     for var YIndex := 0 to (Bitmap.Height - 1) div SampleStep do
@@ -339,26 +384,6 @@ begin
   end;
 end;
 
-class function TMarkdownFmxRenderTests.ReadPixel(const Bitmap: TBitmap; const X, Y: Integer): TAlphaColor;
-begin
-  Result := TAlphaColorRec.Null;
-
-  var Data: TBitmapData;
-  if not Bitmap.Map(TMapAccess.Read, Data) then
-    Exit;
-
-  try
-    Result := Data.GetPixel(X, Y);
-  finally
-    Bitmap.Unmap(Data);
-  end;
-end;
-
-class procedure TMarkdownFmxRenderTests.FillWhite(const Bitmap: TBitmap);
-begin
-  Bitmap.Clear(TAlphaColorRec.White);
-end;
-
 class function TMarkdownFmxRenderTests.CreateCropSourceBitmap: TBitmap;
 begin
   Result := TBitmap.Create;
@@ -383,13 +408,6 @@ begin
   const Channels = TAlphaColorRec(Color);
   Result := (Channels.R >= StrongChannelFloor) and (Channels.G <= WeakChannelCeiling) and
     (Channels.B <= WeakChannelCeiling);
-end;
-
-class function TMarkdownFmxRenderTests.IsWhite(const Color: TAlphaColor): Boolean;
-begin
-  const Channels = TAlphaColorRec(Color);
-  Result := (Channels.R >= StrongChannelFloor) and (Channels.G >= StrongChannelFloor) and
-    (Channels.B >= StrongChannelFloor);
 end;
 
 end.

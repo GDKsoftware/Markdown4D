@@ -47,6 +47,7 @@ Task list:
 
 - [x] Live preview on the VCL canvas
 - [x] Native charts and diagrams
+- [x] LaTeX formulas on the canvas
 - [ ] Your next document
 
 ## Blockquotes
@@ -66,6 +67,15 @@ Tables support per-column alignment:
 | Tables         |  Done  |     Left, center and right  |
 | Charts         |  Done  |     Bar, line, pie, doughnut|
 | Diagrams       |  Done  |  Flowchart, sequence, pie   |
+| Math           |  Done  |         Inline and display  |
+
+## Math
+
+Inline, $E = mc^2$ sits in the sentence; a block gets display style:
+
+$$
+\int_0^\infty e^{-x^2} \, dx = \frac{\sqrt{\pi}}{2}
+$$
 
 ## Horizontal rule
 

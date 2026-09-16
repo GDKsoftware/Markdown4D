@@ -103,10 +103,10 @@ function TMarkdownTextFileTests.RoundTrip(const Bytes: TArray<Byte>): TArray<Byt
 begin
   WriteBytes(Bytes);
 
-  var Format: TMarkdownTextFormat;
-  const Text = TMarkdownTextFile.Load(FPath, Format);
+  var TextFormat: TMarkdownTextFormat;
+  const Text = TMarkdownTextFile.Load(FPath, TextFormat);
 
-  TMarkdownTextFile.Save(FPath, Text, Format);
+  TMarkdownTextFile.Save(FPath, Text, TextFormat);
   Result := ReadBytes;
 end;
 
@@ -114,10 +114,10 @@ procedure TMarkdownTextFileTests.Load_CrlfFile_ReportsCrlfAndNormalizesToLf;
 begin
   WriteBytes(TEncoding.UTF8.GetBytes('first'#13#10'second'));
 
-  var Format: TMarkdownTextFormat;
-  const Text = TMarkdownTextFile.Load(FPath, Format);
+  var TextFormat: TMarkdownTextFormat;
+  const Text = TMarkdownTextFile.Load(FPath, TextFormat);
 
-  Assert.IsTrue(Format.LineEnding = TMarkdownLineEnding.CrLf);
+  Assert.IsTrue(TextFormat.LineEnding = TMarkdownLineEnding.CrLf);
   Assert.AreEqual('first'#10'second', Text);
 end;
 
@@ -125,10 +125,10 @@ procedure TMarkdownTextFileTests.Load_LfFile_ReportsLf;
 begin
   WriteBytes(TEncoding.UTF8.GetBytes('first'#10'second'));
 
-  var Format: TMarkdownTextFormat;
-  const Text = TMarkdownTextFile.Load(FPath, Format);
+  var TextFormat: TMarkdownTextFormat;
+  const Text = TMarkdownTextFile.Load(FPath, TextFormat);
 
-  Assert.IsTrue(Format.LineEnding = TMarkdownLineEnding.Lf);
+  Assert.IsTrue(TextFormat.LineEnding = TMarkdownLineEnding.Lf);
   Assert.AreEqual('first'#10'second', Text);
 end;
 
@@ -136,10 +136,10 @@ procedure TMarkdownTextFileTests.Load_CrOnlyFile_ReportsCr;
 begin
   WriteBytes(TEncoding.UTF8.GetBytes('first'#13'second'));
 
-  var Format: TMarkdownTextFormat;
-  const Text = TMarkdownTextFile.Load(FPath, Format);
+  var TextFormat: TMarkdownTextFormat;
+  const Text = TMarkdownTextFile.Load(FPath, TextFormat);
 
-  Assert.IsTrue(Format.LineEnding = TMarkdownLineEnding.Cr);
+  Assert.IsTrue(TextFormat.LineEnding = TMarkdownLineEnding.Cr);
   Assert.AreEqual('first'#10'second', Text);
 end;
 
@@ -147,16 +147,16 @@ procedure TMarkdownTextFileTests.Load_FileWithoutLineBreak_UsesPlatformDefault;
 begin
   WriteBytes(TEncoding.UTF8.GetBytes('single line'));
 
-  var Format: TMarkdownTextFormat;
-  TMarkdownTextFile.Load(FPath, Format);
+  var TextFormat: TMarkdownTextFormat;
+  TMarkdownTextFile.Load(FPath, TextFormat);
 
-  Assert.IsTrue(Format.LineEnding = TMarkdownTextFormat.Default.LineEnding);
+  Assert.IsTrue(TextFormat.LineEnding = TMarkdownTextFormat.Default.LineEnding);
 end;
 
 procedure TMarkdownTextFileTests.Save_CrlfFormat_WritesCrlfBack;
 begin
-  const Format = TMarkdownTextFormat.Create(TMarkdownTextEncoding.Utf8, TMarkdownLineEnding.CrLf);
-  TMarkdownTextFile.Save(FPath, 'first'#10'second', Format);
+  const TextFormat = TMarkdownTextFormat.Create(TMarkdownTextEncoding.Utf8, TMarkdownLineEnding.CrLf);
+  TMarkdownTextFile.Save(FPath, 'first'#10'second', TextFormat);
 
   Assert.AreEqual('first'#13#10'second', TEncoding.UTF8.GetString(ReadBytes));
 end;
@@ -201,10 +201,10 @@ procedure TMarkdownTextFileTests.Load_AnsiFile_ReadsAccentedCharacters;
 begin
   WriteBytes(TEncoding.ANSI.GetBytes('caf'#$00E9' pl'#$00E2'tre'));
 
-  var Format: TMarkdownTextFormat;
-  const Text = TMarkdownTextFile.Load(FPath, Format);
+  var TextFormat: TMarkdownTextFormat;
+  const Text = TMarkdownTextFile.Load(FPath, TextFormat);
 
-  Assert.IsTrue(Format.Encoding = TMarkdownTextEncoding.Ansi);
+  Assert.IsTrue(TextFormat.Encoding = TMarkdownTextEncoding.Ansi);
   Assert.AreEqual('caf'#$00E9' pl'#$00E2'tre', Text);
 end;
 
@@ -221,10 +221,10 @@ procedure TMarkdownTextFileTests.Load_Utf8WithoutBom_ReadsAccentedCharacters;
 begin
   WriteBytes(TEncoding.UTF8.GetBytes('caf'#$00E9' na'#$00EF'ef'));
 
-  var Format: TMarkdownTextFormat;
-  const Text = TMarkdownTextFile.Load(FPath, Format);
+  var TextFormat: TMarkdownTextFormat;
+  const Text = TMarkdownTextFile.Load(FPath, TextFormat);
 
-  Assert.IsTrue(Format.Encoding = TMarkdownTextEncoding.Utf8);
+  Assert.IsTrue(TextFormat.Encoding = TMarkdownTextEncoding.Utf8);
   Assert.AreEqual('caf'#$00E9' na'#$00EF'ef', Text);
 end;
 

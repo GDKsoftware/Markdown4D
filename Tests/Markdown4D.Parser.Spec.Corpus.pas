@@ -86,11 +86,17 @@ begin
   begin
     const DirectCandidate = TPath.Combine(TPath.Combine(Directory, SpecsFolderName), FileName);
     if TFile.Exists(DirectCandidate) then
-      Exit(DirectCandidate);
+    begin
+      Result := DirectCandidate;
+      Exit;
+    end;
 
     const NestedCandidate = TPath.Combine(TPath.Combine(TPath.Combine(Directory, TestsFolderName), SpecsFolderName), FileName);
     if TFile.Exists(NestedCandidate) then
-      Exit(NestedCandidate);
+    begin
+      Result := NestedCandidate;
+      Exit;
+    end;
 
     const Parent = TPath.GetDirectoryName(Directory);
     const ReachedRoot = (Parent = Directory);
@@ -128,7 +134,10 @@ begin
   const SectionExamples = FilterBySection(FExamples, Section);
   const HasExamples = (Length(SectionExamples) > 0);
   if not HasExamples then
-    Exit(Format(EmptySectionMessageFormat, [Section]));
+  begin
+    Result := Format(EmptySectionMessageFormat, [Section]);
+    Exit;
+  end;
 
   var FailingNumbers: TArray<Integer> := [];
   var FirstFailureDetail := '';
@@ -149,7 +158,10 @@ begin
 
   const HasFailures = (Length(FailingNumbers) > 0);
   if not HasFailures then
-    Exit('');
+  begin
+    Result := '';
+    Exit;
+  end;
 
   Result := Format(SectionFailuresMessageFormat,
     [Length(FailingNumbers), Length(SectionExamples), Section, JoinNumbers(FailingNumbers), FirstFailureDetail]);

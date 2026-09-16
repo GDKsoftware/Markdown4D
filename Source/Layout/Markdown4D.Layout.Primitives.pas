@@ -39,15 +39,18 @@ type
     FColor: TLayoutColor;
     FBaseline: Single;
     FStartOffset: Integer;
+    FRole: TDisplayTextRunRole;
     function GetText: string;
     function GetFont: TMarkdownFontStyle;
     function GetColor: TLayoutColor;
     function GetBaseline: Single;
     function GetStartOffset: Integer;
+    function GetRole: TDisplayTextRunRole;
 
   public
     constructor Create(const Bounds: TLayoutRectF; const Node: IMarkdownNode; const Text: string;
-      const Font: TMarkdownFontStyle; const Color: TLayoutColor; const Baseline: Single; const StartOffset: Integer);
+      const Font: TMarkdownFontStyle; const Color: TLayoutColor; const Baseline: Single; const StartOffset: Integer;
+      const Role: TDisplayTextRunRole = TDisplayTextRunRole.Text);
     function Shifted(const DeltaX, DeltaY: Single): IDisplayItem; override;
   end;
 
@@ -207,7 +210,8 @@ begin
 end;
 
 constructor TDisplayTextRun.Create(const Bounds: TLayoutRectF; const Node: IMarkdownNode; const Text: string;
-  const Font: TMarkdownFontStyle; const Color: TLayoutColor; const Baseline: Single; const StartOffset: Integer);
+  const Font: TMarkdownFontStyle; const Color: TLayoutColor; const Baseline: Single; const StartOffset: Integer;
+  const Role: TDisplayTextRunRole);
 begin
   inherited Create(TDisplayItemKind.TextRun, Bounds, Node);
 
@@ -216,6 +220,7 @@ begin
   FColor := Color;
   FBaseline := Baseline;
   FStartOffset := StartOffset;
+  FRole := Role;
 end;
 
 function TDisplayTextRun.GetText: string;
@@ -243,9 +248,15 @@ begin
   Result := FStartOffset;
 end;
 
+function TDisplayTextRun.GetRole: TDisplayTextRunRole;
+begin
+  Result := FRole;
+end;
+
 function TDisplayTextRun.Shifted(const DeltaX, DeltaY: Single): IDisplayItem;
 begin
-  Result := TDisplayTextRun.Create(ShiftedBounds(DeltaX, DeltaY), FNode, FText, FFont, FColor, FBaseline, FStartOffset);
+  Result := TDisplayTextRun.Create(ShiftedBounds(DeltaX, DeltaY), FNode, FText, FFont, FColor, FBaseline, FStartOffset,
+    FRole);
 end;
 
 constructor TDisplayRectangle.Create(const Bounds: TLayoutRectF; const Node: IMarkdownNode;

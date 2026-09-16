@@ -61,6 +61,7 @@ type
     FConflictChoice: TPadConflictChoice;
     FConflictPromptCount: Integer;
     FSaveErrorCount: Integer;
+    FOpenErrorCount: Integer;
     FFindNeedle: string;
     FReplaceValue: string;
     FCloseChoice: TPadCloseChoice;
@@ -93,6 +94,7 @@ type
     property Title: string read FTitle;
     property RebuildTabsCount: Integer read FRebuildTabsCount;
     property SaveErrorCount: Integer read FSaveErrorCount;
+    property OpenErrorCount: Integer read FOpenErrorCount;
     property ConflictChoice: TPadConflictChoice read FConflictChoice write FConflictChoice;
     property ConflictPromptCount: Integer read FConflictPromptCount;
     property CloseChoice: TPadCloseChoice read FCloseChoice write FCloseChoice;
@@ -168,6 +170,9 @@ type
 
     [Test]
     procedure Save_ReadOnlyFile_ReportsErrorAndKeepsDocumentModified;
+
+    [Test]
+    procedure ExternalChange_FileLockedDuringReload_ReportsErrorAndKeepsBuffer;
 
     [Test]
     procedure DeletedFile_MarksDocumentAndKeepsBuffer;
@@ -265,7 +270,7 @@ end;
 
 function TFakeEditorView.EditorFindMatchCount(const Needle: string): Integer;
 begin
-  Result := FModel.FindText(Needle);
+  Result := FModel.FindMatchCount(Needle);
 end;
 
 procedure TFakeEditorView.EditorHighlightMatches(const Needle: string);
@@ -407,7 +412,7 @@ end;
 
 procedure TFakeShell.ShowOpenError(const FileName, ErrorMessage: string);
 begin
-  // Open errors are not part of these tests.
+  Inc(FOpenErrorCount);
 end;
 
 procedure TFakeShell.ShowSaveError(const FileName, ErrorMessage: string);
@@ -680,6 +685,28 @@ begin
   Assert.AreEqual(1, FShell.SaveErrorCount);
   Assert.IsTrue(FController.ActiveDocument.Modified);
   Assert.AreEqual(OriginalText, TFile.ReadAllText(FFileName));
+end;
+
+procedure TPadControllerTests.ExternalChange_FileLockedDuringReload_ReportsErrorAndKeepsBuffer;
+begin
+  OpenSampleFile;
+
+  WriteExternal(ExternalText);
+
+  // The watcher can see the new timestamp (a metadata-only read) even while
+  // another process holds the file open exclusively, so the reload itself is
+  // what fails here.
+  const Lock = TFileStream.Create(FFileName, fmOpenRead or fmShareExclusive);
+  try
+    FController.Tick;
+  finally
+    Lock.Free;
+  end;
+
+  Assert.AreEqual(1, FShell.OpenErrorCount);
+  Assert.AreEqual(OriginalText, FView.EditorText);
+  Assert.IsFalse(FController.ActiveDocument.Modified);
+  Assert.IsFalse(FController.ActiveDocument.DiskConflict);
 end;
 
 procedure TPadControllerTests.DeletedFile_MarksDocumentAndKeepsBuffer;

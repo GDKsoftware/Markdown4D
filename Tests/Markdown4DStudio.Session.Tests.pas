@@ -357,7 +357,9 @@ end;
 procedure TPadSessionTests.StoreFilePosition_CapsAtFifty;
 begin
   for var Index := 1 to 60 do
+  begin
     FSession.StoreFilePosition(TPadFilePosition.Create(Format('file%d.md', [Index]), Index, 0, 0));
+  end;
 
   Assert.AreEqual(50, Integer(Length(FSession.FilePositions)));
   Assert.AreEqual('file60.md', FSession.FilePositions[0].FileName);

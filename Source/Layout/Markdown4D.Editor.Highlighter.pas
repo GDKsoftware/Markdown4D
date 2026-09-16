@@ -6,7 +6,7 @@ interface
 
 type
   TMarkdownSourceTokenKind = (Plain, HeadingMarker, HeadingText, EmphasisDelimiter, CodeSpanDelimiter, CodeSpanText,
-    FenceLine, FenceContent, LinkBracket, LinkText, LinkUrl, BlockQuoteMarker, ListMarker);
+    FenceLine, FenceContent, LinkBracket, LinkText, LinkUrl, BlockQuoteMarker, ListMarker, MathDelimiter, MathText);
 
   TMarkdownSourceToken = record
     Kind: TMarkdownSourceTokenKind;
@@ -25,6 +25,8 @@ type
   strict private
     const
       FenceStateFlag = Integer($40000000);
+      MathStateFlag = Integer($20000000);
+      MathFence = '$$';
       SubStateMask = $000000FF;
       LanguageShift = 8;
       LanguageMask = $0000FFFF;
@@ -38,6 +40,8 @@ type
     function LeadingBacktickCount(const Line: string): Integer;
     function IsClosingFence(const Line: string): Boolean;
     function TokenizeFenceContent(const Line: string; const State: Integer): TMarkdownSourceLine;
+    function IsMathFence(const Line: string): Boolean;
+    function TokenizeMathContent(const Line: string): TMarkdownSourceLine;
     function TokenizeMarkdown(const Line: string): TMarkdownSourceLine;
 
   public
@@ -73,6 +77,7 @@ type
     procedure ScanInlineChar;
     procedure ScanEmphasis;
     procedure ScanCodeSpan;
+    procedure ScanMath;
     procedure ScanLink;
     function IndexOfChar(const Ch: Char; const From: Integer): Integer;
 
@@ -105,7 +110,17 @@ function TMarkdownSourceHighlighter.TokenizeLine(const Line: string; const State
 begin
   const InsideFence = (State and FenceStateFlag) <> 0;
   if InsideFence then
-    Exit(TokenizeFenceContent(Line, State));
+  begin
+    Result := TokenizeFenceContent(Line, State);
+    Exit;
+  end;
+
+  const InsideMath = (State and MathStateFlag) <> 0;
+  if InsideMath then
+  begin
+    Result := TokenizeMathContent(Line);
+    Exit;
+  end;
 
   Result := TokenizeMarkdown(Line);
 end;
@@ -123,6 +138,13 @@ begin
     Exit;
   end;
 
+  if IsMathFence(Line) then
+  begin
+    Result := TMarkdownSourceLine.Create(
+      [TMarkdownSourceToken.Create(TMarkdownSourceTokenKind.MathDelimiter, 1, System.Length(Line))], MathStateFlag);
+    Exit;
+  end;
+
   const Scanner = TMarkdownLineScanner.Create(Line);
   try
     Result := TMarkdownSourceLine.Create(Scanner.Scan, DefaultState);
@@ -131,12 +153,36 @@ begin
   end;
 end;
 
+function TMarkdownSourceHighlighter.IsMathFence(const Line: string): Boolean;
+begin
+  Result := (Trim(Line) = MathFence);
+end;
+
+function TMarkdownSourceHighlighter.TokenizeMathContent(const Line: string): TMarkdownSourceLine;
+begin
+  if IsMathFence(Line) then
+  begin
+    Result := TMarkdownSourceLine.Create(
+      [TMarkdownSourceToken.Create(TMarkdownSourceTokenKind.MathDelimiter, 1, System.Length(Line))], DefaultState);
+    Exit;
+  end;
+
+  var Tokens: TArray<TMarkdownSourceToken> := [];
+  if Line <> '' then
+    Tokens := [TMarkdownSourceToken.Create(TMarkdownSourceTokenKind.MathText, 1, System.Length(Line))];
+
+  Result := TMarkdownSourceLine.Create(Tokens, MathStateFlag);
+end;
+
 function TMarkdownSourceHighlighter.TokenizeFenceContent(const Line: string;
   const State: Integer): TMarkdownSourceLine;
 begin
   if IsClosingFence(Line) then
-    Exit(TMarkdownSourceLine.Create(
-      [TMarkdownSourceToken.Create(TMarkdownSourceTokenKind.FenceLine, 1, System.Length(Line))], DefaultState));
+  begin
+    Result := TMarkdownSourceLine.Create(
+      [TMarkdownSourceToken.Create(TMarkdownSourceTokenKind.FenceLine, 1, System.Length(Line))], DefaultState);
+    Exit;
+  end;
 
   const Language = DecodeLanguage(State);
   const SubState = DecodeSubState(State);
@@ -148,8 +194,8 @@ begin
     Tokens := Tokens + [TMarkdownSourceToken.Create(TMarkdownSourceTokenKind.FenceContent, Token.Start, Token.Length)];
   end;
 
-  const HasContent = (System.Length(Tokens) = 0) and (Line <> '');
-  if HasContent then
+  const NeedsFallbackToken = (System.Length(Tokens) = 0) and (Line <> '');
+  if NeedsFallbackToken then
     Tokens := [TMarkdownSourceToken.Create(TMarkdownSourceTokenKind.FenceContent, 1, System.Length(Line))];
 
   Result := TMarkdownSourceLine.Create(Tokens, EncodeFence(DecodeLanguageIndex(State), SyntaxLine.NextState));
@@ -174,7 +220,10 @@ begin
   for var Index := 0 to High(FFenceLanguages) do
   begin
     if SameText(FFenceLanguages[Index], Language) then
-      Exit(Index);
+    begin
+      Result := Index;
+      Exit;
+    end;
   end;
 
   FFenceLanguages := FFenceLanguages + [Language];
@@ -265,7 +314,10 @@ begin
   const IsAtx = (Count >= 1) and (Count <= 6) and
     ((Count = System.Length(FLine)) or (FLine[Count + 1] = ' '));
   if not IsAtx then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   AddToken(TMarkdownSourceTokenKind.HeadingMarker, 1, Count);
   if Count < System.Length(FLine) then
@@ -284,7 +336,8 @@ begin
 
     AddToken(TMarkdownSourceTokenKind.BlockQuoteMarker, FPosition, MarkerLength);
     FPosition := FPosition + MarkerLength;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   Result := TryScanList;
@@ -293,7 +346,10 @@ end;
 function TMarkdownLineScanner.TryScanList: Boolean;
 begin
   if FPosition > System.Length(FLine) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Current = FLine[FPosition];
   const IsBullet = (Current = '-') or (Current = '+') or (Current = '*');
@@ -302,7 +358,8 @@ begin
   begin
     AddToken(TMarkdownSourceTokenKind.ListMarker, FPosition, 2);
     FPosition := FPosition + 2;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   var Scan := FPosition;
@@ -316,7 +373,8 @@ begin
   begin
     AddToken(TMarkdownSourceTokenKind.ListMarker, FPosition, Scan - FPosition + 2);
     FPosition := Scan + 2;
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   Result := False;
@@ -338,6 +396,8 @@ begin
     ScanEmphasis
   else if Current = '[' then
     ScanLink
+  else if Current = Dollar then
+    ScanMath
   else
     AddPlainCurrent;
 end;
@@ -400,6 +460,61 @@ begin
   FPosition := CloseStart + OpenLength;
 end;
 
+// Mirrors ScanCodeSpan: the opening run of dollars (one or two) is matched by
+// a run of the same length; without one the rest of the line is formula text.
+procedure TMarkdownLineScanner.ScanMath;
+begin
+  const Start = FPosition;
+  var OpenLength := 0;
+  while (Start + OpenLength <= System.Length(FLine)) and (FLine[Start + OpenLength] = Dollar) and (OpenLength < 2) do
+    Inc(OpenLength);
+
+  AddToken(TMarkdownSourceTokenKind.MathDelimiter, Start, OpenLength);
+  const ContentStart = Start + OpenLength;
+
+  var CloseStart := 0;
+  var Scan := ContentStart;
+  while Scan <= System.Length(FLine) do
+  begin
+    if FLine[Scan] = '\' then
+    begin
+      Inc(Scan, 2);
+      Continue;
+    end;
+
+    if FLine[Scan] <> Dollar then
+    begin
+      Inc(Scan);
+      Continue;
+    end;
+
+    var Run := 0;
+    while (Scan + Run <= System.Length(FLine)) and (FLine[Scan + Run] = Dollar) do
+      Inc(Run);
+    if Run >= OpenLength then
+    begin
+      CloseStart := Scan + Run - OpenLength;
+      Break;
+    end;
+
+    Scan := Scan + Run;
+  end;
+
+  if CloseStart = 0 then
+  begin
+    if ContentStart <= System.Length(FLine) then
+      AddToken(TMarkdownSourceTokenKind.MathText, ContentStart, System.Length(FLine) - ContentStart + 1);
+    FPosition := System.Length(FLine) + 1;
+    Exit;
+  end;
+
+  if CloseStart > ContentStart then
+    AddToken(TMarkdownSourceTokenKind.MathText, ContentStart, CloseStart - ContentStart);
+
+  AddToken(TMarkdownSourceTokenKind.MathDelimiter, CloseStart, OpenLength);
+  FPosition := CloseStart + OpenLength;
+end;
+
 procedure TMarkdownLineScanner.ScanLink;
 begin
   const Start = FPosition;
@@ -435,7 +550,10 @@ begin
   for var Index := From to System.Length(FLine) do
   begin
     if FLine[Index] = Ch then
-      Exit(Index);
+    begin
+      Result := Index;
+      Exit;
+    end;
   end;
 
   Result := 0;

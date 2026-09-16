@@ -397,7 +397,10 @@ begin
     Exit;
 
   if FamilyName = '' then
-    Exit(DefaultFallbackFamilyName);
+  begin
+    Result := DefaultFallbackFamilyName;
+    Exit;
+  end;
 
   Result := FamilyName;
 end;

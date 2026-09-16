@@ -40,7 +40,8 @@ type
 implementation
 
 uses
-  System.Math;
+  System.Math,
+  System.Generics.Collections;
 
 class function TEditorHighlightSpan.Create(const StartOffset, EndOffset: Integer): TEditorHighlightSpan;
 begin
@@ -76,8 +77,21 @@ begin
     Exit;
 
   const NeedleLength = System.Length(FNeedle);
-  for var Start in Model.FindAllMatches(FNeedle, FOptions) do
-    FSpans := FSpans + [TEditorHighlightSpan.Create(Start, Start + NeedleLength)];
+
+  // A search hit list grows with document size (every occurrence of the
+  // needle), so a TList avoids the O(n^2) cost of growing an array one
+  // element at a time.
+  const Spans = TList<TEditorHighlightSpan>.Create;
+  try
+    for var Start in Model.FindAllMatches(FNeedle, FOptions) do
+    begin
+      Spans.Add(TEditorHighlightSpan.Create(Start, Start + NeedleLength));
+    end;
+
+    FSpans := Spans.ToArray;
+  finally
+    Spans.Free;
+  end;
 end;
 
 function TMarkdownEditorHighlights.IsActive: Boolean;

@@ -127,22 +127,27 @@ begin
   if Existing >= 0 then
   begin
     FActiveIndex := Existing;
-    Exit(FDocuments[Existing]);
+    Result := FDocuments[Existing];
+    Exit;
   end;
 
-  var Format: TMarkdownTextFormat;
-  const Content = TMarkdownTextFile.Load(FileName, Format);
+  var FileFormat: TMarkdownTextFormat;
+  const Content = TMarkdownTextFile.Load(FileName, FileFormat);
 
   var Document: IPadDocument := TPadDocument.Create;
   Document.FileName := FileName;
-  Document.TextFormat := Format;
+  Document.TextFormat := FileFormat;
   Document.Text := Content;
   Document.Modified := False;
 
   try
     Document.DiskTimestampUtc := TFile.GetLastWriteTimeUtc(FileName);
   except
-    Document.DiskTimestampUtc := 0;
+    // The content load above already succeeded, so this is a narrow race
+    // (the file vanished right after); 0 makes the watcher treat it as
+    // changed on the next poll instead of caching a stale timestamp.
+    on EInOutError do
+      Document.DiskTimestampUtc := 0;
   end;
 
   FDocuments.Add(Document);
@@ -155,7 +160,10 @@ begin
   for var Index := 0 to FDocuments.Count - 1 do
   begin
     if (FDocuments[Index].FileName <> '') and SameText(FDocuments[Index].FileName, FileName) then
-      Exit(Index);
+    begin
+      Result := Index;
+      Exit;
+    end;
   end;
 
   Result := -1;
@@ -239,7 +247,10 @@ end;
 function TPadWorkspace.GetActiveDocument: IPadDocument;
 begin
   if (FActiveIndex < 0) or (FActiveIndex >= FDocuments.Count) then
-    Exit(nil);
+  begin
+    Result := nil;
+    Exit;
+  end;
 
   Result := FDocuments[FActiveIndex];
 end;
@@ -254,7 +265,10 @@ end;
 function TPadDocument.DisplayName: string;
 begin
   if not IsUntitled then
-    Exit(TPath.GetFileName(FFileName));
+  begin
+    Result := TPath.GetFileName(FFileName);
+    Exit;
+  end;
 
   if FUntitledNumber > FirstUntitledNumber then
     Result := Format(UntitledNumberedFormat, [FUntitledNumber])

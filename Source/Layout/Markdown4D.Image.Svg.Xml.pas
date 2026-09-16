@@ -89,7 +89,8 @@ begin
     if SameText(Item.Name, AttributeName) then
     begin
       Value := Item.Value;
-      Exit(True);
+      Result := True;
+      Exit;
     end;
   end;
 
@@ -130,7 +131,8 @@ begin
   if Position = 0 then
   begin
     FIndex := Length(FText) + 1;
-    Exit(False);
+    Result := False;
+    Exit;
   end;
 
   FIndex := Position + Length(Marker);
@@ -158,12 +160,18 @@ function TSvgXmlScanner.ReadAttributeValue: string;
 begin
   SkipWhitespace;
   if AtEnd then
-    Exit('');
+  begin
+    Result := '';
+    Exit;
+  end;
 
   const Quote = FText[FIndex];
   const IsQuoted = (Quote = '"') or (Quote = '''');
   if not IsQuoted then
-    Exit(DecodeEntities(ReadName));
+  begin
+    Result := DecodeEntities(ReadName);
+    Exit;
+  end;
 
   Inc(FIndex);
   const Start = FIndex;
@@ -239,13 +247,17 @@ begin
     if Position = 0 then
     begin
       FIndex := Length(FText) + 1;
-      Exit(False);
+      Result := False;
+      Exit;
     end;
 
     Element.Start := Position;
     FIndex := Position + 1;
     if AtEnd then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     if Copy(FText, FIndex, Length(CommentOpen)) = CommentOpen then
     begin
@@ -276,7 +288,8 @@ begin
       Element.IsClosing := True;
       SkipUntil(TagClose);
       Element.Stop := FIndex;
-      Exit(True);
+      Result := True;
+      Exit;
     end;
 
     Element.Name := ReadName;
@@ -300,14 +313,18 @@ begin
     if not Element.IsSelfClosing then
       Element.Text := ReadContentText;
 
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 end;
 
 class function TSvgXmlScanner.DecodeEntities(const Value: string): string;
 begin
   if Pos(Ampersand, Value) = 0 then
-    Exit(Value);
+  begin
+    Result := Value;
+    Exit;
+  end;
 
   const Builder = TStringBuilder.Create;
   try
@@ -346,7 +363,10 @@ class function TSvgXmlScanner.TryDecodeEntity(const Entity: string; out Decoded:
 begin
   Decoded := '';
   if Entity = '' then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   if Entity[1] = NumberSign then
   begin
@@ -356,16 +376,26 @@ begin
     if IsHex then
     begin
       if not TryStrToInt('$' + Copy(Entity, 3, MaxInt), Code) then
-        Exit(False);
+      begin
+        Result := False;
+        Exit;
+      end;
     end
     else if not TryStrToInt(Copy(Entity, 2, MaxInt), Code) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     if (Code <= 0) or (Code > $10FFFF) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     Decoded := Char.ConvertFromUtf32(Code);
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   if SameText(Entity, 'amp') then
@@ -379,7 +409,10 @@ begin
   else if SameText(Entity, 'apos') then
     Decoded := ''''
   else
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Result := True;
 end;

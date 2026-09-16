@@ -572,16 +572,16 @@ begin
 
   const Regions = FModel.CodeBlockRegions;
   Assert.AreEqual(1, Integer(Length(Regions)));
-  const R = Regions[0];
+  const FirstRegion = Regions[0];
 
   var Region: TMarkdownCodeBlockRegion;
-  const Center = TLayoutPointF.Create((R.Rect.Left + R.Rect.Right) / 2, (R.Rect.Top + R.Rect.Bottom) / 2);
+  const Center = TLayoutPointF.Create((FirstRegion.Rect.Left + FirstRegion.Rect.Right) / 2, (FirstRegion.Rect.Top + FirstRegion.Rect.Bottom) / 2);
   Assert.IsTrue(FModel.TryGetCodeBlockAt(Center, Region));
   Assert.AreEqual('alpha', Region.Text);
-  AssertSingle(R.Rect.Left, Region.Rect.Left);
-  AssertSingle(R.Rect.Top, Region.Rect.Top);
-  AssertSingle(R.Rect.Right, Region.Rect.Right);
-  AssertSingle(R.Rect.Bottom, Region.Rect.Bottom);
+  AssertSingle(FirstRegion.Rect.Left, Region.Rect.Left);
+  AssertSingle(FirstRegion.Rect.Top, Region.Rect.Top);
+  AssertSingle(FirstRegion.Rect.Right, Region.Rect.Right);
+  AssertSingle(FirstRegion.Rect.Bottom, Region.Rect.Bottom);
 end;
 
 procedure TMarkdownViewerModelTests.TryGetCodeBlockAt_MultiLineCode_KeepsInternalNewlines;
@@ -591,10 +591,10 @@ begin
 
   const Regions = FModel.CodeBlockRegions;
   Assert.AreEqual(1, Integer(Length(Regions)));
-  const R = Regions[0];
+  const FirstRegion = Regions[0];
 
   var Region: TMarkdownCodeBlockRegion;
-  const Center = TLayoutPointF.Create((R.Rect.Left + R.Rect.Right) / 2, (R.Rect.Top + R.Rect.Bottom) / 2);
+  const Center = TLayoutPointF.Create((FirstRegion.Rect.Left + FirstRegion.Rect.Right) / 2, (FirstRegion.Rect.Top + FirstRegion.Rect.Bottom) / 2);
   Assert.IsTrue(FModel.TryGetCodeBlockAt(Center, Region));
   Assert.AreEqual('alpha'#10'beta', Region.Text);
 end;
@@ -609,8 +609,8 @@ begin
 
   const Regions = FModel.CodeBlockRegions;
   Assert.AreEqual(1, Integer(Length(Regions)));
-  const R = Regions[0];
-  const Center = TLayoutPointF.Create((R.Rect.Left + R.Rect.Right) / 2, (R.Rect.Top + R.Rect.Bottom) / 2);
+  const FirstRegion = Regions[0];
+  const Center = TLayoutPointF.Create((FirstRegion.Rect.Left + FirstRegion.Rect.Right) / 2, (FirstRegion.Rect.Top + FirstRegion.Rect.Bottom) / 2);
   Assert.IsTrue(FModel.TryGetCodeBlockAt(Center, Region));
 end;
 

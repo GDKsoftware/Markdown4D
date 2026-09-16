@@ -25,10 +25,11 @@ if (-not (Test-Path -LiteralPath $ReadmePath)) {
 
 [xml]$Results = Get-Content -LiteralPath $ResultsPath -Raw
 
-$CorpusNames = @('CommonMark', 'Gfm', 'RoundTrip', 'Incremental')
+$CorpusNames = @('CommonMark', 'Gfm', 'Math', 'RoundTrip', 'Incremental')
 $FixtureToCorpus = @{
     'TCommonMarkSpecTests'         = 'CommonMark'
     'TGfmSpecTests'                = 'Gfm'
+    'TMathSpecTests'               = 'Math'
     'TRoundTripTests'              = 'RoundTrip'
     'TIncrementalEquivalenceTests' = 'Incremental'
 }

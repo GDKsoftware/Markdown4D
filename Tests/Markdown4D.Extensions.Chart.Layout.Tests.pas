@@ -45,6 +45,9 @@ type
     procedure Line_Polyline_DerivedFromScaleMinMax;
 
     [Test]
+    procedure Line_MoreValuesThanLabels_PointsStayOnLabelSlots;
+
+    [Test]
     procedure Pie_Wedges_AnglesProportionalToValues;
 
     [Test]
@@ -108,7 +111,8 @@ begin
     if Child.Kind = TMarkdownNodeKind.CodeBlock then
     begin
       Code := Child as IMarkdownCodeBlock;
-      Exit(True);
+      Result := True;
+      Exit;
     end;
   end;
 
@@ -215,6 +219,34 @@ begin
   end;
 
   Assert.IsTrue(LineCount >= 2, 'A three-point line series must emit at least two line segments');
+end;
+
+// A series with more values than there are labels has nowhere on the axis for
+// the extra points to go; they must be dropped rather than plotted past the
+// last label slot.
+procedure TChartLayoutTests.Line_MoreValuesThanLabels_PointsStayOnLabelSlots;
+const
+  Markdown =
+    '```chart'#10 +
+    '{"type":"chart","data":{"type":"line","data":{"labels":["A","B"],' +
+    '"datasets":[{"label":"Counter","data":[1,2,3,4]}]}}}'#10 +
+    '```';
+begin
+  const Items = MarkdownItems(Markdown);
+
+  var LineCount := 0;
+  for var Item in Items do
+  begin
+    if Item.Kind <> TDisplayItemKind.Line then
+      Continue;
+
+    const Line = Item as IDisplayLine;
+    const WithinBounds = (Line.StartPoint.X <= ChartWidth) and (Line.EndPoint.X <= ChartWidth);
+    Assert.IsTrue(WithinBounds, 'A line point beyond the label count must not be plotted past the plot area');
+    Inc(LineCount);
+  end;
+
+  Assert.IsTrue(LineCount > 0, 'A line chart with more values than labels must still emit line segments');
 end;
 
 procedure TChartLayoutTests.Pie_Wedges_AnglesProportionalToValues;

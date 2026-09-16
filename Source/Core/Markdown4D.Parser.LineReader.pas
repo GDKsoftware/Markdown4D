@@ -39,7 +39,10 @@ begin
   const SourceLength = Length(FSource);
   const HasMore = (FPosition <= SourceLength);
   if not HasMore then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var Index := FPosition;
 

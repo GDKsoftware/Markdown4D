@@ -68,7 +68,10 @@ begin
 
   const Span = TrackHeight - ThumbHeight;
   if Span <= 0 then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
 
   const Fraction = EnsureRange((ThumbTop - Margin) / Span, 0, 1);
   Result := Fraction * (ContentHeight - ViewHeight);

@@ -86,11 +86,12 @@ type
     function TitleFont: TMarkdownFontStyle;
     procedure EmitRectangle(const Bounds: TLayoutRectF; const FillColor, StrokeColor: TLayoutColor;
       const StrokeWidth: Single);
-    procedure EmitText(const Text: string; const X, Y: Single; const Font: TMarkdownFontStyle;
+    procedure EmitText(const Text: string; const Left, Top: Single; const Font: TMarkdownFontStyle;
       const Color: TLayoutColor);
-    procedure EmitCenteredText(const Text: string; const CenterX, Y: Single; const Font: TMarkdownFontStyle;
+    procedure EmitCenteredText(const Text: string; const CenterX, Top: Single; const Font: TMarkdownFontStyle;
       const Color: TLayoutColor);
-    procedure EmitLineSegment(const X1, Y1, X2, Y2: Single; const Color: TLayoutColor; const StrokeWidth: Single);
+    procedure EmitLineSegment(const StartX, StartY, EndX, EndY: Single; const Color: TLayoutColor;
+      const StrokeWidth: Single);
     procedure EmitWedge(const CenterX, CenterY, OuterRadius, InnerRadius, StartAngle, SweepAngle: Single;
       const Color: TLayoutColor);
     function EntryCount: Integer;
@@ -150,7 +151,10 @@ begin
   const Palette = Theme.ChartPalette;
   const Count = Length(Palette);
   if Count = 0 then
-    Exit(Theme.ChartTextColor);
+  begin
+    Result := Theme.ChartTextColor;
+    Exit;
+  end;
 
   Result := Palette[DatasetIndex mod Count];
 end;
@@ -242,29 +246,29 @@ begin
   FCanvas.FillAndStrokeRectangle(Bounds, FillColor, StrokeColor, StrokeWidth);
 end;
 
-procedure TChartLayoutBuilder.EmitText(const Text: string; const X, Y: Single; const Font: TMarkdownFontStyle;
+procedure TChartLayoutBuilder.EmitText(const Text: string; const Left, Top: Single; const Font: TMarkdownFontStyle;
   const Color: TLayoutColor);
 begin
   if Text = '' then
     Exit;
 
-  FCanvas.DrawText(TLayoutPointF.Create(X, Y), Text, Font, Color);
+  FCanvas.DrawText(TLayoutPointF.Create(Left, Top), Text, Font, Color);
 end;
 
-procedure TChartLayoutBuilder.EmitCenteredText(const Text: string; const CenterX, Y: Single;
+procedure TChartLayoutBuilder.EmitCenteredText(const Text: string; const CenterX, Top: Single;
   const Font: TMarkdownFontStyle; const Color: TLayoutColor);
 begin
   if Text = '' then
     Exit;
 
   const Size = FMeasurer.MeasureText(Text, Font);
-  EmitText(Text, CenterX - Size.Width / 2, Y, Font, Color);
+  EmitText(Text, CenterX - Size.Width / 2, Top, Font, Color);
 end;
 
-procedure TChartLayoutBuilder.EmitLineSegment(const X1, Y1, X2, Y2: Single; const Color: TLayoutColor;
+procedure TChartLayoutBuilder.EmitLineSegment(const StartX, StartY, EndX, EndY: Single; const Color: TLayoutColor;
   const StrokeWidth: Single);
 begin
-  FCanvas.DrawLine(TLayoutPointF.Create(X1, Y1), TLayoutPointF.Create(X2, Y2), Color, StrokeWidth);
+  FCanvas.DrawLine(TLayoutPointF.Create(StartX, StartY), TLayoutPointF.Create(EndX, EndY), Color, StrokeWidth);
 end;
 
 procedure TChartLayoutBuilder.EmitWedge(const CenterX, CenterY, OuterRadius, InnerRadius, StartAngle,
@@ -308,10 +312,16 @@ begin
   const Dataset = FModel.Datasets[Index];
 
   if (Dataset.BackgroundColorCount > 0) and IsColorSet(Dataset.BackgroundColors[0]) then
-    Exit(Dataset.BackgroundColors[0]);
+  begin
+    Result := Dataset.BackgroundColors[0];
+    Exit;
+  end;
 
   if (Dataset.BorderColorCount > 0) and IsColorSet(Dataset.BorderColors[0]) then
-    Exit(Dataset.BorderColors[0]);
+  begin
+    Result := Dataset.BorderColors[0];
+    Exit;
+  end;
 
   Result := TChartLayouter.PaletteColor(FTheme, Index);
 end;
@@ -322,7 +332,10 @@ begin
   begin
     const Dataset = FModel.Datasets[0];
     if (Dataset.BackgroundColorCount > Index) and IsColorSet(Dataset.BackgroundColors[Index]) then
-      Exit(Dataset.BackgroundColors[Index]);
+    begin
+      Result := Dataset.BackgroundColors[Index];
+      Exit;
+    end;
   end;
 
   Result := TChartLayouter.PaletteColor(FTheme, Index);
@@ -488,7 +501,10 @@ end;
 function TChartLayoutBuilder.NiceNum(const Value: Double; const RoundResult: Boolean): Double;
 begin
   if Value <= 0 then
-    Exit(1);
+  begin
+    Result := 1;
+    Exit;
+  end;
 
   const Exponent = Floor(Log10(Value));
   const PowerOfTen = Power(10, Exponent);
@@ -615,19 +631,20 @@ begin
   const PlotRight = FRight;
   const PlotBottom = FBottom - BottomGutter;
 
-  if (PlotRight <= PlotLeft) or (PlotBottom <= PlotTop) then
+  const PlotAreaInvalid = ((PlotRight <= PlotLeft) or (PlotBottom <= PlotTop));
+  if PlotAreaInvalid then
     Exit;
 
   const AxisSpan = Axis.Maximum - Axis.Minimum;
   for var Tick in Axis.Ticks do
   begin
     const Ratio = (Tick - Axis.Minimum) / AxisSpan;
-    const Y = PlotBottom - Ratio * (PlotBottom - PlotTop);
-    EmitLineSegment(PlotLeft, Y, PlotRight, Y, FTheme.ChartGridLineColor, GridStrokeWidth);
+    const GridY = PlotBottom - Ratio * (PlotBottom - PlotTop);
+    EmitLineSegment(PlotLeft, GridY, PlotRight, GridY, FTheme.ChartGridLineColor, GridStrokeWidth);
 
     const Text = Format(TickLabelFormat, [Tick]);
     const Size = FMeasurer.MeasureText(Text, Font);
-    EmitText(Text, PlotLeft - AxisGap - Size.Width, Y - Size.Height / 2, Font, FTheme.ChartTextColor);
+    EmitText(Text, PlotLeft - AxisGap - Size.Width, GridY - Size.Height / 2, Font, FTheme.ChartTextColor);
   end;
 
   const SlotWidth = (PlotRight - PlotLeft) / Max(1, FModel.LabelCount);
@@ -739,7 +756,7 @@ begin
   begin
     const Dataset = FModel.Datasets[DatasetIndex];
     const Color = DatasetColor(DatasetIndex);
-    const Count = Dataset.ValueCount;
+    const Count = Min(Dataset.ValueCount, FModel.LabelCount);
     if Count = 0 then
       Continue;
 
@@ -759,14 +776,18 @@ begin
       var Polygon: TArray<TLayoutPointF>;
       SetLength(Polygon, Count + 2);
       for var Index := 0 to Count - 1 do
+      begin
         Polygon[Index] := TLayoutPointF.Create(Xs[Index], Ys[Index]);
+      end;
       Polygon[Count] := TLayoutPointF.Create(Xs[Count - 1], BaseY);
       Polygon[Count + 1] := TLayoutPointF.Create(Xs[0], BaseY);
       EmitFilledPolygon(Polygon, Translucent(Color, AreaFillAlphaFactor));
     end;
 
     for var Index := 1 to Count - 1 do
+    begin
       EmitLineSegment(Xs[Index - 1], Ys[Index - 1], Xs[Index], Ys[Index], Color, LineStrokeWidth);
+    end;
   end;
 end;
 
@@ -834,7 +855,9 @@ begin
 
   var GutterWidth := 0.0;
   for var LabelIndex := 0 to FModel.LabelCount - 1 do
+  begin
     GutterWidth := Max(GutterWidth, FMeasurer.MeasureText(FModel.Labels[LabelIndex], Font).Width);
+  end;
   GutterWidth := GutterWidth + AxisGap;
 
   const BottomGutter = FMeasurer.LineHeight(Font) + AxisGap;
@@ -844,16 +867,17 @@ begin
   const PlotRight = FRight;
   const PlotBottom = FBottom - BottomGutter;
 
-  if (PlotRight <= PlotLeft) or (PlotBottom <= PlotTop) then
+  const PlotAreaInvalid = ((PlotRight <= PlotLeft) or (PlotBottom <= PlotTop));
+  if PlotAreaInvalid then
     Exit;
 
   const AxisSpan = Axis.Maximum - Axis.Minimum;
   for var Tick in Axis.Ticks do
   begin
     const Ratio = (Tick - Axis.Minimum) / AxisSpan;
-    const X = PlotLeft + Ratio * (PlotRight - PlotLeft);
-    EmitLineSegment(X, PlotTop, X, PlotBottom, FTheme.ChartGridLineColor, GridStrokeWidth);
-    EmitCenteredText(Format(TickLabelFormat, [Tick]), X, PlotBottom + AxisGap, Font, FTheme.ChartTextColor);
+    const GridX = PlotLeft + Ratio * (PlotRight - PlotLeft);
+    EmitLineSegment(GridX, PlotTop, GridX, PlotBottom, FTheme.ChartGridLineColor, GridStrokeWidth);
+    EmitCenteredText(Format(TickLabelFormat, [Tick]), GridX, PlotBottom + AxisGap, Font, FTheme.ChartTextColor);
   end;
 
   const SlotHeight = (PlotBottom - PlotTop) / Max(1, FModel.LabelCount);
@@ -961,7 +985,9 @@ begin
   begin
     const Dataset = FModel.Datasets[DatasetIndex];
     for var ValueIndex := 0 to Dataset.ValueCount - 1 do
+    begin
       MaxValue := Max(MaxValue, Dataset.Values[ValueIndex]);
+    end;
   end;
 
   if FModel.HasScaleMax then
@@ -981,7 +1007,9 @@ begin
   var Angles: TArray<Single>;
   SetLength(Angles, AxisCount);
   for var Index := 0 to AxisCount - 1 do
+  begin
     Angles[Index] := -Pi / 2 + 2 * Pi * Index / AxisCount;
+  end;
 
   for var Ring := 1 to RadarRingCount do
   begin
@@ -1045,22 +1073,22 @@ begin
     const Dataset = FModel.Datasets[DatasetIndex];
     for var PointIndex := 0 to Dataset.PointCount - 1 do
     begin
-      const X = Dataset.PointsX[PointIndex];
-      const Y = Dataset.PointsY[PointIndex];
+      const ValueX = Dataset.PointsX[PointIndex];
+      const ValueY = Dataset.PointsY[PointIndex];
       if not HasPoint then
       begin
-        MinX := X;
-        MaxX := X;
-        MinY := Y;
-        MaxY := Y;
+        MinX := ValueX;
+        MaxX := ValueX;
+        MinY := ValueY;
+        MaxY := ValueY;
         HasPoint := True;
       end
       else
       begin
-        MinX := Min(MinX, X);
-        MaxX := Max(MaxX, X);
-        MinY := Min(MinY, Y);
-        MaxY := Max(MaxY, Y);
+        MinX := Min(MinX, ValueX);
+        MaxX := Max(MaxX, ValueX);
+        MinY := Min(MinY, ValueY);
+        MaxY := Max(MaxY, ValueY);
       end;
     end;
   end;
@@ -1081,7 +1109,8 @@ begin
   const PlotTop = FTop;
   const PlotRight = FRight;
   const PlotBottom = FBottom - BottomGutter;
-  if (PlotRight <= PlotLeft) or (PlotBottom <= PlotTop) then
+  const PlotAreaInvalid = ((PlotRight <= PlotLeft) or (PlotBottom <= PlotTop));
+  if PlotAreaInvalid then
     Exit;
 
   EmitLineSegment(PlotLeft, PlotTop, PlotLeft, PlotBottom, FTheme.ChartGridLineColor, GridStrokeWidth);

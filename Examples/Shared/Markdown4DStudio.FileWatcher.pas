@@ -100,7 +100,10 @@ begin
   Value := 0;
 
   if (FileName = '') or not TFile.Exists(FileName) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   try
     Value := TFile.GetLastWriteTimeUtc(FileName);

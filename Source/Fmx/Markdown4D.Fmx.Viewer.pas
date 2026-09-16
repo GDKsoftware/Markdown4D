@@ -208,6 +208,7 @@ type
 implementation
 
 uses
+  Markdown4D.Math.Font,
   Markdown4D.DesignSample,
   System.Math,
   System.Rtti,
@@ -227,6 +228,8 @@ uses
 constructor TMarkdownViewer.Create(Owner: TComponent);
 begin
   inherited Create(Owner);
+
+  TMarkdownMathFont.EnsureInstalled;
 
   FLifetime := TMarkdownViewerLifetime.Create;
 
@@ -300,7 +303,10 @@ end;
 function TMarkdownViewer.InvokeOnMainThread(const Action: TThreadProcedure): Boolean;
 begin
   if TThread.CurrentThread.ThreadID = MainThreadID then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Lifetime = FLifetime;
   TThread.Queue(nil,
@@ -403,6 +409,9 @@ begin
   try
     Clipboard.SetClipboard(Selected);
   except
+    // IFMXClipboardService has a separate implementation per platform, and none
+    // of them documents a shared specific exception for a failed write, so the
+    // catch stays broad: a clipboard failure must not take the viewer down.
     on Exception do
       Exit;
   end;
@@ -759,10 +768,16 @@ end;
 function TMarkdownViewer.TryBeginScrollBarDrag(const X, Y: Single): Boolean;
 begin
   if not ScrollBarVisible then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   if not TMarkdownScrollBarGeometry.IsOnLane(Width, X) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Thumb = TMarkdownScrollBarGeometry.ThumbRect(Width, Height, ContentHeight, FModel.ScrollOffset);
   const IsOnThumb = (Y >= Thumb.Top) and (Y <= Thumb.Bottom);
@@ -826,7 +841,10 @@ function TMarkdownViewer.TryFindLinkUrl(const Point: TLayoutPointF; out Url: str
 begin
   Url := '';
   if FModel.DisplayList = nil then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var Link: IMarkdownLink;
   Result := TMarkdownHitTester.TryFindLink(FModel.DisplayList, Point, Link);
@@ -897,6 +915,8 @@ begin
   try
     Clip.SetClipboard(Text);
   except
+    // Same reasoning as CopySelectionToClipboard: no shared specific exception
+    // exists across the platform clipboard implementations.
     on Exception do
       Exit;
   end;
@@ -986,14 +1006,20 @@ end;
 function TMarkdownViewer.TryResolveImageThroughEvent(const Source, Url: string): Boolean;
 begin
   if not Assigned(FOnResolveImage) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Bitmap = TBitmap.Create;
   try
     var Handled := False;
     FOnResolveImage(Self, Url, Bitmap, Handled);
     if not Handled then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     ApplyLoadedBitmap(Source, Bitmap);
     Result := True;
@@ -1026,6 +1052,9 @@ begin
     try
       Bitmap.LoadFromFile(FilePath);
     except
+      // The bitmap codec manager picks a different decoder per platform and
+      // format, and a corrupt file can fail before EBitmapLoadingFailed is
+      // even reached, so no single specific exception covers every case here.
       on Exception do
       begin
         ApplyFailedImage(Source);
@@ -1057,6 +1086,8 @@ begin
       try
         Bitmap.LoadFromStream(Stream);
       except
+        // Same reasoning as LoadLocalImage: a downloaded image is an outside
+        // boundary decoded through the same per-platform codec manager.
         on Exception do
         begin
           ApplyFailedImage(Source);
@@ -1083,7 +1114,10 @@ function TMarkdownViewer.TryLoadSvg(const Source: string; const Data: TBytes): B
 begin
   var Raster: TMarkdownSvgRaster;
   if not TMarkdownSvgSupport.TryRasterize(Data, 0, 0, Raster) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Bitmap = TBitmap.Create;
   try
@@ -1091,13 +1125,16 @@ begin
 
     var BitmapData: TBitmapData;
     if not Bitmap.Map(TMapAccess.Write, BitmapData) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
     try
       const RowBytes = Raster.Width * 4;
-      for var Y := 0 to Raster.Height - 1 do
+      for var Row := 0 to Raster.Height - 1 do
       begin
-        const DestRow: PByte = BitmapData.GetScanline(Y);
-        System.Move(Raster.Pixels[Y * RowBytes], DestRow^, RowBytes);
+        const DestRow: PByte = BitmapData.GetScanline(Row);
+        System.Move(Raster.Pixels[Row * RowBytes], DestRow^, RowBytes);
       end;
     finally
       Bitmap.Unmap(BitmapData);

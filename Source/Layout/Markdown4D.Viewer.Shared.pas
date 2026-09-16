@@ -35,7 +35,8 @@ uses
   Markdown4D.Highlighter.Pascal,
   Markdown4D.Highlighter.Sql,
   Markdown4D.Highlighter.Json,
-  Markdown4D.Highlighter.Xml;
+  Markdown4D.Highlighter.Xml,
+  Markdown4D.Math.Font;
 
 class function TMarkdownViewerShared.AlphaOf(const Color: TLayoutColor): Byte;
 begin
@@ -65,6 +66,8 @@ begin
     Resolved := DefaultFallbackFamilyName
   else if SameText(FamilyName, SerifFamilyName) then
     Resolved := SerifFallbackFamilyName
+  else if SameText(FamilyName, MathFamilyName) then
+    Resolved := TMarkdownMathFont.ResolvedFamily
   else
   begin
     Resolved := '';
@@ -89,7 +92,10 @@ begin
   Url := Source;
   try
     if Source.Contains(UrlSchemeSeparator) then
-      Exit(True);
+    begin
+      Result := True;
+      Exit;
+    end;
 
     if BaseUrl <> '' then
     begin
@@ -98,7 +104,8 @@ begin
       if BaseUrl.Contains(UrlSchemeSeparator) then
       begin
         Url := BaseUrl + Source;
-        Exit(True);
+        Result := True;
+        Exit;
       end;
 
       Url := NormalizedLocalPath(TPath.Combine(BaseUrl, Source));
@@ -115,7 +122,8 @@ begin
     if EscapesDocumentFolder then
     begin
       Url := '';
-      Exit(False);
+      Result := False;
+      Exit;
     end;
 
     Result := True;
@@ -145,7 +153,10 @@ end;
 class function TMarkdownViewerShared.NormalizedLocalPath(const Value: string): string;
 begin
   if not TPath.IsPathRooted(Value) then
-    Exit(Value);
+  begin
+    Result := Value;
+    Exit;
+  end;
 
   Result := TPath.GetFullPath(Value);
 end;

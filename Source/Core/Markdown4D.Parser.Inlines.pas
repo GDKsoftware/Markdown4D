@@ -98,6 +98,8 @@ type
       TaskMarkerLength = 3;
       RuleOfThreeDivisor = 3;
       OpenersBottomBucketsPerChar = 6;
+      MaxMathDelimiterLength = 2;
+      BacktickMathCloser = Backtick + Dollar;
       // Anchored with \G instead of ^ so each pattern can be matched in place at
       // the current index. Copying the remainder of the content first would cost
       // a full copy per '<', which is quadratic on a paragraph carrying many.
@@ -159,6 +161,13 @@ type
     function TryScanEmailDomain(out DomainEnd: Integer): Boolean;
     function TryConsumePrecedingChars(const Count: Integer): Boolean;
     procedure RemoveTrailingInlineNode;
+    function TryParseMath: Boolean;
+    function TryParseBacktickMath: Boolean;
+    function DollarRunLength(const StartIndex: Integer): Integer;
+    function IsMathOpener(const ContentStart: Integer): Boolean;
+    function TryFindMathCloser(const ContentStart, DelimiterLength: Integer; out ContentEnd: Integer): Boolean;
+    function IsMathCloser(const ContentStart, CloserStart, DelimiterLength: Integer): Boolean;
+    procedure EmitMath(const Literal: string; const IsDisplay: Boolean);
     function IsExtendedAutolinkBoundary: Boolean;
     function TryScanAutolinkDomain(const StartIndex: Integer; out DomainEnd: Integer): Boolean;
     function ScanExtendedAutolinkEnd(const StartIndex: Integer): Integer;
@@ -221,6 +230,14 @@ type
 
   public
     constructor Create(const Kind: TCommonMarkInlineKind);
+    function GetName: string;
+    function TryParse(const Context: IMarkdownInlineParserContext): Boolean;
+  end;
+
+  TMathInlineParser = class(TInterfacedObject, IMarkdownInlineParser)
+  public
+    const
+      MathParserName = 'math';
     function GetName: string;
     function TryParse(const Context: IMarkdownInlineParserContext): Boolean;
   end;
@@ -377,14 +394,20 @@ begin
     for var Parser in Parsers do
     begin
       if Parser.TryParse(FContext) then
-        Exit(True);
+      begin
+        Result := True;
+        Exit;
+      end;
     end;
   end;
 
   var Processor: IMarkdownDelimiterProcessor;
 
   if FConfiguration.DelimiterProcessors.TryGetValue(Current, Processor) then
-    Exit(TryHandleCustomDelimiterRun(Processor));
+  begin
+    Result := TryHandleCustomDelimiterRun(Processor);
+    Exit;
+  end;
 
   Result := False;
 end;
@@ -393,7 +416,10 @@ function TInlineParser.TryHandleCustomDelimiterRun(const Processor: IMarkdownDel
 begin
   const Run = ScanDelimiterRun;
   if Run.Length < Processor.MinimumLength then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   EmitDelimiterRun(Processor, Run);
   Result := True;
@@ -628,7 +654,10 @@ function TInlineParser.CharBefore(const Index: Integer): Char;
 begin
   const AtContentStart = (Index <= 1);
   if AtContentStart then
-    Exit(LineFeed);
+  begin
+    Result := LineFeed;
+    Exit;
+  end;
 
   Result := FContent[Index - 1];
 end;
@@ -637,7 +666,10 @@ function TInlineParser.CharAfter(const Index: Integer): Char;
 begin
   const AtContentEnd = (Index >= Length(FContent));
   if AtContentEnd then
-    Exit(LineFeed);
+  begin
+    Result := LineFeed;
+    Exit;
+  end;
 
   Result := FContent[Index + 1];
 end;
@@ -733,14 +765,20 @@ begin
 
   const StartsInline = (FLinkScanner.PeekChar = OpenParen);
   if not StartsInline then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   FLinkScanner.Advance(1);
   FLinkScanner.SkipSpacesWithOneNewline;
 
   var RawDestination: string;
   if not FLinkScanner.TryParseDestination(RawDestination) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const BeforeSpaces = FLinkScanner.Position;
   FLinkScanner.SkipSpacesWithOneNewline;
@@ -754,7 +792,10 @@ begin
 
   const HasCloser = (FLinkScanner.PeekChar = CloseParen);
   if not HasCloser then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   FLinkScanner.Advance(1);
   FIndex := FLinkScanner.Position;
@@ -796,7 +837,10 @@ begin
   var Reference: TLinkReference;
   const Resolved = HasLabel and Assigned(FReferenceMap) and FReferenceMap.TryGet(RefLabel, Reference);
   if not Resolved then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Destination := Reference.Destination;
   Title := Reference.Title;
@@ -846,13 +890,19 @@ function TInlineParser.TryParseTaskListMarker: Boolean;
 begin
   const AtTaskPosition = FTaskListCandidate and (FIndex = 1);
   if not AtTaskPosition then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const HasMarkerShape = (Length(FContent) > TaskMarkerLength) and (FContent[1] = OpenBracket) and
     CharInSet(FContent[2], [Space, 'x', 'X']) and (FContent[3] = CloseBracket) and
     CharInSet(FContent[TaskMarkerLength + 1], [Space, Tab]);
   if not HasMarkerShape then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var NodeName := TGfmInlineParser.TaskUncheckedNodeName;
 
@@ -869,21 +919,33 @@ end;
 function TInlineParser.TryParseWwwAutolink: Boolean;
 begin
   if not IsExtendedAutolinkBoundary then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const HasPrefix = (Copy(FContent, FIndex, Length(WwwPrefix)) = WwwPrefix);
   if not HasPrefix then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var DomainEnd: Integer;
   if not TryScanAutolinkDomain(FIndex, DomainEnd) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const LinkEnd = ApplyExtendedAutolinkTrailing(FIndex, ScanExtendedAutolinkEnd(DomainEnd));
 
   const HasHost = (LinkEnd - FIndex > Length(WwwPrefix));
   if not HasHost then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const LabelText = Copy(FContent, FIndex, LinkEnd - FIndex);
   EmitAutolink(LabelText, TMarkdownUnescape.NormalizeUri(HttpSchemePrefix + LabelText));
@@ -895,7 +957,10 @@ end;
 function TInlineParser.TryParseUrlAutolink: Boolean;
 begin
   if not IsExtendedAutolinkBoundary then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var SchemeLength := 0;
 
@@ -910,17 +975,26 @@ begin
   end;
 
   if SchemeLength = 0 then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var DomainEnd: Integer;
   if not TryScanAutolinkDomain(FIndex + SchemeLength, DomainEnd) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const LinkEnd = ApplyExtendedAutolinkTrailing(FIndex, ScanExtendedAutolinkEnd(DomainEnd));
 
   const HasHost = (LinkEnd > FIndex + SchemeLength);
   if not HasHost then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const LabelText = Copy(FContent, FIndex, LinkEnd - FIndex);
   EmitAutolink(LabelText, TMarkdownUnescape.NormalizeUri(LabelText));
@@ -939,14 +1013,23 @@ begin
   end;
 
   if Rewind = 0 then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var DomainEnd: Integer;
   if not TryScanEmailDomain(DomainEnd) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   if not TryConsumePrecedingChars(Rewind) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const LinkStart = FIndex - Rewind;
   const LabelText = Copy(FContent, LinkStart, DomainEnd - LinkStart);
@@ -979,7 +1062,10 @@ begin
   DomainEnd := Index;
 
   if DotCount = 0 then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Result := not CharInSet(FContent[Index - 1], ['-', '_']);
 end;
@@ -996,7 +1082,10 @@ begin
   begin
     const CanExamineNode = (Walker <> nil) and (Walker.Value.Kind = TMarkdownNodeKind.Text);
     if not CanExamineNode then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     const LiteralLength = Length((Walker.Value as IMarkdownText).Literal);
 
@@ -1042,11 +1131,184 @@ begin
   RemoveInlineChainNode(FLastInline);
 end;
 
+// Inline math follows the Pandoc and Markdig rules: the opening dollar run may
+// not be glued to a preceding word and may not be followed by whitespace, the
+// closing run may not be preceded by whitespace and may not be glued to a
+// following word. This keeps "$100 and $200" ordinary text. A backslash
+// escapes the character after it inside the formula, so "\$" never closes.
+function TInlineParser.TryParseMath: Boolean;
+begin
+  const RunLength = DollarRunLength(FIndex);
+  const DelimiterLength = Min(RunLength, MaxMathDelimiterLength);
+  const ContentStart = FIndex + DelimiterLength;
+
+  const IsBacktickForm = (DelimiterLength = 1) and (ContentStart <= Length(FContent)) and
+    (FContent[ContentStart] = Backtick);
+  if IsBacktickForm then
+  begin
+    Result := TryParseBacktickMath;
+    Exit;
+  end;
+
+  if not IsMathOpener(ContentStart) then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  var ContentEnd: Integer;
+  if not TryFindMathCloser(ContentStart, DelimiterLength, ContentEnd) then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  const IsDisplay = (DelimiterLength = MaxMathDelimiterLength);
+  EmitMath(Copy(FContent, ContentStart, ContentEnd - ContentStart), IsDisplay);
+  FIndex := ContentEnd + DelimiterLength;
+
+  Result := True;
+end;
+
+// The GitLab form: a dollar, a backtick, the formula, a backtick and a dollar.
+// The backticks fence the formula off from the rest of the markdown, which is
+// why GitHub accepts the form as well.
+function TInlineParser.TryParseBacktickMath: Boolean;
+begin
+  const PrecededByWord = CharBefore(FIndex).IsLetterOrDigit;
+  if PrecededByWord then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  const ContentStart = FIndex + Length(BacktickMathCloser);
+  const CloserStart = Pos(BacktickMathCloser, FContent, ContentStart);
+
+  const HasContent = (CloserStart > ContentStart);
+  if not HasContent then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  EmitMath(Copy(FContent, ContentStart, CloserStart - ContentStart), False);
+  FIndex := CloserStart + Length(BacktickMathCloser);
+
+  Result := True;
+end;
+
+function TInlineParser.DollarRunLength(const StartIndex: Integer): Integer;
+begin
+  Result := 0;
+
+  while (StartIndex + Result <= Length(FContent)) and (FContent[StartIndex + Result] = Dollar) do
+  begin
+    Inc(Result);
+  end;
+end;
+
+function TInlineParser.IsMathOpener(const ContentStart: Integer): Boolean;
+begin
+  const PrecededByWord = CharBefore(FIndex).IsLetterOrDigit;
+  if PrecededByWord then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  const HasContent = (ContentStart <= Length(FContent));
+  if not HasContent then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  Result := not IsUnicodeWhitespace(FContent[ContentStart]);
+end;
+
+function TInlineParser.TryFindMathCloser(const ContentStart, DelimiterLength: Integer;
+                                         out ContentEnd: Integer): Boolean;
+begin
+  ContentEnd := 0;
+  const AllowsLineBreaks = (DelimiterLength = MaxMathDelimiterLength);
+  var Index := ContentStart;
+
+  while Index <= Length(FContent) do
+  begin
+    const Current = FContent[Index];
+
+    // A code span outranks math, so a formula never runs into one; a single
+    // dollar formula also stays on its line.
+    const BreaksInlineMath = (Current = Backtick) or ((Current = LineFeed) and (not AllowsLineBreaks));
+    if BreaksInlineMath then
+    begin
+      Result := False;
+      Exit;
+    end;
+
+    if Current = Backslash then
+    begin
+      Inc(Index, 2);
+      Continue;
+    end;
+
+    if Current <> Dollar then
+    begin
+      Inc(Index);
+      Continue;
+    end;
+
+    const RunLength = DollarRunLength(Index);
+    const CloserStart = Index + RunLength - DelimiterLength;
+
+    const ClosesHere = (RunLength >= DelimiterLength) and IsMathCloser(ContentStart, CloserStart, DelimiterLength);
+    if ClosesHere then
+    begin
+      ContentEnd := CloserStart;
+      Result := True;
+      Exit;
+    end;
+
+    Inc(Index, RunLength);
+  end;
+
+  Result := False;
+end;
+
+function TInlineParser.IsMathCloser(const ContentStart, CloserStart, DelimiterLength: Integer): Boolean;
+begin
+  const HasContent = (CloserStart > ContentStart);
+  if not HasContent then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  const PrecededByWhitespace = IsUnicodeWhitespace(FContent[CloserStart - 1]);
+  if PrecededByWhitespace then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  Result := not CharAfter(CloserStart + DelimiterLength - 1).IsLetterOrDigit;
+end;
+
+procedure TInlineParser.EmitMath(const Literal: string; const IsDisplay: Boolean);
+begin
+  FlushText;
+  AppendInline(TMarkdownMathNode.Create(Literal, IsDisplay));
+end;
+
 function TInlineParser.IsExtendedAutolinkBoundary: Boolean;
 begin
   const AtContentStart = (FIndex = 1);
   if AtContentStart then
-    Exit(True);
+  begin
+    Result := True;
+    Exit;
+  end;
 
   Result := CharInSet(FContent[FIndex - 1], [Space, Tab, #10, #13, Asterisk, Underscore, Tilde, OpenParen]);
 end;
@@ -1194,7 +1456,10 @@ end;
 function TInlineParser.FirstDelimiterAbove(const StackBottom: TInlineDelimiter): TInlineDelimiter;
 begin
   if StackBottom = nil then
-    Exit(FFirstDelimiter);
+  begin
+    Result := FFirstDelimiter;
+    Exit;
+  end;
 
   Result := StackBottom.Next;
 end;
@@ -1218,7 +1483,10 @@ begin
       const IsEmphasisRun = (Closer.Processor = nil);
       const RuleOfThreeBlocks = IsEmphasisRun and IsRuleOfThreeViolated(Candidate, Closer);
       if not RuleOfThreeBlocks then
-        Exit(Candidate);
+      begin
+        Result := Candidate;
+        Exit;
+      end;
     end;
 
     Candidate := Candidate.Prev;
@@ -1241,7 +1509,10 @@ class function TInlineParser.IsRuleOfThreeViolated(const Opener, Closer: TInline
 begin
   const EitherServesBothRoles = (Closer.CanOpen or Opener.CanClose);
   if not EitherServesBothRoles then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const SumIsMultipleOfThree = (((Opener.OriginalCount + Closer.OriginalCount) mod RuleOfThreeDivisor) = 0);
   const BothAreMultiplesOfThree = ((Opener.OriginalCount mod RuleOfThreeDivisor) = 0) and
@@ -1261,7 +1532,8 @@ begin
     ShrinkDelimiter(Opener, CustomUseCount);
     ShrinkDelimiter(Closer, CustomUseCount);
 
-    Exit(RemoveDepletedDelimiters(Opener, Closer));
+    Result := RemoveDepletedDelimiters(Opener, Closer);
+    Exit;
   end;
 
   const UseStrong = (Opener.Count >= StrongDelimiterCount) and (Closer.Count >= StrongDelimiterCount);
@@ -1326,7 +1598,10 @@ begin
 
   const CloserDepleted = (Closer.Count = 0);
   if not CloserDepleted then
-    Exit(Closer);
+  begin
+    Result := Closer;
+    Exit;
+  end;
 
   const Successor = Closer.Next;
   RemoveInlineChainNode(Closer.ChainNode);
@@ -1530,6 +1805,18 @@ begin
   end;
 
   Result := True;
+end;
+
+function TMathInlineParser.GetName: string;
+begin
+  Result := MathParserName;
+end;
+
+function TMathInlineParser.TryParse(const Context: IMarkdownInlineParserContext): Boolean;
+begin
+  const Engine = (Context as TInlineParserContext).Engine;
+
+  Result := Engine.TryParseMath;
 end;
 
 constructor TGfmInlineParser.Create(const Kind: TGfmInlineKind);

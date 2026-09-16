@@ -6,7 +6,8 @@ interface
 
 uses
   DUnitX.TestFramework,
-  Markdown4D.Mermaid.Corpus;
+  Markdown4D.Mermaid.Corpus,
+  Markdown4D.Extensions.Interfaces;
 
 type
   [TestFixture]
@@ -16,6 +17,8 @@ type
       ExpectedCaseCount = 28;
     var
       FCorpus: TMermaidCorpus;
+    class function MermaidPipeline: IMarkdownPipeline;
+    class function PlainPipeline: IMarkdownPipeline;
 
   public
     [SetupFixture]
@@ -61,35 +64,18 @@ uses
   System.SysUtils,
   Markdown4D,
   Markdown4D.Ast.Interfaces,
-  Markdown4D.Extensions.Interfaces,
   Markdown4D.Pipeline,
-  Markdown4D.Extensions.Mermaid;
+  Markdown4D.Extensions.Mermaid,
+  Markdown4D.Tests.Pipeline.Helpers;
 
-function MermaidPipeline: IMarkdownPipeline;
+class function TMermaidExtensionTests.MermaidPipeline: IMarkdownPipeline;
 begin
   Result := TMarkdownPipeline.Create.UseGfm.Use(TMermaidExtension.Create).UnsafeHtml.Build;
 end;
 
-function PlainPipeline: IMarkdownPipeline;
+class function TMermaidExtensionTests.PlainPipeline: IMarkdownPipeline;
 begin
   Result := TMarkdownPipeline.Create.UseGfm.UnsafeHtml.Build;
-end;
-
-function FindFirstCodeBlock(const Document: IMarkdownDocument; out Code: IMarkdownCodeBlock): Boolean;
-begin
-  Code := nil;
-
-  for var Index := 0 to Document.ChildCount - 1 do
-  begin
-    const Child = Document.Children[Index];
-    if Child.Kind = TMarkdownNodeKind.CodeBlock then
-    begin
-      Code := Child as IMarkdownCodeBlock;
-      Exit(True);
-    end;
-  end;
-
-  Result := False;
 end;
 
 procedure TMermaidExtensionTests.SetupFixture;
@@ -119,7 +105,7 @@ begin
     const Document = MermaidPipeline.Parse(Item.Markdown);
 
     var Code: IMarkdownCodeBlock;
-    Assert.IsTrue(FindFirstCodeBlock(Document, Code), Format('Case "%s" must expose a code block', [Item.Name]));
+    Assert.IsTrue(TMarkdownTestPipelineHelpers.FindFirstCodeBlock(Document, Code), Format('Case "%s" must expose a code block', [Item.Name]));
 
     var Model: IMermaidModel;
     Assert.IsTrue(TMermaidExtension.TryGetModel(Code, Model),
@@ -139,7 +125,7 @@ begin
     const Document = MermaidPipeline.Parse(Item.Markdown);
 
     var Code: IMarkdownCodeBlock;
-    if not FindFirstCodeBlock(Document, Code) then
+    if not TMarkdownTestPipelineHelpers.FindFirstCodeBlock(Document, Code) then
       Continue;
 
     var Model: IMermaidModel;
@@ -154,7 +140,7 @@ begin
   const Document = MermaidPipeline.Parse(Item.Markdown);
 
   var Code: IMarkdownCodeBlock;
-  Assert.IsTrue(FindFirstCodeBlock(Document, Code));
+  Assert.IsTrue(TMarkdownTestPipelineHelpers.FindFirstCodeBlock(Document, Code));
 
   var Model: IMermaidModel;
   Assert.IsTrue(TMermaidExtension.TryParse(Code, Model));
@@ -169,7 +155,7 @@ begin
   const Document = MermaidPipeline.Parse(Item.Markdown);
 
   var Code: IMarkdownCodeBlock;
-  Assert.IsTrue(FindFirstCodeBlock(Document, Code));
+  Assert.IsTrue(TMarkdownTestPipelineHelpers.FindFirstCodeBlock(Document, Code));
 
   var Model: IMermaidModel;
   Assert.IsTrue(TMermaidExtension.TryParse(Code, Model));
@@ -184,7 +170,7 @@ begin
   const Document = MermaidPipeline.Parse(Item.Markdown);
 
   var Code: IMarkdownCodeBlock;
-  Assert.IsTrue(FindFirstCodeBlock(Document, Code));
+  Assert.IsTrue(TMarkdownTestPipelineHelpers.FindFirstCodeBlock(Document, Code));
 
   var Model: IMermaidModel;
   Assert.IsTrue(TMermaidExtension.TryParse(Code, Model));
@@ -216,7 +202,7 @@ begin
     const Document = MermaidPipe.Parse(Item.Markdown);
 
     var Code: IMarkdownCodeBlock;
-    if not FindFirstCodeBlock(Document, Code) then
+    if not TMarkdownTestPipelineHelpers.FindFirstCodeBlock(Document, Code) then
       Continue;
 
     const OriginalLiteral = Code.Literal;
@@ -224,7 +210,7 @@ begin
     const Reparsed = MermaidPipe.Parse(Rewritten);
 
     var ReparsedCode: IMarkdownCodeBlock;
-    Assert.IsTrue(FindFirstCodeBlock(Reparsed, ReparsedCode),
+    Assert.IsTrue(TMarkdownTestPipelineHelpers.FindFirstCodeBlock(Reparsed, ReparsedCode),
       Format('Case "%s" must round-trip to a code block', [Item.Name]));
     Assert.AreEqual(OriginalLiteral, ReparsedCode.Literal,
       Format('Case "%s" mermaid source must survive the writer byte-for-byte', [Item.Name]));
@@ -253,7 +239,7 @@ begin
 
   const OpenDocument = Pipeline.Parse(MidFence);
   var OpenCode: IMarkdownCodeBlock;
-  Assert.IsTrue(FindFirstCodeBlock(OpenDocument, OpenCode), 'An open fence must still parse as a code block');
+  Assert.IsTrue(TMarkdownTestPipelineHelpers.FindFirstCodeBlock(OpenDocument, OpenCode), 'An open fence must still parse as a code block');
 
   var OpenModel: IMermaidModel;
   Assert.IsFalse(TMermaidExtension.TryGetModel(OpenCode, OpenModel),
@@ -261,7 +247,7 @@ begin
 
   const ClosedDocument = Pipeline.Parse(Complete.Markdown);
   var ClosedCode: IMarkdownCodeBlock;
-  Assert.IsTrue(FindFirstCodeBlock(ClosedDocument, ClosedCode));
+  Assert.IsTrue(TMarkdownTestPipelineHelpers.FindFirstCodeBlock(ClosedDocument, ClosedCode));
 
   var ClosedModel: IMermaidModel;
   Assert.IsTrue(TMermaidExtension.TryGetModel(ClosedCode, ClosedModel),

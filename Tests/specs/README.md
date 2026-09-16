@@ -35,6 +35,15 @@ outcome for the bundled chart and mermaid extensions (diagram kind, node and
 edge counts, dataset and label counts), because neither extension has an
 upstream conformance suite.
 
+## math.json
+
+Written for this project and covered by the repository's MIT licence, in the
+same shape as the specification corpora (`markdown`, `html`, `example`,
+`section`). It pins the `$` syntax: the inline rules that keep prices as text,
+display blocks, the ```` ```math ```` alias, and the HTML the renderer writes
+for KaTeX and MathJax. The first cases follow the examples of Markdig's math
+extension so both libraries read the same input the same way.
+
 ## Updating a corpus
 
 Replace the file, keep the version in the file name, update the entry above,

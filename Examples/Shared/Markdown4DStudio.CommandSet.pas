@@ -17,7 +17,7 @@ type
   TPadFormatAction = reference to procedure(const Command: TEditorCommand);
 
   // Action bodies the host form plugs into the shared registration. Every
-  // field must be assigned before RegisterStaticPadCommands is called.
+  // field must be assigned before TPadCommandSet.Register is called.
   TPadCommandActions = record
     NewDocument: TPadCommandAction;
     OpenDocument: TPadCommandAction;
@@ -45,34 +45,27 @@ type
     ExecuteFormat: TPadFormatAction;
   end;
 
-// Registers the fixed Markdown4DStudio commands into Registry, wiring each to the
-// matching action.
-procedure RegisterStaticPadCommands(const Registry: TPadCommandRegistry;
-  const Actions: TPadCommandActions);
+  TPadCommandSet = class
+  private
+    // Binds one format command value to the shared ExecuteFormat action. Copies
+    // the action into a local so the deferred closure never captures the record
+    // parameter (which is gone by the time the command runs).
+    class procedure RegisterFormat(const Registry: TPadCommandRegistry; const Actions: TPadCommandActions;
+      const Name, ShortcutText: string; const Command: TEditorCommand); static;
+
+  public
+    // Registers the fixed Markdown4DStudio commands into Registry, wiring each
+    // to the matching action.
+    class procedure Register(const Registry: TPadCommandRegistry; const Actions: TPadCommandActions); static;
+  end;
 
 implementation
 
 uses
   Markdown4DStudio.Defines;
 
-procedure RegisterStaticPadCommands(const Registry: TPadCommandRegistry;
+class procedure TPadCommandSet.Register(const Registry: TPadCommandRegistry;
   const Actions: TPadCommandActions);
-
-  // Binds one format command value to the shared ExecuteFormat action. Copies
-  // the action into a local so the deferred closure never captures the record
-  // parameter (which is gone by the time the command runs).
-  procedure RegisterFormat(const Name, ShortcutText: string; const Command: TEditorCommand);
-  var
-    Run: TPadFormatAction;
-  begin
-    Run := Actions.ExecuteFormat;
-    Registry.Register(Name, CatFormat, ShortcutText,
-      procedure
-      begin
-        Run(Command);
-      end);
-  end;
-
 begin
   Registry.Register(CmdNewName, CatFile, CmdNewShortcut, Actions.NewDocument);
   Registry.Register(CmdOpenName, CatFile, CmdOpenShortcut, Actions.OpenDocument);
@@ -100,18 +93,30 @@ begin
   Registry.Register(CmdOutdentName, CatEdit, CmdOutdentShortcut, Actions.Outdent);
   Registry.Register(CmdDeleteWordName, CatEdit, CmdDeleteWordShortcut, Actions.DeleteWordLeft);
 
-  RegisterFormat(CmdBoldName, CmdBoldShortcut, TEditorCommand.Bold);
-  RegisterFormat(CmdItalicName, CmdItalicShortcut, TEditorCommand.Italic);
-  RegisterFormat(CmdLinkName, CmdLinkShortcut, TEditorCommand.Link);
-  RegisterFormat(CmdCodeName, CmdCodeShortcut, TEditorCommand.CodeBlock);
-  RegisterFormat(CmdH1Name, CmdH1Shortcut, TEditorCommand.Heading1);
-  RegisterFormat(CmdH2Name, CmdH2Shortcut, TEditorCommand.Heading2);
-  RegisterFormat(CmdH3Name, CmdH3Shortcut, TEditorCommand.Heading3);
-  RegisterFormat(CmdBulletName, CmdBulletShortcut, TEditorCommand.BulletList);
-  RegisterFormat(CmdNumberName, CmdNumberShortcut, TEditorCommand.NumberedList);
-  RegisterFormat(CmdQuoteName, CmdQuoteShortcut, TEditorCommand.Quote);
-  RegisterFormat(CmdStrikeName, CmdStrikeShortcut, TEditorCommand.Strikethrough);
-  RegisterFormat(CmdTableName, CmdTableShortcut, TEditorCommand.Table);
+  RegisterFormat(Registry, Actions, CmdBoldName, CmdBoldShortcut, TEditorCommand.Bold);
+  RegisterFormat(Registry, Actions, CmdItalicName, CmdItalicShortcut, TEditorCommand.Italic);
+  RegisterFormat(Registry, Actions, CmdLinkName, CmdLinkShortcut, TEditorCommand.Link);
+  RegisterFormat(Registry, Actions, CmdCodeName, CmdCodeShortcut, TEditorCommand.CodeBlock);
+  RegisterFormat(Registry, Actions, CmdH1Name, CmdH1Shortcut, TEditorCommand.Heading1);
+  RegisterFormat(Registry, Actions, CmdH2Name, CmdH2Shortcut, TEditorCommand.Heading2);
+  RegisterFormat(Registry, Actions, CmdH3Name, CmdH3Shortcut, TEditorCommand.Heading3);
+  RegisterFormat(Registry, Actions, CmdBulletName, CmdBulletShortcut, TEditorCommand.BulletList);
+  RegisterFormat(Registry, Actions, CmdNumberName, CmdNumberShortcut, TEditorCommand.NumberedList);
+  RegisterFormat(Registry, Actions, CmdQuoteName, CmdQuoteShortcut, TEditorCommand.Quote);
+  RegisterFormat(Registry, Actions, CmdStrikeName, CmdStrikeShortcut, TEditorCommand.Strikethrough);
+  RegisterFormat(Registry, Actions, CmdTableName, CmdTableShortcut, TEditorCommand.Table);
+end;
+
+class procedure TPadCommandSet.RegisterFormat(const Registry: TPadCommandRegistry;
+  const Actions: TPadCommandActions; const Name, ShortcutText: string; const Command: TEditorCommand);
+begin
+  const Run: TPadFormatAction = Actions.ExecuteFormat;
+
+  Registry.Register(Name, CatFormat, ShortcutText,
+    procedure
+    begin
+      Run(Command);
+    end);
 end;
 
 end.

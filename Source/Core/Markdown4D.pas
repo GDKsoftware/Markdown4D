@@ -90,7 +90,10 @@ begin
   MemoryBarrier;
 
   if Existing <> nil then
-    Exit(Existing);
+  begin
+    Result := Existing;
+    Exit;
+  end;
 
   TMonitor.Enter(FLock);
   try
@@ -121,7 +124,10 @@ end;
 class function TMarkdown.ToMarkdown(const Document: IMarkdownDocument): string;
 begin
   if Document = nil then
-    Exit('');
+  begin
+    Result := '';
+    Exit;
+  end;
 
   Result := TMarkdownWriter.WriteDocument(Document);
 end;

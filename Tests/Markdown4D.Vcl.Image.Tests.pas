@@ -254,15 +254,15 @@ begin
 
   const Bitmap = PaintViewer;
   try
-    for var Y := 0 to Bitmap.Height - 1 do
+    for var YIndex := 0 to Bitmap.Height - 1 do
     begin
-      for var X := 0 to Bitmap.Width - 1 do
+      for var XIndex := 0 to Bitmap.Width - 1 do
       begin
-        if Predicate(Bitmap.Canvas.Pixels[X, Y]) then
+        if Predicate(Bitmap.Canvas.Pixels[XIndex, YIndex]) then
         begin
           Inc(Result.MatchCount);
-          MinX := Min(MinX, X);
-          MaxX := Max(MaxX, X);
+          MinX := Min(MinX, XIndex);
+          MaxX := Max(MaxX, XIndex);
         end;
       end;
     end;

@@ -163,11 +163,13 @@ type
     function TryHandleGlobalKey(const Key: Word): Boolean;
     function TryHandleFormatShortcut(const Key: Word): Boolean;
     function TryHandleCommandShortcut(const Key: Word): Boolean;
+    procedure HandleFormKey(var Key: Word; const Shift: TShiftState);
     procedure HandleNewClick(Sender: TObject);
     procedure HandleOpenClick(Sender: TObject);
     procedure HandleSaveClick(Sender: TObject);
     procedure HandleSaveAsClick(Sender: TObject);
     procedure HandleRecentClick(Sender: TObject);
+    procedure BuildRecentMenu;
     procedure HandleRecentItemClick(Sender: TObject);
     procedure HandleBoldClick(Sender: TObject);
     procedure HandleItalicClick(Sender: TObject);
@@ -179,6 +181,8 @@ type
     procedure DoExportHtml;
     procedure DoCopyHtml;
     procedure CopyHtmlToClipboard(const Fragment: string);
+    function SetClipboardHtml(const CfHtml: Cardinal; const Bytes: TArray<Byte>): Boolean;
+    procedure SetClipboardPlainText(const Fragment: string);
     procedure HandleThemeClick(Sender: TObject);
     procedure HandleTocClick(Sender: TObject);
     procedure HandleZenClick(Sender: TObject);
@@ -484,6 +488,11 @@ end;
 
 procedure TMarkdown4DStudioVCLForm.HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
 begin
+  HandleFormKey(Key, Shift);
+end;
+
+procedure TMarkdown4DStudioVCLForm.HandleFormKey(var Key: Word; const Shift: TShiftState);
+begin
   if FPalette.Visible then
   begin
     if TryHandlePaletteKey(Key, Shift) then
@@ -522,7 +531,10 @@ begin
     VK_ESCAPE:
       ClosePalette;
   else
-    Exit(ssCtrl in Shift);
+  begin
+    Result := ssCtrl in Shift;
+    Exit;
+  end;
   end;
 
   Result := True;
@@ -532,7 +544,10 @@ function TMarkdown4DStudioVCLForm.TryHandleFindBarReturn(const Key: Word): Boole
 begin
   const IsFindReturn = pnlFind.Visible and (Key = VK_RETURN) and edtEditorFind.Focused;
   if not IsFindReturn then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   FindInEditor;
   Result := True;
@@ -546,7 +561,10 @@ begin
     VK_F3:
       begin
         if not pnlFind.Visible then
-          Exit(False);
+        begin
+          Result := False;
+          Exit;
+        end;
 
         FindInEditor;
       end;
@@ -557,10 +575,16 @@ begin
         else if FZenActive then
           ExitZen
         else
-          Exit(False);
+        begin
+          Result := False;
+          Exit;
+        end;
       end;
   else
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
   end;
 
   Result := True;
@@ -597,7 +621,10 @@ begin
         SwitchToDocument(FWorkspace.ActiveIndex);
       end;
   else
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
   end;
 
   Result := True;
@@ -632,7 +659,10 @@ begin
         SwitchToDocument(FWorkspace.ActiveIndex);
       end;
   else
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
   end;
 
   Result := True;
@@ -668,6 +698,14 @@ end;
 
 procedure TMarkdown4DStudioVCLForm.HandleRecentClick(Sender: TObject);
 begin
+  BuildRecentMenu;
+
+  const Origin = FRecentButton.ClientToScreen(Point(0, FRecentButton.Height));
+  popRecent.Popup(Origin.X, Origin.Y);
+end;
+
+procedure TMarkdown4DStudioVCLForm.BuildRecentMenu;
+begin
   popRecent.Items.Clear;
 
   if System.Length(FSession.RecentFiles) = 0 then
@@ -687,9 +725,6 @@ begin
       popRecent.Items.Add(Item);
     end;
   end;
-
-  const Origin = FRecentButton.ClientToScreen(Point(0, FRecentButton.Height));
-  popRecent.Popup(Origin.X, Origin.Y);
 end;
 
 procedure TMarkdown4DStudioVCLForm.HandleRecentItemClick(Sender: TObject);
@@ -772,40 +807,58 @@ begin
   try
     EmptyClipboard;
 
-    const HtmlMem = GlobalAlloc(GMEM_MOVEABLE, System.Length(Bytes) + 1);
-    if HtmlMem = 0 then
+    if not SetClipboardHtml(CfHtml, Bytes) then
       Exit;
 
-    const HtmlPtr = GlobalLock(HtmlMem);
-    if HtmlPtr = nil then
-    begin
-      GlobalFree(HtmlMem);
-      Exit;
-    end;
-
-    Move(Bytes[0], HtmlPtr^, System.Length(Bytes));
-    PByte(NativeUInt(HtmlPtr) + NativeUInt(System.Length(Bytes)))^ := 0;
-    GlobalUnlock(HtmlMem);
-    SetClipboardData(CfHtml, HtmlMem);
-
-    const TextByteCount = (System.Length(Fragment) + 1) * SizeOf(Char);
-    const TextMem = GlobalAlloc(GMEM_MOVEABLE, TextByteCount);
-    if TextMem = 0 then
-      Exit;
-
-    const TextPtr = GlobalLock(TextMem);
-    if TextPtr = nil then
-    begin
-      GlobalFree(TextMem);
-      Exit;
-    end;
-
-    Move(PChar(Fragment)^, TextPtr^, TextByteCount);
-    GlobalUnlock(TextMem);
-    SetClipboardData(CF_UNICODETEXT, TextMem);
+    SetClipboardPlainText(Fragment);
   finally
     CloseClipboard;
   end;
+end;
+
+// Wraps Bytes in a moveable global block and hands it to the clipboard, which
+// takes ownership of it; GlobalFree only runs on the failure paths below,
+// where that ownership transfer never happens.
+function TMarkdown4DStudioVCLForm.SetClipboardHtml(const CfHtml: Cardinal; const Bytes: TArray<Byte>): Boolean;
+begin
+  Result := False;
+
+  const HtmlMem = GlobalAlloc(GMEM_MOVEABLE, System.Length(Bytes) + 1);
+  if HtmlMem = 0 then
+    Exit;
+
+  const HtmlPtr = GlobalLock(HtmlMem);
+  if HtmlPtr = nil then
+  begin
+    GlobalFree(HtmlMem);
+    Exit;
+  end;
+
+  Move(Bytes[0], HtmlPtr^, System.Length(Bytes));
+  PByte(NativeUInt(HtmlPtr) + NativeUInt(System.Length(Bytes)))^ := 0;
+  GlobalUnlock(HtmlMem);
+  SetClipboardData(CfHtml, HtmlMem);
+
+  Result := True;
+end;
+
+procedure TMarkdown4DStudioVCLForm.SetClipboardPlainText(const Fragment: string);
+begin
+  const TextByteCount = (System.Length(Fragment) + 1) * SizeOf(Char);
+  const TextMem = GlobalAlloc(GMEM_MOVEABLE, TextByteCount);
+  if TextMem = 0 then
+    Exit;
+
+  const TextPtr = GlobalLock(TextMem);
+  if TextPtr = nil then
+  begin
+    GlobalFree(TextMem);
+    Exit;
+  end;
+
+  Move(PChar(Fragment)^, TextPtr^, TextByteCount);
+  GlobalUnlock(TextMem);
+  SetClipboardData(CF_UNICODETEXT, TextMem);
 end;
 
 procedure TMarkdown4DStudioVCLForm.HandleThemeClick(Sender: TObject);
@@ -1058,7 +1111,10 @@ function TMarkdown4DStudioVCLForm.ActiveDocumentFolder: string;
 begin
   const Document = FController.ActiveDocument;
   if (Document = nil) or Document.IsUntitled then
-    Exit('');
+  begin
+    Result := '';
+    Exit;
+  end;
 
   Result := TPath.GetDirectoryName(Document.FileName);
 end;

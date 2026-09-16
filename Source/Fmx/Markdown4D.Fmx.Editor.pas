@@ -269,6 +269,7 @@ type
 implementation
 
 uses
+  Markdown4D.Math.Font,
   Markdown4D.DesignSample,
   System.SysUtils,
   System.Math,
@@ -281,6 +282,8 @@ uses
 constructor TMarkdownEditor.Create(Owner: TComponent);
 begin
   inherited Create(Owner);
+
+  TMarkdownMathFont.EnsureInstalled;
 
   FLifetime := TMarkdownViewerLifetime.Create;
 
@@ -622,7 +625,10 @@ end;
 function TMarkdownEditor.FirstVisibleSourceLine: Integer;
 begin
   if Length(FRows) = 0 then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
 
   const RowIndex = EnsureRange(Trunc(FScrollOffset / LineHeightPx), 0, High(FRows));
   Result := FRows[RowIndex].LineIndex;
@@ -687,12 +693,12 @@ end;
 
 function TMarkdownEditor.FindMatchCount(const Needle: string): Integer;
 begin
-  Result := FModel.FindText(Needle);
+  Result := FModel.FindMatchCount(Needle);
 end;
 
 function TMarkdownEditor.FindMatchCount(const Needle: string; const Options: TMarkdownFindOptions): Integer;
 begin
-  Result := FModel.FindText(Needle, Options);
+  Result := FModel.FindMatchCount(Needle, Options);
 end;
 
 function TMarkdownEditor.FindNext(const Needle: string): Boolean;
@@ -703,12 +709,18 @@ end;
 function TMarkdownEditor.FindNext(const Needle: string; const Options: TMarkdownFindOptions): Boolean;
 begin
   if Needle = '' then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const StartAfter = FModel.SelectionStart + FModel.SelectionLength - 1;
   const Offset = FModel.FindNext(Needle, StartAfter, Options);
   if Offset < 0 then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   FModel.SetSelection(Offset, Length(Needle));
   RevealSelection;
@@ -719,11 +731,17 @@ end;
 function TMarkdownEditor.FindPrevious(const Needle: string; const Options: TMarkdownFindOptions): Boolean;
 begin
   if Needle = '' then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Offset = FModel.FindPrevious(Needle, FModel.SelectionStart, Options);
   if Offset < 0 then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   FModel.SetSelection(Offset, Length(Needle));
   RevealSelection;
@@ -735,7 +753,10 @@ function TMarkdownEditor.ReplaceCurrent(const Needle, Replacement: string;
   const Options: TMarkdownFindOptions): Boolean;
 begin
   if Needle = '' then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Result := FModel.ReplaceCurrent(Needle, Replacement, Options);
   RevealSelection;
@@ -745,7 +766,10 @@ function TMarkdownEditor.ReplaceAll(const Needle, Replacement: string;
   const Options: TMarkdownFindOptions): Integer;
 begin
   if Needle = '' then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
 
   Result := FModel.ReplaceAll(Needle, Replacement, Options);
   RevealSelection;
@@ -846,63 +870,63 @@ begin
   Painter.SetClip(TLayoutRectF.Create(0, 0, TargetWidth, TargetHeight));
   try
 
-  Painter.FillRect(TLayoutRectF.Create(0, 0, TargetWidth, TargetHeight), FTheme.BackgroundColor);
+    Painter.FillRect(TLayoutRectF.Create(0, 0, TargetWidth, TargetHeight), FTheme.BackgroundColor);
 
-  const LineHeight = LineHeightPx;
-  const GutterWidth = GutterWidthPx(PainterLifetime);
-  const TextLeft = GutterWidth + TextLeftPaddingDips;
+    const LineHeight = LineHeightPx;
+    const GutterWidth = GutterWidthPx(PainterLifetime);
+    const TextLeft = GutterWidth + TextLeftPaddingDips;
 
-  const CaretRow = RowIndexOfOffset(FModel.CaretPosition);
-  const ActiveTop = CaretRow * LineHeight - ScrollY;
-  Painter.FillRect(TLayoutRectF.Create(0, ActiveTop, TargetWidth, ActiveTop + LineHeight),
-    FTheme.CodeBackgroundColor);
+    const CaretRow = RowIndexOfOffset(FModel.CaretPosition);
+    const ActiveTop = CaretRow * LineHeight - ScrollY;
+    Painter.FillRect(TLayoutRectF.Create(0, ActiveTop, TargetWidth, ActiveTop + LineHeight),
+      FTheme.CodeBackgroundColor);
 
-  var State := FHighlighter.InitialState;
-  var RowIndex := 0;
-  var BelowViewport := False;
-  const LineCount = FModel.LineCount;
-  for var LineIndex := 0 to LineCount - 1 do
-  begin
-    if BelowViewport then
-      Break;
-
-    const LineText = LineTextAt(LineIndex);
-    const Tokenized = FHighlighter.TokenizeLine(LineText, State);
-
-    while (RowIndex <= High(FRows)) and (FRows[RowIndex].LineIndex = LineIndex) do
+    var State := FHighlighter.InitialState;
+    var RowIndex := 0;
+    var BelowViewport := False;
+    const LineCount = FModel.LineCount;
+    for var LineIndex := 0 to LineCount - 1 do
     begin
-      const Row = FRows[RowIndex];
-      const Top = RowIndex * LineHeight - ScrollY;
-      if Top > TargetHeight then
-      begin
-        BelowViewport := True;
+      if BelowViewport then
         Break;
-      end;
 
-      const IsVisible = (Top + LineHeight) > 0;
-      if IsVisible then
+      const LineText = LineTextAt(LineIndex);
+      const Tokenized = FHighlighter.TokenizeLine(LineText, State);
+
+      while (RowIndex <= High(FRows)) and (FRows[RowIndex].LineIndex = LineIndex) do
       begin
-        DrawRowMatches(PainterLifetime, Row, TextLeft, Top);
-        DrawRowSelection(PainterLifetime, Row, TextLeft, Top, TargetWidth);
-        if FShowLineNumbers and Row.IsFirst then
-          DrawGutterNumber(PainterLifetime, LineIndex, GutterWidth, Top);
-        if Row.IsFirst and FModel.IsFoldHeader(LineIndex) then
-          DrawFoldMarker(PainterLifetime, GutterWidth, Top, FModel.IsRegionCollapsed(LineIndex));
-        DrawRowTokens(PainterLifetime, Row, LineText, Tokenized.Tokens, TextLeft, Top);
+        const Row = FRows[RowIndex];
+        const Top = RowIndex * LineHeight - ScrollY;
+        if Top > TargetHeight then
+        begin
+          BelowViewport := True;
+          Break;
+        end;
+
+        const IsVisible = (Top + LineHeight) > 0;
+        if IsVisible then
+        begin
+          DrawRowMatches(PainterLifetime, Row, TextLeft, Top);
+          DrawRowSelection(PainterLifetime, Row, TextLeft, Top, TargetWidth);
+          if FShowLineNumbers and Row.IsFirst then
+            DrawGutterNumber(PainterLifetime, LineIndex, GutterWidth, Top);
+          if Row.IsFirst and FModel.IsFoldHeader(LineIndex) then
+            DrawFoldMarker(PainterLifetime, GutterWidth, Top, FModel.IsRegionCollapsed(LineIndex));
+          DrawRowTokens(PainterLifetime, Row, LineText, Tokenized.Tokens, TextLeft, Top);
+        end;
+
+        Inc(RowIndex);
       end;
 
-      Inc(RowIndex);
+      State := Tokenized.NextState;
     end;
 
-    State := Tokenized.NextState;
-  end;
-
-  if DrawCaret then
-  begin
-    const CaretPos = CaretPixelPos(ScrollY);
-    Painter.FillRect(TLayoutRectF.Create(CaretPos.X, CaretPos.Y, CaretPos.X + CaretWidthPx,
-      CaretPos.Y + LineHeight), FTheme.TextColor);
-  end;
+    if DrawCaret then
+    begin
+      const CaretPos = CaretPixelPos(ScrollY);
+      Painter.FillRect(TLayoutRectF.Create(CaretPos.X, CaretPos.Y, CaretPos.X + CaretWidthPx,
+        CaretPos.Y + LineHeight), FTheme.TextColor);
+    end;
 
   finally
     Painter.RestoreState;
@@ -991,6 +1015,7 @@ begin
   FRowModel.Rebuild(WrapWidthPx);
   FRows := FRowModel.Items;
 end;
+
 function TMarkdownEditor.WrapWidthPx: Single;
 begin
   const Available = Width - TextLeftPx - CaretWidthPx;
@@ -1007,14 +1032,17 @@ function TMarkdownEditor.RowText(const Row: TVisualRow): string;
 begin
   Result := FRowModel.TextOf(Row);
 end;
+
 function TMarkdownEditor.RowIndexOfOffset(const Offset: Integer): Integer;
 begin
   Result := FRowModel.IndexOfOffset(Offset);
 end;
+
 function TMarkdownEditor.OffsetAtRowX(const RowIndex: Integer; const TargetX: Single): Integer;
 begin
   Result := FRowModel.OffsetAtX(RowIndex, TargetX);
 end;
+
 procedure TMarkdownEditor.DrawGutterNumber(const Painter: IPainter; const LineIndex: Integer;
   const GutterWidth, Top: Single);
 begin
@@ -1155,7 +1183,10 @@ function TMarkdownEditor.ClipboardHasText: Boolean;
 begin
   var Clipboard: IFMXClipboardService;
   if not TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Clipboard) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Value = Clipboard.GetClipboard;
   Result := not Value.IsEmpty and (Value.ToString <> '');
@@ -1196,11 +1227,13 @@ begin
     TMarkdownSourceTokenKind.CodeSpanDelimiter,
     TMarkdownSourceTokenKind.BlockQuoteMarker,
     TMarkdownSourceTokenKind.ListMarker,
-    TMarkdownSourceTokenKind.LinkBracket:
+    TMarkdownSourceTokenKind.LinkBracket,
+    TMarkdownSourceTokenKind.MathDelimiter:
       Result := FTheme.BlockQuoteTextColor;
     TMarkdownSourceTokenKind.CodeSpanText,
     TMarkdownSourceTokenKind.FenceLine,
-    TMarkdownSourceTokenKind.FenceContent:
+    TMarkdownSourceTokenKind.FenceContent,
+    TMarkdownSourceTokenKind.MathText:
       Result := FTheme.CodeTextColor;
     TMarkdownSourceTokenKind.LinkText,
     TMarkdownSourceTokenKind.LinkUrl:
@@ -1261,14 +1294,19 @@ function TMarkdownEditor.LineTextAt(const LineIndex: Integer): string;
 begin
   Result := FRowModel.LineTextAt(LineIndex);
 end;
+
 function TMarkdownEditor.LineStartOffset(const LineIndex: Integer): Integer;
 begin
   Result := FRowModel.LineStartOffset(LineIndex);
 end;
+
 function TMarkdownEditor.OffsetFromPoint(const X, Y: Single): Integer;
 begin
   if Length(FRows) = 0 then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
 
   const RowIndex = EnsureRange(Trunc((Y + FScrollOffset) / LineHeightPx), 0, High(FRows));
   const LocalX = X - TextLeftPx;
@@ -1287,7 +1325,10 @@ function TMarkdownEditor.CaretPixelPos(const ScrollY: Single): TLayoutPointF;
 begin
   const Caret = FModel.CaretPosition;
   if Length(FRows) = 0 then
-    Exit(TLayoutPointF.Create(TextLeftPx, -ScrollY));
+  begin
+    Result := TLayoutPointF.Create(TextLeftPx, -ScrollY);
+    Exit;
+  end;
 
   const RowIndex = RowIndexOfOffset(Caret);
   const Row = FRows[RowIndex];
@@ -1324,10 +1365,16 @@ end;
 function TMarkdownEditor.TryBeginScrollBarDrag(const X, Y: Single): Boolean;
 begin
   if not TMarkdownScrollBarGeometry.IsVisible(Height, ContentHeightPx) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   if not TMarkdownScrollBarGeometry.IsOnLane(Width, X) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Thumb = TMarkdownScrollBarGeometry.ThumbRect(Width, Height, ContentHeightPx, FScrollOffset);
   const IsOnThumb = (Y >= Thumb.Top) and (Y <= Thumb.Bottom);
@@ -1724,7 +1771,10 @@ end;
 function TMarkdownEditor.ApplyKeyStroke(const Stroke: TEditorKeyStroke): Boolean;
 begin
   if TMarkdownEditorKeyDispatch.Apply(FModel, Stroke, FIndentWidth) then
-    Exit(True);
+  begin
+    Result := True;
+    Exit;
+  end;
 
   // What is left needs the wrapped layout on screen or the host clipboard.
   const Extend = Stroke.Extend;

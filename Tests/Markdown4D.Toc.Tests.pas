@@ -39,12 +39,16 @@ type
 
     [Test]
     procedure FromDocument_Headings_ReportsSourceLines;
+
+    [Test]
+    procedure FromDocument_NilDocument_RaisesMarkdownError;
   end;
 
 implementation
 
 uses
-  Markdown4D;
+  Markdown4D,
+  Markdown4D.Defines;
 
 procedure TMarkdownTocTests.FromDocument_SampleDocument_BuildsNestedHeadingTree;
 begin
@@ -126,6 +130,17 @@ begin
   const Reference = Toc.Entries[1];
   Assert.AreEqual(8, Reference.SourceLine);
   Assert.AreEqual(9, Reference.Children[0].SourceLine);
+end;
+
+procedure TMarkdownTocTests.FromDocument_NilDocument_RaisesMarkdownError;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      TMarkdownToc.FromDocument(nil);
+    end,
+    EMarkdownError,
+    'FromDocument must raise EMarkdownError when the document is nil');
 end;
 
 class function TMarkdownTocTests.BuildToc: IMarkdownToc;

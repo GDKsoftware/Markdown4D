@@ -18,6 +18,12 @@ type
 
   public
     [Test]
+    procedure Render_TextRun_InvokesDrawTextRun;
+
+    [Test]
+    procedure Render_SourceRun_IsNotPainted;
+
+    [Test]
     procedure Render_DisplayListWithPolygon_InvokesFillPolygonWithPoints;
 
     [Test]
@@ -55,6 +61,7 @@ const
 type
   TRecordingPainter = class(TInterfacedObject, IPainter)
   private
+    FDrawTextRunCount: Integer;
     FFillPolygonCount: Integer;
     FLastPolygonPointCount: Integer;
     FLastPolygonColor: TLayoutColor;
@@ -86,6 +93,7 @@ type
     procedure SetClip(const Bounds: TLayoutRectF);
     procedure RestoreState;
     property FillPolygonCount: Integer read FFillPolygonCount;
+    property DrawTextRunCount: Integer read FDrawTextRunCount;
     property LastPolygonPointCount: Integer read FLastPolygonPointCount;
     property LastPolygonColor: TLayoutColor read FLastPolygonColor;
     property DrawPolygonCount: Integer read FDrawPolygonCount;
@@ -115,6 +123,7 @@ end;
 procedure TRecordingPainter.DrawTextRun(const TopLeft: TLayoutPointF; const Text: string;
   const Font: TMarkdownFontStyle; const Color: TLayoutColor);
 begin
+  Inc(FDrawTextRunCount);
 end;
 
 procedure TRecordingPainter.FillRect(const Bounds: TLayoutRectF; const Color: TLayoutColor);
@@ -186,6 +195,32 @@ begin
   var NoBlocks: TArray<TLayoutBlockInfo>;
   var NoRecomputed: TArray<Integer>;
   Result := TMarkdownDisplayList.Create(Items, NoBlocks, DisplaySize, DisplaySize, DisplaySize, NoRecomputed);
+end;
+
+procedure TMarkdownLayoutRendererTests.Render_TextRun_InvokesDrawTextRun;
+begin
+  const Painter = TRecordingPainter.Create;
+  const PainterLifetime: IPainter = Painter;
+  const Run = TDisplayTextRun.Create(TLayoutRectF.Create(0, 0, 40, 20), nil, 'text',
+    TMarkdownFontStyle.Create('Test', 16), $FF000000, 12, 0);
+
+  TMarkdownDisplayListRenderer.Render(DisplayListWith(Run), PainterLifetime,
+    TLayoutRectF.Create(0, 0, DisplaySize, DisplaySize), 0);
+
+  Assert.AreEqual(1, Painter.DrawTextRunCount);
+end;
+
+procedure TMarkdownLayoutRendererTests.Render_SourceRun_IsNotPainted;
+begin
+  const Painter = TRecordingPainter.Create;
+  const PainterLifetime: IPainter = Painter;
+  const Run = TDisplayTextRun.Create(TLayoutRectF.Create(0, 0, 40, 20), nil, '$x$',
+    TMarkdownFontStyle.Create('Test', 16), $FF000000, 12, 0, TDisplayTextRunRole.Source);
+
+  TMarkdownDisplayListRenderer.Render(DisplayListWith(Run), PainterLifetime,
+    TLayoutRectF.Create(0, 0, DisplaySize, DisplaySize), 0);
+
+  Assert.AreEqual(0, Painter.DrawTextRunCount);
 end;
 
 procedure TMarkdownLayoutRendererTests.Render_DisplayListWithPolygon_InvokesFillPolygonWithPoints;

@@ -119,11 +119,17 @@ begin
   begin
     var Existing: TLinkReference;
     if not FEntries.TryGetValue(Entry.Key, Existing) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     const SameReference = (Existing.Destination = Entry.Value.Destination) and (Existing.Title = Entry.Value.Title);
     if not SameReference then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
   end;
 
   Result := True;
@@ -224,18 +230,27 @@ begin
 
   var LabelLength: Integer;
   if not FScanner.TryParseLabel(RawLabel, LabelLength) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const HasColon = (FScanner.PeekChar = Colon);
   if not HasColon then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   FScanner.Advance(1);
   FScanner.SkipSpacesWithOneNewline;
 
   var Destination: string;
   if not FScanner.TryParseDestination(Destination) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const BeforeTitle = FScanner.Position;
   FScanner.SkipSpacesWithOneNewline;
@@ -252,7 +267,8 @@ begin
 
   var AtLineEnd := FScanner.ConsumeSpacesToLineEnd;
 
-  if (not AtLineEnd) and HasTitle then
+  const MustRetryWithoutTitle = (not AtLineEnd) and HasTitle;
+  if MustRetryWithoutTitle then
   begin
     Title := '';
     FScanner.MoveTo(BeforeTitle);
@@ -260,12 +276,18 @@ begin
   end;
 
   if not AtLineEnd then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const NormalizedLabel = TLinkReferenceMap.NormalizeLabel(RawLabel);
   const LabelIsEmpty = (NormalizedLabel = '');
   if LabelIsEmpty then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const UnescapedDestination = TMarkdownUnescape.Unescape(Destination);
   Reference.Destination := TMarkdownUnescape.NormalizeUri(UnescapedDestination);

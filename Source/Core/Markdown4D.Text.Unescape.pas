@@ -87,7 +87,10 @@ begin
 
   const StartsWithAmpersand = (Start <= Length(Value)) and (Value[Start] = Ampersand);
   if not StartsWithAmpersand then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const IsNumeric = (Start < Length(Value)) and (Value[Start + 1] = NumberSign);
   var Index := Start + 1;
@@ -122,7 +125,10 @@ begin
   const HasBody = (Index > BodyStart);
   const HasTerminator = HasBody and (Index <= Length(Value)) and (Value[Index] = Semicolon);
   if not HasTerminator then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Body = Copy(Value, Start + 1, Index - Start - 1);
 

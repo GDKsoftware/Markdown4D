@@ -28,6 +28,7 @@ type
       ThematicBreakStart = 650;
       ListItemStart = 600;
       IndentedCodeStart = 550;
+      MathBlockStart = 790;
       BackslashInline = 900;
       LineEndingInline = 850;
       EmphasisInline = 800;
@@ -37,6 +38,7 @@ type
       LinkOpenerInline = 600;
       ImageOpenerInline = 550;
       LinkCloserInline = 500;
+      MathInline = 780;
       ExtensionParser = 100;
       ExtensionProcessor = 100;
       ExtensionRenderer = 50;

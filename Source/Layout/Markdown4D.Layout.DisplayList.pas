@@ -11,6 +11,12 @@ uses
 type
   TDisplayItemKind = (TextRun, Rectangle, Line, Image, Checkbox, Wedge, Polygon);
 
+  // What a text run is to the reader. Text is painted, selected, searched
+  // and copied. Drawing is painted only: a glyph that is part of a picture,
+  // such as a formula. Source is the opposite, never painted but selected and
+  // copied as one unit, so a formula copies as its markdown.
+  TDisplayTextRunRole = (Text, Drawing, Source);
+
   IDisplayItem = interface
     ['{4F8C2D16-A93B-4E75-8C02-D51B9E3A7F64}']
     function GetKind: TDisplayItemKind;
@@ -28,11 +34,13 @@ type
     function GetColor: TLayoutColor;
     function GetBaseline: Single;
     function GetStartOffset: Integer;
+    function GetRole: TDisplayTextRunRole;
     property Text: string read GetText;
     property Font: TMarkdownFontStyle read GetFont;
     property Color: TLayoutColor read GetColor;
     property Baseline: Single read GetBaseline;
     property StartOffset: Integer read GetStartOffset;
+    property Role: TDisplayTextRunRole read GetRole;
   end;
 
   IDisplayRectangle = interface(IDisplayItem)

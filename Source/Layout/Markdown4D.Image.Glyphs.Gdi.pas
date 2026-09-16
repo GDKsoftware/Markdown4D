@@ -152,12 +152,12 @@ begin
 
         for var Step := 1 to CurveSegments do
         begin
-          const T = Step / CurveSegments;
-          const Inverse = 1 - T;
+          const Fraction = Step / CurveSegments;
+          const Inverse = 1 - Fraction;
 
           Points := Points + [TLayoutPointF.Create(
-            Inverse * Inverse * Start.X + 2 * Inverse * T * Control.X + T * T * Stop.X,
-            Inverse * Inverse * Start.Y + 2 * Inverse * T * Control.Y + T * T * Stop.Y)];
+            Inverse * Inverse * Start.X + 2 * Inverse * Fraction * Control.X + Fraction * Fraction * Stop.X,
+            Inverse * Inverse * Start.Y + 2 * Inverse * Fraction * Control.Y + Fraction * Fraction * Stop.Y)];
         end;
       end;
     end;
@@ -196,17 +196,26 @@ begin
 
   const Screen = GetDC(0);
   if Screen = 0 then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   try
     const Memory = CreateCompatibleDC(Screen);
     if Memory = 0 then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     try
       const Font = CreateFont(FamilyName, PixelSize, Bold, Italic);
       if Font = 0 then
-        Exit(False);
+      begin
+        Result := False;
+        Exit;
+      end;
 
       try
         const Previous = SelectObject(Memory, Font);
@@ -219,7 +228,10 @@ begin
             const Size = GetGlyphOutlineW(Memory, Ord(Character), GGO_NATIVE or UnhintedOutline, Metrics, 0, nil,
               Identity);
             if Size = GDI_ERROR then
-              Exit(False);
+            begin
+              Result := False;
+              Exit;
+            end;
 
             if Size > 0 then
             begin
@@ -227,7 +239,10 @@ begin
               SetLength(Data, Size);
               if GetGlyphOutlineW(Memory, Ord(Character), GGO_NATIVE or UnhintedOutline, Metrics, Size, Data,
                 Identity) = GDI_ERROR then
-                Exit(False);
+              begin
+                Result := False;
+                Exit;
+              end;
 
               var Reader := TOutlineReader.Create(Data, Pen);
               Run.Contours := Run.Contours + Reader.ReadContours;
@@ -262,6 +277,8 @@ initialization
 
 {$ELSE}
 
+// No GDI to ask off Windows; the framework-specific layer registers its own
+// outliner there instead, so this unit has nothing left to do.
 procedure RegisterGdiGlyphOutliner;
 begin
 end;

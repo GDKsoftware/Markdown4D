@@ -6,7 +6,9 @@ interface
 
 uses
   DUnitX.TestFramework,
-  Markdown4D.Charts.Corpus;
+  Markdown4D.Charts.Corpus,
+  Markdown4D.Extensions.Interfaces,
+  Markdown4D.Extensions.Chart;
 
 type
   [TestFixture]
@@ -17,6 +19,9 @@ type
       InlineCaseName = 'inline-code-chart';
     var
       FCorpus: TChartCorpus;
+    class function ChartPipeline: IMarkdownPipeline;
+    class function PlainPipeline: IMarkdownPipeline;
+    class function ParseModel(const Markdown: string): IChartModel;
 
   public
     [SetupFixture]
@@ -65,35 +70,17 @@ uses
   System.SysUtils,
   Markdown4D,
   Markdown4D.Ast.Interfaces,
-  Markdown4D.Extensions.Interfaces,
   Markdown4D.Pipeline,
-  Markdown4D.Extensions.Chart;
+  Markdown4D.Tests.Pipeline.Helpers;
 
-function ChartPipeline: IMarkdownPipeline;
+class function TChartExtensionTests.ChartPipeline: IMarkdownPipeline;
 begin
   Result := TMarkdownPipeline.Create.UseGfm.Use(TChartExtension.Create).UnsafeHtml.Build;
 end;
 
-function PlainPipeline: IMarkdownPipeline;
+class function TChartExtensionTests.PlainPipeline: IMarkdownPipeline;
 begin
   Result := TMarkdownPipeline.Create.UseGfm.UnsafeHtml.Build;
-end;
-
-function FindFirstCodeBlock(const Document: IMarkdownDocument; out Code: IMarkdownCodeBlock): Boolean;
-begin
-  Code := nil;
-
-  for var Index := 0 to Document.ChildCount - 1 do
-  begin
-    const Child = Document.Children[Index];
-    if Child.Kind = TMarkdownNodeKind.CodeBlock then
-    begin
-      Code := Child as IMarkdownCodeBlock;
-      Exit(True);
-    end;
-  end;
-
-  Result := False;
 end;
 
 procedure TChartExtensionTests.SetupFixture;
@@ -123,7 +110,7 @@ begin
     const Document = ChartPipeline.Parse(Item.Markdown);
 
     var Code: IMarkdownCodeBlock;
-    Assert.IsTrue(FindFirstCodeBlock(Document, Code), Format('Case "%s" must expose a code block', [Item.Name]));
+    Assert.IsTrue(TMarkdownTestPipelineHelpers.FindFirstCodeBlock(Document, Code), Format('Case "%s" must expose a code block', [Item.Name]));
 
     var Model: IChartModel;
     Assert.IsTrue(TChartExtension.TryGetModel(Code, Model),
@@ -143,7 +130,7 @@ begin
     const Document = ChartPipeline.Parse(Item.Markdown);
 
     var Code: IMarkdownCodeBlock;
-    if not FindFirstCodeBlock(Document, Code) then
+    if not TMarkdownTestPipelineHelpers.FindFirstCodeBlock(Document, Code) then
       Continue;
 
     var Model: IChartModel;
@@ -158,7 +145,7 @@ begin
   const Document = ChartPipeline.Parse(Item.Markdown);
 
   var Code: IMarkdownCodeBlock;
-  Assert.IsTrue(FindFirstCodeBlock(Document, Code));
+  Assert.IsTrue(TMarkdownTestPipelineHelpers.FindFirstCodeBlock(Document, Code));
 
   var Model: IChartModel;
   Assert.IsTrue(TChartExtension.TryParse(Code, Model));
@@ -169,12 +156,12 @@ begin
   Assert.AreEqual('North', Model.Datasets[0].Caption);
 end;
 
-function ParseModel(const Markdown: string): IChartModel;
+class function TChartExtensionTests.ParseModel(const Markdown: string): IChartModel;
 begin
   const Document = ChartPipeline.Parse(Markdown);
 
   var Code: IMarkdownCodeBlock;
-  Assert.IsTrue(FindFirstCodeBlock(Document, Code), 'Case must expose a code block');
+  Assert.IsTrue(TMarkdownTestPipelineHelpers.FindFirstCodeBlock(Document, Code), 'Case must expose a code block');
   Assert.IsTrue(TChartExtension.TryParse(Code, Result), 'Case must parse into a chart model');
 end;
 
@@ -238,7 +225,7 @@ begin
     const Document = ChartPipe.Parse(Item.Markdown);
 
     var Code: IMarkdownCodeBlock;
-    if not FindFirstCodeBlock(Document, Code) then
+    if not TMarkdownTestPipelineHelpers.FindFirstCodeBlock(Document, Code) then
       Continue;
 
     const OriginalLiteral = Code.Literal;
@@ -246,7 +233,7 @@ begin
     const Reparsed = ChartPipe.Parse(Rewritten);
 
     var ReparsedCode: IMarkdownCodeBlock;
-    Assert.IsTrue(FindFirstCodeBlock(Reparsed, ReparsedCode),
+    Assert.IsTrue(TMarkdownTestPipelineHelpers.FindFirstCodeBlock(Reparsed, ReparsedCode),
       Format('Case "%s" must round-trip to a code block', [Item.Name]));
     Assert.AreEqual(OriginalLiteral, ReparsedCode.Literal,
       Format('Case "%s" chart JSON must survive the writer byte-for-byte', [Item.Name]));

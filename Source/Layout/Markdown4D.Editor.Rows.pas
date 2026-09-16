@@ -105,7 +105,7 @@ begin
   const LineText = LineTextAt(LineIndex);
   const LineStart = LineStartOffset(LineIndex);
 
-  const LineIsEmpty = Length(LineText) = 0;
+  const LineIsEmpty = (Length(LineText) = 0);
   if LineIsEmpty then
   begin
     Rows.Add(MakeRow(LineIndex, LineStart, LineStart, True));
@@ -125,7 +125,10 @@ begin
   const Reusable = (LineIndex <= High(FWrapCache)) and (FWrapCache[LineIndex].WrapWidth = FWrapWidth) and
     (FWrapCache[LineIndex].Text = LineText);
   if Reusable then
-    Exit(FWrapCache[LineIndex].Breaks);
+  begin
+    Result := FWrapCache[LineIndex].Breaks;
+    Exit;
+  end;
 
   Result := ComputeWrapBreaks(LineText);
 
@@ -155,9 +158,12 @@ begin
   const Remaining = Length(LineText) - StartCol;
 
   const RemainderWidth = FMeasure(Copy(LineText, StartCol + 1, Remaining));
-  const FitsWholeRemainder = RemainderWidth <= FWrapWidth;
+  const FitsWholeRemainder = (RemainderWidth <= FWrapWidth);
   if FitsWholeRemainder then
-    Exit(Remaining);
+  begin
+    Result := Remaining;
+    Exit;
+  end;
 
   var LowerBound := 1;
   var UpperBound := Remaining;
@@ -166,7 +172,7 @@ begin
   begin
     const Candidate = (LowerBound + UpperBound) div 2;
     const CandidateWidth = FMeasure(Copy(LineText, StartCol + 1, Candidate));
-    const CandidateFits = CandidateWidth <= FWrapWidth;
+    const CandidateFits = (CandidateWidth <= FWrapWidth);
     if CandidateFits then
     begin
       BestFit := Candidate;
@@ -190,9 +196,12 @@ class function TMarkdownEditorRows.LastSpaceWithin(const LineText: string; const
 begin
   for var Offset := MaxLength downto 1 do
   begin
-    const IsSpace = LineText[StartCol + Offset] = ' ';
+    const IsSpace = (LineText[StartCol + Offset] = ' ');
     if IsSpace then
-      Exit(Offset);
+    begin
+      Result := Offset;
+      Exit;
+    end;
   end;
 
   Result := 0;
@@ -220,7 +229,10 @@ end;
 function TMarkdownEditorRows.IndexOfOffset(const Offset: Integer): Integer;
 begin
   if Length(FItems) = 0 then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
 
   for var Index := 0 to High(FItems) do
   begin
@@ -230,9 +242,13 @@ begin
       const AtWrapBoundary = (Offset = Row.EndOffset) and (Index < High(FItems)) and
         (FItems[Index + 1].LineIndex = Row.LineIndex);
       if AtWrapBoundary then
-        Exit(Index + 1);
+      begin
+        Result := Index + 1;
+        Exit;
+      end;
 
-      Exit(Index);
+      Result := Index;
+      Exit;
     end;
   end;
 
@@ -242,7 +258,10 @@ end;
 function TMarkdownEditorRows.OffsetAtX(const RowIndex: Integer; const TargetX: Single): Integer;
 begin
   if Length(FItems) = 0 then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
 
   const Row = FItems[EnsureRange(RowIndex, 0, High(FItems))];
   const RowStr = TextOf(Row);

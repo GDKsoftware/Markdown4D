@@ -86,6 +86,15 @@ type
     procedure SetLiteral(const Literal: string);
   end;
 
+  TMarkdownMathNode = class(TMarkdownTextNode, IMarkdownMath)
+  private
+    FIsDisplay: Boolean;
+
+  public
+    constructor Create(const Literal: string; const IsDisplay: Boolean);
+    function GetIsDisplay: Boolean;
+  end;
+
   TMarkdownCustomInlineNode = class(TMarkdownAstNode, IMarkdownCustomInline)
   private
     FNodeName: string;
@@ -246,6 +255,8 @@ begin
       Visitor.VisitTableRow(Self as IMarkdownTableRow);
     TMarkdownNodeKind.TableCell:
       Visitor.VisitTableCell(Self as IMarkdownTableCell);
+    TMarkdownNodeKind.Math:
+      Visitor.VisitMath(Self as IMarkdownMath);
   else
     raise EMarkdownError.CreateFmt('Unhandled node kind: %d', [Ord(FKind)]);
   end;
@@ -366,6 +377,18 @@ end;
 procedure TMarkdownTextNode.SetLiteral(const Literal: string);
 begin
   FLiteral := Literal;
+end;
+
+constructor TMarkdownMathNode.Create(const Literal: string; const IsDisplay: Boolean);
+begin
+  inherited Create(TMarkdownNodeKind.Math, Literal);
+
+  FIsDisplay := IsDisplay;
+end;
+
+function TMarkdownMathNode.GetIsDisplay: Boolean;
+begin
+  Result := FIsDisplay;
 end;
 
 constructor TMarkdownCustomInlineNode.Create(const NodeName: string);

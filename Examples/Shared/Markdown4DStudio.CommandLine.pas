@@ -27,7 +27,10 @@ begin
     const Parameter = ParamStr(Index);
 
     if TFile.Exists(Parameter) then
-      Exit(TPath.GetFullPath(Parameter));
+    begin
+      Result := TPath.GetFullPath(Parameter);
+      Exit;
+    end;
   end;
 
   Result := '';

@@ -56,7 +56,6 @@ type
       FHostForm: TForm;
     function NewHostedEditor(const ControlHeight: Integer): TTestableVclEditor;
     class function ManyLines(const Count: Integer): string; static;
-    class function ManyParagraphs(const Count: Integer): string; static;
     class function OneWrappedLine: string; static;
     class function ClipboardIsAccessible: Boolean; static;
     class function TrySetClipboardText(const Value: string): Boolean; static;
@@ -238,7 +237,8 @@ uses
   Winapi.Messages,
   Vcl.ExtCtrls,
   Vcl.Clipbrd,
-  Vcl.Graphics;
+  Vcl.Graphics,
+  Markdown4D.Tests.Pipeline.Helpers;
 
 procedure TTestableVclEditor.SimulateMouseDown(const X, Y: Integer; const Shift: TShiftState);
 begin
@@ -347,18 +347,6 @@ begin
   Result := Builder;
 end;
 
-class function TMarkdownVclEditorTests.ManyParagraphs(const Count: Integer): string;
-begin
-  var Builder := '';
-  for var Index := 0 to Count - 1 do
-  begin
-    if Index > 0 then
-      Builder := Builder + #10#10;
-    Builder := Builder + Format('Paragraph %.2d', [Index]);
-  end;
-  Result := Builder;
-end;
-
 // Any process on the machine may hold the clipboard for a moment, and a test
 // that loses that race says nothing about the editor, so it waits its turn.
 class function TMarkdownVclEditorTests.ClipboardIsAccessible: Boolean;
@@ -368,7 +356,8 @@ begin
     try
       Clipboard.Open;
       Clipboard.Close;
-      Exit(True);
+      Result := True;
+      Exit;
     except
       on EClipboardException do
         Sleep(ClipboardPauseMilliseconds);
@@ -386,7 +375,8 @@ begin
   begin
     try
       Value := Clipboard.AsText;
-      Exit(True);
+      Result := True;
+      Exit;
     except
       on EClipboardException do
         Sleep(ClipboardPauseMilliseconds);
@@ -402,7 +392,8 @@ begin
   begin
     try
       Clipboard.AsText := Value;
-      Exit(True);
+      Result := True;
+      Exit;
     except
       on EClipboardException do
         Sleep(ClipboardPauseMilliseconds);
@@ -671,11 +662,11 @@ begin
     Editor.Text := 'first'#10'second';
     Editor.CaretPosition := 0;
     Editor.SimulateKeyDown(vkDown, []);
-    Assert.IsTrue(Editor.CaretPosition >= Editor.SourceLineStartOffset(1),
-      Format('Expected caret on second line but got %d', [Editor.CaretPosition]));
+    const CaretOnSecondLine = (Editor.CaretPosition >= Editor.SourceLineStartOffset(1));
+    Assert.IsTrue(CaretOnSecondLine, Format('Expected caret on second line but got %d', [Editor.CaretPosition]));
     Editor.SimulateKeyDown(vkUp, []);
-    Assert.IsTrue(Editor.CaretPosition < Editor.SourceLineStartOffset(1),
-      Format('Expected caret back on first line but got %d', [Editor.CaretPosition]));
+    const CaretOnFirstLine = (Editor.CaretPosition < Editor.SourceLineStartOffset(1));
+    Assert.IsTrue(CaretOnFirstLine, Format('Expected caret back on first line but got %d', [Editor.CaretPosition]));
   finally
     Editor.Free;
   end;
@@ -717,12 +708,12 @@ begin
     Editor.Text := WordPairText;
     Editor.CaretPosition := 0;
     Editor.SimulateKeyDown(vkRight, [ssCtrl]);
-    Assert.IsTrue(Editor.CaretPosition >= 3,
-      Format('Expected caret past first word but got %d', [Editor.CaretPosition]));
+    const CaretPastFirstWord = (Editor.CaretPosition >= 3);
+    Assert.IsTrue(CaretPastFirstWord, Format('Expected caret past first word but got %d', [Editor.CaretPosition]));
     const AfterRight = Editor.CaretPosition;
     Editor.SimulateKeyDown(vkLeft, [ssCtrl]);
-    Assert.IsTrue(Editor.CaretPosition < AfterRight,
-      Format('Expected caret to move left of %d but got %d', [AfterRight, Editor.CaretPosition]));
+    const CaretMovedLeft = (Editor.CaretPosition < AfterRight);
+    Assert.IsTrue(CaretMovedLeft, Format('Expected caret to move left of %d but got %d', [AfterRight, Editor.CaretPosition]));
   finally
     Editor.Free;
   end;
@@ -742,7 +733,8 @@ begin
 
   Viewer.ScrollOffset := PreviewScrollTarget;
   const Before = Viewer.ScrollOffset;
-  Assert.IsTrue(Before > 0, 'Preview should be scrollable for this test');
+  const PreviewIsScrollable = (Before > 0);
+  Assert.IsTrue(PreviewIsScrollable, 'Preview should be scrollable for this test');
 
   Editor.CaretPosition := 0;
   Editor.SimulateKeyChar('X');
@@ -783,7 +775,7 @@ begin
   const Editor = NewHostedEditor(ShortHostHeight);
   const Viewer = TMarkdownViewer.Create(FHostForm);
 
-  Editor.Text := ManyParagraphs(ManyLineCount);
+  Editor.Text := TMarkdownTestPipelineHelpers.ManyParagraphs(ManyLineCount);
   Editor.AttachPreview(Viewer);
 
   Viewer.Parent := FHostForm;
@@ -792,7 +784,8 @@ begin
 
   Editor.SimulateVScroll(SB_BOTTOM);
 
-  Assert.IsTrue(Viewer.ScrollOffset > 0, 'Expected the preview to follow the editor to the bottom');
+  const PreviewFollowedToBottom = (Viewer.ScrollOffset > 0);
+  Assert.IsTrue(PreviewFollowedToBottom, 'Expected the preview to follow the editor to the bottom');
 end;
 
 procedure TMarkdownVclEditorTests.PreviewScroll_PreviewSizedAfterAttach_MovesEditor;
@@ -800,7 +793,7 @@ begin
   const Editor = NewHostedEditor(ShortHostHeight);
   const Viewer = TMarkdownViewer.Create(FHostForm);
 
-  Editor.Text := ManyParagraphs(ManyLineCount);
+  Editor.Text := TMarkdownTestPipelineHelpers.ManyParagraphs(ManyLineCount);
   Editor.AttachPreview(Viewer);
 
   Viewer.Parent := FHostForm;
@@ -809,7 +802,8 @@ begin
 
   Viewer.ScrollOffset := Viewer.ContentHeight;
 
-  Assert.IsTrue(Editor.FirstVisibleSourceLine > 0, 'Expected the editor to follow the preview downward');
+  const EditorFollowedDownward = (Editor.FirstVisibleSourceLine > 0);
+  Assert.IsTrue(EditorFollowedDownward, 'Expected the editor to follow the preview downward');
 end;
 
 procedure TMarkdownVclEditorTests.MergeText_KeepsCaretAndUndoHistory;
@@ -1017,8 +1011,8 @@ begin
   Editor.Text := ManyLines(ManyLineCount);
   const Before = Editor.FirstVisibleSourceLine;
   Editor.SimulateWheel(-WHEEL_DELTA);
-  Assert.IsTrue(Editor.FirstVisibleSourceLine > Before,
-    Format('Expected viewport to advance from line %d', [Before]));
+  const ViewportAdvanced = (Editor.FirstVisibleSourceLine > Before);
+  Assert.IsTrue(ViewportAdvanced, Format('Expected viewport to advance from line %d', [Before]));
 end;
 
 procedure TMarkdownVclEditorTests.ClickAfterScroll_MapsToVisibleLine;
@@ -1027,10 +1021,13 @@ begin
   Editor.Text := ManyLines(ManyLineCount);
 
   for var Notch := 1 to 5 do
+  begin
     Editor.SimulateWheel(-WHEEL_DELTA);
+  end;
 
   const VisibleLine = Editor.FirstVisibleSourceLine;
-  Assert.IsTrue(VisibleLine > 0, 'Expected content to have scrolled down');
+  const ContentScrolledDown = (VisibleLine > 0);
+  Assert.IsTrue(ContentScrolledDown, 'Expected content to have scrolled down');
 
   Editor.SimulateMouseDown(0, 2, []);
   Assert.AreEqual(Editor.SourceLineStartOffset(VisibleLine), Editor.CaretPosition);
@@ -1053,16 +1050,17 @@ begin
 
   Editor.SimulateVScroll(SB_LINEDOWN);
   const AfterLine = Editor.FirstVisibleSourceLine;
-  Assert.IsTrue(AfterLine >= 1, Format('Expected line scroll to advance but got %d', [AfterLine]));
+  const LineScrollAdvanced = (AfterLine >= 1);
+  Assert.IsTrue(LineScrollAdvanced, Format('Expected line scroll to advance but got %d', [AfterLine]));
 
   Editor.SimulateVScroll(SB_PAGEDOWN);
   const AfterPage = Editor.FirstVisibleSourceLine;
-  Assert.IsTrue(AfterPage > AfterLine,
-    Format('Expected page scroll to advance beyond %d', [AfterLine]));
+  const PageScrollAdvanced = (AfterPage > AfterLine);
+  Assert.IsTrue(PageScrollAdvanced, Format('Expected page scroll to advance beyond %d', [AfterLine]));
 
   Editor.SimulateVScroll(SB_LINEUP);
-  Assert.IsTrue(Editor.FirstVisibleSourceLine < AfterPage,
-    Format('Expected line up to retreat below %d', [AfterPage]));
+  const LineUpRetreated = (Editor.FirstVisibleSourceLine < AfterPage);
+  Assert.IsTrue(LineUpRetreated, Format('Expected line up to retreat below %d', [AfterPage]));
 end;
 
 procedure TMarkdownVclEditorTests.VScrollTopBottomAndThumb_ClampWithoutError;
@@ -1072,7 +1070,8 @@ begin
 
   Editor.SimulateVScroll(SB_BOTTOM);
   const AtBottom = Editor.FirstVisibleSourceLine;
-  Assert.IsTrue(AtBottom > 0, 'Expected bottom scroll to advance the viewport');
+  const BottomScrollAdvanced = (AtBottom > 0);
+  Assert.IsTrue(BottomScrollAdvanced, 'Expected bottom scroll to advance the viewport');
 
   Editor.SimulateVScroll(SB_THUMBTRACK);
 
@@ -1088,12 +1087,13 @@ begin
 
   Editor.SimulateKeyDown(vkNext, []);
   const AfterPageDown = Editor.CaretPosition;
-  Assert.IsTrue(AfterPageDown >= Editor.SourceLineStartOffset(1),
+  const CaretMovedDownAPage = (AfterPageDown >= Editor.SourceLineStartOffset(1));
+  Assert.IsTrue(CaretMovedDownAPage,
     Format('Expected page down to move the caret down a page but caret is at %d', [AfterPageDown]));
 
   Editor.SimulateKeyDown(vkPrior, []);
-  Assert.IsTrue(Editor.CaretPosition < AfterPageDown,
-    Format('Expected page up to move the caret back above %d', [AfterPageDown]));
+  const CaretMovedBackUp = (Editor.CaretPosition < AfterPageDown);
+  Assert.IsTrue(CaretMovedBackUp, Format('Expected page up to move the caret back above %d', [AfterPageDown]));
 end;
 
 procedure TMarkdownVclEditorTests.AutoScrollTimer_DuringDragOutside_AdvancesAndExtends;
@@ -1105,9 +1105,11 @@ begin
   Editor.SimulateMouseMove(5, Editor.ClientHeight + 50, []);
   Editor.PumpAutoScrollTimer;
 
-  Assert.IsTrue(Editor.FirstVisibleSourceLine >= 1,
+  const AutoscrollAdvanced = (Editor.FirstVisibleSourceLine >= 1);
+  Assert.IsTrue(AutoscrollAdvanced,
     Format('Expected autoscroll to advance the viewport but got %d', [Editor.FirstVisibleSourceLine]));
-  Assert.IsTrue(Length(Editor.SelectedText) > 0, 'Expected drag-outside to extend the selection');
+  const SelectionExtended = (Length(Editor.SelectedText) > 0);
+  Assert.IsTrue(SelectionExtended, 'Expected drag-outside to extend the selection');
 end;
 
 procedure TMarkdownVclEditorTests.HighDpiClick_MapsCaretToClickedLine;
@@ -1145,7 +1147,9 @@ class function TMarkdownVclEditorTests.OneWrappedLine: string;
 begin
   var Builder := '';
   for var Index := 0 to 199 do
+  begin
     Builder := Builder + 'word ';
+  end;
 
   Result := Builder;
 end;
@@ -1158,9 +1162,11 @@ begin
 
   Editor.SimulateKeyDown(vkDown, []);
   const AfterDown = Editor.CaretPosition;
-  Assert.IsTrue(AfterDown > 0,
+  const CaretMovedToSecondRow = (AfterDown > 0);
+  Assert.IsTrue(CaretMovedToSecondRow,
     Format('Expected wrapping to place a second visual row but the caret stayed at %d', [AfterDown]));
-  Assert.IsTrue(AfterDown < Length(Editor.Text), 'Expected the caret to stay within the single wrapped line');
+  const CaretWithinWrappedLine = (AfterDown < Length(Editor.Text));
+  Assert.IsTrue(CaretWithinWrappedLine, 'Expected the caret to stay within the single wrapped line');
 
   Editor.SimulateKeyDown(vkUp, []);
   Assert.AreEqual(0, Editor.CaretPosition);
@@ -1174,7 +1180,8 @@ begin
 
   Editor.SimulateKeyDown(vkDown, []);
   const SecondRowStart = Editor.CaretPosition;
-  Assert.IsTrue(SecondRowStart > 0, 'Expected a wrapped second visual row');
+  const HasWrappedSecondRow = (SecondRowStart > 0);
+  Assert.IsTrue(HasWrappedSecondRow, 'Expected a wrapped second visual row');
 
   Editor.CaretPosition := SecondRowStart + 2;
   Editor.SimulateKeyDown(vkHome, []);

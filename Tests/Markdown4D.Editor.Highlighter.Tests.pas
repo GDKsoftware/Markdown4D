@@ -53,6 +53,15 @@ type
 
     [Test]
     procedure Tokens_CoverEachLineFully;
+
+    [Test]
+    procedure InlineMath_ProducesDelimitersAndText;
+
+    [Test]
+    procedure InlineMath_CoversLineFully;
+
+    [Test]
+    procedure MathFence_CarriesStateUntilClosingFence;
   end;
 
 implementation
@@ -86,7 +95,10 @@ begin
   for var Token in Line.Tokens do
   begin
     if Token.Start <> Cursor then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
     Cursor := Cursor + Token.Length;
   end;
 
@@ -155,6 +167,35 @@ begin
   const Text = '## Title';
   const Line = FHighlighter.TokenizeLine(Text, TMarkdownSourceHighlighter.DefaultState);
   Assert.IsTrue(CoversLineFully(Line, Text));
+end;
+
+procedure TMarkdownEditorHighlighterTests.InlineMath_ProducesDelimitersAndText;
+begin
+  const Line = FHighlighter.TokenizeLine('see $x^2$ here', TMarkdownSourceHighlighter.DefaultState);
+  Assert.AreEqual<TArray<TMarkdownSourceTokenKind>>(
+    [TMarkdownSourceTokenKind.Plain, TMarkdownSourceTokenKind.MathDelimiter, TMarkdownSourceTokenKind.MathText,
+     TMarkdownSourceTokenKind.MathDelimiter, TMarkdownSourceTokenKind.Plain], TokenKinds(Line));
+end;
+
+procedure TMarkdownEditorHighlighterTests.InlineMath_CoversLineFully;
+begin
+  const Text = 'a $$\frac{1}{2}$$ b and $open';
+  const Line = FHighlighter.TokenizeLine(Text, TMarkdownSourceHighlighter.DefaultState);
+  Assert.IsTrue(CoversLineFully(Line, Text));
+end;
+
+procedure TMarkdownEditorHighlighterTests.MathFence_CarriesStateUntilClosingFence;
+begin
+  const Opened = FHighlighter.TokenizeLine('$$', TMarkdownSourceHighlighter.DefaultState);
+  Assert.AreNotEqual(TMarkdownSourceHighlighter.DefaultState, Opened.NextState);
+
+  const Content = FHighlighter.TokenizeLine('x = y', Opened.NextState);
+  Assert.AreEqual<TArray<TMarkdownSourceTokenKind>>([TMarkdownSourceTokenKind.MathText], TokenKinds(Content));
+  Assert.AreEqual(Opened.NextState, Content.NextState);
+
+  const Closed = FHighlighter.TokenizeLine('$$', Content.NextState);
+  Assert.AreEqual<TArray<TMarkdownSourceTokenKind>>([TMarkdownSourceTokenKind.MathDelimiter], TokenKinds(Closed));
+  Assert.AreEqual(TMarkdownSourceHighlighter.DefaultState, Closed.NextState);
 end;
 
 end.

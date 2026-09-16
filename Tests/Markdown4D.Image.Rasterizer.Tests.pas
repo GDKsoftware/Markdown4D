@@ -5,7 +5,9 @@ unit Markdown4D.Image.Rasterizer.Tests;
 interface
 
 uses
-  DUnitX.TestFramework;
+  DUnitX.TestFramework,
+  Markdown4D.Layout.Interfaces,
+  Markdown4D.Image.Rasterizer;
 
 type
   [TestFixture]
@@ -22,6 +24,9 @@ type
       JoinDiscRadius = 0.75;
       MermaidCircleNodeRadius = 25.0;
       MinSmoothCircleSegments = 30;
+    class function PixelOffset(const Raster: TMarkdownPixelRaster; const X, Y: Integer): Integer;
+    class function Alpha(const Raster: TMarkdownPixelRaster; const X, Y: Integer): Integer;
+    class function Rectangle(const Left, Top, Right, Bottom: Single): TArray<TLayoutPointF>;
 
   public
     [Test]
@@ -59,21 +64,19 @@ implementation
 
 uses
   System.SysUtils,
-  System.Math,
-  Markdown4D.Layout.Interfaces,
-  Markdown4D.Image.Rasterizer;
+  System.Math;
 
-function PixelOffset(const Raster: TMarkdownPixelRaster; const X, Y: Integer): Integer;
+class function TMarkdownPolygonRasterizerTests.PixelOffset(const Raster: TMarkdownPixelRaster; const X, Y: Integer): Integer;
 begin
   Result := (Y * Raster.Width + X) * 4;
 end;
 
-function Alpha(const Raster: TMarkdownPixelRaster; const X, Y: Integer): Integer;
+class function TMarkdownPolygonRasterizerTests.Alpha(const Raster: TMarkdownPixelRaster; const X, Y: Integer): Integer;
 begin
   Result := Raster.Pixels[PixelOffset(Raster, X, Y) + 3];
 end;
 
-function Rectangle(const Left, Top, Right, Bottom: Single): TArray<TLayoutPointF>;
+class function TMarkdownPolygonRasterizerTests.Rectangle(const Left, Top, Right, Bottom: Single): TArray<TLayoutPointF>;
 begin
   Result := [TLayoutPointF.Create(Left, Top), TLayoutPointF.Create(Right, Top),
     TLayoutPointF.Create(Right, Bottom), TLayoutPointF.Create(Left, Bottom)];

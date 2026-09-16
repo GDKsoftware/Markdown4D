@@ -25,6 +25,7 @@ const
   OpenParen = '(';
   CloseParen = ')';
   ExclamationMark = '!';
+  Dollar = '$';
 
   // HTML-significant characters
   Ampersand = '&';

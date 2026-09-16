@@ -7,7 +7,7 @@ interface
 type
   TMarkdownNodeKind = (Document, Paragraph, Heading, ThematicBreak, CodeBlock, BlockQuote, List, ListItem,
     HtmlBlock, Text, Emphasis, Strong, CodeSpan, Link, Image, Autolink, SoftLineBreak, HardLineBreak, InlineHtml,
-    CustomInline, Table, TableRow, TableCell);
+    CustomInline, Table, TableRow, TableCell, Math);
 
   TMarkdownTableColumnAlignment = (None, Left, Center, Right);
 
@@ -73,6 +73,12 @@ type
     property Literal: string read GetLiteral;
   end;
 
+  IMarkdownMath = interface(IMarkdownText)
+    ['{6E2B9C47-3A1D-4F58-9B0E-7C4D2A8F1B63}']
+    function GetIsDisplay: Boolean;
+    property IsDisplay: Boolean read GetIsDisplay;
+  end;
+
   IMarkdownCustomInline = interface(IMarkdownNode)
     ['{5B7C9D5E-2A6F-4E0B-9C41-8F3D2B6A7C10}']
     function GetNodeName: string;
@@ -124,6 +130,7 @@ type
     procedure VisitTable(const Node: IMarkdownNode);
     procedure VisitTableRow(const Node: IMarkdownTableRow);
     procedure VisitTableCell(const Node: IMarkdownTableCell);
+    procedure VisitMath(const Node: IMarkdownMath);
   end;
 
 implementation

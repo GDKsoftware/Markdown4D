@@ -32,7 +32,9 @@ begin
       Column := 1;
     end
     else
+    begin
       Inc(Column);
+    end;
   end;
 end;
 

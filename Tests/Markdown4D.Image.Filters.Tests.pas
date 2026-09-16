@@ -5,7 +5,9 @@ unit Markdown4D.Image.Filters.Tests;
 interface
 
 uses
-  DUnitX.TestFramework;
+  DUnitX.TestFramework,
+  Markdown4D.Layout.Interfaces,
+  Markdown4D.Image.Rasterizer;
 
 type
   [TestFixture]
@@ -16,6 +18,9 @@ type
       Centre = 10;
       OpaqueRed = $FFFF0000;
       HalfBlack = $80000000;
+    class function Square(const Left, Top, Right, Bottom: Single): TArray<TLayoutPointF>;
+    class function AlphaAt(const Raster: TMarkdownPixelRaster; const X, Y: Integer): Integer;
+    class function RedAt(const Raster: TMarkdownPixelRaster; const X, Y: Integer): Integer;
 
   public
     [Test]
@@ -53,22 +58,20 @@ implementation
 
 uses
   System.SysUtils,
-  Markdown4D.Layout.Interfaces,
-  Markdown4D.Image.Rasterizer,
   Markdown4D.Image.Filters;
 
-function Square(const Left, Top, Right, Bottom: Single): TArray<TLayoutPointF>;
+class function TMarkdownRasterFiltersTests.Square(const Left, Top, Right, Bottom: Single): TArray<TLayoutPointF>;
 begin
   Result := [TLayoutPointF.Create(Left, Top), TLayoutPointF.Create(Right, Top),
     TLayoutPointF.Create(Right, Bottom), TLayoutPointF.Create(Left, Bottom)];
 end;
 
-function AlphaAt(const Raster: TMarkdownPixelRaster; const X, Y: Integer): Integer;
+class function TMarkdownRasterFiltersTests.AlphaAt(const Raster: TMarkdownPixelRaster; const X, Y: Integer): Integer;
 begin
   Result := Raster.Pixels[(Y * Raster.Width + X) * 4 + 3];
 end;
 
-function RedAt(const Raster: TMarkdownPixelRaster; const X, Y: Integer): Integer;
+class function TMarkdownRasterFiltersTests.RedAt(const Raster: TMarkdownPixelRaster; const X, Y: Integer): Integer;
 begin
   Result := Raster.Pixels[(Y * Raster.Width + X) * 4 + 2];
 end;

@@ -194,7 +194,10 @@ begin
   begin
     const Matches = Run.Text.StartsWith(Prefix);
     if Matches then
-      Exit(Run);
+    begin
+      Result := Run;
+      Exit;
+    end;
   end;
 
   Result := nil;

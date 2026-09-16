@@ -5,13 +5,12 @@ program Markdown4D.Tests;
 {$STRONGLINKTYPES ON}
 
 uses
-  System.SysUtils,
-  System.IOUtils,
-  DUnitX.TestFramework,
-  DUnitX.Loggers.Console,
-  DUnitX.Loggers.Xml.NUnit,
   Markdown4D.Parser.Spec.Tests in 'Markdown4D.Parser.Spec.Tests.pas',
   Markdown4D.Parser.Gfm.Tests in 'Markdown4D.Parser.Gfm.Tests.pas',
+  Markdown4D.Parser.Math.Tests in 'Markdown4D.Parser.Math.Tests.pas',
+  Markdown4D.Math.Syntax.Tests in 'Markdown4D.Math.Syntax.Tests.pas',
+  Markdown4D.Math.Layout.Tests in 'Markdown4D.Math.Layout.Tests.pas',
+  Markdown4D.Math.Integration.Tests in 'Markdown4D.Math.Integration.Tests.pas',
   Markdown4D.Writer.RoundTrip.Tests in 'Markdown4D.Writer.RoundTrip.Tests.pas',
   Markdown4D.Writer.Canonical.Tests in 'Markdown4D.Writer.Canonical.Tests.pas',
   Markdown4D.Ast.Builder.Tests in 'Markdown4D.Ast.Builder.Tests.pas',
@@ -60,6 +59,7 @@ uses
   Markdown4D.Editor.Actions in '..\Source\Layout\Markdown4D.Editor.Actions.pas',
   Markdown4D.Editor.ContextMenu in '..\Source\Layout\Markdown4D.Editor.ContextMenu.pas',
   Markdown4D.Editor.Highlights in '..\Source\Layout\Markdown4D.Editor.Highlights.pas',
+  Markdown4D.Editor.Rows in '..\Source\Layout\Markdown4D.Editor.Rows.pas',
   Markdown4D.Editor.Model.Tests in 'Markdown4D.Editor.Model.Tests.pas',
   Markdown4D.Editor.Keys.Tests in 'Markdown4D.Editor.Keys.Tests.pas',
   Markdown4D.Editor.Actions.Tests in 'Markdown4D.Editor.Actions.Tests.pas',
@@ -68,6 +68,7 @@ uses
   Markdown4D.Editor.Folding.Tests in 'Markdown4D.Editor.Folding.Tests.pas',
   Markdown4D.Editor.Highlighter.Tests in 'Markdown4D.Editor.Highlighter.Tests.pas',
   Markdown4D.Editor.Sync.Tests in 'Markdown4D.Editor.Sync.Tests.pas',
+  Markdown4D.Editor.Rows.Tests in 'Markdown4D.Editor.Rows.Tests.pas',
   Markdown4D.Vcl.Editor.Tests in 'Markdown4D.Vcl.Editor.Tests.pas',
   Markdown4D.Editor.Performance.Tests in 'Markdown4D.Editor.Performance.Tests.pas',
   Markdown4D.Vcl.Design.Tests in 'Markdown4D.Vcl.Design.Tests.pas',
@@ -93,6 +94,7 @@ uses
   Markdown4DStudio.EditorView in '..\Examples\Shared\Markdown4DStudio.EditorView.pas',
   Markdown4DStudio.Controller in '..\Examples\Shared\Markdown4DStudio.Controller.pas',
   StreamingMarkdown.Demo in '..\Examples\Shared\StreamingMarkdown.Demo.pas',
+  Markdown4DStudio.Outline.Tests in 'Markdown4DStudio.Outline.Tests.pas',
   Markdown4DStudio.Workspace.Tests in 'Markdown4DStudio.Workspace.Tests.pas',
   Markdown4DStudio.TabStrip.Tests in 'Markdown4DStudio.TabStrip.Tests.pas',
   Markdown4DStudio.Session.Tests in 'Markdown4DStudio.Session.Tests.pas',
@@ -105,63 +107,9 @@ uses
   Markdown4DStudio.LinkPolicy.Tests in 'Markdown4DStudio.LinkPolicy.Tests.pas',
   Markdown4D.Text.UrlSafety.Tests in 'Markdown4D.Text.UrlSafety.Tests.pas',
   Markdown4D.Viewer.ImageSettings.Tests in 'Markdown4D.Viewer.ImageSettings.Tests.pas',
-  StreamingMarkdown.Demo.Tests in 'StreamingMarkdown.Demo.Tests.pas';
-
-const
-  TestsFolderName = 'Tests';
-  ResultsFolderName = 'results';
-  ResultsFileName = 'dunitx-results.xml';
+  StreamingMarkdown.Demo.Tests in 'StreamingMarkdown.Demo.Tests.pas',
+  Markdown4D.Tests.Runner in 'Markdown4D.Tests.Runner.pas';
 
 begin
-  try
-    TDUnitX.CheckCommandLine;
-
-    var ResultsFile := TDUnitX.Options.XMLOutputFile;
-    if ResultsFile.IsEmpty then
-    begin
-      const ExecutableFolder = TPath.GetDirectoryName(TPath.GetFullPath(ParamStr(0)));
-      var ResultsRoot := ExecutableFolder;
-      var Directory := ExecutableFolder;
-
-      while Directory <> '' do
-      begin
-        const CandidateTestsFolder = TPath.Combine(Directory, TestsFolderName);
-        if TDirectory.Exists(CandidateTestsFolder) then
-        begin
-          ResultsRoot := TPath.Combine(CandidateTestsFolder, ResultsFolderName);
-          Break;
-        end;
-
-        const Parent = TPath.GetDirectoryName(Directory);
-        const ReachedRoot = (Parent = Directory);
-        if ReachedRoot then
-          Break;
-
-        Directory := Parent;
-      end;
-
-      ResultsFile := TPath.Combine(ResultsRoot, ResultsFileName);
-    end;
-
-    const ResultsFolder = TPath.GetDirectoryName(TPath.GetFullPath(ResultsFile));
-    TDirectory.CreateDirectory(ResultsFolder);
-
-    const Runner = TDUnitX.CreateRunner;
-    Runner.UseRTTI := True;
-    Runner.AddLogger(TDUnitXConsoleLogger.Create(False));
-    Runner.AddLogger(TDUnitXXMLNUnitFileLogger.Create(ResultsFile));
-
-    const RunResults = Runner.Execute;
-    const HasFailures = ((RunResults.FailureCount + RunResults.ErrorCount) > 0);
-    if HasFailures then
-      ExitCode := 1
-    else
-      ExitCode := 0;
-  except
-    on E: Exception do
-    begin
-      Writeln(Format('%s: %s', [E.ClassName, E.Message]));
-      ExitCode := 1;
-    end;
-  end;
+  TMarkdownTestRunner.Run('dunitx-results.xml');
 end.

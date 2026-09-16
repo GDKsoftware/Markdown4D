@@ -114,7 +114,7 @@ end;
 
 procedure TMarkdownStreamerTests.SampleAnswer_ContainsKeySections;
 begin
-  const Answer = BuildStreamingSampleAnswer;
+  const Answer = TMarkdownStreamer.BuildSampleAnswer;
   Assert.IsTrue(Answer.Contains('# Streaming Markdown'), 'heading missing');
   Assert.IsTrue(Answer.Contains('```mermaid'), 'mermaid fence missing');
   Assert.IsTrue(Answer.Contains('"type":"chart"'), 'chart block missing');

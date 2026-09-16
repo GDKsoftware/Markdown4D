@@ -44,6 +44,8 @@ type
     function BeginStrikethrough: IMarkdownDocumentBuilder;
     function EndStrikethrough: IMarkdownDocumentBuilder;
     function Code(const Value: string): IMarkdownDocumentBuilder;
+    function Math(const Literal: string; const IsDisplay: Boolean = False): IMarkdownDocumentBuilder;
+    function MathBlock(const Literal: string): IMarkdownDocumentBuilder;
     function Link(const Caption, Destination: string; const Title: string = ''): IMarkdownDocumentBuilder;
     function BeginLink(const Destination: string; const Title: string = ''): IMarkdownDocumentBuilder;
     function EndLink: IMarkdownDocumentBuilder;
@@ -124,6 +126,8 @@ type
     function BeginStrikethrough: IMarkdownDocumentBuilder;
     function EndStrikethrough: IMarkdownDocumentBuilder;
     function Code(const Value: string): IMarkdownDocumentBuilder;
+    function Math(const Literal: string; const IsDisplay: Boolean = False): IMarkdownDocumentBuilder;
+    function MathBlock(const Literal: string): IMarkdownDocumentBuilder;
     function Link(const Caption, Destination: string; const Title: string = ''): IMarkdownDocumentBuilder;
     function BeginLink(const Destination: string; const Title: string = ''): IMarkdownDocumentBuilder;
     function EndLink: IMarkdownDocumentBuilder;
@@ -384,6 +388,16 @@ begin
   Result := AppendNode(TMarkdownTextNode.Create(TMarkdownNodeKind.CodeSpan, Value));
 end;
 
+function TMarkdownDocumentBuilderInstance.Math(const Literal: string; const IsDisplay: Boolean): IMarkdownDocumentBuilder;
+begin
+  Result := AppendNode(TMarkdownMathNode.Create(Literal, IsDisplay));
+end;
+
+function TMarkdownDocumentBuilderInstance.MathBlock(const Literal: string): IMarkdownDocumentBuilder;
+begin
+  Result := AppendNode(TMarkdownMathNode.Create(Literal, True));
+end;
+
 function TMarkdownDocumentBuilderInstance.Link(const Caption, Destination: string; const Title: string): IMarkdownDocumentBuilder;
 begin
   BeginLink(Destination, Title);
@@ -496,7 +510,10 @@ end;
 function TMarkdownDocumentBuilderInstance.CurrentContainer: TMarkdownAstNode;
 begin
   if FOpenNodes.Count > 0 then
-    Exit(FOpenNodes.Peek);
+  begin
+    Result := FOpenNodes.Peek;
+    Exit;
+  end;
 
   Result := FRoot;
 end;

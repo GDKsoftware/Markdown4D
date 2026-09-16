@@ -58,7 +58,10 @@ class function TMarkdownSvgSupport.LooksLikeSvg(const Data: TBytes): Boolean;
 begin
   const Available = Length(Data);
   if Available = 0 then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const SniffLength = Min(Available, SvgSniffByteCount);
   var Ascii := '';
@@ -74,7 +77,10 @@ class function TMarkdownSvgSupport.TryRasterize(const Svg: TBytes; const MaxWidt
 begin
   Raster := Default(TMarkdownSvgRaster);
   if not Assigned(FRasterizer) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   try
     Result := FRasterizer(Svg, MaxWidth, MaxHeight, Raster);

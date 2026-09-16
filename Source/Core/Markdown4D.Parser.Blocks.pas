@@ -43,6 +43,8 @@ type
       MinThematicMarkers = 3;
       MaxOrderedDigits = 9;
       MaxMarkerPaddingColumns = 5;
+      MathFenceLength = 2;
+      MathInfoString = 'math';
       HashChar = '#';
       EqualsChar = '=';
       DashChar = '-';
@@ -63,6 +65,7 @@ type
       NineChar = '9';
       TrimChars: array[0..1] of Char = (' ', #9);
       ContentTrimChars: array[0..3] of Char = (' ', #9, #10, #13);
+      InfoSplitChars: array[0..1] of Char = (' ', #9);
     var
       FConfiguration: TMarkdownPipelineConfiguration;
       FContext: IMarkdownBlockParserContext;
@@ -82,6 +85,8 @@ type
       FLineNumber: Integer;
       FCurrentLine: TSourceLine;
       FThematicBreakScan: TThematicBreakScan;
+      FMathEnabled: Boolean;
+    class function HasMathBlockParser(const Configuration: TMarkdownPipelineConfiguration): Boolean;
     procedure ProcessLine(const Line: TSourceLine);
     function MatchContinuations: TContinuationMatch;
     function ContinueBlock(const Block: TStagingBlock): TContinueResult;
@@ -93,6 +98,7 @@ type
     function ContinueTable: TContinueResult;
     function TableRowIsInterrupted: Boolean;
     function IsFenceOpeningLine: Boolean;
+    function IsMathFenceLine: Boolean;
     function IsListMarkerLine: Boolean;
     function OpenNewBlocks(const StartContainer: TStagingBlock; const LeafAlreadyMatched: Boolean): TStagingBlock;
     function TryStartBlock(const Container: TStagingBlock): TMarkdownBlockStart;
@@ -102,6 +108,7 @@ type
     function TryMatchAtxHeading(out Level: Integer; out Content: string): Boolean;
     class function StripAtxClosingSequence(const Value: string): string;
     function TryStartFencedCode: TMarkdownBlockStart;
+    function TryStartMathBlock: TMarkdownBlockStart;
     function TryStartHtmlBlock(const Container: TStagingBlock): TMarkdownBlockStart;
     function TryStartSetextHeading(const Container: TStagingBlock): TMarkdownBlockStart;
     function TryMatchSetextUnderline(out Level: Integer): Boolean;
@@ -134,6 +141,7 @@ type
     procedure StripLeadingReferences(const Block: TStagingBlock);
     class function IsBlankText(const Value: string): Boolean;
     procedure FinalizeCodeBlock(const Block: TStagingBlock);
+    procedure FinalizeMathBlock(const Block: TStagingBlock);
     procedure FinalizeHtmlBlock(const Block: TStagingBlock);
     class function StripTrailingBlankLines(const Value: string; const KeepFinalLineBreak: Boolean): string;
     procedure FinalizeList(const Block: TStagingBlock);
@@ -143,6 +151,8 @@ type
     class procedure PushChildFrames(const Pending: TStack<TBuildFrame>; const Staging: TStagingBlock;
                                     const AstParent: TMarkdownAstNode);
     function CreateNode(const Block: TStagingBlock): TMarkdownAstNode;
+    function CreateCodeBlockNode(const Block: TStagingBlock): TMarkdownAstNode;
+    class function IsMathInfoString(const InfoString: string): Boolean;
     function CreateTableNode(const Block: TStagingBlock): TMarkdownAstNode;
     class function IsTaskListParagraph(const Block: TStagingBlock): Boolean;
     class function HasNestedBlocks(const Kind: TMarkdownNodeKind): Boolean;
@@ -196,6 +206,14 @@ type
     function TryStart(const Context: IMarkdownBlockParserContext): TMarkdownBlockStart;
   end;
 
+  TMathBlockStarter = class(TInterfacedObject, IMarkdownBlockParser)
+  public
+    const
+      MathParserName = 'math';
+    function GetName: string;
+    function TryStart(const Context: IMarkdownBlockParserContext): TMarkdownBlockStart;
+  end;
+
 implementation
 
 uses
@@ -213,6 +231,25 @@ begin
   FHtmlScanner := THtmlBlockScanner.Create;
   FReferenceParser := TLinkReferenceParser.Create;
   FReferenceMap := TLinkReferenceMap.Create;
+  FMathEnabled := HasMathBlockParser(Configuration);
+end;
+
+// The ```math fence alias and the table interruption on a $$ line only make
+// sense once the math extension is part of the pipeline; without it a fence
+// tagged math stays an ordinary code block.
+class function TBlockParser.HasMathBlockParser(const Configuration: TMarkdownPipelineConfiguration): Boolean;
+begin
+  for var Registration in Configuration.BlockParsers do
+  begin
+    const IsMathParser = (Registration.Parser.Name = TMathBlockStarter.MathParserName);
+    if IsMathParser then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
+
+  Result := False;
 end;
 
 destructor TBlockParser.Destroy;
@@ -339,7 +376,7 @@ begin
       Result := ContinueBlockQuote;
     TMarkdownNodeKind.ListItem:
       Result := ContinueListItem(Block);
-    TMarkdownNodeKind.CodeBlock:
+    TMarkdownNodeKind.CodeBlock, TMarkdownNodeKind.Math:
       Result := ContinueCodeBlock(Block);
     TMarkdownNodeKind.HtmlBlock:
       Result := ContinueHtmlBlock(Block);
@@ -362,7 +399,10 @@ end;
 function TBlockParser.ContinueBlockQuote: TContinueResult;
 begin
   if not TryConsumeBlockQuoteMarker then
-    Exit(TContinueResult.Rejected);
+  begin
+    Result := TContinueResult.Rejected;
+    Exit;
+  end;
 
   Result := TContinueResult.Continued;
 end;
@@ -373,11 +413,15 @@ begin
   begin
     const IsEmptyItem = (Block.Children.Count = 0);
     if IsEmptyItem then
-      Exit(TContinueResult.Rejected);
+    begin
+      Result := TContinueResult.Rejected;
+      Exit;
+    end;
 
     FScanner.AdvanceNextNonSpace;
 
-    Exit(TContinueResult.Continued);
+    Result := TContinueResult.Continued;
+    Exit;
   end;
 
   const RequiredIndent = Block.ListData.MarkerOffset + Block.ListData.Padding;
@@ -385,7 +429,8 @@ begin
   begin
     FScanner.AdvanceOffset(RequiredIndent, True);
 
-    Exit(TContinueResult.Continued);
+    Result := TContinueResult.Continued;
+    Exit;
   end;
 
   Result := TContinueResult.Rejected;
@@ -401,7 +446,8 @@ begin
     begin
       FinalizeBlock(Block);
 
-      Exit(TContinueResult.Consumed);
+      Result := TContinueResult.Consumed;
+      Exit;
     end;
 
     var Remaining := Block.FenceOffset;
@@ -412,21 +458,24 @@ begin
       Dec(Remaining);
     end;
 
-    Exit(TContinueResult.Continued);
+    Result := TContinueResult.Continued;
+    Exit;
   end;
 
   if FScanner.Indent >= CodeIndent then
   begin
     FScanner.AdvanceOffset(CodeIndent, True);
 
-    Exit(TContinueResult.Continued);
+    Result := TContinueResult.Continued;
+    Exit;
   end;
 
   if FBlank then
   begin
     FScanner.AdvanceNextNonSpace;
 
-    Exit(TContinueResult.Continued);
+    Result := TContinueResult.Continued;
+    Exit;
   end;
 
   Result := TContinueResult.Rejected;
@@ -445,7 +494,10 @@ begin
   end;
 
   if RunLength < Block.FenceLength then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   while (Index <= Length(Line)) and TLineScanner.IsSpaceOrTab(Line[Index]) do
   begin
@@ -459,7 +511,10 @@ function TBlockParser.ContinueHtmlBlock(const Block: TStagingBlock): TContinueRe
 begin
   const EndsHere = FBlank and THtmlBlockScanner.EndsAtBlankLine(Block.HtmlKind);
   if EndsHere then
-    Exit(TContinueResult.Rejected);
+  begin
+    Result := TContinueResult.Rejected;
+    Exit;
+  end;
 
   Result := TContinueResult.Continued;
 end;
@@ -467,10 +522,16 @@ end;
 function TBlockParser.ContinueTable: TContinueResult;
 begin
   if FBlank then
-    Exit(TContinueResult.Rejected);
+  begin
+    Result := TContinueResult.Rejected;
+    Exit;
+  end;
 
   if TableRowIsInterrupted then
-    Exit(TContinueResult.Rejected);
+  begin
+    Result := TContinueResult.Rejected;
+    Exit;
+  end;
 
   Result := TContinueResult.Continued;
 end;
@@ -478,23 +539,75 @@ end;
 function TBlockParser.TableRowIsInterrupted: Boolean;
 begin
   if FScanner.Indent >= CodeIndent then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   if FScanner.NextChar = GreaterThanChar then
-    Exit(True);
+  begin
+    Result := True;
+    Exit;
+  end;
 
   var Level: Integer;
   var Content: string;
   if TryMatchAtxHeading(Level, Content) then
-    Exit(True);
+  begin
+    Result := True;
+    Exit;
+  end;
 
   if IsThematicBreakLine then
-    Exit(True);
+  begin
+    Result := True;
+    Exit;
+  end;
 
   if IsFenceOpeningLine then
-    Exit(True);
+  begin
+    Result := True;
+    Exit;
+  end;
+
+  const IsMathFence = FMathEnabled and IsMathFenceLine;
+  if IsMathFence then
+  begin
+    Result := True;
+    Exit;
+  end;
 
   Result := IsListMarkerLine;
+end;
+
+// A math fence is a line holding exactly two dollars and nothing else but
+// whitespace. "$$x$$" on one line is inline display math, not a block, so
+// that "$$a$$ and $$b$$" does not swallow the rest of the paragraph.
+function TBlockParser.IsMathFenceLine: Boolean;
+begin
+  if FScanner.NextChar <> Dollar then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  const Line = FScanner.Line;
+  var Index := FScanner.NextNonSpaceIndex;
+  var RunLength := 0;
+
+  while (Index <= Length(Line)) and (Line[Index] = Dollar) do
+  begin
+    Inc(RunLength);
+    Inc(Index);
+  end;
+
+  if RunLength <> MathFenceLength then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  Result := FScanner.IsBlankFrom(Index);
 end;
 
 function TBlockParser.IsFenceOpeningLine: Boolean;
@@ -502,7 +615,10 @@ begin
   const Marker = FScanner.NextChar;
   const IsFenceChar = (Marker = BacktickChar) or (Marker = TildeChar);
   if not IsFenceChar then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Line = FScanner.Line;
   var Index := FScanner.NextNonSpaceIndex;
@@ -515,10 +631,16 @@ begin
   end;
 
   if RunLength < MinFenceLength then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   if Marker = BacktickChar then
-    Exit(Pos(BacktickChar, Line, Index) = 0);
+  begin
+    Result := Pos(BacktickChar, Line, Index) = 0;
+    Exit;
+  end;
 
   Result := True;
 end;
@@ -531,14 +653,18 @@ begin
   begin
     const AfterBullet = FScanner.CharAt(FScanner.NextNonSpaceIndex + 1);
 
-    Exit((AfterBullet = #0) or TLineScanner.IsSpaceOrTab(AfterBullet));
+    Result := (AfterBullet = #0) or TLineScanner.IsSpaceOrTab(AfterBullet);
+    Exit;
   end;
 
   var Number: Integer;
   var DigitCount: Integer;
   var DelimiterIndex: Integer;
   if not TryScanOrderedMarker(Number, DigitCount, DelimiterIndex) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const AfterDelimiter = FScanner.CharAt(DelimiterIndex + 1);
   Result := (AfterDelimiter = #0) or TLineScanner.IsSpaceOrTab(AfterDelimiter);
@@ -596,7 +722,10 @@ end;
 function TBlockParser.TryStartBlockQuote: TMarkdownBlockStart;
 begin
   if not TryConsumeBlockQuoteMarker then
-    Exit(TMarkdownBlockStart.NoMatch);
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
 
   CloseUnmatchedBlocks;
   AddChild(TMarkdownNodeKind.BlockQuote);
@@ -608,7 +737,10 @@ function TBlockParser.TryConsumeBlockQuoteMarker: Boolean;
 begin
   const HasMarker = (FScanner.Indent < CodeIndent) and (FScanner.NextChar = GreaterThanChar);
   if not HasMarker then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   FScanner.AdvanceNextNonSpace;
   FScanner.AdvanceOffset(1, False);
@@ -622,13 +754,19 @@ end;
 function TBlockParser.TryStartAtxHeading: TMarkdownBlockStart;
 begin
   if FScanner.Indent >= CodeIndent then
-    Exit(TMarkdownBlockStart.NoMatch);
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
 
   var Level: Integer;
   var Content: string;
 
   if not TryMatchAtxHeading(Level, Content) then
-    Exit(TMarkdownBlockStart.NoMatch);
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
 
   FScanner.AdvanceNextNonSpace;
   FScanner.AdvanceToLineEnd;
@@ -656,12 +794,18 @@ begin
 
   const ValidLevel = (Level >= 1) and (Level <= MaxHeadingLevel);
   if not ValidLevel then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const AtLineEnd = (Index > Length(Line));
   const HasSpaceAfter = (not AtLineEnd) and TLineScanner.IsSpaceOrTab(Line[Index]);
   if not (AtLineEnd or HasSpaceAfter) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const RawContent = FScanner.TextFrom(Index).Trim(TrimChars);
   Content := StripAtxClosingSequence(RawContent);
@@ -679,15 +823,24 @@ begin
 
   const RunLength = Length(Value) - Index;
   if RunLength = 0 then
-    Exit(Value);
+  begin
+    Result := Value;
+    Exit;
+  end;
 
   const IsEntireContent = (Index = 0);
   if IsEntireContent then
-    Exit('');
+  begin
+    Result := '';
+    Exit;
+  end;
 
   const PrecededBySpace = TLineScanner.IsSpaceOrTab(Value[Index]);
   if not PrecededBySpace then
-    Exit(Value);
+  begin
+    Result := Value;
+    Exit;
+  end;
 
   Result := Copy(Value, 1, Index).TrimRight(TrimChars);
 end;
@@ -695,12 +848,18 @@ end;
 function TBlockParser.TryStartFencedCode: TMarkdownBlockStart;
 begin
   if FScanner.Indent >= CodeIndent then
-    Exit(TMarkdownBlockStart.NoMatch);
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
 
   const Marker = FScanner.NextChar;
   const IsFenceChar = (Marker = BacktickChar) or (Marker = TildeChar);
   if not IsFenceChar then
-    Exit(TMarkdownBlockStart.NoMatch);
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
 
   const Line = FScanner.Line;
   var Index := FScanner.NextNonSpaceIndex;
@@ -713,13 +872,19 @@ begin
   end;
 
   if RunLength < MinFenceLength then
-    Exit(TMarkdownBlockStart.NoMatch);
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
 
   if Marker = BacktickChar then
   begin
     const RestContainsBacktick = (Pos(BacktickChar, Line, Index) > 0);
     if RestContainsBacktick then
-      Exit(TMarkdownBlockStart.NoMatch);
+    begin
+      Result := TMarkdownBlockStart.NoMatch;
+      Exit;
+    end;
   end;
 
   const FenceIndent = FScanner.Indent;
@@ -737,11 +902,46 @@ begin
   Result := TMarkdownBlockStart.Leaf;
 end;
 
+// The block reuses the fence bookkeeping of a code block: the dollar is the
+// fence character and two of them close it, so ContinueCodeBlock recognises
+// the closing line without knowing about math.
+function TBlockParser.TryStartMathBlock: TMarkdownBlockStart;
+begin
+  if FScanner.Indent >= CodeIndent then
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
+
+  if not IsMathFenceLine then
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
+
+  const FenceIndent = FScanner.Indent;
+  CloseUnmatchedBlocks;
+
+  const MathBlock = AddChild(TMarkdownNodeKind.Math);
+  MathBlock.IsFenced := True;
+  MathBlock.FenceChar := Dollar;
+  MathBlock.FenceLength := MathFenceLength;
+  MathBlock.FenceOffset := FenceIndent;
+
+  FScanner.AdvanceNextNonSpace;
+  FScanner.AdvanceToLineEnd;
+
+  Result := TMarkdownBlockStart.Leaf;
+end;
+
 function TBlockParser.TryStartHtmlBlock(const Container: TStagingBlock): TMarkdownBlockStart;
 begin
   const MayStart = (FScanner.Indent < CodeIndent) and (FScanner.NextChar = LessThanChar);
   if not MayStart then
-    Exit(TMarkdownBlockStart.NoMatch);
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
 
   const MaybeLazyParagraph = (not FAllClosed) and (not FBlank) and
     (FTip.Kind = TMarkdownNodeKind.Paragraph);
@@ -750,7 +950,10 @@ begin
 
   var HtmlKind: THtmlBlockKind;
   if not FHtmlScanner.TryMatchStart(LineRest, AllowInterruptingKind, HtmlKind) then
-    Exit(TMarkdownBlockStart.NoMatch);
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
 
   CloseUnmatchedBlocks;
 
@@ -764,18 +967,27 @@ function TBlockParser.TryStartSetextHeading(const Container: TStagingBlock): TMa
 begin
   const MayStart = (FScanner.Indent < CodeIndent) and (Container.Kind = TMarkdownNodeKind.Paragraph);
   if not MayStart then
-    Exit(TMarkdownBlockStart.NoMatch);
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
 
   var Level: Integer;
   if not TryMatchSetextUnderline(Level) then
-    Exit(TMarkdownBlockStart.NoMatch);
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
 
   CloseUnmatchedBlocks;
   StripLeadingReferences(Container);
 
   const HasContent = (Container.Content.Length > 0);
   if not HasContent then
-    Exit(TMarkdownBlockStart.NoMatch);
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
 
   Container.Kind := TMarkdownNodeKind.Heading;
   Container.HeadingLevel := Level;
@@ -794,7 +1006,10 @@ begin
   else if Marker = DashChar then
     Level := 2
   else
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Line = FScanner.Line;
   var Index := FScanner.NextNonSpaceIndex;
@@ -816,22 +1031,34 @@ function TBlockParser.TryStartTable(const Container: TStagingBlock): TMarkdownBl
 begin
   const MayStart = (FScanner.Indent < CodeIndent) and (Container.Kind = TMarkdownNodeKind.Paragraph);
   if not MayStart then
-    Exit(TMarkdownBlockStart.NoMatch);
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
 
   var Alignments: TArray<TMarkdownTableColumnAlignment>;
   if not TryParseTableDelimiterRow(FScanner.TextFrom(FScanner.NextNonSpaceIndex), Alignments) then
-    Exit(TMarkdownBlockStart.NoMatch);
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
 
   const HeaderContent = Container.Content.ToString;
   const NewlinePosition = Pos(LineFeed, HeaderContent);
   const IsSingleLineHeader = (NewlinePosition = Length(HeaderContent)) and (NewlinePosition > 1);
   if not IsSingleLineHeader then
-    Exit(TMarkdownBlockStart.NoMatch);
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
 
   const HeaderCells = SplitTableRow(Copy(HeaderContent, 1, NewlinePosition - 1));
   const ColumnsMatch = (Length(HeaderCells) = Length(Alignments));
   if not ColumnsMatch then
-    Exit(TMarkdownBlockStart.NoMatch);
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
 
   CloseUnmatchedBlocks;
   Container.Kind := TMarkdownNodeKind.Table;
@@ -847,14 +1074,20 @@ begin
   const Cells = SplitTableRow(Line);
   const HasCells = (Length(Cells) > 0);
   if not HasCells then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   SetLength(Alignments, Length(Cells));
 
   for var Index := 0 to High(Cells) do
   begin
     if not TryParseTableDelimiterCell(Cells[Index], Alignments[Index]) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
   end;
 
   Result := True;
@@ -866,7 +1099,10 @@ begin
   Alignment := TMarkdownTableColumnAlignment.None;
 
   if Cell = '' then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var StartIndex := 1;
   var EndIndex := Length(Cell);
@@ -881,12 +1117,18 @@ begin
 
   const HasDashes = (EndIndex >= StartIndex);
   if not HasDashes then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   for var Index := StartIndex to EndIndex do
   begin
     if Cell[Index] <> DashChar then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
   end;
 
   if HasLeadingColon and HasTrailingColon then
@@ -961,7 +1203,10 @@ function TBlockParser.TryStartThematicBreak: TMarkdownBlockStart;
 begin
   const IsBreak = (FScanner.Indent < CodeIndent) and IsThematicBreakLine;
   if not IsBreak then
-    Exit(TMarkdownBlockStart.NoMatch);
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
 
   CloseUnmatchedBlocks;
   AddChild(TMarkdownNodeKind.ThematicBreak);
@@ -975,7 +1220,10 @@ begin
   const Marker = FScanner.NextChar;
   const IsMarker = (Marker = AsteriskChar) or (Marker = DashChar) or (Marker = UnderscoreChar);
   if not IsMarker then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const IsScanCurrent = (FThematicBreakScan.Marker = Marker);
   if not IsScanCurrent then
@@ -986,7 +1234,10 @@ begin
   // such as "- - - - x", and it costs nothing after the first scan.
   const RunIsBroken = (FThematicBreakScan.LastForeignIndex >= FScanner.NextNonSpaceIndex);
   if RunIsBroken then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var MarkerCount := 0;
   const Line = FScanner.Line;
@@ -1025,11 +1276,17 @@ function TBlockParser.TryStartListItem(const Container: TStagingBlock): TMarkdow
 begin
   const MayStart = (FScanner.Indent < CodeIndent) or (Container.Kind = TMarkdownNodeKind.List);
   if not MayStart then
-    Exit(TMarkdownBlockStart.NoMatch);
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
 
   var MarkerData: TListData;
   if not TryParseListMarker(Container, MarkerData) then
-    Exit(TMarkdownBlockStart.NoMatch);
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
 
   CloseUnmatchedBlocks;
 
@@ -1051,21 +1308,33 @@ begin
   MarkerData := Default(TListData);
 
   if FScanner.Indent >= CodeIndent then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var MarkerLength: Integer;
   if not TryMatchListMarker(Container, MarkerData, MarkerLength) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const AfterMarker = FScanner.CharAt(FScanner.NextNonSpaceIndex + MarkerLength);
   const HasValidTerminator = (AfterMarker = #0) or TLineScanner.IsSpaceOrTab(AfterMarker);
   if not HasValidTerminator then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const InterruptsParagraphWithBlank = (Container.Kind = TMarkdownNodeKind.Paragraph) and
     FScanner.IsBlankFrom(FScanner.NextNonSpaceIndex + MarkerLength);
   if InterruptsParagraphWithBlank then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   FScanner.AdvanceNextNonSpace;
   FScanner.AdvanceOffset(MarkerLength, True);
@@ -1089,18 +1358,25 @@ begin
     MarkerData.BulletChar := Marker;
     MarkerLength := 1;
 
-    Exit(True);
+    Result := True;
+    Exit;
   end;
 
   var Number: Integer;
   var DigitCount: Integer;
   var DelimiterIndex: Integer;
   if not TryScanOrderedMarker(Number, DigitCount, DelimiterIndex) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const CanInterrupt = (Container.Kind <> TMarkdownNodeKind.Paragraph) or (Number = 1);
   if not CanInterrupt then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   MarkerData.IsOrdered := True;
   MarkerData.StartNumber := Number;
@@ -1124,15 +1400,24 @@ begin
     Inc(Index);
 
     if DigitCount > MaxOrderedDigits then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
   end;
 
   if DigitCount = 0 then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const HasDelimiter = (Index <= Length(Line)) and ((Line[Index] = DotChar) or (Line[Index] = RightParenChar));
   if not HasDelimiter then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   DelimiterIndex := Index;
   Result := True;
@@ -1163,7 +1448,10 @@ begin
 
   const UseSingleSpacePadding = (SpacesAfterMarker >= MaxMarkerPaddingColumns) or (SpacesAfterMarker < 1) or BlankItem;
   if not UseSingleSpacePadding then
-    Exit(MarkerLength + SpacesAfterMarker);
+  begin
+    Result := MarkerLength + SpacesAfterMarker;
+    Exit;
+  end;
 
   FScanner.RestoreState(SavedState);
 
@@ -1178,7 +1466,10 @@ begin
   const StartsCode = (FScanner.Indent >= CodeIndent) and (FTip.Kind <> TMarkdownNodeKind.Paragraph) and
     (not FBlank);
   if not StartsCode then
-    Exit(TMarkdownBlockStart.NoMatch);
+  begin
+    Result := TMarkdownBlockStart.NoMatch;
+    Exit;
+  end;
 
   FScanner.AdvanceOffset(CodeIndent, True);
   CloseUnmatchedBlocks;
@@ -1229,8 +1520,9 @@ procedure TBlockParser.UpdateLastLineBlank(const Container: TStagingBlock);
 begin
   const IsFreshEmptyListItem = (Container.Kind = TMarkdownNodeKind.ListItem) and
     (Container.Children.Count = 0) and (Container.StartLine = FLineNumber);
-  const IgnoresBlank = (Container.Kind = TMarkdownNodeKind.BlockQuote) or
-    ((Container.Kind = TMarkdownNodeKind.CodeBlock) and Container.IsFenced) or IsFreshEmptyListItem;
+  const IsFencedBlock = ((Container.Kind = TMarkdownNodeKind.CodeBlock) or (Container.Kind = TMarkdownNodeKind.Math))
+    and Container.IsFenced;
+  const IgnoresBlank = (Container.Kind = TMarkdownNodeKind.BlockQuote) or IsFencedBlock or IsFreshEmptyListItem;
   const LastLineBlank = FBlank and (not IgnoresBlank);
 
   var Ancestor := Container;
@@ -1295,7 +1587,7 @@ end;
 class function TBlockParser.AcceptsLines(const Kind: TMarkdownNodeKind): Boolean;
 begin
   Result := (Kind = TMarkdownNodeKind.Paragraph) or (Kind = TMarkdownNodeKind.CodeBlock) or
-    (Kind = TMarkdownNodeKind.HtmlBlock) or (Kind = TMarkdownNodeKind.Table);
+    (Kind = TMarkdownNodeKind.HtmlBlock) or (Kind = TMarkdownNodeKind.Table) or (Kind = TMarkdownNodeKind.Math);
 end;
 
 procedure TBlockParser.FinalizeBlock(const Block: TStagingBlock);
@@ -1317,6 +1609,8 @@ begin
       ShouldUnlink := FinalizeParagraph(Block);
     TMarkdownNodeKind.CodeBlock:
       FinalizeCodeBlock(Block);
+    TMarkdownNodeKind.Math:
+      FinalizeMathBlock(Block);
     TMarkdownNodeKind.HtmlBlock:
       FinalizeHtmlBlock(Block);
     TMarkdownNodeKind.List:
@@ -1372,7 +1666,10 @@ begin
   for var Current in Value do
   begin
     if not TMarkdownUnescape.IsMarkdownWhitespace(Current) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
   end;
 
   Result := True;
@@ -1401,6 +1698,24 @@ begin
   Block.Literal := Copy(Content, NewlinePosition + 1, MaxInt);
 end;
 
+// The first line of the content is whatever followed the opening fence, which
+// is whitespace at most, so the formula starts after it. Trailing line feeds
+// carry no meaning in a formula and would only pad the rendered block.
+procedure TBlockParser.FinalizeMathBlock(const Block: TStagingBlock);
+begin
+  const Content = Block.Content.ToString;
+  const NewlinePosition = Pos(LineFeed, Content);
+
+  if NewlinePosition = 0 then
+  begin
+    Block.Literal := '';
+    Exit;
+  end;
+
+  const Inner = Copy(Content, NewlinePosition + 1, MaxInt);
+  Block.Literal := Inner.TrimRight([LineFeed]);
+end;
+
 procedure TBlockParser.FinalizeHtmlBlock(const Block: TStagingBlock);
 begin
   Block.Literal := StripTrailingBlankLines(Block.Content.ToString, False);
@@ -1427,7 +1742,10 @@ begin
   end;
 
   if FirstTrailingNewline = 0 then
-    Exit(Value);
+  begin
+    Result := Value;
+    Exit;
+  end;
 
   Result := Copy(Value, 1, FirstTrailingNewline - 1);
 
@@ -1455,7 +1773,10 @@ begin
     const HasNextItem = (ItemIndex < ItemCount - 1);
 
     if Item.EndsWithBlankLine and HasNextItem then
-      Exit(True);
+    begin
+      Result := True;
+      Exit;
+    end;
 
     const SubCount = Item.Children.Count;
 
@@ -1465,7 +1786,10 @@ begin
       const HasNextBlock = HasNextItem or (SubIndex < SubCount - 1);
 
       if SubItem.EndsWithBlankLine and HasNextBlock then
-        Exit(True);
+      begin
+        Result := True;
+        Exit;
+      end;
     end;
   end;
 
@@ -1531,7 +1855,9 @@ begin
         AttachInlines(Result, Block.Content.ToString, False);
       end;
     TMarkdownNodeKind.CodeBlock:
-      Result := TMarkdownCodeBlockNode.Create(Block.Literal, Block.InfoString, Block.IsFenced);
+      Result := CreateCodeBlockNode(Block);
+    TMarkdownNodeKind.Math:
+      Result := TMarkdownMathNode.Create(Block.Literal, True);
     TMarkdownNodeKind.HtmlBlock:
       Result := TMarkdownTextNode.Create(TMarkdownNodeKind.HtmlBlock, Block.Literal);
     TMarkdownNodeKind.Table:
@@ -1544,6 +1870,32 @@ begin
   end;
 
   Result.SetSegment(TMarkdownSegment.Create(Block.StartOffset, Block.EndOffset));
+end;
+
+function TBlockParser.CreateCodeBlockNode(const Block: TStagingBlock): TMarkdownAstNode;
+begin
+  const IsMathFence = FMathEnabled and Block.IsFenced and IsMathInfoString(Block.InfoString);
+  if IsMathFence then
+  begin
+    Result := TMarkdownMathNode.Create(Block.Literal.TrimRight([LineFeed]), True);
+    Exit;
+  end;
+
+  Result := TMarkdownCodeBlockNode.Create(Block.Literal, Block.InfoString, Block.IsFenced);
+end;
+
+class function TBlockParser.IsMathInfoString(const InfoString: string): Boolean;
+begin
+  const Words = InfoString.Split(InfoSplitChars, TStringSplitOptions.ExcludeEmpty);
+
+  const HasLanguage = (Length(Words) > 0);
+  if not HasLanguage then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  Result := SameText(Words[0], MathInfoString);
 end;
 
 function TBlockParser.CreateTableNode(const Block: TStagingBlock): TMarkdownAstNode;
@@ -1664,6 +2016,18 @@ begin
   const Engine = (Context as TBlockParserContext).Engine;
 
   Result := Engine.TryStartTable(Engine.FStartContainer);
+end;
+
+function TMathBlockStarter.GetName: string;
+begin
+  Result := MathParserName;
+end;
+
+function TMathBlockStarter.TryStart(const Context: IMarkdownBlockParserContext): TMarkdownBlockStart;
+begin
+  const Engine = (Context as TBlockParserContext).Engine;
+
+  Result := Engine.TryStartMathBlock;
 end;
 
 end.

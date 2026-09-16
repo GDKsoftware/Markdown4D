@@ -9,7 +9,8 @@ uses
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.DisplayList,
   Markdown4D.Theme,
-  Markdown4D.Mermaid.Corpus;
+  Markdown4D.Mermaid.Corpus,
+  Markdown4D.Extensions.Interfaces;
 
 type
   [TestFixture]
@@ -25,6 +26,14 @@ type
       FCorpus: TMermaidCorpus;
     function ModelItems(const CaseName: string): TArray<IDisplayItem>;
     function ItemsForDiagram(const Diagram: string): TArray<IDisplayItem>;
+    class function MermaidPipeline: IMarkdownPipeline;
+    class function CountKind(const Items: TArray<IDisplayItem>; const Kind: TDisplayItemKind): Integer;
+    class function DistinctValueCount(const Values: TArray<Single>; const Tolerance: Single): Integer;
+    class function RectanglesOverlap(const A, B: TLayoutRectF): Boolean;
+    class function FindFirstPolygon(const Items: TArray<IDisplayItem>; out Polygon: IDisplayPolygon): Boolean;
+    class function FindFirstRectangle(const Items: TArray<IDisplayItem>; out Rectangle: IDisplayRectangle): Boolean;
+    class function FindFirstWedge(const Items: TArray<IDisplayItem>; out Wedge: IDisplayWedge): Boolean;
+    class function FirstNodeShapeWidth(const Items: TArray<IDisplayItem>): Single;
 
   public
     [SetupFixture]
@@ -101,35 +110,18 @@ uses
   Markdown4D,
   Markdown4D.Defines,
   Markdown4D.Ast.Interfaces,
-  Markdown4D.Extensions.Interfaces,
   Markdown4D.Pipeline,
   Markdown4D.Layout.FakeMeasurer,
   Markdown4D.Extensions.Mermaid,
-  Markdown4D.Extensions.Mermaid.Layout;
+  Markdown4D.Extensions.Mermaid.Layout,
+  Markdown4D.Tests.Pipeline.Helpers;
 
-function MermaidPipeline: IMarkdownPipeline;
+class function TMermaidLayoutTests.MermaidPipeline: IMarkdownPipeline;
 begin
   Result := TMarkdownPipeline.Create.UseGfm.Use(TMermaidExtension.Create).UnsafeHtml.Build;
 end;
 
-function FindFirstCodeBlock(const Document: IMarkdownDocument; out Code: IMarkdownCodeBlock): Boolean;
-begin
-  Code := nil;
-
-  for var Index := 0 to Document.ChildCount - 1 do
-  begin
-    const Child = Document.Children[Index];
-    if Child.Kind = TMarkdownNodeKind.CodeBlock then
-    begin
-      Code := Child as IMarkdownCodeBlock;
-      Exit(True);
-    end;
-  end;
-
-  Result := False;
-end;
-
-function CountKind(const Items: TArray<IDisplayItem>; const Kind: TDisplayItemKind): Integer;
+class function TMermaidLayoutTests.CountKind(const Items: TArray<IDisplayItem>; const Kind: TDisplayItemKind): Integer;
 begin
   Result := 0;
 
@@ -140,7 +132,7 @@ begin
   end;
 end;
 
-function DistinctValueCount(const Values: TArray<Single>; const Tolerance: Single): Integer;
+class function TMermaidLayoutTests.DistinctValueCount(const Values: TArray<Single>; const Tolerance: Single): Integer;
 begin
   Result := 0;
 
@@ -158,56 +150,68 @@ begin
   end;
 end;
 
-function RectanglesOverlap(const A, B: TLayoutRectF): Boolean;
+class function TMermaidLayoutTests.RectanglesOverlap(const A, B: TLayoutRectF): Boolean;
 begin
   Result := (A.Left < B.Right) and (B.Left < A.Right) and (A.Top < B.Bottom) and (B.Top < A.Bottom);
 end;
 
-function FindFirstPolygon(const Items: TArray<IDisplayItem>; out Polygon: IDisplayPolygon): Boolean;
+class function TMermaidLayoutTests.FindFirstPolygon(const Items: TArray<IDisplayItem>; out Polygon: IDisplayPolygon): Boolean;
 begin
   Polygon := nil;
 
   for var Item in Items do
   begin
     if Supports(Item, IDisplayPolygon, Polygon) then
-      Exit(True);
+    begin
+      Result := True;
+      Exit;
+    end;
   end;
 
   Result := False;
 end;
 
-function FindFirstRectangle(const Items: TArray<IDisplayItem>; out Rectangle: IDisplayRectangle): Boolean;
+class function TMermaidLayoutTests.FindFirstRectangle(const Items: TArray<IDisplayItem>; out Rectangle: IDisplayRectangle): Boolean;
 begin
   Rectangle := nil;
 
   for var Item in Items do
   begin
     if Supports(Item, IDisplayRectangle, Rectangle) then
-      Exit(True);
+    begin
+      Result := True;
+      Exit;
+    end;
   end;
 
   Result := False;
 end;
 
-function FindFirstWedge(const Items: TArray<IDisplayItem>; out Wedge: IDisplayWedge): Boolean;
+class function TMermaidLayoutTests.FindFirstWedge(const Items: TArray<IDisplayItem>; out Wedge: IDisplayWedge): Boolean;
 begin
   Wedge := nil;
 
   for var Item in Items do
   begin
     if Supports(Item, IDisplayWedge, Wedge) then
-      Exit(True);
+    begin
+      Result := True;
+      Exit;
+    end;
   end;
 
   Result := False;
 end;
 
-function FirstNodeShapeWidth(const Items: TArray<IDisplayItem>): Single;
+class function TMermaidLayoutTests.FirstNodeShapeWidth(const Items: TArray<IDisplayItem>): Single;
 begin
   for var Item in Items do
   begin
     if (Item.Kind = TDisplayItemKind.Rectangle) or (Item.Kind = TDisplayItemKind.Polygon) then
-      Exit(Item.Bounds.Width);
+    begin
+      Result := Item.Bounds.Width;
+      Exit;
+    end;
   end;
 
   Result := 0;
@@ -233,7 +237,7 @@ begin
   const Document = MermaidPipeline.Parse(Item.Markdown);
 
   var Code: IMarkdownCodeBlock;
-  Assert.IsTrue(FindFirstCodeBlock(Document, Code), Format('Case "%s" must expose a code block', [CaseName]));
+  Assert.IsTrue(TMarkdownTestPipelineHelpers.FindFirstCodeBlock(Document, Code), Format('Case "%s" must expose a code block', [CaseName]));
 
   var Model: IMermaidModel;
   Assert.IsTrue(TMermaidExtension.TryParse(Code, Model), Format('Case "%s" must parse into a mermaid model', [CaseName]));
@@ -248,7 +252,7 @@ begin
   const Document = MermaidPipeline.Parse(Markdown);
 
   var Code: IMarkdownCodeBlock;
-  Assert.IsTrue(FindFirstCodeBlock(Document, Code), 'Diagram must expose a code block');
+  Assert.IsTrue(TMarkdownTestPipelineHelpers.FindFirstCodeBlock(Document, Code), 'Diagram must expose a code block');
 
   var Model: IMermaidModel;
   Assert.IsTrue(TMermaidExtension.TryParse(Code, Model), 'Diagram must parse into a mermaid model');
@@ -508,10 +512,10 @@ begin
     if not Supports(Item, IDisplayLine, Line) then
       Continue;
 
-    const IsLevel = Abs(Line.StartPoint.Y - Line.EndPoint.Y) < 0.5;
+    const IsLevel = (Abs(Line.StartPoint.Y - Line.EndPoint.Y) < 0.5);
     const SpansLabel = (Min(Line.StartPoint.X, Line.EndPoint.X) <= LabelCenterX) and
       (Max(Line.StartPoint.X, Line.EndPoint.X) >= LabelCenterX);
-    const SitsOnLabelRow = Abs(Line.StartPoint.Y - LabelCenterY) < 12.0;
+    const SitsOnLabelRow = (Abs(Line.StartPoint.Y - LabelCenterY) < 12.0);
     if IsLevel and SpansLabel and SitsOnLabelRow then
     begin
       HasEdgeLine := True;

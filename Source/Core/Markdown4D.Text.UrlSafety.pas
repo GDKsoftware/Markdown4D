@@ -39,16 +39,25 @@ begin
   for var Scheme in DangerousSchemes do
   begin
     if Probe.StartsWith(Scheme) then
-      Exit(True);
+    begin
+      Result := True;
+      Exit;
+    end;
   end;
 
   if not Probe.StartsWith(DataScheme) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   for var Prefix in SafeDataPrefixes do
   begin
     if Probe.StartsWith(Prefix) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
   end;
 
   Result := True;
@@ -57,7 +66,10 @@ end;
 class function TMarkdownUrlSafety.Sanitized(const Url: string): string;
 begin
   if IsDangerous(Url) then
-    Exit('');
+  begin
+    Result := '';
+    Exit;
+  end;
 
   Result := Url;
 end;

@@ -293,7 +293,8 @@ begin
     if SameText(Existing.FileName, FileName) then
     begin
       Position := Existing;
-      Exit(True);
+      Result := True;
+      Exit;
     end;
   end;
 

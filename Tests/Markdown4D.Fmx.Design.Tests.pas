@@ -63,7 +63,10 @@ class function TMarkdownFmxDesignTests.DistinctColorCount(const Bitmap: TBitmap)
 begin
   var Data: TBitmapData;
   if not Bitmap.Map(TMapAccess.Read, Data) then
-    Exit(0);
+  begin
+    Result := 0;
+    Exit;
+  end;
 
   try
     const Seen = TDictionary<TAlphaColor, Boolean>.Create;

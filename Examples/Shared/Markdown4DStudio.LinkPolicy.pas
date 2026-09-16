@@ -52,16 +52,25 @@ begin
   const Candidate = Url.Trim;
 
   if Candidate = '' then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   // An in-document anchor is the viewer's business, never the shell's.
   if Candidate.StartsWith(FragmentSeparator) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   for var Scheme in OpenableSchemes do
   begin
     if Candidate.StartsWith(Scheme, True) then
-      Exit(True);
+    begin
+      Result := True;
+      Exit;
+    end;
   end;
 
   Result := False;
@@ -73,23 +82,38 @@ begin
   FileName := '';
 
   if DocumentFolder = '' then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Candidate = WithoutFragment(Url.Trim);
   if not LooksLikeDocumentPath(Candidate) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   try
     const FullPath = TPath.GetFullPath(TPath.Combine(DocumentFolder, Candidate));
 
     if not IsInsideFolder(FullPath, DocumentFolder) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     if not SameText(TPath.GetExtension(FullPath), DocumentExtension) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     if not TFile.Exists(FullPath) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
 
     FileName := FullPath;
     Result := True;
@@ -119,15 +143,24 @@ end;
 class function TPadLinkPolicy.LooksLikeDocumentPath(const Value: string): Boolean;
 begin
   if Value = '' then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   // Anything carrying a scheme belongs to MayOpen, and anything rooted, drive
   // relative or UNC reaches outside the folder the document came from.
   if Value.Contains(UrlSchemeSeparator) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   if Value.StartsWith(ForwardSlash) or Value.StartsWith(BackSlash) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Result := not TPath.IsPathRooted(Value);
 end;

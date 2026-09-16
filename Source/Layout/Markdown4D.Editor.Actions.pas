@@ -45,6 +45,7 @@ uses
   System.SysUtils,
   System.Math,
   System.Character,
+  System.Generics.Collections,
   Markdown4D.Defines;
 
 const
@@ -69,11 +70,19 @@ begin
     Exit;
   end;
 
-  var Lines: TArray<string> := [];
-  for var LineIndex := FirstLine to LastLine do
-    Lines := Lines + [Step + LineTextAt(Model, LineIndex)];
+  // A selection can span the whole document, so a TList avoids the O(n^2)
+  // cost of growing an array one line at a time.
+  const Lines = TList<string>.Create;
+  try
+    for var LineIndex := FirstLine to LastLine do
+    begin
+      Lines.Add(Step + LineTextAt(Model, LineIndex));
+    end;
 
-  ReplaceLines(Model, FirstLine, LastLine, Lines);
+    ReplaceLines(Model, FirstLine, LastLine, Lines.ToArray);
+  finally
+    Lines.Free;
+  end;
 end;
 
 class procedure TMarkdownEditorActions.Outdent(const Model: TMarkdownEditorModel; const IndentWidth: Integer);
@@ -82,22 +91,28 @@ begin
   const FirstLine = Model.LineIndexOfOffset(Model.SelectionStart);
   const LastLine = Model.LineIndexOfOffset(Max(SelectionEnd - 1, Model.SelectionStart));
 
-  var Lines: TArray<string> := [];
-  var Changed := False;
+  // A selection can span the whole document, so a TList avoids the O(n^2)
+  // cost of growing an array one line at a time.
+  const Lines = TList<string>.Create;
+  try
+    var Changed := False;
 
-  for var LineIndex := FirstLine to LastLine do
-  begin
-    const Original = LineTextAt(Model, LineIndex);
-    const Shortened = OutdentedLine(Original, Max(IndentWidth, 1));
+    for var LineIndex := FirstLine to LastLine do
+    begin
+      const Original = LineTextAt(Model, LineIndex);
+      const Shortened = OutdentedLine(Original, Max(IndentWidth, 1));
 
-    Changed := Changed or (Shortened <> Original);
-    Lines := Lines + [Shortened];
+      Changed := Changed or (Shortened <> Original);
+      Lines.Add(Shortened);
+    end;
+
+    if not Changed then
+      Exit;
+
+    ReplaceLines(Model, FirstLine, LastLine, Lines.ToArray);
+  finally
+    Lines.Free;
   end;
-
-  if not Changed then
-    Exit;
-
-  ReplaceLines(Model, FirstLine, LastLine, Lines);
 end;
 
 class procedure TMarkdownEditorActions.InsertLineBreak(const Model: TMarkdownEditorModel);
@@ -136,7 +151,10 @@ class function TMarkdownEditorActions.LineEndOffset(const Model: TMarkdownEditor
   const LineIndex: Integer): Integer;
 begin
   if LineIndex < Model.LineCount - 1 then
-    Exit(Model.OffsetOfLineStart(LineIndex + 1) - 1);
+  begin
+    Result := Model.OffsetOfLineStart(LineIndex + 1) - 1;
+    Exit;
+  end;
 
   Result := Length(Model.Text);
 end;
@@ -257,7 +275,10 @@ begin
   for var Index := Offset + 1 to Length(Line) do
   begin
     if not Line[Index].IsWhiteSpace then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
   end;
 
   Result := True;
@@ -266,7 +287,10 @@ end;
 class function TMarkdownEditorActions.OutdentedLine(const Line: string; const IndentWidth: Integer): string;
 begin
   if Line.StartsWith(Tab) then
-    Exit(Copy(Line, 2, Length(Line) - 1));
+  begin
+    Result := Copy(Line, 2, Length(Line) - 1);
+    Exit;
+  end;
 
   var Removable := 0;
   while (Removable < IndentWidth) and (Removable < Length(Line)) and (Line[Removable + 1] = Space) do

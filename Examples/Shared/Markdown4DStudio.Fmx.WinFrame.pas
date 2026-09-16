@@ -5,15 +5,23 @@ unit Markdown4DStudio.Fmx.WinFrame;
 interface
 
 uses
+  System.SysUtils,
   Winapi.Windows,
   FMX.Forms;
 
 type
+  // Raised by Install when it is asked to subclass a second, different window.
+  EFmxWinFrameError = class(Exception);
+
   /// <summary>
   /// Turns an FMX form on Windows into a borderless custom-frame window: the native
   /// caption is removed (WM_NCCALCSIZE), edge resizing is restored (WM_NCHITTEST),
   /// and a DWM drop shadow is re-applied. The form drives dragging and the window
   /// buttons itself; BeginDrag starts the system move loop so Aero Snap keeps working.
+  /// FPreviousWindowProc/FWindowHandle are class state rather than per instance,
+  /// because Markdown4DStudio FMX creates exactly one main window for the whole
+  /// process (see Markdown4DStudioFMX.dpr); Install refuses a second, different
+  /// window instead of silently overwriting the first window's saved WNDPROC.
   /// </summary>
   TFmxWinFrame = class
   strict private
@@ -52,7 +60,10 @@ begin
       end;
 
     WM_NCPAINT:
-      Exit(0);
+    begin
+      Result := 0;
+      Exit;
+    end;
 
     WM_NCCALCSIZE:
       if WParam <> 0 then
@@ -67,13 +78,17 @@ begin
           Dec(Params^.rgrc[0].Bottom, FrameY);
           Inc(Params^.rgrc[0].Top, FrameY);
         end;
-        Exit(0);
+        Result := 0;
+        Exit;
       end;
 
     WM_NCHITTEST:
       begin
         if IsZoomed(Wnd) then
-          Exit(HTCLIENT);
+        begin
+          Result := HTCLIENT;
+          Exit;
+        end;
 
         var WindowRect: TRect;
         GetWindowRect(Wnd, WindowRect);
@@ -85,16 +100,25 @@ begin
         const OnTop = Y < ResizeBorder;
         const OnBottom = Y >= WindowRect.Height - ResizeBorder;
 
-        if OnTop and OnLeft then Exit(HTTOPLEFT);
-        if OnTop and OnRight then Exit(HTTOPRIGHT);
-        if OnBottom and OnLeft then Exit(HTBOTTOMLEFT);
-        if OnBottom and OnRight then Exit(HTBOTTOMRIGHT);
-        if OnLeft then Exit(HTLEFT);
-        if OnRight then Exit(HTRIGHT);
-        if OnTop then Exit(HTTOP);
-        if OnBottom then Exit(HTBOTTOM);
-
-        Exit(HTCLIENT);
+        if OnTop and OnLeft then
+          Result := HTTOPLEFT
+        else if OnTop and OnRight then
+          Result := HTTOPRIGHT
+        else if OnBottom and OnLeft then
+          Result := HTBOTTOMLEFT
+        else if OnBottom and OnRight then
+          Result := HTBOTTOMRIGHT
+        else if OnLeft then
+          Result := HTLEFT
+        else if OnRight then
+          Result := HTRIGHT
+        else if OnTop then
+          Result := HTTOP
+        else if OnBottom then
+          Result := HTBOTTOM
+        else
+          Result := HTCLIENT;
+        Exit;
       end;
   end;
 
@@ -103,9 +127,18 @@ end;
 
 class function TFmxWinFrame.Install(const Form: TCommonCustomForm): Boolean;
 begin
-  FWindowHandle := FormToHWND(Form);
+  const NewWindowHandle = FormToHWND(Form);
+
+  const InstalledForOtherWindow = (FWindowHandle <> 0) and (FWindowHandle <> NewWindowHandle);
+  if InstalledForOtherWindow then
+    raise EFmxWinFrameError.Create('TFmxWinFrame.Install was already called for a different window; only one window can be subclassed at a time.');
+
+  FWindowHandle := NewWindowHandle;
   if FWindowHandle = 0 then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   var Style := GetWindowLong(FWindowHandle, GWL_STYLE);
   Style := Style or WS_THICKFRAME or WS_MINIMIZEBOX or WS_MAXIMIZEBOX or WS_CLIPCHILDREN;

@@ -74,7 +74,10 @@ end;
 function TLineScanner.NextChar: Char;
 begin
   if IsBlank then
-    Exit(#0);
+  begin
+    Result := #0;
+    Exit;
+  end;
 
   Result := FLine[FNextNonSpaceIndex];
 end;
@@ -83,7 +86,10 @@ function TLineScanner.CharAt(const Index: Integer): Char;
 begin
   const OutOfRange = (Index < 1) or (Index > Length(FLine));
   if OutOfRange then
-    Exit(#0);
+  begin
+    Result := #0;
+    Exit;
+  end;
 
   Result := FLine[Index];
 end;
@@ -152,7 +158,8 @@ begin
   begin
     const CharsToTab = ColumnAfterTab(FColumn) - FColumn;
 
-    Exit(StringOfChar(Space, CharsToTab) + Copy(FLine, FIndex + 1, MaxInt));
+    Result := StringOfChar(Space, CharsToTab) + Copy(FLine, FIndex + 1, MaxInt);
+    Exit;
   end;
 
   Result := Copy(FLine, FIndex, MaxInt);
@@ -171,7 +178,10 @@ begin
   for var Position := Index to Length(FLine) do
   begin
     if not IsSpaceOrTab(FLine[Position]) then
-      Exit(False);
+    begin
+      Result := False;
+      Exit;
+    end;
   end;
 
   Result := True;

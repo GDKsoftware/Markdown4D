@@ -48,17 +48,20 @@ uses
   Markdown4D,
   Markdown4D.Html.Subset,
   Markdown4D.Layout.ExtensionCanvas,
-  Markdown4D.Layout.Primitives;
+  Markdown4D.Layout.Primitives,
+  Markdown4D.Math.Layout;
 
 const
   HtmlSubsetCacheKey = 'markdown4d.html.subset';
+  InlineMathMarker = '$';
+  DisplayMathMarker = '$$';
 
 type
   TMarkdownFontStyleHelper = record helper for TMarkdownFontStyle
     function Equals(const Other: TMarkdownFontStyle): Boolean;
   end;
 
-  TInlineAtomKind = (WordToken, SpaceToken, HardBreakToken, ImageToken);
+  TInlineAtomKind = (WordToken, SpaceToken, HardBreakToken, ImageToken, MathToken);
 
   TInlineAtom = record
     Kind: TInlineAtomKind;
@@ -69,6 +72,11 @@ type
     StartOffset: Integer;
     Width: Single;
     Height: Single;
+    // A formula sits on the baseline with its own ascent and descent, so a
+    // tall fraction pushes the lines around it apart.
+    Ascent: Single;
+    Descent: Single;
+    Formula: IMathLayout;
     Source: string;
     AltText: string;
     CodeSpan: Boolean;
@@ -130,6 +138,9 @@ type
     procedure EmitCodeSpanChip(const RunBounds: TLayoutRectF);
     function SameRunStyle(const Atom: TInlineAtom): Boolean;
     procedure EmitImageItem(const Atom: TInlineAtom);
+    procedure EmitMathItem(const Atom: TInlineAtom);
+    procedure EmitMathSource(const Atom: TInlineAtom);
+    procedure MeasureLine(out MaxAscent, MaxDescent, MaxImageHeight: Single);
 
   public
     constructor Create(const Measurer: ITextMeasurer; const Items: TList<IDisplayItem>;
@@ -186,6 +197,8 @@ type
       const Style: TInlineStyle);
     procedure AppendHardBreakAtom(const Atoms: TList<TInlineAtom>);
     procedure AppendImageAtom(const Atoms: TList<TInlineAtom>; const Child: IMarkdownNode;
+      const Style: TInlineStyle);
+    procedure AppendMathAtom(const Atoms: TList<TInlineAtom>; const Child: IMarkdownNode;
       const Style: TInlineStyle);
     procedure HandleCustomInline(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
       const Child: IMarkdownNode; const Style: TInlineStyle);
@@ -277,6 +290,8 @@ type
     function HtmlBlockDocument(const Node: IMarkdownNode): IMarkdownDocument;
     procedure EmitHtmlBlock(const Command: TLayoutCommand);
     procedure EmitThematicBreak(const Command: TLayoutCommand);
+    procedure EmitMathBlock(const Command: TLayoutCommand);
+    class function MathSourceOf(const Math: IMarkdownMath; const AsBlock: Boolean): string;
     procedure LayoutTable(const Command: TLayoutCommand);
     function CollectInlineAtoms(const Container: IMarkdownNode; const BaseFont: TMarkdownFontStyle;
       const BaseColor: TLayoutColor): TList<TInlineAtom>;
@@ -621,7 +636,14 @@ begin
       PushList(Command);
     TMarkdownNodeKind.Table:
       LayoutTable(Command);
+    TMarkdownNodeKind.Math:
+      EmitMathBlock(Command);
   else
+    // PushBlock only ever enqueues genuine block-level nodes (document children,
+    // block-quote children, list-item children), and a registered block override
+    // is already handled above, so reaching here means an unrecognised node kind
+    // was pushed as a block: a programming error, not a document to render.
+    raise EMarkdownError.CreateFmt('Unhandled block node kind: %d', [Ord(Command.Node.Kind)]);
   end;
 end;
 
@@ -756,18 +778,27 @@ begin
 
   const HasFirstBlock = (ListItem.ChildCount > 0);
   if not HasFirstBlock then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const FirstBlock = ListItem.Children[0];
   const IsParagraph = (FirstBlock.Kind = TMarkdownNodeKind.Paragraph);
   const HasFirstInline = (FirstBlock.ChildCount > 0);
   if not (IsParagraph and HasFirstInline) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const FirstInline = FirstBlock.Children[0];
   const IsCustomInline = (FirstInline.Kind = TMarkdownNodeKind.CustomInline);
   if not IsCustomInline then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   const Candidate = FirstInline as IMarkdownCustomInline;
   const IsCheckedTask = (Candidate.NodeName = TGfmInlineParser.TaskCheckedNodeName);
@@ -917,7 +948,10 @@ begin
   for var Index := 1 to Length(Result) do
   begin
     if CharInSet(Result[Index], InfoWhitespace) then
-      Exit(Copy(Result, 1, Index - 1));
+    begin
+      Result := Copy(Result, 1, Index - 1);
+      Exit;
+    end;
   end;
 end;
 
@@ -968,6 +1002,52 @@ begin
   FItems.Add(TDisplayLine.Create(Bounds, Command.Node, StartPoint, EndPoint, FTheme.ThematicBreakColor, Thickness));
 
   FCurrentY := FCurrentY + Thickness;
+end;
+
+// A display formula is centred in the available width and set in display
+// style; one wider than the column starts at the left and runs on, the way
+// a code block does.
+procedure TLayoutWorker.EmitMathBlock(const Command: TLayoutCommand);
+begin
+  const Math = Command.Node as IMarkdownMath;
+  const Font = TMarkdownFontStyle.Create(FTheme.MathFont.FamilyName, FTheme.MathFont.Size);
+  const Options = TMathLayoutOptions.Create(Font, Command.TextColor, FTheme.MathErrorColor, True);
+  const Formula = TMathLayouter.Layout(Math.Literal, Options, FMeasurer);
+
+  const Padding = FTheme.ParagraphSpacing / 2;
+  const AvailableWidth = ContentRight - Command.X;
+  const Left = Command.X + Max(0, (AvailableWidth - Formula.Width) / 2);
+  const Height = Max(Formula.Ascent + Formula.Descent, FMeasurer.LineHeight(Font)) + 2 * Padding;
+
+  const Canvas: IExtensionCanvas = TDisplayListExtensionCanvas.Create(FMeasurer, FItems, Command.Node,
+    TDisplayTextRunRole.Drawing);
+  const Baseline = FCurrentY + Padding + Formula.Ascent;
+  Formula.Draw(Canvas, Left, Baseline);
+
+  const SourceBounds = TLayoutRectF.Create(Left, FCurrentY, Left + Formula.Width, FCurrentY + Height);
+  FItems.Add(TDisplayTextRun.Create(SourceBounds, Command.Node, MathSourceOf(Math, True), Font, Command.TextColor,
+    Baseline - FCurrentY, 0, TDisplayTextRunRole.Source));
+
+  FCurrentY := FCurrentY + Height;
+end;
+
+// What a formula copies as: its markdown, so a paste lands back in a document
+// as the same formula.
+class function TLayoutWorker.MathSourceOf(const Math: IMarkdownMath; const AsBlock: Boolean): string;
+begin
+  if AsBlock then
+  begin
+    Result := string.Join(LineFeed, [DisplayMathMarker, Math.Literal, DisplayMathMarker]);
+    Exit;
+  end;
+
+  if Math.IsDisplay then
+  begin
+    Result := DisplayMathMarker + Math.Literal + DisplayMathMarker;
+    Exit;
+  end;
+
+  Result := InlineMathMarker + Math.Literal + InlineMathMarker;
 end;
 
 procedure TLayoutWorker.LayoutTable(const Command: TLayoutCommand);
@@ -1340,6 +1420,8 @@ begin
       AppendHardBreakAtom(Atoms);
     TMarkdownNodeKind.Image:
       AppendImageAtom(Atoms, Child, Style);
+    TMarkdownNodeKind.Math:
+      AppendMathAtom(Atoms, Child, Style);
     TMarkdownNodeKind.CustomInline:
       HandleCustomInline(Atoms, Frames, Child, Style);
     TMarkdownNodeKind.Emphasis:
@@ -1464,6 +1546,36 @@ begin
   Atoms.Add(Atom);
 end;
 
+// An inline formula is one unbreakable atom at the size and colour of the
+// surrounding text. Display math inside a paragraph keeps display style,
+// with its limits above and below, but stays on the line.
+procedure TInlineAtomCollector.AppendMathAtom(const Atoms: TList<TInlineAtom>; const Child: IMarkdownNode;
+  const Style: TInlineStyle);
+begin
+  const Math = Child as IMarkdownMath;
+
+  var Attribution := Style.Attribution;
+  if Attribution = nil then
+    Attribution := Child;
+
+  const Font = TMarkdownFontStyle.Create(FTheme.MathFont.FamilyName, Style.Font.Size);
+  const Options = TMathLayoutOptions.Create(Font, Style.Color, FTheme.MathErrorColor, Math.IsDisplay);
+
+  var Atom := Default(TInlineAtom);
+  Atom.Kind := TInlineAtomKind.MathToken;
+  Atom.Node := Attribution;
+  Atom.Text := TLayoutWorker.MathSourceOf(Math, False);
+  Atom.Font := Style.Font;
+  Atom.Color := Style.Color;
+  Atom.Formula := TMathLayouter.Layout(Math.Literal, Options, FMeasurer);
+  Atom.Width := Atom.Formula.Width;
+  Atom.Ascent := Atom.Formula.Ascent;
+  Atom.Descent := Atom.Formula.Descent;
+  Atom.Height := Atom.Ascent + Atom.Descent;
+
+  Atoms.Add(Atom);
+end;
+
 procedure TInlineAtomCollector.HandleCustomInline(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
   const Child: IMarkdownNode; const Style: TInlineStyle);
 begin
@@ -1475,6 +1587,16 @@ begin
   // (see TLayoutWorker.EmitTaskCheckbox); a task marker contributes no inline content.
   if IsCheckedTask or IsUncheckedTask then
     Exit;
+
+  const IsStrikethrough = (Custom.NodeName = TGfmInlineParser.StrikethroughNodeName);
+  if not IsStrikethrough then
+  begin
+    // An unrecognised custom-inline type (e.g. a third-party extension) has no
+    // known styling here, so it renders as plain text rather than being struck
+    // through by default.
+    PushStyledFrame(Frames, Child, Style);
+    Exit;
+  end;
 
   var StrikeStyle := Style;
   StrikeStyle.Font.Strikeout := True;
@@ -1724,39 +1846,58 @@ begin
   FPendingWidth := 0;
 end;
 
-function TInlineWrapper.LineAdvance: Single;
+// Text and formulas share one baseline: the line rises as far as the tallest
+// ascent and drops as far as the deepest descent. Images keep sitting at the
+// top of the line and only stretch it.
+procedure TInlineWrapper.MeasureLine(out MaxAscent, MaxDescent, MaxImageHeight: Single);
 begin
-  Result := 0;
+  MaxAscent := 0;
+  MaxDescent := 0;
+  MaxImageHeight := 0;
 
   for var Atom in FCommitted do
   begin
     case Atom.Kind of
       TInlineAtomKind.WordToken, TInlineAtomKind.SpaceToken:
-        Result := Max(Result, FMeasurer.LineHeight(Atom.Font));
+        begin
+          const Ascent = FMeasurer.Baseline(Atom.Font);
+          MaxAscent := Max(MaxAscent, Ascent);
+          MaxDescent := Max(MaxDescent, FMeasurer.LineHeight(Atom.Font) - Ascent);
+        end;
+      TInlineAtomKind.MathToken:
+        begin
+          MaxAscent := Max(MaxAscent, Atom.Ascent);
+          MaxDescent := Max(MaxDescent, Atom.Descent);
+        end;
       TInlineAtomKind.ImageToken:
-        Result := Max(Result, Atom.Height);
+        MaxImageHeight := Max(MaxImageHeight, Atom.Height);
     else
       raise EMarkdownError.CreateFmt('Unhandled inline atom kind: %d', [Ord(Atom.Kind)]);
     end;
   end;
 
-  if Result = 0 then
-    Result := FMeasurer.LineHeight(FBaseFont);
+  const HasBaselineContent = (MaxAscent > 0) or (MaxDescent > 0);
+  if not HasBaselineContent then
+  begin
+    MaxAscent := FMeasurer.Baseline(FBaseFont);
+    MaxDescent := FMeasurer.LineHeight(FBaseFont) - MaxAscent;
+  end;
+end;
+
+function TInlineWrapper.LineAdvance: Single;
+begin
+  var MaxAscent, MaxDescent, MaxImageHeight: Single;
+  MeasureLine(MaxAscent, MaxDescent, MaxImageHeight);
+
+  Result := Max(MaxAscent + MaxDescent, MaxImageHeight);
 end;
 
 function TInlineWrapper.LineBaseline: Single;
 begin
-  Result := 0;
+  var MaxAscent, MaxDescent, MaxImageHeight: Single;
+  MeasureLine(MaxAscent, MaxDescent, MaxImageHeight);
 
-  for var Atom in FCommitted do
-  begin
-    const IsText = (Atom.Kind = TInlineAtomKind.WordToken) or (Atom.Kind = TInlineAtomKind.SpaceToken);
-    if IsText then
-      Result := Max(Result, FMeasurer.Baseline(Atom.Font));
-  end;
-
-  if Result = 0 then
-    Result := FMeasurer.Baseline(FBaseFont);
+  Result := MaxAscent;
 end;
 
 procedure TInlineWrapper.EmitLineItems;
@@ -1781,7 +1922,8 @@ begin
       // run it does not belong to, the space after a link or a strikethrough,
       // starts its own run: drawn inside the other it would carry that run's
       // underline or its line through, and answer for it when asked what sits
-      // under the pointer.
+      // under the pointer. After an image or a formula no run is open, yet the
+      // space is still part of the line.
       if FGroupOpen then
       begin
         if SameRunStyle(Atom) then
@@ -1793,6 +1935,12 @@ begin
           CloseGroup;
           OpenGroup(Atom);
         end;
+      end
+      else
+      begin
+        const FollowsContent = (FCursor > FLeft);
+        if FollowsContent then
+          OpenGroup(Atom);
       end;
     TInlineAtomKind.WordToken:
       begin
@@ -1811,6 +1959,11 @@ begin
       begin
         CloseGroup;
         EmitImageItem(Atom);
+      end;
+    TInlineAtomKind.MathToken:
+      begin
+        CloseGroup;
+        EmitMathItem(Atom);
       end;
   else
     raise EMarkdownError.CreateFmt('Unhandled inline atom kind: %d', [Ord(Atom.Kind)]);
@@ -1881,6 +2034,28 @@ begin
   FItems.Add(TDisplayImage.Create(Bounds, Atom.Node, Atom.Source, Atom.AltText));
 
   FCursor := FCursor + Atom.Width;
+end;
+
+procedure TInlineWrapper.EmitMathItem(const Atom: TInlineAtom);
+begin
+  const Canvas: IExtensionCanvas = TDisplayListExtensionCanvas.Create(FMeasurer, FItems, Atom.Node,
+    TDisplayTextRunRole.Drawing);
+  Atom.Formula.Draw(Canvas, FCursor, FLineTop + FLineBaseline);
+  EmitMathSource(Atom);
+
+  FCursor := FCursor + Atom.Width;
+end;
+
+// The source run carries the font of the text around it and sits exactly
+// where a text run in that font would, which is how the viewer tells one
+// line from the next when it copies a selection.
+procedure TInlineWrapper.EmitMathSource(const Atom: TInlineAtom);
+begin
+  const RunBaseline = FMeasurer.Baseline(Atom.Font);
+  const Top = FLineTop + (FLineBaseline - RunBaseline);
+  const Bounds = TLayoutRectF.Create(FCursor, Top, FCursor + Atom.Width, Top + FMeasurer.LineHeight(Atom.Font));
+  FItems.Add(TDisplayTextRun.Create(Bounds, Atom.Node, Atom.Text, Atom.Font, Atom.Color, RunBaseline, 0,
+    TDisplayTextRunRole.Source));
 end;
 
 end.

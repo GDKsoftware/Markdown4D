@@ -49,12 +49,15 @@ begin
 
           Raster := TMarkdownPixelRaster.Create(Bitmap.Width, Bitmap.Height);
           if Raster.IsEmpty then
-            Exit(False);
-
-          for var Y := 0 to Bitmap.Height - 1 do
           begin
-            const Row: PByte = Bitmap.ScanLine[Y];
-            Move(Row^, Raster.Pixels[Y * Bitmap.Width * 4], Bitmap.Width * 4);
+            Result := False;
+            Exit;
+          end;
+
+          for var RowIndex := 0 to Bitmap.Height - 1 do
+          begin
+            const Row: PByte = Bitmap.ScanLine[RowIndex];
+            Move(Row^, Raster.Pixels[RowIndex * Bitmap.Width * 4], Bitmap.Width * 4);
           end;
 
           Result := True;

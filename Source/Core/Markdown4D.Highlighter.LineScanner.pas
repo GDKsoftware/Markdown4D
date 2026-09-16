@@ -108,7 +108,10 @@ function TSyntaxLineScanner.CharAt(const Position: Integer): Char;
 begin
   const IsInsideLine = (Position >= 1) and (Position <= Length(FLine));
   if not IsInsideLine then
-    Exit(#0);
+  begin
+    Result := #0;
+    Exit;
+  end;
 
   Result := FLine[Position];
 end;

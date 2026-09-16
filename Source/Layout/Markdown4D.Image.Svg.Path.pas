@@ -10,6 +10,7 @@ interface
 
 uses
   System.SysUtils,
+  System.Generics.Collections,
   Markdown4D.Layout.Interfaces;
 
 type
@@ -59,6 +60,10 @@ type
     var
       FPaths: TArray<TSvgSubPath>;
       FCurrent: TSvgSubPath;
+      // The points of the subpath being built. A path can flatten curves and
+      // arcs into many of these, so they collect here instead of growing
+      // FCurrent.Points one reallocation at a time.
+      FCurrentPoints: TList<TLayoutPointF>;
       FHasCurrent: Boolean;
       FState: TPathState;
       FReader: TSvgNumberReader;
@@ -85,6 +90,8 @@ type
 
   public
     class function Parse(const Data: string): TArray<TSvgSubPath>; static;
+    constructor Create;
+    destructor Destroy; override;
   end;
 
 implementation
@@ -122,7 +129,8 @@ begin
   if FIndex > Length(FText) then
   begin
     Command := #0;
-    Exit(False);
+    Result := False;
+    Exit;
   end;
 
   Command := FText[FIndex];
@@ -143,7 +151,10 @@ begin
 
   const Start = FIndex;
   if FIndex > Length(FText) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   if CharInSet(FText[FIndex], ['+', '-']) then
     Inc(FIndex);
@@ -168,7 +179,8 @@ begin
   if Digits = 0 then
   begin
     FIndex := Start;
-    Exit(False);
+    Result := False;
+    Exit;
   end;
 
   const HasExponent = (FIndex <= Length(FText)) and CharInSet(FText[FIndex], ['e', 'E']);
@@ -209,10 +221,16 @@ begin
   SkipSeparators;
 
   if FIndex > Length(FText) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   if not CharInSet(FText[FIndex], ['0', '1']) then
-    Exit(False);
+  begin
+    Result := False;
+    Exit;
+  end;
 
   Value := FText[FIndex] = '1';
   Inc(FIndex);
@@ -236,16 +254,18 @@ begin
   SetLength(Result, Segments);
   for var Step := 1 to Segments do
   begin
-    const T = Step / Segments;
-    const Inverse = 1 - T;
-    const A = Inverse * Inverse * Inverse;
-    const B = 3 * Inverse * Inverse * T;
-    const C = 3 * Inverse * T * T;
-    const D = T * T * T;
+    const Fraction = Step / Segments;
+    const Inverse = 1 - Fraction;
+    const StartWeight = Inverse * Inverse * Inverse;
+    const ControlOneWeight = 3 * Inverse * Inverse * Fraction;
+    const ControlTwoWeight = 3 * Inverse * Fraction * Fraction;
+    const StopWeight = Fraction * Fraction * Fraction;
 
     Result[Step - 1] := TLayoutPointF.Create(
-      A * Start.X + B * ControlOne.X + C * ControlTwo.X + D * Stop.X,
-      A * Start.Y + B * ControlOne.Y + C * ControlTwo.Y + D * Stop.Y);
+      StartWeight * Start.X + ControlOneWeight * ControlOne.X + ControlTwoWeight * ControlTwo.X +
+      StopWeight * Stop.X,
+      StartWeight * Start.Y + ControlOneWeight * ControlOne.Y + ControlTwoWeight * ControlTwo.Y +
+      StopWeight * Stop.Y);
   end;
 end;
 
@@ -258,15 +278,15 @@ begin
   SetLength(Result, Segments);
   for var Step := 1 to Segments do
   begin
-    const T = Step / Segments;
-    const Inverse = 1 - T;
-    const A = Inverse * Inverse;
-    const B = 2 * Inverse * T;
-    const C = T * T;
+    const Fraction = Step / Segments;
+    const Inverse = 1 - Fraction;
+    const StartWeight = Inverse * Inverse;
+    const ControlWeight = 2 * Inverse * Fraction;
+    const StopWeight = Fraction * Fraction;
 
     Result[Step - 1] := TLayoutPointF.Create(
-      A * Start.X + B * Control.X + C * Stop.X,
-      A * Start.Y + B * Control.Y + C * Stop.Y);
+      StartWeight * Start.X + ControlWeight * Control.X + StopWeight * Stop.X,
+      StartWeight * Start.Y + ControlWeight * Control.Y + StopWeight * Stop.Y);
   end;
 end;
 
@@ -278,7 +298,7 @@ begin
   var Rx := Abs(RadiusX);
   var Ry := Abs(RadiusY);
 
-  const Degenerate = (Rx = 0) or (Ry = 0) or ((Start.X = Stop.X) and (Start.Y = Stop.Y));
+  const Degenerate = ((Rx = 0) or (Ry = 0) or ((Start.X = Stop.X) and (Start.Y = Stop.Y)));
   if Degenerate then
   begin
     Result := [Stop];
@@ -321,9 +341,11 @@ begin
   const StopAngle = ArcTan2((-LocalY - CentreLocalY) / Ry, (-LocalX - CentreLocalX) / Rx);
 
   var Sweeping := StopAngle - StartAngle;
-  if Sweep and (Sweeping < 0) then
+  const NeedsFullTurnAdded = (Sweep and (Sweeping < 0));
+  const NeedsFullTurnSubtracted = ((not Sweep) and (Sweeping > 0));
+  if NeedsFullTurnAdded then
     Sweeping := Sweeping + 2 * Pi
-  else if (not Sweep) and (Sweeping > 0) then
+  else if NeedsFullTurnSubtracted then
     Sweeping := Sweeping - 2 * Pi;
 
   var Segments := Ceil(Abs(Sweeping) / RadiansPerDegree / DegreesPerArcSegment);
@@ -354,18 +376,36 @@ begin
   end;
 end;
 
+constructor TSvgPathParser.Create;
+begin
+  inherited Create;
+
+  FCurrentPoints := TList<TLayoutPointF>.Create;
+end;
+
+destructor TSvgPathParser.Destroy;
+begin
+  FCurrentPoints.Free;
+
+  inherited Destroy;
+end;
+
 procedure TSvgPathParser.Flush;
 begin
-  if FHasCurrent and (Length(FCurrent.Points) > 1) then
+  if FHasCurrent and (FCurrentPoints.Count > 1) then
+  begin
+    FCurrent.Points := FCurrentPoints.ToArray;
     FPaths := FPaths + [FCurrent];
+  end;
 
   FCurrent := Default(TSvgSubPath);
   FHasCurrent := False;
+  FCurrentPoints.Clear;
 end;
 
 procedure TSvgPathParser.Add(const Point: TLayoutPointF);
 begin
-  FCurrent.Points := FCurrent.Points + [Point];
+  FCurrentPoints.Add(Point);
   FState.Current := Point;
 end;
 
