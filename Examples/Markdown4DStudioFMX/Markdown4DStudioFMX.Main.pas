@@ -152,6 +152,7 @@ type
     procedure CopyHtmlToClipboard(const Fragment: string);
     procedure CloseApplication;
     procedure BuildToolbar;
+    procedure FocusEditor;
     function ResolveIconFontName: string;
     function AddIconButton(const Glyph: string; const Hint: string; const Handler: TNotifyEvent): TRectangle;
     procedure AddSeparator;
@@ -390,6 +391,15 @@ begin
   FController.Free;
   FDarkTheme.Free;
   FLightTheme.Free;
+end;
+
+procedure TMarkdown4DStudioFMXForm.FocusEditor;
+begin
+  // Preview only mode hides the editor, and focusing a control that is not
+  // visible raises. Every path that returns focus to the editor goes through
+  // here so none of them can.
+  if FEditor.CanFocus then
+    FEditor.SetFocus;
 end;
 
 procedure TMarkdown4DStudioFMXForm.BuildToolbar;
@@ -940,17 +950,17 @@ begin
   Result.ShowFind := procedure begin ShowFindBar; end;
   Result.ShowReplace := procedure begin ShowReplaceBar; end;
   Result.FindInPreview := procedure begin ExecuteFind; end;
-  Result.Undo := procedure begin FEditor.Undo; FEditor.SetFocus; end;
-  Result.Redo := procedure begin FEditor.Redo; FEditor.SetFocus; end;
-  Result.SelectAll := procedure begin FEditor.SelectAll; FEditor.SetFocus; end;
-  Result.Indent := procedure begin FEditor.Indent; FEditor.SetFocus; end;
-  Result.Outdent := procedure begin FEditor.Outdent; FEditor.SetFocus; end;
-  Result.DeleteWordLeft := procedure begin FEditor.DeleteWordLeft; FEditor.SetFocus; end;
+  Result.Undo := procedure begin FEditor.Undo; FocusEditor; end;
+  Result.Redo := procedure begin FEditor.Redo; FocusEditor; end;
+  Result.SelectAll := procedure begin FEditor.SelectAll; FocusEditor; end;
+  Result.Indent := procedure begin FEditor.Indent; FocusEditor; end;
+  Result.Outdent := procedure begin FEditor.Outdent; FocusEditor; end;
+  Result.DeleteWordLeft := procedure begin FEditor.DeleteWordLeft; FocusEditor; end;
   Result.ExecuteFormat :=
     procedure(const Command: TEditorCommand)
     begin
       FEditor.ExecuteCommand(Command);
-      FEditor.SetFocus;
+      FocusEditor;
     end;
 end;
 
@@ -1137,7 +1147,7 @@ end;
 procedure TMarkdown4DStudioFMXForm.ExecuteFormatCommand(const Command: TEditorCommand);
 begin
   FEditor.ExecuteCommand(Command);
-  FEditor.SetFocus;
+  FocusEditor;
 end;
 
 procedure TMarkdown4DStudioFMXForm.DoShow;
@@ -1241,7 +1251,7 @@ begin
   FFindBar.Visible := False;
   FEditor.ClearHighlights;
 
-  FEditor.SetFocus;
+  FocusEditor;
 end;
 
 
@@ -1288,7 +1298,7 @@ procedure TMarkdown4DStudioFMXForm.ClosePalette;
 begin
   FPalette.Visible := False;
 
-  FEditor.SetFocus;
+  FocusEditor;
 end;
 
 procedure TMarkdown4DStudioFMXForm.RefreshPaletteList;
@@ -1409,7 +1419,7 @@ begin
   UpdateZenPadding;
 
   FZenActive := True;
-  FEditor.SetFocus;
+  FocusEditor;
 end;
 
 procedure TMarkdown4DStudioFMXForm.ExitZen;
@@ -1428,7 +1438,7 @@ begin
   ApplyViewMode;
 
   FZenActive := False;
-  FEditor.SetFocus;
+  FocusEditor;
 end;
 
 procedure TMarkdown4DStudioFMXForm.UpdateZenPadding;
@@ -1587,25 +1597,25 @@ end;
 procedure TMarkdown4DStudioFMXForm.HandleBoldClick(Sender: TObject);
 begin
   FEditor.ExecuteCommand(TEditorCommand.Bold);
-  FEditor.SetFocus;
+  FocusEditor;
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleItalicClick(Sender: TObject);
 begin
   FEditor.ExecuteCommand(TEditorCommand.Italic);
-  FEditor.SetFocus;
+  FocusEditor;
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleLinkClick(Sender: TObject);
 begin
   FEditor.ExecuteCommand(TEditorCommand.Link);
-  FEditor.SetFocus;
+  FocusEditor;
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleCodeClick(Sender: TObject);
 begin
   FEditor.ExecuteCommand(TEditorCommand.CodeBlock);
-  FEditor.SetFocus;
+  FocusEditor;
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleThemeClick(Sender: TObject);
@@ -1733,7 +1743,7 @@ begin
     FTocFollowing := False;
   end;
 
-  FEditor.SetFocus;
+  FocusEditor;
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleTick(Sender: TObject);
