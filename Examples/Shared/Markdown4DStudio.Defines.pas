@@ -55,6 +55,12 @@ const
   SeparatorWidth = 1;
   FindEditWidth = 160;
   TocPanelWidth = 240;
+  // Neither half of the split view may be squeezed below this, whether by a
+  // remembered width, a window resize or a splitter drag.
+  MinPaneWidth = 300;
+  // The contents pane gives way first to protect those two, but never below
+  // this; past that point the two halves share what is left between them.
+  MinTocPanelWidth = 120;
   TickIntervalMilliseconds = 100;
   FindBarHeight = 32;
   FindBarEditWidth = 240;
