@@ -36,6 +36,20 @@ type
     /// </summary>
     class function EffectiveMinPaneWidth(const AvailableWidth,
       MinPaneWidth: Integer): Integer; static;
+
+    /// <summary>
+    ///   How wide a side panel, such as the contents pane, may be dragged before
+    ///   it starts eating into the two halves of the split.
+    /// </summary>
+    /// <param name="TotalWidth">The whole client width.</param>
+    /// <param name="ReservedWidth">Width taken by the splitters themselves.</param>
+    /// <param name="MinSidePanelWidth">
+    ///   How far the side panel may be asked to give way. Past that point it has
+    ///   done all it can and the two panes share what is left between them. A
+    ///   panel already narrower than this is never widened.
+    /// </param>
+    class function ClampSidePanelWidth(const DesiredWidth, TotalWidth,
+      ReservedWidth, MinPaneWidth, MinSidePanelWidth: Integer): Integer; static;
   end;
 
 implementation
@@ -58,6 +72,17 @@ class function TPadSplitLayout.EffectiveMinPaneWidth(const AvailableWidth,
   MinPaneWidth: Integer): Integer;
 begin
   Result := Min(MinPaneWidth, Max(0, AvailableWidth div 2));
+end;
+
+class function TPadSplitLayout.ClampSidePanelWidth(const DesiredWidth, TotalWidth,
+  ReservedWidth, MinPaneWidth, MinSidePanelWidth: Integer): Integer;
+begin
+  // What the side panel could take while both panes still keep their minimum.
+  const Allowed = Max(0, TotalWidth - ReservedWidth - 2 * MinPaneWidth);
+
+  // Never widen the panel, only ask it to give way, and never past its own
+  // minimum: below that the two panes share what is left instead.
+  Result := Min(DesiredWidth, Max(Allowed, MinSidePanelWidth));
 end;
 
 end.

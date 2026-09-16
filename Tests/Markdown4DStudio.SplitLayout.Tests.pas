@@ -14,6 +14,8 @@ type
       // A pane narrower than this is not worth showing, so the split always
       // leaves at least this much for each side.
       MinPane = 300;
+      // The contents pane yields to protect those two, but not below this.
+      MinSide = 120;
 
   public
     [Test]
@@ -42,6 +44,18 @@ type
 
     [Test]
     procedure EffectiveMinPaneWidth_NoAvailableWidth_ReturnsZero;
+
+    [Test]
+    procedure ClampSidePanelWidth_LeavesRoomForBothPanes_KeepsRequestedWidth;
+
+    [Test]
+    procedure ClampSidePanelWidth_WouldStarveThePanes_StopsAtWhatTheyNeed;
+
+    [Test]
+    procedure ClampSidePanelWidth_WindowTooSmallForBothPanes_StopsAtItsOwnMinimum;
+
+    [Test]
+    procedure ClampSidePanelWidth_AlreadyNarrowerThanItsMinimum_IsLeftAlone;
   end;
 
 implementation
@@ -113,6 +127,38 @@ end;
 procedure TPadSplitLayoutTests.EffectiveMinPaneWidth_NoAvailableWidth_ReturnsZero;
 begin
   Assert.AreEqual(0, TPadSplitLayout.EffectiveMinPaneWidth(0, MinPane));
+end;
+
+procedure TPadSplitLayoutTests.ClampSidePanelWidth_LeavesRoomForBothPanes_KeepsRequestedWidth;
+begin
+  // 1100 wide, 8 for the two splitters, so the contents pane may grow to 492
+  // before the editor and preview lose their 300 each.
+  Assert.AreEqual(240, TPadSplitLayout.ClampSidePanelWidth(240, 1100, 8, MinPane, MinSide));
+  Assert.AreEqual(492, TPadSplitLayout.ClampSidePanelWidth(492, 1100, 8, MinPane, MinSide));
+end;
+
+procedure TPadSplitLayoutTests.ClampSidePanelWidth_WouldStarveThePanes_StopsAtWhatTheyNeed;
+begin
+  // Regression: dragging the contents divider right used to squeeze the preview
+  // down to a sliver, because nothing bounded how far the contents pane grew.
+  Assert.AreEqual(492, TPadSplitLayout.ClampSidePanelWidth(800, 1100, 8, MinPane, MinSide));
+  // The same rule makes the contents pane give way when the window narrows.
+  Assert.AreEqual(192, TPadSplitLayout.ClampSidePanelWidth(484, 800, 8, MinPane, MinSide));
+end;
+
+procedure TPadSplitLayoutTests.ClampSidePanelWidth_WindowTooSmallForBothPanes_StopsAtItsOwnMinimum;
+begin
+  // Past this point the contents pane has given all it can, and the two panes
+  // share what is left between them instead.
+  Assert.AreEqual(MinSide, TPadSplitLayout.ClampSidePanelWidth(484, 700, 8, MinPane, MinSide));
+  Assert.AreEqual(MinSide, TPadSplitLayout.ClampSidePanelWidth(484, 400, 8, MinPane, MinSide));
+end;
+
+procedure TPadSplitLayoutTests.ClampSidePanelWidth_AlreadyNarrowerThanItsMinimum_IsLeftAlone;
+begin
+  // A contents pane the user dragged narrow is never widened by the clamp.
+  Assert.AreEqual(60, TPadSplitLayout.ClampSidePanelWidth(60, 1100, 8, MinPane, MinSide));
+  Assert.AreEqual(60, TPadSplitLayout.ClampSidePanelWidth(60, 400, 8, MinPane, MinSide));
 end;
 
 end.

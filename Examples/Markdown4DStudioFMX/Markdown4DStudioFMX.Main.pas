@@ -201,6 +201,8 @@ type
     procedure ApplySplitEditorWidth(const DesiredWidth: Single);
     procedure HandleSplitterMouseUp(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Single);
+    procedure HandleTocSplitterMouseUp(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Single);
     procedure ShowFindBar;
     procedure ShowReplaceBar;
     procedure CloseFindBar;
@@ -747,6 +749,7 @@ begin
   FTocSplitter.Parent := Self;
   FTocSplitter.Align := TAlignLayout.Left;
   FTocSplitter.Width := SplitterWidth;
+  FTocSplitter.OnMouseUp := HandleTocSplitterMouseUp;
 end;
 
 procedure TMarkdown4DStudioFMXForm.BuildEditorAndPreview;
@@ -1212,6 +1215,14 @@ begin
   // Entering split view asks for the remembered width; a resize or a contents
   // pane toggle asks for the width the editor already has, so that a splitter
   // drag is kept and only trimmed when it no longer fits.
+
+  // The contents pane gives way first, so the two halves keep their minimum for
+  // as long as the window allows.
+  if FTocPanel.Visible then
+    FTocPanel.Width := TPadSplitLayout.ClampSidePanelWidth(Round(FTocPanel.Width),
+      Round(ClientWidth), Round(FTocSplitter.Width + FMainSplitter.Width),
+      MinPaneWidth, MinTocPanelWidth);
+
   const Available = Round(AvailableSplitWidth);
 
   // Re-stated on every width change, because a splitter told to honour a
@@ -1230,6 +1241,18 @@ begin
   // minimum the window is too small to give.
   ApplySplitEditorWidth(FEditor.Width);
   FSplitEditorWidth := FEditor.Width;
+end;
+
+procedure TMarkdown4DStudioFMXForm.HandleTocSplitterMouseUp(Sender: TObject;
+  Button: TMouseButton; Shift: TShiftState; X, Y: Single);
+begin
+  // Widening the contents pane takes room from the two halves, so it stops
+  // where they would lose their minimum. Only split view reserves room for
+  // two panes; the single pane modes have nothing to protect.
+  if FZenActive or (FViewMode <> TPadViewMode.Split) then
+    Exit;
+
+  ApplySplitEditorWidth(FEditor.Width);
 end;
 
 procedure TMarkdown4DStudioFMXForm.ApplyViewMode;

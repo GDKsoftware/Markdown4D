@@ -248,6 +248,7 @@ type
     function AvailableSplitWidth: Integer;
     procedure ApplySplitEditorWidth(const DesiredWidth: Integer);
     procedure HandleSplitterMoved(Sender: TObject);
+    procedure HandleTocSplitterMoved(Sender: TObject);
     procedure EnforceTopBarOrder;
     procedure EnforceLeftPaneOrder;
     procedure ShowFindBar;
@@ -374,6 +375,7 @@ begin
   lblFindCount.Caption := EmptyFindCaption;
 
   splMain.OnMoved := HandleSplitterMoved;
+  splToc.OnMoved := HandleTocSplitterMoved;
 end;
 
 procedure TMarkdown4DStudioVCLForm.BuildToolbar;
@@ -1742,6 +1744,13 @@ begin
   // Entering split view asks for the remembered width; a resize or a contents
   // pane toggle asks for the width the editor already has, so that a splitter
   // drag is kept and only trimmed when it no longer fits.
+
+  // The contents pane gives way first, so the two halves keep their minimum for
+  // as long as the window allows.
+  if pnlToc.Visible then
+    pnlToc.Width := TPadSplitLayout.ClampSidePanelWidth(pnlToc.Width, ClientWidth,
+      splToc.Width + splMain.Width, MinPaneWidth, MinTocPanelWidth);
+
   const Available = AvailableSplitWidth;
 
   // Re-stated on every width change, because a splitter told to honour a
@@ -1759,6 +1768,17 @@ begin
   // minimum the window is too small to give.
   ApplySplitEditorWidth(mdEditor.Width);
   FSplitEditorWidth := mdEditor.Width;
+end;
+
+procedure TMarkdown4DStudioVCLForm.HandleTocSplitterMoved(Sender: TObject);
+begin
+  // Widening the contents pane takes room from the two halves, so it stops
+  // where they would lose their minimum. Only split view reserves room for
+  // two panes; the single pane modes have nothing to protect.
+  if FZenActive or (FViewMode <> TPadViewMode.Split) then
+    Exit;
+
+  ApplySplitEditorWidth(mdEditor.Width);
 end;
 
 procedure TMarkdown4DStudioVCLForm.ApplyViewMode;
