@@ -23,6 +23,9 @@ const
   GlyphItalic = Char($E8DB);
   GlyphLink = Char($E71B);
   GlyphCode = Char($E943);
+  GlyphViewEditor = Char($E70F);  // Edit (pencil)
+  GlyphViewSplit = Char($E89A);   // TwoPage
+  GlyphViewPreview = Char($E890); // View (eye)
   GlyphTheme = Char($E793);
   GlyphToc = Char($E8FD);
   GlyphFind = Char($E721);
@@ -41,6 +44,9 @@ const
   HintItalic = 'Italic (Ctrl+I)';
   HintLink = 'Link (Ctrl+K)';
   HintCode = 'Code block';
+  HintViewEditor = 'Editor only (Ctrl+1)';
+  HintViewSplit = 'Split view (Ctrl+2)';
+  HintViewPreview = 'Preview only (Ctrl+3)';
   HintTheme = 'Toggle theme';
   HintToc = 'Toggle contents';
   HintFind = 'Find in preview';
