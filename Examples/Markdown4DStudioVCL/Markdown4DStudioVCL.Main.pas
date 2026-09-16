@@ -87,6 +87,9 @@ type
       FItalicButton: TSpeedButton;
       FLinkButton: TSpeedButton;
       FCodeButton: TSpeedButton;
+      FViewEditorButton: TSpeedButton;
+      FViewSplitButton: TSpeedButton;
+      FViewPreviewButton: TSpeedButton;
       FThemeButton: TSpeedButton;
       FTocButton: TSpeedButton;
       FZenButton: TSpeedButton;
@@ -175,6 +178,10 @@ type
     procedure HandleItalicClick(Sender: TObject);
     procedure HandleLinkClick(Sender: TObject);
     procedure HandleCodeClick(Sender: TObject);
+    procedure HandleViewEditorClick(Sender: TObject);
+    procedure HandleViewSplitClick(Sender: TObject);
+    procedure HandleViewPreviewClick(Sender: TObject);
+    procedure UpdateViewModeButtons;
     procedure HandleExportClick(Sender: TObject);
     procedure HandleCopyHtmlClick(Sender: TObject);
     procedure ExecuteFormatCommand(const Command: TEditorCommand);
@@ -393,6 +400,16 @@ begin
   FCodeButton := AddIconButton(GlyphCode, HintCode, HandleCodeClick);
 
   AddSeparator;
+
+  // The view mode buttons share a GroupIndex, so the VCL keeps exactly one of them
+  // down: clicking one releases the other two, and clicking the active one keeps it
+  // down because AllowAllUp stays False.
+  FViewEditorButton := AddIconButton(GlyphViewEditor, HintViewEditor, HandleViewEditorClick);
+  FViewEditorButton.GroupIndex := ViewModeGroupIndex;
+  FViewSplitButton := AddIconButton(GlyphViewSplit, HintViewSplit, HandleViewSplitClick);
+  FViewSplitButton.GroupIndex := ViewModeGroupIndex;
+  FViewPreviewButton := AddIconButton(GlyphViewPreview, HintViewPreview, HandleViewPreviewClick);
+  FViewPreviewButton.GroupIndex := ViewModeGroupIndex;
 
   FThemeButton := AddIconButton(GlyphTheme, HintTheme, HandleThemeClick);
   FTocButton := AddIconButton(GlyphToc, HintToc, HandleTocClick);
@@ -755,6 +772,34 @@ procedure TMarkdown4DStudioVCLForm.HandleCodeClick(Sender: TObject);
 begin
   mdEditor.ExecuteCommand(TEditorCommand.CodeBlock);
   mdEditor.SetFocus;
+end;
+
+procedure TMarkdown4DStudioVCLForm.HandleViewEditorClick(Sender: TObject);
+begin
+  SetViewMode(TPadViewMode.EditorOnly);
+end;
+
+procedure TMarkdown4DStudioVCLForm.HandleViewSplitClick(Sender: TObject);
+begin
+  SetViewMode(TPadViewMode.Split);
+end;
+
+procedure TMarkdown4DStudioVCLForm.HandleViewPreviewClick(Sender: TObject);
+begin
+  SetViewMode(TPadViewMode.PreviewOnly);
+end;
+
+procedure TMarkdown4DStudioVCLForm.UpdateViewModeButtons;
+begin
+  // Keep the pressed button in step with the mode however it was set: toolbar click,
+  // Ctrl+1/2/3, the command palette, session restore or leaving zen mode. The nil
+  // guard covers ApplyViewMode running before BuildToolbar.
+  if FViewSplitButton = nil then
+    Exit;
+
+  FViewEditorButton.Down := FViewMode = TPadViewMode.EditorOnly;
+  FViewSplitButton.Down := FViewMode = TPadViewMode.Split;
+  FViewPreviewButton.Down := FViewMode = TPadViewMode.PreviewOnly;
 end;
 
 procedure TMarkdown4DStudioVCLForm.HandleExportClick(Sender: TObject);
@@ -1742,6 +1787,7 @@ begin
     end;
   end;
 
+  UpdateViewModeButtons;
   EnforceTopBarOrder;
   EnforceLeftPaneOrder;
 end;
