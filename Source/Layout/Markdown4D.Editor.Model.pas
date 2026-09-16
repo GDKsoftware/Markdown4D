@@ -88,6 +88,7 @@ type
     function CollapsedIndexOf(const HeaderOffset: Integer): Integer;
     function TryRegionAtHeader(const HeaderLine: Integer; out Region: TFoldRegion): Boolean;
     procedure WrapOrToggle(const Marker: string);
+    function MarkersSurroundSelection(const Start, Len: Integer; const Marker: string): Boolean;
     procedure InsertLink;
     procedure WrapCodeBlock;
     procedure ToggleHeading(const Level: Integer);
@@ -1313,10 +1314,53 @@ begin
     Exit;
   end;
 
+  // Wrapping leaves the selection on the word itself, inside the markers it just
+  // added, so pressing the same command again has to recognise them from there.
+  // Without this a second press wraps the wrapped text and doubles the markers.
+  if MarkersSurroundSelection(Start, Len, Marker) then
+  begin
+    ApplyReplace(Start - MarkerLen, Len + 2 * MarkerLen, Selected, False);
+    FAnchor := Start - MarkerLen;
+    FCaret := FAnchor + System.Length(Selected);
+    Exit;
+  end;
+
   const Wrapped = Marker + Selected + Marker;
   ApplyReplace(Start, Len, Wrapped, False);
   FAnchor := Start + MarkerLen;
   FCaret := Start + MarkerLen + System.Length(Selected);
+end;
+
+function TMarkdownEditorModel.MarkersSurroundSelection(const Start, Len: Integer;
+  const Marker: string): Boolean;
+begin
+  Result := False;
+
+  const MarkerLen = System.Length(Marker);
+  const LeadingStart = Start - MarkerLen + 1;
+  const TrailingStart = Start + Len + 1;
+
+  if (LeadingStart < 1) or (TrailingStart + MarkerLen - 1 > System.Length(FText)) then
+    Exit;
+
+  if Copy(FText, LeadingStart, MarkerLen) <> Marker then
+    Exit;
+  if Copy(FText, TrailingStart, MarkerLen) <> Marker then
+    Exit;
+
+  // A marker that continues into more of the same character belongs to a longer
+  // run, and so to a different construct: the single asterisks either side of a
+  // word inside '**bold**' are the bold, not an italic to be taken away.
+  const MarkerChar = Marker[1];
+
+  if (LeadingStart > 1) and (FText[LeadingStart - 1] = MarkerChar) then
+    Exit;
+
+  const AfterTrailing = TrailingStart + MarkerLen;
+  if (AfterTrailing <= System.Length(FText)) and (FText[AfterTrailing] = MarkerChar) then
+    Exit;
+
+  Result := True;
 end;
 
 procedure TMarkdownEditorModel.InsertLink;

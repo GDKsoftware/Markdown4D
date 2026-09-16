@@ -167,6 +167,15 @@ type
     procedure ExecuteBold_Various_TogglesBoldMarkers(const Text: string; const SelectionEnd: Integer; const Expected: string);
 
     [Test]
+    procedure ExecuteBold_Twice_LeavesTheWordUnchanged;
+
+    [Test]
+    procedure ExecuteBold_MarkersJustOutsideSelection_RemovesThem;
+
+    [Test]
+    procedure ExecuteItalic_OnABoldWord_AddsItalicRatherThanEatingTheBold;
+
+    [Test]
     procedure ExecuteLink_InsertsPlaceholderWithCaretInUrl;
 
     [Test]
@@ -762,6 +771,43 @@ begin
   FModel.SetSelection(0, SelectionEnd);
   FModel.ExecuteCommand(TEditorCommand.Bold);
   Assert.AreEqual(Expected, FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteBold_Twice_LeavesTheWordUnchanged;
+begin
+  // What a user actually does: select a word, press Bold, press Bold again. The
+  // first press leaves the selection on the word itself, inside the markers it
+  // just added, so the second press has to recognise them from there.
+  FModel.LoadText('Unidentified');
+  FModel.SetSelection(0, 12);
+
+  FModel.ExecuteCommand(TEditorCommand.Bold);
+  Assert.AreEqual('**Unidentified**', FModel.Text, 'after the first press');
+
+  FModel.ExecuteCommand(TEditorCommand.Bold);
+  Assert.AreEqual('Unidentified', FModel.Text, 'after the second press');
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteBold_MarkersJustOutsideSelection_RemovesThem;
+begin
+  FModel.LoadText('a **word** b');
+  FModel.SetSelection(4, 4);
+
+  FModel.ExecuteCommand(TEditorCommand.Bold);
+
+  Assert.AreEqual('a word b', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteItalic_OnABoldWord_AddsItalicRatherThanEatingTheBold;
+begin
+  // The single asterisks around the selection belong to a bold run, not to an
+  // italic one, so italic has to add its own rather than strip half the bold.
+  FModel.LoadText('**word**');
+  FModel.SetSelection(2, 4);
+
+  FModel.ExecuteCommand(TEditorCommand.Italic);
+
+  Assert.AreEqual('***word***', FModel.Text);
 end;
 
 procedure TMarkdownEditorModelTests.ExecuteLink_InsertsPlaceholderWithCaretInUrl;
