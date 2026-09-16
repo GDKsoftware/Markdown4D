@@ -245,6 +245,9 @@ type
     function BuildCommandActions: TPadCommandActions;
     procedure SetViewMode(const Mode: TPadViewMode);
     procedure ApplyViewMode;
+    function AvailableSplitWidth: Integer;
+    procedure ApplySplitEditorWidth(const DesiredWidth: Integer);
+    procedure HandleSplitterMoved(Sender: TObject);
     procedure EnforceTopBarOrder;
     procedure EnforceLeftPaneOrder;
     procedure ShowFindBar;
@@ -298,6 +301,7 @@ uses
   Markdown4DStudio.SessionSync,
   Markdown4DStudio.Text,
   Markdown4DStudio.Outline,
+  Markdown4DStudio.SplitLayout,
   Markdown4DStudio.Workspace,
   Markdown4DStudio.LinkPolicy,
   Markdown4DStudio.SingleInstance,
@@ -368,6 +372,8 @@ procedure TMarkdown4DStudioVCLForm.ConfigureControls;
 begin
   BuildReplaceControls;
   lblFindCount.Caption := EmptyFindCaption;
+
+  splMain.OnMoved := HandleSplitterMoved;
 end;
 
 procedure TMarkdown4DStudioVCLForm.BuildToolbar;
@@ -892,6 +898,10 @@ begin
   const ShowToc = not pnlToc.Visible;
   pnlToc.Visible := ShowToc;
   splToc.Visible := ShowToc;
+
+  // Showing the contents pane takes the same room the two halves share.
+  if (not FZenActive) and (FViewMode = TPadViewMode.Split) then
+    ApplySplitEditorWidth(mdEditor.Width);
 
   EnforceLeftPaneOrder;
 end;
@@ -1716,6 +1726,41 @@ begin
   ApplyViewMode;
 end;
 
+function TMarkdown4DStudioVCLForm.AvailableSplitWidth: Integer;
+begin
+  // What the editor and preview actually have to share.
+  Result := ClientWidth - splMain.Width;
+
+  if pnlToc.Visible then
+    Dec(Result, pnlToc.Width);
+  if splToc.Visible then
+    Dec(Result, splToc.Width);
+end;
+
+procedure TMarkdown4DStudioVCLForm.ApplySplitEditorWidth(const DesiredWidth: Integer);
+begin
+  // Entering split view asks for the remembered width; a resize or a contents
+  // pane toggle asks for the width the editor already has, so that a splitter
+  // drag is kept and only trimmed when it no longer fits.
+  const Available = AvailableSplitWidth;
+
+  // Re-stated on every width change, because a splitter told to honour a
+  // minimum the window cannot give lets a drag collapse the other pane.
+  splMain.MinSize := TPadSplitLayout.EffectiveMinPaneWidth(Available, MinPaneWidth);
+
+  mdEditor.Width := TPadSplitLayout.ClampEditorWidth(DesiredWidth, Available,
+    MinPaneWidth);
+end;
+
+procedure TMarkdown4DStudioVCLForm.HandleSplitterMoved(Sender: TObject);
+begin
+  // A drag is the user stating a preference, so remember it. It still has to
+  // pass the clamp, because on a narrow window the splitter cannot enforce a
+  // minimum the window is too small to give.
+  ApplySplitEditorWidth(mdEditor.Width);
+  FSplitEditorWidth := mdEditor.Width;
+end;
+
 procedure TMarkdown4DStudioVCLForm.ApplyViewMode;
 begin
   case FViewMode of
@@ -1736,7 +1781,7 @@ begin
     begin
       mdEditor.Align := alLeft;
       mdEditor.Visible := True;
-      mdEditor.Width := FSplitEditorWidth;
+      ApplySplitEditorWidth(FSplitEditorWidth);
       splMain.Visible := True;
       mdPreview.Visible := True;
     end;
@@ -2058,7 +2103,11 @@ begin
   LayoutTitleBar;
 
   if FZenActive then
-    UpdateZenPadding;
+    UpdateZenPadding
+  else if FViewMode = TPadViewMode.Split then
+    // A narrower window must take room from the editor rather than from the
+    // preview, which would otherwise be squeezed to nothing.
+    ApplySplitEditorWidth(mdEditor.Width);
 
   if FPalette <> nil then
     FPalette.Left := (ClientWidth - FPalette.Width) div 2;

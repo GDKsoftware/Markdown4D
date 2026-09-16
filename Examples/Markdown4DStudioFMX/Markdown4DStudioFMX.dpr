@@ -21,6 +21,7 @@ uses
   Markdown4DStudio.Defines in '..\Shared\Markdown4DStudio.Defines.pas',
   Markdown4DStudio.Text in '..\Shared\Markdown4DStudio.Text.pas',
   Markdown4DStudio.Outline in '..\Shared\Markdown4DStudio.Outline.pas',
+  Markdown4DStudio.SplitLayout in '..\Shared\Markdown4DStudio.SplitLayout.pas',
   Markdown4DStudioFMX.Defines in 'Markdown4DStudioFMX.Defines.pas',
   Markdown4DStudio.Shell in '..\Shared\Markdown4DStudio.Shell.pas',
   Markdown4DStudio.CommandLine in '..\Shared\Markdown4DStudio.CommandLine.pas',

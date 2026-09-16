@@ -197,6 +197,10 @@ type
     procedure HandleDocumentHandedOver(const FileName: string);
     procedure SetViewMode(const Mode: TPadViewMode);
     procedure ApplyViewMode;
+    function AvailableSplitWidth: Single;
+    procedure ApplySplitEditorWidth(const DesiredWidth: Single);
+    procedure HandleSplitterMouseUp(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Single);
     procedure ShowFindBar;
     procedure ShowReplaceBar;
     procedure CloseFindBar;
@@ -313,6 +317,7 @@ uses
   Markdown4D.Ast.Interfaces,
   Markdown4DStudio.Text,
   Markdown4DStudio.Outline,
+  Markdown4DStudio.SplitLayout,
   Markdown4DStudio.SessionSync,
   Markdown4DStudio.Workspace,
   Markdown4DStudio.LinkPolicy,
@@ -757,6 +762,8 @@ begin
   FMainSplitter.Parent := Self;
   FMainSplitter.Align := TAlignLayout.Left;
   FMainSplitter.Width := SplitterWidth;
+  // FMX splitters have no moved event, so a finished drag is caught here.
+  FMainSplitter.OnMouseUp := HandleSplitterMouseUp;
 
   FPreview := TMarkdownViewer.Create(Self);
   FPreview.Parent := Self;
@@ -1166,7 +1173,11 @@ begin
   LayoutTitleBar;
 
   if FZenActive then
-    UpdateZenPadding;
+    UpdateZenPadding
+  else if FViewMode = TPadViewMode.Split then
+    // A narrower window must take room from the editor rather than from the
+    // preview, which would otherwise be squeezed to nothing.
+    ApplySplitEditorWidth(FEditor.Width);
 
   if (FPalette <> nil) and FPalette.Visible then
     FPalette.Position.X := (ClientWidth - FPalette.Width) / 2;
@@ -1185,6 +1196,42 @@ begin
   ApplyViewMode;
 end;
 
+function TMarkdown4DStudioFMXForm.AvailableSplitWidth: Single;
+begin
+  // What the editor and preview actually have to share.
+  Result := ClientWidth - FMainSplitter.Width;
+
+  if FTocPanel.Visible then
+    Result := Result - FTocPanel.Width;
+  if FTocSplitter.Visible then
+    Result := Result - FTocSplitter.Width;
+end;
+
+procedure TMarkdown4DStudioFMXForm.ApplySplitEditorWidth(const DesiredWidth: Single);
+begin
+  // Entering split view asks for the remembered width; a resize or a contents
+  // pane toggle asks for the width the editor already has, so that a splitter
+  // drag is kept and only trimmed when it no longer fits.
+  const Available = Round(AvailableSplitWidth);
+
+  // Re-stated on every width change, because a splitter told to honour a
+  // minimum the window cannot give lets a drag collapse the other pane.
+  FMainSplitter.MinSize := TPadSplitLayout.EffectiveMinPaneWidth(Available, MinPaneWidth);
+
+  FEditor.Width := TPadSplitLayout.ClampEditorWidth(Round(DesiredWidth), Available,
+    MinPaneWidth);
+end;
+
+procedure TMarkdown4DStudioFMXForm.HandleSplitterMouseUp(Sender: TObject;
+  Button: TMouseButton; Shift: TShiftState; X, Y: Single);
+begin
+  // A drag is the user stating a preference, so remember it. It still has to
+  // pass the clamp, because on a narrow window the splitter cannot enforce a
+  // minimum the window is too small to give.
+  ApplySplitEditorWidth(FEditor.Width);
+  FSplitEditorWidth := FEditor.Width;
+end;
+
 procedure TMarkdown4DStudioFMXForm.ApplyViewMode;
 begin
   case FViewMode of
@@ -1192,7 +1239,7 @@ begin
       begin
         FEditor.Visible := True;
         FEditor.Align := TAlignLayout.Left;
-        FEditor.Width := FSplitEditorWidth;
+        ApplySplitEditorWidth(FSplitEditorWidth);
         FMainSplitter.Visible := True;
         FPreview.Visible := True;
       end;
@@ -1639,6 +1686,10 @@ begin
   const ShowToc = not FTocPanel.Visible;
   FTocPanel.Visible := ShowToc;
   FTocSplitter.Visible := ShowToc;
+
+  // Showing the contents pane takes the same room the two halves share.
+  if (not FZenActive) and (FViewMode = TPadViewMode.Split) then
+    ApplySplitEditorWidth(FEditor.Width);
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleFindClick(Sender: TObject);
