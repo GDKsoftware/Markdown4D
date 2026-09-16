@@ -193,6 +193,7 @@ type
     function TryHandleCommandShortcut(const Key: Word): Boolean;
     function TryHandleGlobalKey(const Key: Word): Boolean;
     procedure ExecuteFormatCommand(const Command: TEditorCommand);
+    function AdoptPreviewSelection: Boolean;
     procedure ToggleDarkTheme;
     procedure ToggleTocPane;
     procedure HandleDocumentHandedOver(const FileName: string);
@@ -319,7 +320,8 @@ uses
   Markdown4DStudio.LinkPolicy,
   Markdown4DStudio.HtmlExport,
   Markdown4D.Extensions.Chart.BlockOverride,
-  Markdown4D.Extensions.Mermaid.BlockOverride;
+  Markdown4D.Extensions.Mermaid.BlockOverride,
+  Markdown4D.Parser.SourceMap;
 
 constructor TMarkdown4DStudioFMXForm.Create(Owner: TComponent);
 begin
@@ -1144,8 +1146,34 @@ begin
   Result := True;
 end;
 
+function TMarkdown4DStudioFMXForm.AdoptPreviewSelection: Boolean;
+begin
+  // Text selected in the preview is the user pointing at characters of the
+  // document, so move the editor onto them before the command runs. A selection
+  // that cannot be traced back exactly is left alone rather than guessed at.
+  Result := False;
+
+  if not FPreview.Visible then
+    Exit;
+
+  var Span: TMarkdownSourceSpan;
+  if not FPreview.TrySelectedSourceSpan(Span) then
+    Exit;
+
+  FEditor.SetSelection(Span.StartOffset - 1, Span.Length);
+  FPreview.ClearSelection;
+  Result := True;
+end;
+
 procedure TMarkdown4DStudioFMXForm.ExecuteFormatCommand(const Command: TEditorCommand);
 begin
+  const FromPreview = AdoptPreviewSelection;
+
+  // A command aimed at the preview needs the editor on screen, otherwise the
+  // change lands where the user cannot see it.
+  if FromPreview and (FViewMode = TPadViewMode.PreviewOnly) then
+    SetViewMode(TPadViewMode.Split);
+
   FEditor.ExecuteCommand(Command);
   FocusEditor;
 end;
@@ -1596,26 +1624,22 @@ end;
 
 procedure TMarkdown4DStudioFMXForm.HandleBoldClick(Sender: TObject);
 begin
-  FEditor.ExecuteCommand(TEditorCommand.Bold);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.Bold);
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleItalicClick(Sender: TObject);
 begin
-  FEditor.ExecuteCommand(TEditorCommand.Italic);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.Italic);
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleLinkClick(Sender: TObject);
 begin
-  FEditor.ExecuteCommand(TEditorCommand.Link);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.Link);
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleCodeClick(Sender: TObject);
 begin
-  FEditor.ExecuteCommand(TEditorCommand.CodeBlock);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.CodeBlock);
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleThemeClick(Sender: TObject);

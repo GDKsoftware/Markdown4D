@@ -24,7 +24,8 @@ uses
   Markdown4D.Viewer.Lifetime,
   Markdown4D.Viewer.ScrollBar,
   Markdown4D.Image.Svg,
-  Markdown4D.Fmx.Painter;
+  Markdown4D.Fmx.Painter,
+  Markdown4D.Parser.SourceMap;
 
 type
   TMarkdownLinkClickEvent = procedure(const Sender: TObject; const Url: string) of object;
@@ -166,6 +167,9 @@ type
     function FindText(const Needle: string): Boolean;
     procedure CopySelectionToClipboard;
     procedure SelectAll;
+    // Where the current selection sits in the markdown behind the rendered page.
+    // Fails when any part of it cannot be traced back exactly.
+    function TrySelectedSourceSpan(out Span: TMarkdownSourceSpan): Boolean;
     procedure ClearSelection;
     property Theme: TMarkdownTheme read FTheme write SetTheme;
     property ContentHeight: Integer read GetContentHeight;
@@ -421,6 +425,11 @@ procedure TMarkdownViewer.SelectAll;
 begin
   if FModel.SelectAll then
     RedrawContent;
+end;
+
+function TMarkdownViewer.TrySelectedSourceSpan(out Span: TMarkdownSourceSpan): Boolean;
+begin
+  Result := FModel.TrySelectedSourceSpan(Span);
 end;
 
 procedure TMarkdownViewer.ClearSelection;

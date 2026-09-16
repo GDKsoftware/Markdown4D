@@ -179,6 +179,7 @@ type
     procedure HandleExportClick(Sender: TObject);
     procedure HandleCopyHtmlClick(Sender: TObject);
     procedure ExecuteFormatCommand(const Command: TEditorCommand);
+    function AdoptPreviewSelection: Boolean;
     procedure DoExportHtml;
     procedure DoCopyHtml;
     procedure CopyHtmlToClipboard(const Fragment: string);
@@ -302,7 +303,8 @@ uses
   Markdown4DStudio.Workspace,
   Markdown4DStudio.LinkPolicy,
   Markdown4DStudio.SingleInstance,
-  Markdown4DStudio.HtmlExport;
+  Markdown4DStudio.HtmlExport,
+  Markdown4D.Parser.SourceMap;
 
 {$R *.dfm}
 
@@ -745,26 +747,22 @@ end;
 
 procedure TMarkdown4DStudioVCLForm.HandleBoldClick(Sender: TObject);
 begin
-  mdEditor.ExecuteCommand(TEditorCommand.Bold);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.Bold);
 end;
 
 procedure TMarkdown4DStudioVCLForm.HandleItalicClick(Sender: TObject);
 begin
-  mdEditor.ExecuteCommand(TEditorCommand.Italic);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.Italic);
 end;
 
 procedure TMarkdown4DStudioVCLForm.HandleLinkClick(Sender: TObject);
 begin
-  mdEditor.ExecuteCommand(TEditorCommand.Link);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.Link);
 end;
 
 procedure TMarkdown4DStudioVCLForm.HandleCodeClick(Sender: TObject);
 begin
-  mdEditor.ExecuteCommand(TEditorCommand.CodeBlock);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.CodeBlock);
 end;
 
 procedure TMarkdown4DStudioVCLForm.HandleExportClick(Sender: TObject);
@@ -777,8 +775,34 @@ begin
   DoCopyHtml;
 end;
 
+function TMarkdown4DStudioVCLForm.AdoptPreviewSelection: Boolean;
+begin
+  // Text selected in the preview is the user pointing at characters of the
+  // document, so move the editor onto them before the command runs. A selection
+  // that cannot be traced back exactly is left alone rather than guessed at.
+  Result := False;
+
+  if not mdPreview.Visible then
+    Exit;
+
+  var Span: TMarkdownSourceSpan;
+  if not mdPreview.TrySelectedSourceSpan(Span) then
+    Exit;
+
+  mdEditor.SetSelection(Span.StartOffset - 1, Span.Length);
+  mdPreview.ClearSelection;
+  Result := True;
+end;
+
 procedure TMarkdown4DStudioVCLForm.ExecuteFormatCommand(const Command: TEditorCommand);
 begin
+  const FromPreview = AdoptPreviewSelection;
+
+  // A command aimed at the preview needs the editor on screen, otherwise the
+  // change lands where the user cannot see it.
+  if FromPreview and (FViewMode = TPadViewMode.PreviewOnly) then
+    SetViewMode(TPadViewMode.Split);
+
   mdEditor.ExecuteCommand(Command);
   FocusEditor;
 end;

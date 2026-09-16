@@ -230,6 +230,9 @@ type
     function FindPrevious(const Needle: string; const Options: TMarkdownFindOptions): Boolean;
     function ReplaceCurrent(const Needle, Replacement: string; const Options: TMarkdownFindOptions): Boolean;
     function ReplaceAll(const Needle, Replacement: string; const Options: TMarkdownFindOptions): Integer;
+    // Selects a range of the source, so a caller that worked out where it wants
+    // to act, such as from a selection made in the preview, can act there.
+    procedure SetSelection(const Start, Length: Integer);
     property CaretPosition: Integer read GetCaretPosition write SetCaretPosition;
     property SelectedText: string read GetSelectedText;
     property Theme: TMarkdownTheme read FTheme write SetTheme;
@@ -683,6 +686,12 @@ begin
   RevealSelection;
 
   Result := True;
+end;
+
+procedure TMarkdownEditor.SetSelection(const Start, Length: Integer);
+begin
+  FModel.SetSelection(Start, Length);
+  RevealSelection;
 end;
 
 function TMarkdownEditor.FindPrevious(const Needle: string; const Options: TMarkdownFindOptions): Boolean;

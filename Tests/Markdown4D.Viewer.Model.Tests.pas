@@ -61,6 +61,9 @@ type
     procedure TrySelectedSourceSpan_SelectionAfterEmphasis_SkipsTheMarkers;
 
     [Test]
+    procedure TrySelectedSourceSpan_WordInTheMiddle_ExcludesTheSpacesAroundIt;
+
+    [Test]
     procedure TrySelectedSourceSpan_WithoutASelection_Refuses;
 
     [Test]
@@ -700,6 +703,20 @@ begin
   var Span: TMarkdownSourceSpan;
   Assert.IsTrue(FModel.TrySelectedSourceSpan(Span), 'expected a source span');
   Assert.AreEqual('cd', Copy(Source, Span.StartOffset, Span.Length));
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectedSourceSpan_WordInTheMiddle_ExcludesTheSpacesAroundIt;
+begin
+  // Each character is ten wide, so 'beta' in 'alpha beta gamma' covers 60 to 100.
+  const Source = 'alpha beta gamma';
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := Source;
+
+  SelectFromTo(61, 10, 99, 10);
+
+  var Span: TMarkdownSourceSpan;
+  Assert.IsTrue(FModel.TrySelectedSourceSpan(Span), 'expected a source span');
+  Assert.AreEqual('beta', Copy(Source, Span.StartOffset, Span.Length));
 end;
 
 procedure TMarkdownViewerModelTests.TrySelectedSourceSpan_WithoutASelection_Refuses;
