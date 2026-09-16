@@ -27,6 +27,7 @@ type
       FModel: TMarkdownEditorModel;
       FMirror: string;
       FChangeCount: Integer;
+      FCaretDuringChange: Integer;
     procedure HandleChange(const Sender: TObject; const Range: TEditorReplaceRange);
 
   public
@@ -101,6 +102,15 @@ type
 
     [Test]
     procedure MergeText_EmitsRangeCoveringOnlyTheDifference;
+
+    [Test]
+    procedure Insert_WhenChangeFires_CaretAlreadyFollowsTheInsertion;
+
+    [Test]
+    procedure Undo_WhenChangeFires_CaretAlreadyBackWhereItWas;
+
+    [Test]
+    procedure Redo_WhenChangeFires_CaretAlreadyFollowsTheRestoredText;
 
     [Test]
     procedure MoveSelectionTo_Forward_MovesTextAndKeepsItSelected;
@@ -338,6 +348,7 @@ begin
   FModel := TMarkdownEditorModel.Create;
   FMirror := '';
   FChangeCount := 0;
+  FCaretDuringChange := -1;
 end;
 
 procedure TMarkdownEditorModelTests.TearDown;
@@ -349,6 +360,7 @@ procedure TMarkdownEditorModelTests.HandleChange(const Sender: TObject; const Ra
 begin
   Inc(FChangeCount);
   FMirror := Range.Apply(FMirror);
+  FCaretDuringChange := FModel.CaretPosition;
 end;
 
 procedure TMarkdownEditorModelTests.LoadText_NormalizesCrlfToLf;
@@ -532,6 +544,46 @@ begin
   Assert.IsTrue(FModel.MergeText('Hello brave world'));
   Assert.AreEqual(1, FChangeCount);
   Assert.AreEqual(FModel.Text, FMirror);
+end;
+
+procedure TMarkdownEditorModelTests.Insert_WhenChangeFires_CaretAlreadyFollowsTheInsertion;
+begin
+  FModel.LoadText(SampleText);
+  FModel.CaretPosition := Length(SampleText);
+  FMirror := FModel.Text;
+  FModel.OnChange := HandleChange;
+
+  FModel.Insert('!');
+
+  Assert.AreEqual(Length(SampleText) + 1, FCaretDuringChange,
+                  'A change listener must see the caret it has to paint, not the one from before the edit');
+end;
+
+procedure TMarkdownEditorModelTests.Undo_WhenChangeFires_CaretAlreadyBackWhereItWas;
+begin
+  FModel.LoadText(SampleText);
+  FModel.CaretPosition := Length(SampleText);
+  FModel.Insert('!');
+  FMirror := FModel.Text;
+  FModel.OnChange := HandleChange;
+
+  FModel.Undo;
+
+  Assert.AreEqual(Length(SampleText), FCaretDuringChange);
+end;
+
+procedure TMarkdownEditorModelTests.Redo_WhenChangeFires_CaretAlreadyFollowsTheRestoredText;
+begin
+  FModel.LoadText(SampleText);
+  FModel.CaretPosition := Length(SampleText);
+  FModel.Insert('!');
+  FModel.Undo;
+  FMirror := FModel.Text;
+  FModel.OnChange := HandleChange;
+
+  FModel.Redo;
+
+  Assert.AreEqual(Length(SampleText) + 1, FCaretDuringChange);
 end;
 
 procedure TMarkdownEditorModelTests.MoveSelectionTo_Forward_MovesTextAndKeepsItSelected;

@@ -631,11 +631,12 @@ begin
   const Entry = FUndoStack[High(FUndoStack)];
   SetLength(FUndoStack, System.Length(FUndoStack) - 1);
 
-  DoReplace(Entry.Start, System.Length(Entry.InsertedText), Entry.RemovedText);
   FRedoStack := FRedoStack + [Entry];
   FCaret := Entry.CaretBefore;
   FAnchor := Entry.AnchorBefore;
   FCoalesceBroken := True;
+
+  DoReplace(Entry.Start, System.Length(Entry.InsertedText), Entry.RemovedText);
 end;
 
 procedure TMarkdownEditorModel.Redo;
@@ -646,11 +647,12 @@ begin
   const Entry = FRedoStack[High(FRedoStack)];
   SetLength(FRedoStack, System.Length(FRedoStack) - 1);
 
-  DoReplace(Entry.Start, System.Length(Entry.RemovedText), Entry.InsertedText);
   FUndoStack := FUndoStack + [Entry];
   FCaret := Entry.CaretAfter;
   FAnchor := Entry.CaretAfter;
   FCoalesceBroken := True;
+
+  DoReplace(Entry.Start, System.Length(Entry.RemovedText), Entry.InsertedText);
 end;
 
 function TMarkdownEditorModel.CanUndo: Boolean;
@@ -993,10 +995,14 @@ procedure TMarkdownEditorModel.ApplyReplace(const Start, OldLen: Integer; const 
   const Coalescable: Boolean);
 begin
   RecordUndo(Start, Copy(FText, Start + 1, OldLen), Replacement, Coalescable);
-  DoReplace(Start, OldLen, Replacement);
+
+  { RecordUndo needs the caret from before the edit, DoReplace raises OnChange and every
+    listener needs the caret from after it, so the move belongs between the two. }
   FRedoStack := nil;
   FCaret := Start + System.Length(Replacement);
   FAnchor := FCaret;
+
+  DoReplace(Start, OldLen, Replacement);
 end;
 
 procedure TMarkdownEditorModel.RecordUndo(const Start: Integer; const Removed, Inserted: string;
