@@ -15,7 +15,8 @@ uses
   Markdown4D.Parser.LinkSyntax,
   Markdown4D.Parser.HtmlBlocks,
   Markdown4D.Ast.Interfaces,
-  Markdown4D.Ast;
+  Markdown4D.Ast,
+  Markdown4D.Parser.SourceMap;
 
 type
   TInlineChainNode = class
@@ -116,6 +117,10 @@ type
       FContent: string;
       FIndex: Integer;
       FTextBuffer: TStringBuilder;
+      // Where the text now in FTextBuffer started, as an index into FContent,
+      // and how FContent maps back to the original markdown.
+      FTextStart: Integer;
+      FSourceMap: TMarkdownSourceMap;
       FFirstInline: TInlineChainNode;
       FLastInline: TInlineChainNode;
       FFirstDelimiter: TInlineDelimiter;
@@ -202,6 +207,7 @@ type
     constructor Create(const Configuration: TMarkdownPipelineConfiguration);
     destructor Destroy; override;
     procedure ParseInto(const Parent: TMarkdownAstNode; const Content: string;
+      const SourceMap: TMarkdownSourceMap;
                         const ReferenceMap: TLinkReferenceMap);
     property TaskListCandidate: Boolean read FTaskListCandidate write FTaskListCandidate;
   end;
@@ -357,12 +363,15 @@ begin
 end;
 
 procedure TInlineParser.ParseInto(const Parent: TMarkdownAstNode; const Content: string;
+                                  const SourceMap: TMarkdownSourceMap;
                                   const ReferenceMap: TLinkReferenceMap);
 begin
   FParent := Parent;
   FContent := Content;
+  FSourceMap := SourceMap;
   FReferenceMap := ReferenceMap;
   FIndex := 1;
+  FTextStart := 1;
   FTextBuffer.Clear;
   ClearDelimiterStack;
   ClearInlineChain;
@@ -370,6 +379,11 @@ begin
 
   while FIndex <= Length(FContent) do
   begin
+    // A run of plain text begins at the first character appended after a
+    // flush, which is the one place that knows its position in the content.
+    if FTextBuffer.Length = 0 then
+      FTextStart := FIndex;
+
     const Current = FContent[FIndex];
 
     if not TryDispatch(Current) then
@@ -1631,7 +1645,18 @@ begin
   if not HasText then
     Exit;
 
-  AppendInline(TMarkdownTextNode.Create(TMarkdownNodeKind.Text, FTextBuffer.ToString));
+  const Node = TMarkdownTextNode.Create(TMarkdownNodeKind.Text, FTextBuffer.ToString);
+
+  // The rendered text and its source are not the same length once escapes and
+  // entities are resolved, so the span is taken from the content positions, not
+  // from the buffer. A run that is not contiguous in the source, such as one
+  // crossing a line break, simply gets no segment.
+  var Span: TMarkdownSourceSpan;
+  if FSourceMap.TryMapRange(FTextStart, FIndex - FTextStart, Span) then
+    Node.SetSegment(TMarkdownSegment.Create(Span.StartOffset,
+      Span.StartOffset + Span.Length));
+
+  AppendInline(Node);
   FTextBuffer.Clear;
 end;
 

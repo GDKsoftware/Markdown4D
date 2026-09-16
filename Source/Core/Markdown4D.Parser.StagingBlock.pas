@@ -8,7 +8,8 @@ uses
   System.SysUtils,
   System.Generics.Collections,
   Markdown4D.Ast.Interfaces,
-  Markdown4D.Parser.HtmlBlocks;
+  Markdown4D.Parser.HtmlBlocks,
+  Markdown4D.Parser.SourceMap;
 
 type
   TListData = record
@@ -45,6 +46,7 @@ type
     FStartLine: Integer;
     FStartOffset: Integer;
     FEndOffset: Integer;
+    FSourceMap: TMarkdownSourceMap;
     procedure FreeDescendantsIteratively;
     procedure MoveChildrenTo(const Pending: TStack<TStagingBlock>);
     procedure SetLastLineBlank(const Value: Boolean);
@@ -58,6 +60,8 @@ type
     property Children: TObjectList<TStagingBlock> read FChildren;
     property IsOpen: Boolean read FIsOpen write FIsOpen;
     property Content: TStringBuilder read FContent;
+    // Where each character of Content came from in the original markdown.
+    property SourceMap: TMarkdownSourceMap read FSourceMap write FSourceMap;
     property Literal: string read FLiteral write FLiteral;
     property InfoString: string read FInfoString write FInfoString;
     property HeadingLevel: Integer read FHeadingLevel write FHeadingLevel;

@@ -15,6 +15,7 @@ uses
   Markdown4D.Parser.LineScanner,
   Markdown4D.Parser.HtmlBlocks,
   Markdown4D.Parser.References,
+  Markdown4D.Parser.SourceMap,
   Markdown4D.Parser.StagingBlock,
   Markdown4D.Parser.Inlines;
 
@@ -157,6 +158,7 @@ type
     class function IsTaskListParagraph(const Block: TStagingBlock): Boolean;
     class function HasNestedBlocks(const Kind: TMarkdownNodeKind): Boolean;
     procedure AttachInlines(const Node: TMarkdownAstNode; const Content: string;
+                            const SourceMap: TMarkdownSourceMap;
                             const IsTaskListCandidate: Boolean);
     procedure RunDocumentProcessors(const Document: IMarkdownDocument);
 
@@ -1536,7 +1538,24 @@ end;
 
 procedure TBlockParser.AddLineToTip;
 begin
-  FTip.Content.Append(FScanner.RestOfLine);
+  const Rest = FScanner.RestOfLine;
+  const ContentStart = FTip.Content.Length + 1;
+
+  // Record where this stretch of content came from, so a position in the
+  // rendered preview can be traced back to the source. RestOfLine is a slice of
+  // the line starting at the scanner offset, except when it expands a partly
+  // consumed tab into spaces. Those spaces exist in no source character, so they
+  // are left out of the map and simply report as unmappable.
+  var Map := FTip.SourceMap;
+  const Expanded = Length(Rest) - (Length(FScanner.Line) - FScanner.Offset + 1);
+  if Expanded <= 0 then
+    Map.Add(ContentStart, FCurrentLine.StartOffset + FScanner.Offset - 1, Length(Rest))
+  else
+    Map.Add(ContentStart + Expanded,
+      FCurrentLine.StartOffset + FScanner.Offset, Length(Rest) - Expanded);
+  FTip.SourceMap := Map;
+
+  FTip.Content.Append(Rest);
   FTip.Content.Append(LineFeed);
   FTip.EndOffset := FCurrentLine.EndOffset;
 end;
@@ -1844,7 +1863,8 @@ begin
     TMarkdownNodeKind.Paragraph:
       begin
         Result := TMarkdownAstNode.Create(TMarkdownNodeKind.Paragraph);
-        AttachInlines(Result, Block.Content.ToString, IsTaskListParagraph(Block));
+        AttachInlines(Result, Block.Content.ToString, Block.SourceMap,
+          IsTaskListParagraph(Block));
       end;
     TMarkdownNodeKind.Heading:
       begin
@@ -1852,7 +1872,7 @@ begin
         HeadingNode.SetSourceLine(Block.StartLine);
         Result := HeadingNode;
 
-        AttachInlines(Result, Block.Content.ToString, False);
+        AttachInlines(Result, Block.Content.ToString, Block.SourceMap, False);
       end;
     TMarkdownNodeKind.CodeBlock:
       Result := CreateCodeBlockNode(Block);
@@ -1919,7 +1939,9 @@ begin
       if ColumnIndex <= High(Cells) then
         CellText := Cells[ColumnIndex];
 
-      AttachInlines(Cell, CellText, False);
+      // Cells are split out of the assembled row text, so their own mapping back
+      // to the source is not worked out yet.
+      AttachInlines(Cell, CellText, TMarkdownSourceMap.Create, False);
       Row.AddChild(Cell);
     end;
 
@@ -1942,10 +1964,18 @@ begin
 end;
 
 procedure TBlockParser.AttachInlines(const Node: TMarkdownAstNode; const Content: string;
+                                     const SourceMap: TMarkdownSourceMap;
                                      const IsTaskListCandidate: Boolean);
 begin
+  const Trimmed = Content.Trim(ContentTrimChars);
+
+  // The map describes the untrimmed content, so it loses whatever the trim did
+  // at the front. Anything trimmed off the end simply stops being addressable.
+  var Map := SourceMap;
+  Map.DropLeading(Content.Length - Content.TrimLeft(ContentTrimChars).Length);
+
   FInlineParser.TaskListCandidate := IsTaskListCandidate;
-  FInlineParser.ParseInto(Node, Content.Trim(ContentTrimChars), FActiveReferences);
+  FInlineParser.ParseInto(Node, Trimmed, Map, FActiveReferences);
 end;
 
 constructor TBlockParserContext.Create(const Engine: TBlockParser);
