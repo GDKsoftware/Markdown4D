@@ -199,6 +199,7 @@ type
     function TryHandleCommandShortcut(const Key: Word): Boolean;
     function TryHandleGlobalKey(const Key: Word): Boolean;
     procedure ExecuteFormatCommand(const Command: TEditorCommand);
+    procedure AdoptPreviewSelection;
     procedure ToggleDarkTheme;
     procedure ToggleTocPane;
     procedure HandleDocumentHandedOver(const FileName: string);
@@ -1196,8 +1197,25 @@ end;
 
 procedure TMarkdown4DStudioFMXForm.ExecuteFormatCommand(const Command: TEditorCommand);
 begin
+  AdoptPreviewSelection;
   FEditor.ExecuteCommand(Command);
   FocusEditor;
+end;
+
+// With the editor out of sight its caret sits wherever it was left, which is
+// not where the reader was pointing. The selection made in the preview says
+// which characters were meant, so the editor takes it over first.
+procedure TMarkdown4DStudioFMXForm.AdoptPreviewSelection;
+begin
+  const IsPreviewOnly = (EffectiveViewMode = TPadViewMode.PreviewOnly);
+  if not IsPreviewOnly then
+    Exit;
+
+  var Segment: TMarkdownSegment;
+  if not FPreview.TryGetSelectionSourceSegment(Segment) then
+    Exit;
+
+  FEditor.SelectRange(Segment.StartOffset - 1, Segment.Length);
 end;
 
 procedure TMarkdown4DStudioFMXForm.DoShow;
@@ -1708,26 +1726,22 @@ end;
 
 procedure TMarkdown4DStudioFMXForm.HandleBoldClick(Sender: TObject);
 begin
-  FEditor.ExecuteCommand(TEditorCommand.Bold);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.Bold);
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleItalicClick(Sender: TObject);
 begin
-  FEditor.ExecuteCommand(TEditorCommand.Italic);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.Italic);
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleLinkClick(Sender: TObject);
 begin
-  FEditor.ExecuteCommand(TEditorCommand.Link);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.Link);
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleCodeClick(Sender: TObject);
 begin
-  FEditor.ExecuteCommand(TEditorCommand.CodeBlock);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.CodeBlock);
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleViewEditorClick(Sender: TObject);

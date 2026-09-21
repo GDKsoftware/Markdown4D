@@ -186,6 +186,7 @@ type
     procedure HandleExportClick(Sender: TObject);
     procedure HandleCopyHtmlClick(Sender: TObject);
     procedure ExecuteFormatCommand(const Command: TEditorCommand);
+    procedure AdoptPreviewSelection;
     procedure DoExportHtml;
     procedure DoCopyHtml;
     procedure CopyHtmlToClipboard(const Fragment: string);
@@ -770,26 +771,22 @@ end;
 
 procedure TMarkdown4DStudioVCLForm.HandleBoldClick(Sender: TObject);
 begin
-  mdEditor.ExecuteCommand(TEditorCommand.Bold);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.Bold);
 end;
 
 procedure TMarkdown4DStudioVCLForm.HandleItalicClick(Sender: TObject);
 begin
-  mdEditor.ExecuteCommand(TEditorCommand.Italic);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.Italic);
 end;
 
 procedure TMarkdown4DStudioVCLForm.HandleLinkClick(Sender: TObject);
 begin
-  mdEditor.ExecuteCommand(TEditorCommand.Link);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.Link);
 end;
 
 procedure TMarkdown4DStudioVCLForm.HandleCodeClick(Sender: TObject);
 begin
-  mdEditor.ExecuteCommand(TEditorCommand.CodeBlock);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.CodeBlock);
 end;
 
 procedure TMarkdown4DStudioVCLForm.HandleViewEditorClick(Sender: TObject);
@@ -832,8 +829,25 @@ end;
 
 procedure TMarkdown4DStudioVCLForm.ExecuteFormatCommand(const Command: TEditorCommand);
 begin
+  AdoptPreviewSelection;
   mdEditor.ExecuteCommand(Command);
   FocusEditor;
+end;
+
+// With the editor out of sight its caret sits wherever it was left, which is
+// not where the reader was pointing. The selection made in the preview says
+// which characters were meant, so the editor takes it over first.
+procedure TMarkdown4DStudioVCLForm.AdoptPreviewSelection;
+begin
+  const IsPreviewOnly = (EffectiveViewMode = TPadViewMode.PreviewOnly);
+  if not IsPreviewOnly then
+    Exit;
+
+  var Segment: TMarkdownSegment;
+  if not mdPreview.TryGetSelectionSourceSegment(Segment) then
+    Exit;
+
+  mdEditor.SelectRange(Segment.StartOffset - 1, Segment.Length);
 end;
 
 procedure TMarkdown4DStudioVCLForm.DoExportHtml;
