@@ -843,11 +843,7 @@ begin
   if not IsPreviewOnly then
     Exit;
 
-  var Segment: TMarkdownSegment;
-  if not mdPreview.TryGetSelectionSourceSegment(Segment) then
-    Exit;
-
-  mdEditor.SelectRange(Segment.StartOffset - 1, Segment.Length);
+  mdEditor.TryAdoptPreviewSelection;
 end;
 
 procedure TMarkdown4DStudioVCLForm.DoExportHtml;

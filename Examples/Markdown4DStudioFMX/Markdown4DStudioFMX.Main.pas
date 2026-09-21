@@ -1211,11 +1211,7 @@ begin
   if not IsPreviewOnly then
     Exit;
 
-  var Segment: TMarkdownSegment;
-  if not FPreview.TryGetSelectionSourceSegment(Segment) then
-    Exit;
-
-  FEditor.SelectRange(Segment.StartOffset - 1, Segment.Length);
+  FEditor.TryAdoptPreviewSelection;
 end;
 
 procedure TMarkdown4DStudioFMXForm.DoShow;
