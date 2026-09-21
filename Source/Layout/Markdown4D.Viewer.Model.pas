@@ -77,6 +77,8 @@ type
     function SelectedCharacterRange(const Run: IDisplayTextRun; const ItemIndex: Integer;
       const StartPosition, EndPosition: TTextPosition; out CharFrom, CharTo: Integer): Boolean;
     function BlockIndexOfItem(const ItemIndex: Integer): Integer;
+    function TryFindSelectionEdges(out FirstRun, LastRun: IDisplayTextRun;
+                                   out FirstCharacter, LastCharacter: Integer): Boolean;
     function PrefixWidth(const Run: IDisplayTextRun; const CharacterCount: Integer): Single;
     class function CodeTextOf(const Code: IMarkdownCodeBlock): string; static;
     function GetText: string;
@@ -109,6 +111,11 @@ type
     function HasSelection: Boolean;
     function SelectionRects: TArray<TLayoutRectF>;
     function SelectedText: string;
+    // Answers the stretch of markdown source the selection was rendered from,
+    // so a formatting command can change exactly those characters. False when
+    // there is no selection, or when the runs it covers carry no source of
+    // their own, as happens inside a diagram an extension drew.
+    function TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean;
     function PendingImageSources: TArray<string>;
     procedure NotifyImageArrived(const Source: string; const Size: TLayoutSizeF);
     procedure NotifyImageFailed(const Source: string);
@@ -137,7 +144,8 @@ uses
   Markdown4D,
   Markdown4D.Defines,
   Markdown4D.Layout.BlockOverride,
-  Markdown4D.Layout.Engine;
+  Markdown4D.Layout.Engine,
+  Markdown4D.Layout.SourceMapping;
 
 class function TMarkdownFoundRange.Create(const ItemIndex, StartCharacter,
   CharacterCount: Integer): TMarkdownFoundRange;
@@ -408,6 +416,71 @@ begin
     PreviousTop := Run.Bounds.Top;
     PreviousBlock := BlockIndex;
   end;
+end;
+
+function TMarkdownViewerModel.TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean;
+begin
+  Segment := Default(TMarkdownSegment);
+  Result := False;
+
+  var FirstRun, LastRun: IDisplayTextRun;
+  var FirstCharacter, LastCharacter: Integer;
+  if not TryFindSelectionEdges(FirstRun, LastRun, FirstCharacter, LastCharacter) then
+    Exit;
+
+  var StartOffset, EndOffset: Integer;
+  const IsStartMapped = TMarkdownSourceMapper.TryMapLiteralOffset(FText, FirstRun.SourceNode,
+    FirstRun.StartOffset + FirstCharacter, TMarkdownSourceEdge.Leading, StartOffset);
+  const IsEndMapped = TMarkdownSourceMapper.TryMapLiteralOffset(FText, LastRun.SourceNode,
+    LastRun.StartOffset + LastCharacter, TMarkdownSourceEdge.Trailing, EndOffset);
+
+  const CoversCharacters = IsStartMapped and IsEndMapped and (EndOffset > StartOffset);
+  if not CoversCharacters then
+    Exit;
+
+  Segment := TMarkdownSegment.Create(StartOffset, EndOffset);
+  Result := True;
+end;
+
+// The runs between the two ends of the selection follow one another in the
+// source as well, so the first and the last of them bracket the whole stretch.
+function TMarkdownViewerModel.TryFindSelectionEdges(out FirstRun, LastRun: IDisplayTextRun;
+  out FirstCharacter, LastCharacter: Integer): Boolean;
+begin
+  FirstRun := nil;
+  LastRun := nil;
+  FirstCharacter := 0;
+  LastCharacter := 0;
+
+  if not HasSelection then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  const Range = NormalizeSelection;
+
+  for var Index := Range.StartPosition.ItemIndex to Range.EndPosition.ItemIndex do
+  begin
+    var Run: IDisplayTextRun;
+    if not TrySelectableRun(Index, Run) then
+      Continue;
+
+    var CharFrom, CharTo: Integer;
+    if not SelectedCharacterRange(Run, Index, Range.StartPosition, Range.EndPosition, CharFrom, CharTo) then
+      Continue;
+
+    if FirstRun = nil then
+    begin
+      FirstRun := Run;
+      FirstCharacter := CharFrom;
+    end;
+
+    LastRun := Run;
+    LastCharacter := CharTo;
+  end;
+
+  Result := (FirstRun <> nil);
 end;
 
 function TMarkdownViewerModel.PendingImageSources: TArray<string>;

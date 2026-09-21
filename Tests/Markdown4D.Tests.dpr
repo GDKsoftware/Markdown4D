@@ -35,6 +35,7 @@ uses
   Markdown4D.Layout.Incremental.Tests in 'Markdown4D.Layout.Incremental.Tests.pas',
   Markdown4D.Highlighter.Tests in 'Markdown4D.Highlighter.Tests.pas',
   Markdown4D.Viewer.Model.Tests in 'Markdown4D.Viewer.Model.Tests.pas',
+  Markdown4D.Viewer.SourceMapping.Tests in 'Markdown4D.Viewer.SourceMapping.Tests.pas',
   Markdown4D.Viewer.ContextMenu in '..\Source\Layout\Markdown4D.Viewer.ContextMenu.pas',
   Markdown4D.Viewer.ContextMenu.Tests in 'Markdown4D.Viewer.ContextMenu.Tests.pas',
   Markdown4D.Viewer.ScrollBar.Tests in 'Markdown4D.Viewer.ScrollBar.Tests.pas',
