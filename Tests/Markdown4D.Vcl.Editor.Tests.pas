@@ -38,6 +38,8 @@ type
   private
     const
       HeadingMarkdown = '# Heading';
+      AdoptableText = 'alpha beta';
+      AdoptedPrefix = 'new ';
       EditText = ' appended body';
       MouseText = 'Hello world'#10'second';
       WordPairText = 'foo bar';
@@ -55,6 +57,7 @@ type
       FEditor: TMarkdownEditor;
       FHostForm: TForm;
     function NewHostedEditor(const ControlHeight: Integer): TTestableVclEditor;
+    function NewHostedPreview(const Editor: TMarkdownEditor): TMarkdownViewer;
     class function ManyLines(const Count: Integer): string; static;
     class function OneWrappedLine: string; static;
     class function ClipboardIsAccessible: Boolean; static;
@@ -88,6 +91,15 @@ type
 
     [Test]
     procedure AttachPreview_AfterEditAndFlush_PreviewContainsEdit;
+
+    [Test]
+    procedure TryAdoptPreviewSelection_PreviewShowsTheSameText_MovesTheSelectionOver;
+
+    [Test]
+    procedure TryAdoptPreviewSelection_PreviewShowsOlderText_LeavesTheSelectionAlone;
+
+    [Test]
+    procedure TryAdoptPreviewSelection_WithoutAPreview_ReturnsFalse;
 
     [Test]
     procedure OffscreenPaint_HeadingDiffersFromPlainPixels;
@@ -458,6 +470,56 @@ begin
   finally
     Viewer.Free;
   end;
+end;
+
+procedure TMarkdownVclEditorTests.TryAdoptPreviewSelection_PreviewShowsTheSameText_MovesTheSelectionOver;
+begin
+  const Editor = NewHostedEditor(ShortHostHeight);
+  const Viewer = NewHostedPreview(Editor);
+
+  Viewer.SelectAll;
+  Assert.AreEqual(AdoptableText, Viewer.SelectedText, 'The preview selection');
+
+  Assert.IsTrue(Editor.TryAdoptPreviewSelection);
+  Assert.AreEqual(AdoptableText, Editor.SelectedText);
+end;
+
+// The preview only refreshes every so often. While it is behind, the offsets
+// it hands out belong to the text it is still showing, so the editor must not
+// move its selection onto them.
+procedure TMarkdownVclEditorTests.TryAdoptPreviewSelection_PreviewShowsOlderText_LeavesTheSelectionAlone;
+begin
+  const Editor = NewHostedEditor(ShortHostHeight);
+  const Viewer = NewHostedPreview(Editor);
+
+  Viewer.SelectAll;
+  Assert.AreEqual(AdoptableText, Viewer.SelectedText, 'The preview selection');
+
+  Editor.CaretPosition := 0;
+  Editor.InsertText(AdoptedPrefix);
+
+  Assert.IsFalse(Editor.TryAdoptPreviewSelection);
+  Assert.AreEqual('', Editor.SelectedText);
+end;
+
+// A preview showing the editor's text, ready to be selected in.
+function TMarkdownVclEditorTests.NewHostedPreview(const Editor: TMarkdownEditor): TMarkdownViewer;
+begin
+  Result := TMarkdownViewer.Create(FHostForm);
+  Result.Parent := FHostForm;
+  Result.SetBounds(0, 0, HostWidth, ShortHostHeight);
+  Result.HandleNeeded;
+
+  Editor.Text := AdoptableText;
+  Editor.AttachPreview(Result);
+  Editor.FlushPreview;
+end;
+
+procedure TMarkdownVclEditorTests.TryAdoptPreviewSelection_WithoutAPreview_ReturnsFalse;
+begin
+  FEditor.Text := AdoptableText;
+
+  Assert.IsFalse(FEditor.TryAdoptPreviewSelection);
 end;
 
 procedure TMarkdownVclEditorTests.OffscreenPaint_HeadingDiffersFromPlainPixels;

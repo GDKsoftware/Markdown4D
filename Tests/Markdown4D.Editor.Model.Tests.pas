@@ -39,6 +39,17 @@ type
     procedure TearDown;
 
     [Test]
+    [TestCase('Exact', '6,5,world')]
+    [TestCase('LeadingSpace', '5,6,world')]
+    [TestCase('TrailingSpace', '0,6,Hello')]
+    [TestCase('BothSides', '5,7,world')]
+    procedure SelectTextRange_RangeTouchingSpaces_SelectsTheTextInside(const Start, CharacterCount: Integer;
+                                                                       const Expected: string);
+
+    [Test]
+    procedure SelectTextRange_WhitespaceOnly_SelectsNothing;
+
+    [Test]
     procedure LoadText_NormalizesCrlfToLf;
 
     [Test]
@@ -333,6 +344,25 @@ implementation
 
 uses
   System.SysUtils;
+
+procedure TMarkdownEditorModelTests.SelectTextRange_RangeTouchingSpaces_SelectsTheTextInside(
+  const Start, CharacterCount: Integer; const Expected: string);
+begin
+  FModel.Text := SampleText;
+
+  FModel.SelectTextRange(Start, CharacterCount);
+
+  Assert.AreEqual(Expected, FModel.SelectedText);
+end;
+
+procedure TMarkdownEditorModelTests.SelectTextRange_WhitespaceOnly_SelectsNothing;
+begin
+  FModel.Text := SampleText;
+
+  FModel.SelectTextRange(5, 1);
+
+  Assert.IsFalse(FModel.HasSelection);
+end;
 
 procedure TMarkdownEditorModelTests.Setup;
 begin

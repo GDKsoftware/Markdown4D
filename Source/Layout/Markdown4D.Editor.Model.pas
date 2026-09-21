@@ -133,6 +133,11 @@ type
     procedure MoveWordRight(const Extend: Boolean);
     procedure SelectAll;
     procedure SetSelection(const Start, Length: Integer);
+    // Selects the text inside the range, leaving the whitespace at either end
+    // of it out. Emphasis markers cannot sit against the whitespace they
+    // enclose, so a range that came from somewhere else is pulled in to the
+    // characters it really covers before a command wraps them.
+    procedure SelectTextRange(const Start, CharacterCount: Integer);
     procedure SelectWordAt(const Offset: Integer);
     procedure SelectLineAt(const Offset: Integer);
     function HasSelection: Boolean;
@@ -444,6 +449,24 @@ procedure TMarkdownEditorModel.SetSelection(const Start, Length: Integer);
 begin
   FAnchor := SnapOffset(Start);
   FCaret := SnapOffset(Start + Length);
+end;
+
+procedure TMarkdownEditorModel.SelectTextRange(const Start, CharacterCount: Integer);
+begin
+  var First := ClampOffset(Start);
+  var Last := ClampOffset(Start + CharacterCount);
+
+  while (First < Last) and FText[First + 1].IsWhiteSpace do
+  begin
+    Inc(First);
+  end;
+
+  while (Last > First) and FText[Last].IsWhiteSpace do
+  begin
+    Dec(Last);
+  end;
+
+  SetSelection(First, Last - First);
 end;
 
 procedure TMarkdownEditorModel.SelectWordAt(const Offset: Integer);

@@ -541,6 +541,7 @@ control lives in `Markdown4D.Vcl.Editor`, the FMX control in
 | `CaretPosition: Integer` | Read / set the caret offset |
 | `SelectedText: string` | The current selection |
 | `SelectRange(const StartOffset, CharacterCount: Integer)` | Select `CharacterCount` characters from `StartOffset`, counted from 0 as the caret is, and scroll them into view |
+| `TryAdoptPreviewSelection: Boolean` | Move the selection the reader made in the attached preview onto the same characters here, leaving the whitespace at its edges out; `False` when the preview holds no selection or is still showing older text |
 | `Theme: TMarkdownTheme` | Assign a custom theme at run time |
 | `ExecuteCommand(const Command: TEditorCommand)` | Apply `Bold`, `Italic`, `Link` or `CodeBlock` to the selection |
 | `Undo` / `Redo` / `CanUndo` / `CanRedo` | Undo stack |

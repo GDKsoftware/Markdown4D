@@ -107,13 +107,96 @@ type
     procedure SelectionSource_InsideTable_ReturnsFalse;
   end;
 
+  // Replays what a reader does in preview only mode: select words in the
+  // rendered text, press Bold, and read the markdown back.
+  [TestFixture]
+  TMarkdownPreviewFormattingTests = class
+  private
+    const
+      WideViewport = 4000.0;
+      NarrowViewport = 320.0;
+      ViewportHeight = 400.0;
+      InwardNudge = 1.0;
+      BoldMarker = '**';
+      FirstLine = 'Formulas are written in LaTeX between dollars. Inline, $E = mc^2$ sits in the';
+      SecondLine = 'sentence at the size of the text around it; a block on its own line is set in';
+      ThirdLine = 'display style, centred, with limits above and below the operators.';
+    type
+      // The text the reader sees, with the run and the position inside it that
+      // every character came from, so a phrase can be pointed at the way a
+      // drag does.
+      TVisibleText = record
+        Text: string;
+        ItemIndexes: TArray<Integer>;
+        CharacterIndexes: TArray<Integer>;
+      end;
+    var
+      FTheme: TMarkdownTheme;
+      FMeasurer: ITextMeasurer;
+      FModel: TMarkdownViewerModel;
+      FSource: string;
+    procedure LoadParagraph(const ViewportWidth: Single);
+    function VisibleText: TVisibleText;
+    function PointAt(const ItemIndex, CharacterIndex: Integer; const Nudge: Single): TLayoutPointF;
+    procedure SelectPhrase(const Phrase: string);
+    procedure BoldPhrase(const Phrase: string);
+    procedure AssertEveryWordMatches;
+    procedure AssertBoldThroughEditor(const Phrase, Expected: string);
+
+  public
+    [Setup]
+    procedure Setup;
+
+    [TearDown]
+    procedure TearDown;
+
+    [Test]
+    procedure Bold_WordOnFirstSourceLine_WrapsThatWordOnly;
+
+    [Test]
+    procedure Bold_WordOnSecondSourceLine_WrapsThatWordOnly;
+
+    [Test]
+    procedure Bold_PhraseOnSecondSourceLine_WrapsThatPhraseOnly;
+
+    [Test]
+    procedure Bold_ThreeWordsInTurn_WrapsEachOfThem;
+
+    [Test]
+    procedure Bold_WordOnSecondSourceLine_WrapsThatWordOnlyWhenTextRewraps;
+
+    [Test]
+    procedure Bold_WordAfterASoftLineBreak_WrapsThatWordOnly;
+
+    [Test]
+    procedure SelectionSource_AfterTheTextChanged_ReturnsFalse;
+
+    [Test]
+    procedure SelectionSource_AfterTheTextChanged_DoesNotAnswerTheOldRange;
+
+    [Test]
+    procedure SelectionSource_EveryWordInTheParagraph_MatchesTheSelectedText;
+
+    [Test]
+    procedure SelectionSource_EveryWordAfterEarlierEdits_MatchesTheSelectedText;
+
+    [Test]
+    procedure Bold_SelectionCatchingTheSpaceBeforeAWord_WrapsTheWordOnly;
+
+    [Test]
+    procedure Bold_SelectionCatchingTheSpaceAfterAWord_WrapsTheWordOnly;
+  end;
+
 implementation
 
 uses
   System.SysUtils,
   System.Math,
+  System.Character,
+  System.Classes,
   Markdown4D,
   Markdown4D.Defines,
+  Markdown4D.Editor.Model,
   Markdown4D.Layout.DisplayList,
   Markdown4D.Layout.FakeMeasurer;
 
@@ -428,6 +511,311 @@ begin
   var Segment: TMarkdownSegment;
 
   Assert.IsFalse(FModel.TryGetSelectionSourceSegment(Segment));
+end;
+
+procedure TMarkdownPreviewFormattingTests.Setup;
+begin
+  FTheme := TMarkdownTheme.CreateLight;
+  FTheme.ContentPadding := 0;
+  FMeasurer := TFakeTextMeasurer.Create;
+  FModel := TMarkdownViewerModel.Create(FTheme, FMeasurer);
+end;
+
+procedure TMarkdownPreviewFormattingTests.TearDown;
+begin
+  FModel.Free;
+  FModel := nil;
+
+  FMeasurer := nil;
+
+  FTheme.Free;
+  FTheme := nil;
+end;
+
+// One paragraph carrying the hard line endings the source file has, so the
+// rendered text breaks in other places than the markdown does.
+procedure TMarkdownPreviewFormattingTests.LoadParagraph(const ViewportWidth: Single);
+begin
+  const Lines: TArray<string> = [FirstLine, SecondLine, ThirdLine];
+
+  FSource := string.Join(LineFeed, Lines);
+  FModel.SetViewport(ViewportWidth, ViewportHeight);
+  FModel.Text := FSource;
+end;
+
+function TMarkdownPreviewFormattingTests.VisibleText: TVisibleText;
+begin
+  Result := Default(TVisibleText);
+
+  const Builder = TStringBuilder.Create;
+  try
+    for var Index := 0 to FModel.DisplayList.ItemCount - 1 do
+    begin
+      var Run: IDisplayTextRun;
+      if not Supports(FModel.DisplayList.Items[Index], IDisplayTextRun, Run) then
+        Continue;
+
+      if Run.Role = TDisplayTextRunRole.Drawing then
+        Continue;
+
+      for var Position := 1 to Length(Run.Text) do
+      begin
+        Result.ItemIndexes := Result.ItemIndexes + [Index];
+        Result.CharacterIndexes := Result.CharacterIndexes + [Position - 1];
+      end;
+
+      Builder.Append(Run.Text);
+    end;
+
+    Result.Text := Builder.ToString;
+  finally
+    Builder.Free;
+  end;
+end;
+
+function TMarkdownPreviewFormattingTests.PointAt(const ItemIndex, CharacterIndex: Integer;
+  const Nudge: Single): TLayoutPointF;
+begin
+  const Run = FModel.DisplayList.Items[ItemIndex] as IDisplayTextRun;
+  const Prefix = Copy(Run.Text, 1, CharacterIndex);
+  const PrefixWidth = FMeasurer.MeasureText(Prefix, Run.Font).Width;
+
+  Result := TLayoutPointF.Create(Run.Bounds.Left + PrefixWidth + Nudge,
+                                 (Run.Bounds.Top + Run.Bounds.Bottom) / 2);
+end;
+
+procedure TMarkdownPreviewFormattingTests.SelectPhrase(const Phrase: string);
+begin
+  const Visible = VisibleText;
+
+  const Found = Pos(Phrase, Visible.Text);
+  Assert.IsTrue(Found > 0, Format('The preview does not read "%s"', [Phrase]));
+
+  const LastFound = Found + Length(Phrase) - 1;
+
+  FModel.SetSelectionAnchor(PointAt(Visible.ItemIndexes[Found - 1],
+                                    Visible.CharacterIndexes[Found - 1], InwardNudge));
+  FModel.SetSelectionExtent(PointAt(Visible.ItemIndexes[LastFound - 1],
+                                    Visible.CharacterIndexes[LastFound - 1] + 1, -InwardNudge));
+end;
+
+// Selects the phrase in the preview and puts markers around the markdown it
+// was rendered from, which is what the studio does when Bold is pressed.
+procedure TMarkdownPreviewFormattingTests.BoldPhrase(const Phrase: string);
+begin
+  SelectPhrase(Phrase);
+
+  Assert.AreEqual(Phrase, FModel.SelectedText, 'The preview selection');
+
+  var Segment: TMarkdownSegment;
+  Assert.IsTrue(FModel.TryGetSelectionSourceSegment(Segment),
+    Format('No source range for "%s"', [Phrase]));
+
+  const Before = Copy(FSource, 1, Segment.StartOffset - 1);
+  const Selected = Copy(FSource, Segment.StartOffset, Segment.Length);
+  const After = Copy(FSource, Segment.EndOffset, MaxInt);
+
+  Assert.AreEqual(Phrase, Selected, 'The markdown behind the selection');
+
+  FSource := Before + BoldMarker + Selected + BoldMarker + After;
+  FModel.Text := FSource;
+end;
+
+// Walks every word the reader can see and checks that the markdown it maps to
+// spells the same word. One word landing a character off fails here and names
+// itself, whatever made it drift.
+procedure TMarkdownPreviewFormattingTests.AssertEveryWordMatches;
+begin
+  const Visible = VisibleText;
+
+  var Position := 1;
+
+  while Position <= Length(Visible.Text) do
+  begin
+    const IsWordCharacter = Visible.Text[Position].IsLetter;
+    if not IsWordCharacter then
+    begin
+      Inc(Position);
+      Continue;
+    end;
+
+    const WordStart = Position;
+    while (Position <= Length(Visible.Text)) and Visible.Text[Position].IsLetter do
+    begin
+      Inc(Position);
+    end;
+
+    const Word = Copy(Visible.Text, WordStart, Position - WordStart);
+    const Run = FModel.DisplayList.Items[Visible.ItemIndexes[WordStart - 1]] as IDisplayTextRun;
+
+    // The source of a formula is selected whole or not at all, so a word
+    // inside it cannot be pointed at on its own.
+    if Run.Role = TDisplayTextRunRole.Source then
+      Continue;
+
+    FModel.SetSelectionAnchor(PointAt(Visible.ItemIndexes[WordStart - 1],
+                                      Visible.CharacterIndexes[WordStart - 1], InwardNudge));
+    FModel.SetSelectionExtent(PointAt(Visible.ItemIndexes[Position - 2],
+                                      Visible.CharacterIndexes[Position - 2] + 1, -InwardNudge));
+
+    Assert.AreEqual(Word, FModel.SelectedText, Format('Selecting "%s"', [Word]));
+
+    var Segment: TMarkdownSegment;
+    Assert.IsTrue(FModel.TryGetSelectionSourceSegment(Segment), Format('No source range for "%s"', [Word]));
+    Assert.AreEqual(Word, Copy(FSource, Segment.StartOffset, Segment.Length),
+      Format('The markdown behind "%s"', [Word]));
+  end;
+end;
+
+procedure TMarkdownPreviewFormattingTests.SelectionSource_EveryWordInTheParagraph_MatchesTheSelectedText;
+begin
+  LoadParagraph(WideViewport);
+
+  AssertEveryWordMatches;
+end;
+
+procedure TMarkdownPreviewFormattingTests.SelectionSource_EveryWordAfterEarlierEdits_MatchesTheSelectedText;
+begin
+  LoadParagraph(WideViewport);
+
+  BoldPhrase('LaTeX');
+  BoldPhrase('line is');
+
+  AssertEveryWordMatches;
+end;
+
+// Aiming at a word in a rendered paragraph is a matter of a few pixels, and a
+// space is the narrowest target on the line. Catching it would produce markers
+// standing against whitespace, which CommonMark does not read as emphasis at
+// all, so the editor pulls the range in to the word.
+procedure TMarkdownPreviewFormattingTests.Bold_SelectionCatchingTheSpaceBeforeAWord_WrapsTheWordOnly;
+begin
+  LoadParagraph(WideViewport);
+
+  AssertBoldThroughEditor(' around', 'the text **around** it;');
+end;
+
+procedure TMarkdownPreviewFormattingTests.Bold_SelectionCatchingTheSpaceAfterAWord_WrapsTheWordOnly;
+begin
+  LoadParagraph(WideViewport);
+
+  AssertBoldThroughEditor('around ', 'the text **around** it;');
+end;
+
+// Runs the whole chain the studio runs: point at the preview, translate, hand
+// the range to the editor and let it wrap the selection.
+procedure TMarkdownPreviewFormattingTests.AssertBoldThroughEditor(const Phrase, Expected: string);
+begin
+  SelectPhrase(Phrase);
+
+  Assert.AreEqual(Phrase, FModel.SelectedText, 'The preview selection');
+
+  var Segment: TMarkdownSegment;
+  Assert.IsTrue(FModel.TryGetSelectionSourceSegment(Segment), 'No source range');
+  Assert.AreEqual(Phrase, Copy(FSource, Segment.StartOffset, Segment.Length), 'The markdown behind the selection');
+
+  const Editor = TMarkdownEditorModel.Create;
+  try
+    Editor.Text := FSource;
+    Editor.SelectTextRange(Segment.StartOffset - 1, Segment.Length);
+    Editor.ExecuteCommand(TEditorCommand.Bold);
+
+    Assert.IsTrue(Editor.Text.Contains(Expected), Editor.Text);
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownPreviewFormattingTests.Bold_WordOnFirstSourceLine_WrapsThatWordOnly;
+begin
+  LoadParagraph(WideViewport);
+
+  BoldPhrase('LaTeX');
+
+  Assert.IsTrue(FSource.Contains('written in **LaTeX** between'), FSource);
+end;
+
+procedure TMarkdownPreviewFormattingTests.Bold_WordOnSecondSourceLine_WrapsThatWordOnly;
+begin
+  LoadParagraph(WideViewport);
+
+  BoldPhrase('around');
+
+  Assert.IsTrue(FSource.Contains('the text **around** it;'), FSource);
+end;
+
+procedure TMarkdownPreviewFormattingTests.Bold_PhraseOnSecondSourceLine_WrapsThatPhraseOnly;
+begin
+  LoadParagraph(WideViewport);
+
+  BoldPhrase('line is');
+
+  Assert.IsTrue(FSource.Contains('its own **line is** set in'), FSource);
+end;
+
+procedure TMarkdownPreviewFormattingTests.Bold_ThreeWordsInTurn_WrapsEachOfThem;
+begin
+  LoadParagraph(WideViewport);
+
+  BoldPhrase('LaTeX');
+  BoldPhrase('line is');
+  BoldPhrase('around');
+
+  Assert.IsTrue(FSource.Contains('written in **LaTeX** between'), FSource);
+  Assert.IsTrue(FSource.Contains('its own **line is** set in'), FSource);
+  Assert.IsTrue(FSource.Contains('the text **around** it;'), FSource);
+end;
+
+procedure TMarkdownPreviewFormattingTests.Bold_WordOnSecondSourceLine_WrapsThatWordOnlyWhenTextRewraps;
+begin
+  LoadParagraph(NarrowViewport);
+
+  BoldPhrase('around');
+
+  Assert.IsTrue(FSource.Contains('the text **around** it;'), FSource);
+end;
+
+// Pressing Bold a second time without pointing at anything new must not reach
+// for the characters the first press moved.
+procedure TMarkdownPreviewFormattingTests.SelectionSource_AfterTheTextChanged_ReturnsFalse;
+begin
+  LoadParagraph(WideViewport);
+
+  BoldPhrase('around');
+
+  var Segment: TMarkdownSegment;
+
+  Assert.IsFalse(FModel.TryGetSelectionSourceSegment(Segment));
+end;
+
+procedure TMarkdownPreviewFormattingTests.SelectionSource_AfterTheTextChanged_DoesNotAnswerTheOldRange;
+begin
+  LoadParagraph(WideViewport);
+
+  SelectPhrase('around');
+
+  var Before: TMarkdownSegment;
+  Assert.IsTrue(FModel.TryGetSelectionSourceSegment(Before));
+
+  FSource := FSource.Replace('sentence at', 'one more sentence at', [rfReplaceAll]);
+  FModel.Text := FSource;
+
+  var After: TMarkdownSegment;
+  const IsMapped = FModel.TryGetSelectionSourceSegment(After);
+
+  Assert.IsFalse(IsMapped, Format('Answered %d..%d for a selection made on other text',
+    [After.StartOffset, After.EndOffset]));
+end;
+
+// The word right after a hard line ending in the source: the preview renders
+// the ending as a space, so the reader cannot see it is there.
+procedure TMarkdownPreviewFormattingTests.Bold_WordAfterASoftLineBreak_WrapsThatWordOnly;
+begin
+  LoadParagraph(WideViewport);
+
+  BoldPhrase('sentence');
+
+  Assert.IsTrue(FSource.Contains(LineFeed + '**sentence** at'), FSource);
 end;
 
 end.
