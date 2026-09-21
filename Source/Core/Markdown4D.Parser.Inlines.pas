@@ -12,6 +12,7 @@ uses
   Markdown4D.Extensions.Interfaces,
   Markdown4D.Pipeline.Configuration,
   Markdown4D.Parser.References,
+  Markdown4D.Parser.SourceMap,
   Markdown4D.Parser.LinkSyntax,
   Markdown4D.Parser.HtmlBlocks,
   Markdown4D.Ast.Interfaces,
@@ -123,6 +124,9 @@ type
       FOpenersBottom: TDictionary<Integer, TInlineDelimiter>;
       FBrackets: TObjectList<TInlineBracket>;
       FReferenceMap: TLinkReferenceMap;
+      FSourceMap: TMarkdownContentSourceMap;
+      FTextStart: Integer;
+      FTextEnd: Integer;
       FLinkScanner: TLinkSyntaxScanner;
       FUriAutolinkRegex: TRegEx;
       FEmailAutolinkRegex: TRegEx;
@@ -134,9 +138,10 @@ type
     procedure HandleBackslash;
     procedure HandleLineEnding;
     procedure HandleBackticks;
-    procedure EmitCodeSpan(const RawContent: string);
+    procedure EmitCodeSpan(const RawContent: string; const SyntaxStart, SyntaxEnd: Integer);
     procedure HandleLessThan;
-    procedure EmitAutolink(const LabelText, Destination: string);
+    procedure EmitAutolink(const LabelText, Destination: string; const SyntaxStart: Integer;
+                           const IsBracketed: Boolean);
     procedure HandleAmpersand;
     function TrimTrailingSpacesFromBuffer: Integer;
     procedure HandleDelimiterRun;
@@ -148,7 +153,7 @@ type
     procedure HandleBang;
     procedure PushBracket(const ChainNode: TInlineChainNode; const ContentStart: Integer; const IsImage: Boolean);
     procedure HandleCloseBracket;
-    procedure AbandonBracket;
+    procedure AbandonBracket(const CloserPos: Integer);
     function TryParseInlineLinkSuffix(out Destination, Title: string): Boolean;
     function TryResolveReference(const Opener: TInlineBracket; const CloserPos: Integer;
                                  out Destination, Title: string): Boolean;
@@ -167,7 +172,7 @@ type
     function IsMathOpener(const ContentStart: Integer): Boolean;
     function TryFindMathCloser(const ContentStart, DelimiterLength: Integer; out ContentEnd: Integer): Boolean;
     function IsMathCloser(const ContentStart, CloserStart, DelimiterLength: Integer): Boolean;
-    procedure EmitMath(const Literal: string; const IsDisplay: Boolean);
+    procedure EmitMath(const Literal: string; const IsDisplay: Boolean; const SyntaxStart, SyntaxEnd: Integer);
     function IsExtendedAutolinkBoundary: Boolean;
     function TryScanAutolinkDomain(const StartIndex: Integer; out DomainEnd: Integer): Boolean;
     function ScanExtendedAutolinkEnd(const StartIndex: Integer): Integer;
@@ -182,11 +187,17 @@ type
     class function IsRuleOfThreeViolated(const Opener, Closer: TInlineDelimiter): Boolean;
     function ApplyMatch(const Opener, Closer: TInlineDelimiter): TInlineDelimiter;
     procedure WrapNodesInContainer(const Opener, Closer: TInlineDelimiter; const Container: TMarkdownAstNode);
-    procedure ShrinkDelimiter(const Delimiter: TInlineDelimiter; const UseCount: Integer);
+    procedure ApplyContainerSegment(const Container: TMarkdownAstNode; const Opener, Closer: TInlineDelimiter;
+                                    const UseCount: Integer);
+    procedure ShrinkDelimiter(const Delimiter: TInlineDelimiter; const UseCount: Integer; const FromStart: Boolean);
     function RemoveDepletedDelimiters(const Opener, Closer: TInlineDelimiter): TInlineDelimiter;
     procedure AttachInlinesToParent;
     procedure FlushText;
-    procedure AddBreak(const Kind: TMarkdownNodeKind);
+    procedure AddBreak(const Kind: TMarkdownNodeKind; const ContentStart, ContentEnd: Integer);
+    procedure BufferText(const Value: string; const ContentStart, ContentEnd: Integer);
+    procedure ApplySegment(const Node: TMarkdownAstNode; const ContentStart, ContentEnd: Integer);
+    procedure ApplyLinkSegment(const Node: TMarkdownAstNode; const StartOffset: Integer);
+    procedure ShrinkSegmentEnd(const Node: TMarkdownAstNode; const Count: Integer);
     function AppendInline(const Node: IMarkdownNode): TInlineChainNode;
     procedure InsertInlineAfter(const ChainNode: TInlineChainNode; const Node: IMarkdownNode);
     procedure RemoveInlineChainNode(const ChainNode: TInlineChainNode);
@@ -202,7 +213,7 @@ type
     constructor Create(const Configuration: TMarkdownPipelineConfiguration);
     destructor Destroy; override;
     procedure ParseInto(const Parent: TMarkdownAstNode; const Content: string;
-                        const ReferenceMap: TLinkReferenceMap);
+                        const ReferenceMap: TLinkReferenceMap; const SourceMap: TMarkdownContentSourceMap = nil);
     property TaskListCandidate: Boolean read FTaskListCandidate write FTaskListCandidate;
   end;
 
@@ -357,12 +368,15 @@ begin
 end;
 
 procedure TInlineParser.ParseInto(const Parent: TMarkdownAstNode; const Content: string;
-                                  const ReferenceMap: TLinkReferenceMap);
+                                  const ReferenceMap: TLinkReferenceMap; const SourceMap: TMarkdownContentSourceMap);
 begin
   FParent := Parent;
   FContent := Content;
   FReferenceMap := ReferenceMap;
+  FSourceMap := SourceMap;
   FIndex := 1;
+  FTextStart := 1;
+  FTextEnd := 1;
   FTextBuffer.Clear;
   ClearDelimiterStack;
   ClearInlineChain;
@@ -374,7 +388,7 @@ begin
 
     if not TryDispatch(Current) then
     begin
-      FTextBuffer.Append(Current);
+      BufferText(Current, FIndex, FIndex + 1);
       Inc(FIndex);
     end;
   end;
@@ -430,7 +444,7 @@ begin
   const HasNext = (FIndex < Length(FContent));
   if not HasNext then
   begin
-    FTextBuffer.Append(Backslash);
+    BufferText(Backslash, FIndex, FIndex + 1);
     Inc(FIndex);
     Exit;
   end;
@@ -440,17 +454,17 @@ begin
   if Next = LineFeed then
   begin
     FlushText;
-    AddBreak(TMarkdownNodeKind.HardLineBreak);
+    AddBreak(TMarkdownNodeKind.HardLineBreak, FIndex, FIndex + 2);
     Inc(FIndex, 2);
   end
   else if TMarkdownUnescape.IsAsciiPunctuation(Next) then
   begin
-    FTextBuffer.Append(Next);
+    BufferText(Next, FIndex, FIndex + 2);
     Inc(FIndex, 2);
   end
   else
   begin
-    FTextBuffer.Append(Backslash);
+    BufferText(Backslash, FIndex, FIndex + 1);
     Inc(FIndex);
   end;
 end;
@@ -463,9 +477,13 @@ begin
 
   const IsHardBreak = (RemovedSpaces >= HardBreakSpaceCount);
   if IsHardBreak then
-    AddBreak(TMarkdownNodeKind.HardLineBreak)
+  begin
+    AddBreak(TMarkdownNodeKind.HardLineBreak, FIndex - RemovedSpaces, FIndex + 1);
+  end
   else
-    AddBreak(TMarkdownNodeKind.SoftLineBreak);
+  begin
+    AddBreak(TMarkdownNodeKind.SoftLineBreak, FIndex, FIndex + 1);
+  end;
 
   Inc(FIndex);
 end;
@@ -479,6 +497,8 @@ begin
     FTextBuffer.Length := FTextBuffer.Length - 1;
     Inc(Result);
   end;
+
+  Dec(FTextEnd, Result);
 end;
 
 procedure TInlineParser.HandleBackticks;
@@ -512,7 +532,7 @@ begin
     const CloserLength = (CloserEnd - SearchIndex + 1);
     if CloserLength = RunLength then
     begin
-      EmitCodeSpan(Copy(FContent, RunEnd + 1, SearchIndex - RunEnd - 1));
+      EmitCodeSpan(Copy(FContent, RunEnd + 1, SearchIndex - RunEnd - 1), RunStart, CloserEnd + 1);
       FIndex := CloserEnd + 1;
       Exit;
     end;
@@ -520,11 +540,11 @@ begin
     SearchIndex := CloserEnd + 1;
   end;
 
-  FTextBuffer.Append(StringOfChar(Backtick, RunLength));
+  BufferText(StringOfChar(Backtick, RunLength), RunStart, RunEnd + 1);
   FIndex := RunEnd + 1;
 end;
 
-procedure TInlineParser.EmitCodeSpan(const RawContent: string);
+procedure TInlineParser.EmitCodeSpan(const RawContent: string; const SyntaxStart, SyntaxEnd: Integer);
 begin
   var Content := StringReplace(RawContent, LineFeed, Space, [rfReplaceAll]);
 
@@ -535,7 +555,11 @@ begin
     Content := Copy(Content, 2, Length(Content) - 2);
 
   FlushText;
-  AppendInline(TMarkdownTextNode.Create(TMarkdownNodeKind.CodeSpan, Content));
+
+  const Node = TMarkdownTextNode.Create(TMarkdownNodeKind.CodeSpan, Content);
+  ApplySegment(Node, SyntaxStart, SyntaxEnd);
+
+  AppendInline(Node);
 end;
 
 procedure TInlineParser.HandleLessThan;
@@ -544,7 +568,7 @@ begin
   if UriMatch.Success then
   begin
     const Uri = Copy(UriMatch.Value, 2, UriMatch.Length - 2);
-    EmitAutolink(Uri, TMarkdownUnescape.NormalizeUri(Uri));
+    EmitAutolink(Uri, TMarkdownUnescape.NormalizeUri(Uri), FIndex, True);
     Inc(FIndex, UriMatch.Length);
     Exit;
   end;
@@ -553,7 +577,7 @@ begin
   if EmailMatch.Success then
   begin
     const Email = Copy(EmailMatch.Value, 2, EmailMatch.Length - 2);
-    EmitAutolink(Email, TMarkdownUnescape.NormalizeUri(MailtoPrefix + Email));
+    EmitAutolink(Email, TMarkdownUnescape.NormalizeUri(MailtoPrefix + Email), FIndex, True);
     Inc(FIndex, EmailMatch.Length);
     Exit;
   end;
@@ -562,21 +586,41 @@ begin
   if TagMatch.Success then
   begin
     FlushText;
-    AppendInline(TMarkdownTextNode.Create(TMarkdownNodeKind.InlineHtml, TagMatch.Value));
+
+    const HtmlNode = TMarkdownTextNode.Create(TMarkdownNodeKind.InlineHtml, TagMatch.Value);
+    ApplySegment(HtmlNode, FIndex, FIndex + TagMatch.Length);
+
+    AppendInline(HtmlNode);
     Inc(FIndex, TagMatch.Length);
     Exit;
   end;
 
-  FTextBuffer.Append(LessThan);
+  BufferText(LessThan, FIndex, FIndex + 1);
   Inc(FIndex);
 end;
 
-procedure TInlineParser.EmitAutolink(const LabelText, Destination: string);
+// A bracketed autolink is its label between a pair of angle brackets, an
+// extended one is the label and nothing else. Either way the label follows the
+// source character for character, so its span falls out of its length.
+procedure TInlineParser.EmitAutolink(const LabelText, Destination: string; const SyntaxStart: Integer;
+                                     const IsBracketed: Boolean);
 begin
   FlushText;
 
+  var BracketWidth := 0;
+  if IsBracketed then
+    BracketWidth := 1;
+
+  const LabelStart = SyntaxStart + BracketWidth;
+  const LabelEnd = LabelStart + Length(LabelText);
+
   const Node = TMarkdownLinkNode.Create(TMarkdownNodeKind.Autolink, Destination, '');
-  Node.AddChild(TMarkdownTextNode.Create(TMarkdownNodeKind.Text, LabelText));
+  ApplySegment(Node, SyntaxStart, LabelEnd + BracketWidth);
+
+  const LabelNode = TMarkdownTextNode.Create(TMarkdownNodeKind.Text, LabelText);
+  ApplySegment(LabelNode, LabelStart, LabelEnd);
+
+  Node.AddChild(LabelNode);
 
   AppendInline(Node);
 end;
@@ -588,12 +632,12 @@ begin
 
   if TMarkdownUnescape.TryDecodeEntityAt(FContent, FIndex, Decoded, Consumed) then
   begin
-    FTextBuffer.Append(Decoded);
+    BufferText(Decoded, FIndex, FIndex + Consumed);
     Inc(FIndex, Consumed);
     Exit;
   end;
 
-  FTextBuffer.Append(Ampersand);
+  BufferText(Ampersand, FIndex, FIndex + 1);
   Inc(FIndex);
 end;
 
@@ -643,6 +687,8 @@ begin
 
   const DelimiterChar = FContent[FIndex];
   const Node = TMarkdownTextNode.Create(TMarkdownNodeKind.Text, StringOfChar(DelimiterChar, Run.Length));
+  ApplySegment(Node, FIndex, FIndex + Run.Length);
+
   const ChainNode = AppendInline(Node);
   AppendDelimiter(TInlineDelimiter.Create(Node, ChainNode, DelimiterChar, Run.Length, Run.CanOpen, Run.CanClose,
     Processor));
@@ -678,7 +724,10 @@ procedure TInlineParser.HandleOpenBracket;
 begin
   FlushText;
 
-  const ChainNode = AppendInline(TMarkdownTextNode.Create(TMarkdownNodeKind.Text, OpenBracket));
+  const OpenerNode = TMarkdownTextNode.Create(TMarkdownNodeKind.Text, OpenBracket);
+  ApplySegment(OpenerNode, FIndex, FIndex + 1);
+
+  const ChainNode = AppendInline(OpenerNode);
   PushBracket(ChainNode, FIndex + 1, False);
 
   Inc(FIndex);
@@ -689,14 +738,17 @@ begin
   const StartsImage = (FIndex < Length(FContent)) and (FContent[FIndex + 1] = OpenBracket);
   if not StartsImage then
   begin
-    FTextBuffer.Append(ExclamationMark);
+    BufferText(ExclamationMark, FIndex, FIndex + 1);
     Inc(FIndex);
     Exit;
   end;
 
   FlushText;
 
-  const ChainNode = AppendInline(TMarkdownTextNode.Create(TMarkdownNodeKind.Text, ImageOpenerText));
+  const OpenerNode = TMarkdownTextNode.Create(TMarkdownNodeKind.Text, ImageOpenerText);
+  ApplySegment(OpenerNode, FIndex, FIndex + 2);
+
+  const ChainNode = AppendInline(OpenerNode);
   PushBracket(ChainNode, FIndex + 2, True);
 
   Inc(FIndex, 2);
@@ -722,14 +774,14 @@ begin
   const HasOpener = (FBrackets.Count > 0);
   if not HasOpener then
   begin
-    FTextBuffer.Append(CloseBracket);
+    BufferText(CloseBracket, CloserPos, CloserPos + 1);
     Exit;
   end;
 
   const Opener = FBrackets.Last;
   if not Opener.Active then
   begin
-    AbandonBracket;
+    AbandonBracket(CloserPos);
     Exit;
   end;
 
@@ -743,17 +795,17 @@ begin
   if not Matched then
   begin
     FIndex := CloserPos + 1;
-    AbandonBracket;
+    AbandonBracket(CloserPos);
     Exit;
   end;
 
   EmitLink(Opener, Destination, Title);
 end;
 
-procedure TInlineParser.AbandonBracket;
+procedure TInlineParser.AbandonBracket(const CloserPos: Integer);
 begin
   FBrackets.Delete(FBrackets.Count - 1);
-  FTextBuffer.Append(CloseBracket);
+  BufferText(CloseBracket, CloserPos, CloserPos + 1);
 end;
 
 function TInlineParser.TryParseInlineLinkSuffix(out Destination, Title: string): Boolean;
@@ -855,7 +907,10 @@ begin
   if Opener.IsImage then
     Kind := TMarkdownNodeKind.Image;
 
+  const OpenerSegment = Opener.ChainNode.Value.Segment;
+
   const LinkNode = TMarkdownLinkNode.Create(Kind, Destination, Title);
+  ApplyLinkSegment(LinkNode, OpenerSegment.StartOffset);
 
   var Walker := Opener.ChainNode.Next;
   while Walker <> nil do
@@ -910,7 +965,10 @@ begin
   if IsChecked then
     NodeName := TGfmInlineParser.TaskCheckedNodeName;
 
-  AppendInline(TMarkdownCustomInlineNode.Create(NodeName));
+  const MarkerNode = TMarkdownCustomInlineNode.Create(NodeName);
+  ApplySegment(MarkerNode, FIndex, TaskMarkerLength + 1);
+
+  AppendInline(MarkerNode);
   FIndex := TaskMarkerLength + 1;
 
   Result := True;
@@ -948,7 +1006,7 @@ begin
   end;
 
   const LabelText = Copy(FContent, FIndex, LinkEnd - FIndex);
-  EmitAutolink(LabelText, TMarkdownUnescape.NormalizeUri(HttpSchemePrefix + LabelText));
+  EmitAutolink(LabelText, TMarkdownUnescape.NormalizeUri(HttpSchemePrefix + LabelText), FIndex, False);
   FIndex := LinkEnd;
 
   Result := True;
@@ -997,7 +1055,7 @@ begin
   end;
 
   const LabelText = Copy(FContent, FIndex, LinkEnd - FIndex);
-  EmitAutolink(LabelText, TMarkdownUnescape.NormalizeUri(LabelText));
+  EmitAutolink(LabelText, TMarkdownUnescape.NormalizeUri(LabelText), FIndex, False);
   FIndex := LinkEnd;
 
   Result := True;
@@ -1033,7 +1091,7 @@ begin
 
   const LinkStart = FIndex - Rewind;
   const LabelText = Copy(FContent, LinkStart, DomainEnd - LinkStart);
-  EmitAutolink(LabelText, TMarkdownUnescape.NormalizeUri(MailtoPrefix + LabelText));
+  EmitAutolink(LabelText, TMarkdownUnescape.NormalizeUri(MailtoPrefix + LabelText), LinkStart, False);
   FIndex := DomainEnd;
 
   Result := True;
@@ -1103,6 +1161,7 @@ begin
   end;
 
   FTextBuffer.Length := FTextBuffer.Length - FromBuffer;
+  Dec(FTextEnd, FromBuffer);
 
   for var RemoveIndex := 1 to NodesToRemove do
   begin
@@ -1115,6 +1174,7 @@ begin
     const Literal = TrimmedNode.GetLiteral;
 
     TrimmedNode.SetLiteral(Copy(Literal, 1, Length(Literal) - PartialTrim));
+    ShrinkSegmentEnd(TrimmedNode, PartialTrim);
   end;
 
   Result := True;
@@ -1164,7 +1224,8 @@ begin
   end;
 
   const IsDisplay = (DelimiterLength = MaxMathDelimiterLength);
-  EmitMath(Copy(FContent, ContentStart, ContentEnd - ContentStart), IsDisplay);
+  EmitMath(Copy(FContent, ContentStart, ContentEnd - ContentStart), IsDisplay, FIndex,
+           ContentEnd + DelimiterLength);
   FIndex := ContentEnd + DelimiterLength;
 
   Result := True;
@@ -1192,7 +1253,8 @@ begin
     Exit;
   end;
 
-  EmitMath(Copy(FContent, ContentStart, CloserStart - ContentStart), False);
+  EmitMath(Copy(FContent, ContentStart, CloserStart - ContentStart), False, FIndex,
+           CloserStart + Length(BacktickMathCloser));
   FIndex := CloserStart + Length(BacktickMathCloser);
 
   Result := True;
@@ -1295,10 +1357,15 @@ begin
   Result := not CharAfter(CloserStart + DelimiterLength - 1).IsLetterOrDigit;
 end;
 
-procedure TInlineParser.EmitMath(const Literal: string; const IsDisplay: Boolean);
+procedure TInlineParser.EmitMath(const Literal: string; const IsDisplay: Boolean;
+                                 const SyntaxStart, SyntaxEnd: Integer);
 begin
   FlushText;
-  AppendInline(TMarkdownMathNode.Create(Literal, IsDisplay));
+
+  const Node = TMarkdownMathNode.Create(Literal, IsDisplay);
+  ApplySegment(Node, SyntaxStart, SyntaxEnd);
+
+  AppendInline(Node);
 end;
 
 function TInlineParser.IsExtendedAutolinkBoundary: Boolean;
@@ -1527,10 +1594,12 @@ begin
   if IsCustomRun then
   begin
     const CustomUseCount = Min(Opener.Count, Closer.Count);
-    WrapNodesInContainer(Opener, Closer, TMarkdownCustomInlineNode.Create(Closer.Processor.NodeName));
+    const CustomNode = TMarkdownCustomInlineNode.Create(Closer.Processor.NodeName);
+    ApplyContainerSegment(CustomNode, Opener, Closer, CustomUseCount);
+    WrapNodesInContainer(Opener, Closer, CustomNode);
 
-    ShrinkDelimiter(Opener, CustomUseCount);
-    ShrinkDelimiter(Closer, CustomUseCount);
+    ShrinkDelimiter(Opener, CustomUseCount, False);
+    ShrinkDelimiter(Closer, CustomUseCount, True);
 
     Result := RemoveDepletedDelimiters(Opener, Closer);
     Exit;
@@ -1546,10 +1615,12 @@ begin
   if UseStrong then
     Kind := TMarkdownNodeKind.Strong;
 
-  WrapNodesInContainer(Opener, Closer, TMarkdownAstNode.Create(Kind));
+  const Container = TMarkdownAstNode.Create(Kind);
+  ApplyContainerSegment(Container, Opener, Closer, UseCount);
+  WrapNodesInContainer(Opener, Closer, Container);
 
-  ShrinkDelimiter(Opener, UseCount);
-  ShrinkDelimiter(Closer, UseCount);
+  ShrinkDelimiter(Opener, UseCount, False);
+  ShrinkDelimiter(Closer, UseCount, True);
 
   Result := RemoveDepletedDelimiters(Opener, Closer);
 end;
@@ -1571,11 +1642,40 @@ begin
   InsertInlineAfter(Opener.ChainNode, ContainerNode);
 end;
 
-procedure TInlineParser.ShrinkDelimiter(const Delimiter: TInlineDelimiter; const UseCount: Integer);
+// An opener gives up the characters closest to the content it wraps, so it
+// loses its last ones and a closer loses its first ones.
+procedure TInlineParser.ShrinkDelimiter(const Delimiter: TInlineDelimiter; const UseCount: Integer;
+                                        const FromStart: Boolean);
 begin
   Delimiter.Count := Delimiter.Count - UseCount;
 
   Delimiter.Node.SetLiteral(StringOfChar(Delimiter.DelimiterChar, Delimiter.Count));
+
+  const Segment = Delimiter.Node.GetSegment;
+  const IsMapped = (Segment.StartOffset > 0);
+  if not IsMapped then
+    Exit;
+
+  if FromStart then
+    Delimiter.Node.SetSegment(TMarkdownSegment.Create(Segment.StartOffset + UseCount, Segment.EndOffset))
+  else
+    Delimiter.Node.SetSegment(TMarkdownSegment.Create(Segment.StartOffset, Segment.EndOffset - UseCount));
+end;
+
+// The container reaches from the delimiters the opener gives up to the ones the
+// closer gives up, so the markers that made it are part of it.
+procedure TInlineParser.ApplyContainerSegment(const Container: TMarkdownAstNode;
+                                              const Opener, Closer: TInlineDelimiter; const UseCount: Integer);
+begin
+  const OpenerSegment = Opener.Node.GetSegment;
+  const CloserSegment = Closer.Node.GetSegment;
+
+  const AreMapped = (OpenerSegment.StartOffset > 0) and (CloserSegment.StartOffset > 0);
+  if not AreMapped then
+    Exit;
+
+  Container.SetSegment(TMarkdownSegment.Create(OpenerSegment.EndOffset - UseCount,
+                                               CloserSegment.StartOffset + UseCount));
 end;
 
 function TInlineParser.RemoveDepletedDelimiters(const Opener, Closer: TInlineDelimiter): TInlineDelimiter;
@@ -1631,13 +1731,72 @@ begin
   if not HasText then
     Exit;
 
-  AppendInline(TMarkdownTextNode.Create(TMarkdownNodeKind.Text, FTextBuffer.ToString));
+  const Node = TMarkdownTextNode.Create(TMarkdownNodeKind.Text, FTextBuffer.ToString);
+  ApplySegment(Node, FTextStart, FTextEnd);
+
+  AppendInline(Node);
   FTextBuffer.Clear;
 end;
 
-procedure TInlineParser.AddBreak(const Kind: TMarkdownNodeKind);
+procedure TInlineParser.AddBreak(const Kind: TMarkdownNodeKind; const ContentStart, ContentEnd: Integer);
 begin
-  AppendInline(TMarkdownAstNode.Create(Kind));
+  const Node = TMarkdownAstNode.Create(Kind);
+  ApplySegment(Node, ContentStart, ContentEnd);
+
+  AppendInline(Node);
+end;
+
+// Collects the characters that make up one text node, remembering the stretch
+// of content they were read from. An escape or an entity buffers fewer
+// characters than it consumed, which is why the caller states both ends.
+procedure TInlineParser.BufferText(const Value: string; const ContentStart, ContentEnd: Integer);
+begin
+  const StartsNode = (FTextBuffer.Length = 0);
+  if StartsNode then
+    FTextStart := ContentStart;
+
+  FTextEnd := ContentEnd;
+  FTextBuffer.Append(Value);
+end;
+
+procedure TInlineParser.ApplySegment(const Node: TMarkdownAstNode; const ContentStart, ContentEnd: Integer);
+begin
+  if FSourceMap = nil then
+    Exit;
+
+  const StartOffset = FSourceMap.SourceOffsetOf(ContentStart);
+  const EndOffset = FSourceMap.SourceOffsetOf(ContentEnd);
+
+  const IsMapped = (StartOffset > TMarkdownContentSourceMap.UnknownOffset) and (EndOffset >= StartOffset);
+  if not IsMapped then
+    Exit;
+
+  Node.SetSegment(TMarkdownSegment.Create(StartOffset, EndOffset));
+end;
+
+procedure TInlineParser.ApplyLinkSegment(const Node: TMarkdownAstNode; const StartOffset: Integer);
+begin
+  if FSourceMap = nil then
+    Exit;
+
+  const EndOffset = FSourceMap.SourceOffsetOf(FIndex);
+
+  const IsMapped = (StartOffset > TMarkdownContentSourceMap.UnknownOffset) and (EndOffset >= StartOffset);
+  if not IsMapped then
+    Exit;
+
+  Node.SetSegment(TMarkdownSegment.Create(StartOffset, EndOffset));
+end;
+
+procedure TInlineParser.ShrinkSegmentEnd(const Node: TMarkdownAstNode; const Count: Integer);
+begin
+  const Segment = Node.GetSegment;
+
+  const IsMapped = (Segment.StartOffset > TMarkdownContentSourceMap.UnknownOffset);
+  if not IsMapped then
+    Exit;
+
+  Node.SetSegment(TMarkdownSegment.Create(Segment.StartOffset, Segment.EndOffset - Count));
 end;
 
 function TInlineParser.AppendInline(const Node: IMarkdownNode): TInlineChainNode;

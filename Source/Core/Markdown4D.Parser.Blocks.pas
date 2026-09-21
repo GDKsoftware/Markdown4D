@@ -15,6 +15,7 @@ uses
   Markdown4D.Parser.LineScanner,
   Markdown4D.Parser.HtmlBlocks,
   Markdown4D.Parser.References,
+  Markdown4D.Parser.SourceMap,
   Markdown4D.Parser.StagingBlock,
   Markdown4D.Parser.Inlines;
 
@@ -105,7 +106,8 @@ type
     function TryStartBlockQuote: TMarkdownBlockStart;
     function TryConsumeBlockQuoteMarker: Boolean;
     function TryStartAtxHeading: TMarkdownBlockStart;
-    function TryMatchAtxHeading(out Level: Integer; out Content: string): Boolean;
+    function TryMatchAtxHeading(out Level: Integer; out Content: string;
+                                out ContentStart: Integer): Boolean;
     class function StripAtxClosingSequence(const Value: string): string;
     function TryStartFencedCode: TMarkdownBlockStart;
     function TryStartMathBlock: TMarkdownBlockStart;
@@ -132,6 +134,7 @@ type
     procedure AddTextToContainer(const Container: TStagingBlock);
     procedure UpdateLastLineBlank(const Container: TStagingBlock);
     procedure AddLineToTip;
+    function SourceStartOfRestOfLine(const Rest: string): Integer;
     procedure CloseUnmatchedBlocks;
     function AddChild(const Kind: TMarkdownNodeKind): TStagingBlock;
     class function CanContain(const ParentKind, ChildKind: TMarkdownNodeKind): Boolean;
@@ -156,8 +159,9 @@ type
     function CreateTableNode(const Block: TStagingBlock): TMarkdownAstNode;
     class function IsTaskListParagraph(const Block: TStagingBlock): Boolean;
     class function HasNestedBlocks(const Kind: TMarkdownNodeKind): Boolean;
-    procedure AttachInlines(const Node: TMarkdownAstNode; const Content: string;
+    procedure AttachInlines(const Node: TMarkdownAstNode; const Block: TStagingBlock;
                             const IsTaskListCandidate: Boolean);
+    procedure AttachCellInlines(const Node: TMarkdownAstNode; const CellText: string);
     procedure RunDocumentProcessors(const Document: IMarkdownDocument);
 
   public
@@ -552,7 +556,8 @@ begin
 
   var Level: Integer;
   var Content: string;
-  if TryMatchAtxHeading(Level, Content) then
+  var ContentStart: Integer;
+  if TryMatchAtxHeading(Level, Content, ContentStart) then
   begin
     Result := True;
     Exit;
@@ -761,8 +766,9 @@ begin
 
   var Level: Integer;
   var Content: string;
+  var ContentStart: Integer;
 
-  if not TryMatchAtxHeading(Level, Content) then
+  if not TryMatchAtxHeading(Level, Content, ContentStart) then
   begin
     Result := TMarkdownBlockStart.NoMatch;
     Exit;
@@ -774,15 +780,18 @@ begin
 
   const Heading = AddChild(TMarkdownNodeKind.Heading);
   Heading.HeadingLevel := Level;
+  Heading.SourceMap.AddLine(1, FCurrentLine.StartOffset + ContentStart - 1);
   Heading.Content.Append(Content);
 
   Result := TMarkdownBlockStart.Leaf;
 end;
 
-function TBlockParser.TryMatchAtxHeading(out Level: Integer; out Content: string): Boolean;
+function TBlockParser.TryMatchAtxHeading(out Level: Integer; out Content: string;
+                                        out ContentStart: Integer): Boolean;
 begin
   Level := 0;
   Content := '';
+  ContentStart := 1;
   const Line = FScanner.Line;
   var Index := FScanner.NextNonSpaceIndex;
 
@@ -807,8 +816,11 @@ begin
     Exit;
   end;
 
-  const RawContent = FScanner.TextFrom(Index).Trim(TrimChars);
-  Content := StripAtxClosingSequence(RawContent);
+  const Tail = FScanner.TextFrom(Index);
+  const WithoutLeading = Tail.TrimLeft(TrimChars);
+
+  ContentStart := Index + (Length(Tail) - Length(WithoutLeading));
+  Content := StripAtxClosingSequence(WithoutLeading.TrimRight(TrimChars));
   Result := True;
 end;
 
@@ -1536,9 +1548,28 @@ end;
 
 procedure TBlockParser.AddLineToTip;
 begin
-  FTip.Content.Append(FScanner.RestOfLine);
+  const Rest = FScanner.RestOfLine;
+
+  FTip.SourceMap.AddLine(FTip.Content.Length + 1, SourceStartOfRestOfLine(Rest));
+  FTip.Content.Append(Rest);
   FTip.Content.Append(LineFeed);
   FTip.EndOffset := FCurrentLine.EndOffset;
+end;
+
+// A tab the scanner half consumed comes back as the spaces it stands for, so
+// the text no longer matches the source character for character and the line
+// gets no origin.
+function TBlockParser.SourceStartOfRestOfLine(const Rest: string): Integer;
+begin
+  const RemainingOnLine = Length(FScanner.Line) - FScanner.Offset + 1;
+  const MatchesSource = (Length(Rest) = RemainingOnLine);
+  if not MatchesSource then
+  begin
+    Result := TMarkdownContentSourceMap.UnknownOffset;
+    Exit;
+  end;
+
+  Result := FCurrentLine.StartOffset + FScanner.Offset - 1;
 end;
 
 procedure TBlockParser.CloseUnmatchedBlocks;
@@ -1656,6 +1687,7 @@ begin
   if Stripped then
   begin
     Block.HadStrippedReferences := True;
+    Block.SourceMap.DropLeading(Block.Content.Length - Length(Content));
     Block.Content.Clear;
     Block.Content.Append(Content);
   end;
@@ -1844,7 +1876,7 @@ begin
     TMarkdownNodeKind.Paragraph:
       begin
         Result := TMarkdownAstNode.Create(TMarkdownNodeKind.Paragraph);
-        AttachInlines(Result, Block.Content.ToString, IsTaskListParagraph(Block));
+        AttachInlines(Result, Block, IsTaskListParagraph(Block));
       end;
     TMarkdownNodeKind.Heading:
       begin
@@ -1852,7 +1884,7 @@ begin
         HeadingNode.SetSourceLine(Block.StartLine);
         Result := HeadingNode;
 
-        AttachInlines(Result, Block.Content.ToString, False);
+        AttachInlines(Result, Block, False);
       end;
     TMarkdownNodeKind.CodeBlock:
       Result := CreateCodeBlockNode(Block);
@@ -1919,7 +1951,7 @@ begin
       if ColumnIndex <= High(Cells) then
         CellText := Cells[ColumnIndex];
 
-      AttachInlines(Cell, CellText, False);
+      AttachCellInlines(Cell, CellText);
       Row.AddChild(Cell);
     end;
 
@@ -1941,11 +1973,24 @@ begin
     (Kind = TMarkdownNodeKind.ListItem);
 end;
 
-procedure TBlockParser.AttachInlines(const Node: TMarkdownAstNode; const Content: string;
+procedure TBlockParser.AttachInlines(const Node: TMarkdownAstNode; const Block: TStagingBlock;
                                      const IsTaskListCandidate: Boolean);
 begin
+  const Raw = Block.Content.ToString;
+  const WithoutLeading = Raw.TrimLeft(ContentTrimChars);
+
+  Block.SourceMap.DropLeading(Length(Raw) - Length(WithoutLeading));
+
   FInlineParser.TaskListCandidate := IsTaskListCandidate;
-  FInlineParser.ParseInto(Node, Content.Trim(ContentTrimChars), FActiveReferences);
+  FInlineParser.ParseInto(Node, WithoutLeading.TrimRight(ContentTrimChars), FActiveReferences, Block.SourceMap);
+end;
+
+// A cell is cut out of its row by the pipes around it, and what is left no
+// longer lines up with the source, so its inlines carry no source offsets.
+procedure TBlockParser.AttachCellInlines(const Node: TMarkdownAstNode; const CellText: string);
+begin
+  FInlineParser.TaskListCandidate := False;
+  FInlineParser.ParseInto(Node, CellText.Trim(ContentTrimChars), FActiveReferences);
 end;
 
 constructor TBlockParserContext.Create(const Engine: TBlockParser);
