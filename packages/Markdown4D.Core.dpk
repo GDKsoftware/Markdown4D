@@ -80,6 +80,7 @@ contains
   Markdown4D.Editor.Rows in '..\Source\Layout\Markdown4D.Editor.Rows.pas',
   Markdown4D.Editor.Keys in '..\Source\Layout\Markdown4D.Editor.Keys.pas',
   Markdown4D.Editor.Actions in '..\Source\Layout\Markdown4D.Editor.Actions.pas',
+  Markdown4D.Editor.InlineStyle in '..\Source\Layout\Markdown4D.Editor.InlineStyle.pas',
   Markdown4D.Editor.ContextMenu in '..\Source\Layout\Markdown4D.Editor.ContextMenu.pas',
   Markdown4D.Editor.Highlights in '..\Source\Layout\Markdown4D.Editor.Highlights.pas',
   Markdown4D.Editor.Sync in '..\Source\Layout\Markdown4D.Editor.Sync.pas',

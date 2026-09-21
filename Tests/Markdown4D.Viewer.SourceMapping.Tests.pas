@@ -142,6 +142,7 @@ type
     procedure BoldPhrase(const Phrase: string);
     procedure AssertEveryWordMatches;
     procedure AssertBoldThroughEditor(const Phrase, Expected: string);
+    procedure BoldThroughEditor(const Phrase: string);
 
   public
     [Setup]
@@ -185,6 +186,12 @@ type
 
     [Test]
     procedure Bold_SelectionCatchingTheSpaceAfterAWord_WrapsTheWordOnly;
+
+    [Test]
+    procedure Bold_HalfOfABoldWordPlusThePlainTextAfterIt_BoldsTheWholeStretch;
+
+    [Test]
+    procedure Bold_PressedAgainOnTheSameWord_TakesTheBoldOffAgain;
   end;
 
 implementation
@@ -703,7 +710,7 @@ begin
 end;
 
 // Runs the whole chain the studio runs: point at the preview, translate, hand
-// the range to the editor and let it wrap the selection.
+// the range to the editor and let it run the command.
 procedure TMarkdownPreviewFormattingTests.AssertBoldThroughEditor(const Phrase, Expected: string);
 begin
   SelectPhrase(Phrase);
@@ -724,6 +731,59 @@ begin
   finally
     Editor.Free;
   end;
+end;
+
+// The same chain, but the result becomes the new source, so a second press
+// works on what the first one left behind.
+procedure TMarkdownPreviewFormattingTests.BoldThroughEditor(const Phrase: string);
+begin
+  SelectPhrase(Phrase);
+
+  Assert.AreEqual(Phrase, FModel.SelectedText, 'The preview selection');
+
+  var Segment: TMarkdownSegment;
+  Assert.IsTrue(FModel.TryGetSelectionSourceSegment(Segment), 'No source range');
+
+  const Editor = TMarkdownEditorModel.Create;
+  try
+    Editor.Text := FSource;
+    Editor.SelectTextRange(Segment.StartOffset - 1, Segment.Length);
+    Editor.ExecuteCommand(TEditorCommand.Bold);
+
+    FSource := Editor.Text;
+  finally
+    Editor.Free;
+  end;
+
+  FModel.Text := FSource;
+end;
+
+// The case that still went wrong on screen: point at the back half of a bold
+// word and the plain text after it. The range runs over the closing markers,
+// so the bold that was there is taken in rather than cut through.
+procedure TMarkdownPreviewFormattingTests.Bold_HalfOfABoldWordPlusThePlainTextAfterIt_BoldsTheWholeStretch;
+begin
+  LoadParagraph(WideViewport);
+
+  BoldThroughEditor('LaTeX');
+  Assert.IsTrue(FSource.Contains('written in **LaTeX** between'), FSource);
+
+  BoldThroughEditor('TeX between');
+
+  Assert.IsTrue(FSource.Contains('written in **LaTeX between** dollars'), FSource);
+end;
+
+procedure TMarkdownPreviewFormattingTests.Bold_PressedAgainOnTheSameWord_TakesTheBoldOffAgain;
+begin
+  LoadParagraph(WideViewport);
+  const Original = FSource;
+
+  BoldThroughEditor('LaTeX');
+  Assert.IsTrue(FSource.Contains('written in **LaTeX** between'), FSource);
+
+  BoldThroughEditor('LaTeX');
+
+  Assert.AreEqual(Original, FSource);
 end;
 
 procedure TMarkdownPreviewFormattingTests.Bold_WordOnFirstSourceLine_WrapsThatWordOnly;

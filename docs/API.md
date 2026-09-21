@@ -543,7 +543,7 @@ control lives in `Markdown4D.Vcl.Editor`, the FMX control in
 | `SelectRange(const StartOffset, CharacterCount: Integer)` | Select `CharacterCount` characters from `StartOffset`, counted from 0 as the caret is, and scroll them into view |
 | `TryAdoptPreviewSelection: Boolean` | Move the selection the reader made in the attached preview onto the same characters here, leaving the whitespace at its edges out; `False` when the preview holds no selection or is still showing older text |
 | `Theme: TMarkdownTheme` | Assign a custom theme at run time |
-| `ExecuteCommand(const Command: TEditorCommand)` | Apply `Bold`, `Italic`, `Link` or `CodeBlock` to the selection |
+| `ExecuteCommand(const Command: TEditorCommand)` | Apply `Bold`, `Italic`, `Link` or `CodeBlock` to the selection. `Bold` and `Italic` read the markdown first: a selection that half covers emphasis of the same style takes that whole stretch in, and a selection that already carries it throughout has it taken off, so running the command twice leaves the text as it was |
 | `Undo` / `Redo` / `CanUndo` / `CanRedo` | Undo stack |
 | `AttachPreview(const Viewer: TMarkdownViewer)` / `DetachPreview` | Bind a live preview viewer |
 | `FlushPreview` | Force a pending preview refresh immediately |

@@ -123,12 +123,14 @@
         <DCCReference Include="Markdown4D.Vcl.Polygon.Tests.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Keys.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Actions.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Editor.InlineStyle.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.ContextMenu.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Highlights.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Rows.pas"/>
         <DCCReference Include="Markdown4D.Editor.Model.Tests.pas"/>
         <DCCReference Include="Markdown4D.Editor.Keys.Tests.pas"/>
         <DCCReference Include="Markdown4D.Editor.Actions.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Editor.InlineStyle.Tests.pas"/>
         <DCCReference Include="Markdown4D.Editor.ContextMenu.Tests.pas"/>
         <DCCReference Include="Markdown4D.Editor.Highlights.Tests.pas"/>
         <DCCReference Include="Markdown4D.Editor.Folding.Tests.pas"/>

@@ -130,6 +130,7 @@
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Rows.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Keys.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Actions.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Editor.InlineStyle.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.ContextMenu.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Highlights.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Sync.pas"/>
