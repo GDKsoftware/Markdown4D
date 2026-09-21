@@ -1010,8 +1010,7 @@ begin
   Result.ExecuteFormat :=
     procedure(const Command: TEditorCommand)
     begin
-      FEditor.ExecuteCommand(Command);
-      FocusEditor;
+      ExecuteFormatCommand(Command);
     end;
 end;
 
@@ -1032,6 +1031,11 @@ begin
   inherited KeyDown(Key, KeyChar, Shift);
 end;
 
+// The form sees every key before the control that has the focus does, and a key
+// it handles is swallowed. That makes it the one place a shortcut runs: the
+// editor's own Ctrl+B never fires here, so the command is not carried out
+// twice, and it still works when the editor is hidden behind the preview. An
+// editor used on its own, without a form like this one, keeps its own keys.
 function TMarkdown4DStudioFMXForm.HandleFormKey(const Key: Word; const Shift: TShiftState): Boolean;
 begin
   if FPalette.Visible then
@@ -1129,10 +1133,14 @@ begin
       SetViewMode(TPadViewMode.Split);
     vk3:
       SetViewMode(TPadViewMode.PreviewOnly);
+    vkB:
+      ExecuteFormatCommand(TEditorCommand.Bold);
     vkF:
       ShowFindBar;
     vkH:
       ShowReplaceBar;
+    vkI:
+      ExecuteFormatCommand(TEditorCommand.Italic);
     vkK:
       ShowPalette;
     vkN:
@@ -2375,7 +2383,7 @@ begin
     'A native FireMonkey Markdown editor with a **live preview**. Type on the left; ' +
     'the right pane re-renders through the debounced incremental pipeline.'#10#10 +
     '## Editing'#10#10 +
-    '- **Ctrl+B** bold, *Ctrl+I* italic, Ctrl+K link'#10 +
+    '- **Ctrl+B** bold, *Ctrl+I* italic; the toolbar has Link and Code'#10 +
     '- Undo / redo with Ctrl+Z / Ctrl+Y'#10 +
     '- Source syntax highlighting with line numbers'#10#10 +
     '## Documents'#10#10 +

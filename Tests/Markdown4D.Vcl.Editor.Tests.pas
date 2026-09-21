@@ -38,8 +38,9 @@ type
   private
     const
       HeadingMarkdown = '# Heading';
-      AdoptableText = 'alpha beta';
+      SelectableText = 'alpha beta';
       AdoptedPrefix = 'new ';
+      FormatKeySelectionLength = 5;
       EditText = ' appended body';
       MouseText = 'Hello world'#10'second';
       WordPairText = 'foo bar';
@@ -100,6 +101,14 @@ type
 
     [Test]
     procedure TryAdoptPreviewSelection_WithoutAPreview_ReturnsFalse;
+
+    // Bold is a toggle, so a keystroke that reached the command twice would put
+    // the markers on and straight back off and the text would come out
+    // unchanged. One press changing the text is what proves it ran once.
+    [Test]
+    [TestCase('Bold', 'B,**alpha** beta')]
+    [TestCase('Italic', 'I,*alpha* beta')]
+    procedure FormatKey_OnASelection_RunsTheCommandExactlyOnce(const KeyChar: Char; const Expected: string);
 
     [Test]
     procedure OffscreenPaint_HeadingDiffersFromPlainPixels;
@@ -478,10 +487,10 @@ begin
   const Viewer = NewHostedPreview(Editor);
 
   Viewer.SelectAll;
-  Assert.AreEqual(AdoptableText, Viewer.SelectedText, 'The preview selection');
+  Assert.AreEqual(SelectableText, Viewer.SelectedText, 'The preview selection');
 
   Assert.IsTrue(Editor.TryAdoptPreviewSelection);
-  Assert.AreEqual(AdoptableText, Editor.SelectedText);
+  Assert.AreEqual(SelectableText, Editor.SelectedText);
 end;
 
 // The preview only refreshes every so often. While it is behind, the offsets
@@ -493,7 +502,7 @@ begin
   const Viewer = NewHostedPreview(Editor);
 
   Viewer.SelectAll;
-  Assert.AreEqual(AdoptableText, Viewer.SelectedText, 'The preview selection');
+  Assert.AreEqual(SelectableText, Viewer.SelectedText, 'The preview selection');
 
   Editor.CaretPosition := 0;
   Editor.InsertText(AdoptedPrefix);
@@ -510,16 +519,28 @@ begin
   Result.SetBounds(0, 0, HostWidth, ShortHostHeight);
   Result.HandleNeeded;
 
-  Editor.Text := AdoptableText;
+  Editor.Text := SelectableText;
   Editor.AttachPreview(Result);
   Editor.FlushPreview;
 end;
 
 procedure TMarkdownVclEditorTests.TryAdoptPreviewSelection_WithoutAPreview_ReturnsFalse;
 begin
-  FEditor.Text := AdoptableText;
+  FEditor.Text := SelectableText;
 
   Assert.IsFalse(FEditor.TryAdoptPreviewSelection);
+end;
+
+procedure TMarkdownVclEditorTests.FormatKey_OnASelection_RunsTheCommandExactlyOnce(const KeyChar: Char;
+  const Expected: string);
+begin
+  const Editor = NewHostedEditor(ShortHostHeight);
+  Editor.Text := SelectableText;
+  Editor.SelectRange(0, FormatKeySelectionLength);
+
+  Editor.SimulateKeyDown(Ord(KeyChar), [ssCtrl]);
+
+  Assert.AreEqual(Expected, Editor.Text);
 end;
 
 procedure TMarkdownVclEditorTests.OffscreenPaint_HeadingDiffersFromPlainPixels;

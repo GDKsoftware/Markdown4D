@@ -527,6 +527,11 @@ begin
   HandleFormKey(Key, Shift);
 end;
 
+// The form sees every key before the control that has the focus does, and a key
+// it handles is swallowed. That makes it the one place a shortcut runs: the
+// editor's own Ctrl+B never fires here, so the command is not carried out
+// twice, and it still works when the editor is hidden behind the preview. An
+// editor used on its own, without a form like this one, keeps its own keys.
 procedure TMarkdown4DStudioVCLForm.HandleFormKey(var Key: Word; const Shift: TShiftState);
 begin
   if FPalette.Visible then
@@ -675,10 +680,14 @@ begin
       SetViewMode(TPadViewMode.Split);
     Ord('3'):
       SetViewMode(TPadViewMode.PreviewOnly);
+    Ord('B'):
+      ExecuteFormatCommand(TEditorCommand.Bold);
     Ord('F'):
       ShowFindBar;
     Ord('H'):
       ShowReplaceBar;
+    Ord('I'):
+      ExecuteFormatCommand(TEditorCommand.Italic);
     Ord('K'):
       ShowPalette;
     Ord('N'):
@@ -2203,8 +2212,8 @@ begin
     'and synchronized scrolling. Everything renders directly on the VCL canvas, ' +
     'without an embedded browser.'#10#10 +
     '## Editing'#10#10 +
-    'Use the toolbar or shortcuts: **Ctrl+B** bold, *Ctrl+I* italic, Ctrl+K link, ' +
-    'and the Code button wraps the selection in a fenced block.'#10#10 +
+    'Use the toolbar or shortcuts: **Ctrl+B** bold and *Ctrl+I* italic. The Link button ' +
+    'wraps the selection in a link, and the Code button in a fenced block.'#10#10 +
     '- Undo and redo with Ctrl+Z / Ctrl+Y'#10 +
     '- Source syntax highlighting on the left'#10 +
     '- Debounced incremental preview on the right'#10#10 +

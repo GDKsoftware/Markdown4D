@@ -33,6 +33,8 @@ type
   private
     const
       HeadingMarkdown = '# Heading';
+      FormatKeyText = 'alpha beta';
+      FormatKeySelectionLength = 5;
       MouseText = 'Hello world'#10'second';
       WordPairText = 'foo bar';
       DeleteKeyChar = #127;
@@ -72,6 +74,14 @@ type
 
     [Test]
     procedure ExecuteBold_ModifiesText;
+
+    // Bold is a toggle, so a keystroke that reached the command twice would put
+    // the markers on and straight back off and the text would come out
+    // unchanged. One press changing the text is what proves it ran once.
+    [Test]
+    [TestCase('Bold', 'B,**alpha** beta')]
+    [TestCase('Italic', 'I,*alpha* beta')]
+    procedure FormatKey_OnASelection_RunsTheCommandExactlyOnce(const KeyChar: Char; const Expected: string);
 
     [Test]
     procedure UndoRedo_RestoreAndReapplyEdit;
@@ -357,6 +367,22 @@ procedure TMarkdownFmxEditorTests.SelectedText_ReflectsModelSelection;
 begin
   FEditor.Text := HeadingMarkdown;
   Assert.AreEqual('', FEditor.SelectedText);
+end;
+
+procedure TMarkdownFmxEditorTests.FormatKey_OnASelection_RunsTheCommandExactlyOnce(const KeyChar: Char;
+  const Expected: string);
+begin
+  const Editor = TTestableFmxEditor.Create(nil);
+  try
+    Editor.Text := FormatKeyText;
+    Editor.SelectRange(0, FormatKeySelectionLength);
+
+    Editor.SimulateKeyDown(Ord(KeyChar), #0, [ssCtrl]);
+
+    Assert.AreEqual(Expected, Editor.Text);
+  finally
+    Editor.Free;
+  end;
 end;
 
 procedure TMarkdownFmxEditorTests.ExecuteBold_ModifiesText;
