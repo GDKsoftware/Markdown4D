@@ -197,6 +197,9 @@ type
     // Inserts Value at the caret, replacing the selection when there is one.
     procedure InsertText(const Value: string);
     procedure SelectAll;
+    // Puts the selection on CharacterCount characters starting at StartOffset,
+    // counted from 0 as the caret is, and shows them.
+    procedure SelectRange(const StartOffset, CharacterCount: Integer);
     procedure Indent;
     procedure Outdent;
     procedure DeleteWordLeft;
@@ -360,6 +363,14 @@ end;
 procedure TMarkdownEditor.SelectAll;
 begin
   FModel.SelectAll;
+  RefreshAfterEdit;
+  Invalidate;
+end;
+
+procedure TMarkdownEditor.SelectRange(const StartOffset, CharacterCount: Integer);
+begin
+  FModel.SetSelection(StartOffset, CharacterCount);
+  RevealSelection;
   RefreshAfterEdit;
   Invalidate;
 end;

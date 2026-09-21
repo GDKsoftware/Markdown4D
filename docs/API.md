@@ -174,7 +174,12 @@ Strong, CodeSpan, Link, Image, Autolink, SoftLineBreak, HardLineBreak,
 InlineHtml, CustomInline, Table, TableRow, TableCell, Math`.
 
 `TMarkdownSegment` (`StartOffset`, `EndOffset`, `Length`) locates the node in
-the source string. `SetExtensionData` / `TryGetExtensionData` attach arbitrary
+the source string: `StartOffset` is 1-based and `EndOffset` points at the first
+character past the node. Blocks and inlines both carry one, so a `Strong` covers
+its `**` markers and the `Text` inside it covers only the characters between
+them. A node whose text no longer matches the source character for character
+reports `StartOffset = 0`: that is the case inside a table cell, on a line whose
+tab the parser replaced by spaces, and for nodes an extension built itself. `SetExtensionData` / `TryGetExtensionData` attach arbitrary
 interface payloads keyed by string, the mechanism the chart extension uses to
 cache its parsed model on the node.
 
@@ -433,6 +438,7 @@ same.
 | `SelectAll` | Select the whole document |
 | `ClearSelection` | Drop the selection |
 | `SelectedText: string` | The selected text |
+| `TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean` | The stretch of markdown the selection was rendered from, so an editor can format exactly those characters; `False` when there is no selection or the runs carry no source |
 | `ContentHeight: Integer` | Laid-out document height, for auto-sizing |
 | `ScrollOffset: Single` | Read / set the vertical scroll position |
 | `LayoutCount: Integer` | Advances on every relayout (first width, resize, arriving images), so a host can notice layout-derived state going stale |
@@ -534,6 +540,7 @@ control lives in `Markdown4D.Vcl.Editor`, the FMX control in
 |--------|-------------|
 | `CaretPosition: Integer` | Read / set the caret offset |
 | `SelectedText: string` | The current selection |
+| `SelectRange(const StartOffset, CharacterCount: Integer)` | Select `CharacterCount` characters from `StartOffset`, counted from 0 as the caret is, and scroll them into view |
 | `Theme: TMarkdownTheme` | Assign a custom theme at run time |
 | `ExecuteCommand(const Command: TEditorCommand)` | Apply `Bold`, `Italic`, `Link` or `CodeBlock` to the selection |
 | `Undo` / `Redo` / `CanUndo` / `CanRedo` | Undo stack |
