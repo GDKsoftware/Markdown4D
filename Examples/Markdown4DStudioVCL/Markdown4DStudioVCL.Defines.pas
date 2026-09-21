@@ -22,6 +22,7 @@ const
   StatusLabelLeftMargin = 8;
   ButtonSpacing = 4;
   IconGlyphSize = 14;
+  ViewModeGroupIndex = 1; // TSpeedButton group for the mutually exclusive view mode buttons
   ToolbarLightColor = TColor($00F3F3F3);
   ToolbarDarkColor = TColor($002D2D2D);
   IconLightColor = TColor($00404040);
