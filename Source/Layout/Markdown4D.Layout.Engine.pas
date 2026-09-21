@@ -69,6 +69,7 @@ type
     Font: TMarkdownFontStyle;
     Color: TLayoutColor;
     Node: IMarkdownNode;
+    SourceNode: IMarkdownNode;
     StartOffset: Integer;
     Width: Single;
     Height: Single;
@@ -120,6 +121,7 @@ type
       FGroupFont: TMarkdownFontStyle;
       FGroupColor: TLayoutColor;
       FGroupNode: IMarkdownNode;
+      FGroupSourceNode: IMarkdownNode;
       FGroupStartOffset: Integer;
       FGroupCodeSpan: Boolean;
     procedure AddWordLike(const Atom: TInlineAtom);
@@ -1478,6 +1480,7 @@ begin
     Atom.Font := Style.Font;
     Atom.Color := Style.Color;
     Atom.Node := Attribution;
+    Atom.SourceNode := Leaf;
     Atom.StartOffset := Start - 1;
     Atom.Width := FMeasurer.MeasureText(Token, Style.Font).Width;
 
@@ -1978,6 +1981,7 @@ begin
   FGroupFont := Atom.Font;
   FGroupColor := Atom.Color;
   FGroupNode := Atom.Node;
+  FGroupSourceNode := Atom.SourceNode;
   FGroupStartOffset := Atom.StartOffset;
   FGroupCodeSpan := Atom.CodeSpan;
 end;
@@ -2002,7 +2006,7 @@ begin
     EmitCodeSpanChip(Bounds);
 
   FItems.Add(TDisplayTextRun.Create(Bounds, FGroupNode, FGroupText, FGroupFont, FGroupColor, RunBaseline,
-    FGroupStartOffset));
+    FGroupStartOffset, TDisplayTextRunRole.Text, FGroupSourceNode));
 
   FCursor := FCursor + FGroupWidth;
   FGroupOpen := False;
@@ -2019,7 +2023,7 @@ end;
 function TInlineWrapper.SameRunStyle(const Atom: TInlineAtom): Boolean;
 begin
   Result := FGroupFont.Equals(Atom.Font) and (FGroupColor = Atom.Color) and (FGroupNode = Atom.Node) and
-    (FGroupCodeSpan = Atom.CodeSpan);
+    (FGroupSourceNode = Atom.SourceNode) and (FGroupCodeSpan = Atom.CodeSpan);
 end;
 
 function TMarkdownFontStyleHelper.Equals(const Other: TMarkdownFontStyle): Boolean;

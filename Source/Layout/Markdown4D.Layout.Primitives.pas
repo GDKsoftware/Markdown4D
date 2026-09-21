@@ -39,18 +39,20 @@ type
     FColor: TLayoutColor;
     FBaseline: Single;
     FStartOffset: Integer;
+    FSourceNode: IMarkdownNode;
     FRole: TDisplayTextRunRole;
     function GetText: string;
     function GetFont: TMarkdownFontStyle;
     function GetColor: TLayoutColor;
     function GetBaseline: Single;
     function GetStartOffset: Integer;
+    function GetSourceNode: IMarkdownNode;
     function GetRole: TDisplayTextRunRole;
 
   public
     constructor Create(const Bounds: TLayoutRectF; const Node: IMarkdownNode; const Text: string;
       const Font: TMarkdownFontStyle; const Color: TLayoutColor; const Baseline: Single; const StartOffset: Integer;
-      const Role: TDisplayTextRunRole = TDisplayTextRunRole.Text);
+      const Role: TDisplayTextRunRole = TDisplayTextRunRole.Text; const SourceNode: IMarkdownNode = nil);
     function Shifted(const DeltaX, DeltaY: Single): IDisplayItem; override;
   end;
 
@@ -211,7 +213,7 @@ end;
 
 constructor TDisplayTextRun.Create(const Bounds: TLayoutRectF; const Node: IMarkdownNode; const Text: string;
   const Font: TMarkdownFontStyle; const Color: TLayoutColor; const Baseline: Single; const StartOffset: Integer;
-  const Role: TDisplayTextRunRole);
+  const Role: TDisplayTextRunRole; const SourceNode: IMarkdownNode);
 begin
   inherited Create(TDisplayItemKind.TextRun, Bounds, Node);
 
@@ -220,6 +222,7 @@ begin
   FColor := Color;
   FBaseline := Baseline;
   FStartOffset := StartOffset;
+  FSourceNode := SourceNode;
   FRole := Role;
 end;
 
@@ -248,6 +251,19 @@ begin
   Result := FStartOffset;
 end;
 
+// A run with no leaf of its own reads its characters straight off the node it
+// is attributed to.
+function TDisplayTextRun.GetSourceNode: IMarkdownNode;
+begin
+  if FSourceNode = nil then
+  begin
+    Result := FNode;
+    Exit;
+  end;
+
+  Result := FSourceNode;
+end;
+
 function TDisplayTextRun.GetRole: TDisplayTextRunRole;
 begin
   Result := FRole;
@@ -256,7 +272,7 @@ end;
 function TDisplayTextRun.Shifted(const DeltaX, DeltaY: Single): IDisplayItem;
 begin
   Result := TDisplayTextRun.Create(ShiftedBounds(DeltaX, DeltaY), FNode, FText, FFont, FColor, FBaseline, FStartOffset,
-    FRole);
+    FRole, FSourceNode);
 end;
 
 constructor TDisplayRectangle.Create(const Bounds: TLayoutRectF; const Node: IMarkdownNode;
