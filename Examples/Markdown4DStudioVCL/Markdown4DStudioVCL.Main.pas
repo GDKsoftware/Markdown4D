@@ -156,6 +156,7 @@ type
     procedure ShowSaveError(const FileName, ErrorMessage: string);
     procedure CloseApplication;
     procedure ConfigureControls;
+    procedure FocusEditor;
     procedure BuildToolbar;
     function ResolveIconFontName: string;
     function AddIconButton(const Glyph: string; const Hint: string; const Handler: TNotifyEvent): TSpeedButton;
@@ -383,6 +384,15 @@ begin
 
   splMain.OnMoved := HandleSplitterMoved;
   splToc.OnMoved := HandleTocSplitterMoved;
+end;
+
+procedure TMarkdown4DStudioVCLForm.FocusEditor;
+begin
+  // Preview only mode hides the editor, and the VCL refuses to focus a control
+  // that is not visible. Every path that returns focus to the editor goes
+  // through here so none of them can raise.
+  if mdEditor.CanFocus then
+    mdEditor.SetFocus;
 end;
 
 procedure TMarkdown4DStudioVCLForm.BuildToolbar;
@@ -761,25 +771,25 @@ end;
 procedure TMarkdown4DStudioVCLForm.HandleBoldClick(Sender: TObject);
 begin
   mdEditor.ExecuteCommand(TEditorCommand.Bold);
-  mdEditor.SetFocus;
+  FocusEditor;
 end;
 
 procedure TMarkdown4DStudioVCLForm.HandleItalicClick(Sender: TObject);
 begin
   mdEditor.ExecuteCommand(TEditorCommand.Italic);
-  mdEditor.SetFocus;
+  FocusEditor;
 end;
 
 procedure TMarkdown4DStudioVCLForm.HandleLinkClick(Sender: TObject);
 begin
   mdEditor.ExecuteCommand(TEditorCommand.Link);
-  mdEditor.SetFocus;
+  FocusEditor;
 end;
 
 procedure TMarkdown4DStudioVCLForm.HandleCodeClick(Sender: TObject);
 begin
   mdEditor.ExecuteCommand(TEditorCommand.CodeBlock);
-  mdEditor.SetFocus;
+  FocusEditor;
 end;
 
 procedure TMarkdown4DStudioVCLForm.HandleViewEditorClick(Sender: TObject);
@@ -823,7 +833,7 @@ end;
 procedure TMarkdown4DStudioVCLForm.ExecuteFormatCommand(const Command: TEditorCommand);
 begin
   mdEditor.ExecuteCommand(Command);
-  mdEditor.SetFocus;
+  FocusEditor;
 end;
 
 procedure TMarkdown4DStudioVCLForm.DoExportHtml;
@@ -1195,7 +1205,7 @@ begin
   mdEditor.ScrollToSourceLine(SourceLine);
 
   lstToc.ItemIndex := Index;
-  mdEditor.SetFocus;
+  FocusEditor;
 end;
 
 procedure TMarkdown4DStudioVCLForm.HandleTick(Sender: TObject);
@@ -1748,12 +1758,12 @@ begin
   Result.ShowFind := procedure begin ShowFindBar; end;
   Result.ShowReplace := procedure begin ShowReplaceBar; end;
   Result.FindInPreview := procedure begin ExecuteFind; end;
-  Result.Undo := procedure begin mdEditor.Undo; mdEditor.SetFocus; end;
-  Result.Redo := procedure begin mdEditor.Redo; mdEditor.SetFocus; end;
-  Result.SelectAll := procedure begin mdEditor.SelectAll; mdEditor.SetFocus; end;
-  Result.Indent := procedure begin mdEditor.Indent; mdEditor.SetFocus; end;
-  Result.Outdent := procedure begin mdEditor.Outdent; mdEditor.SetFocus; end;
-  Result.DeleteWordLeft := procedure begin mdEditor.DeleteWordLeft; mdEditor.SetFocus; end;
+  Result.Undo := procedure begin mdEditor.Undo; FocusEditor; end;
+  Result.Redo := procedure begin mdEditor.Redo; FocusEditor; end;
+  Result.SelectAll := procedure begin mdEditor.SelectAll; FocusEditor; end;
+  Result.Indent := procedure begin mdEditor.Indent; FocusEditor; end;
+  Result.Outdent := procedure begin mdEditor.Outdent; FocusEditor; end;
+  Result.DeleteWordLeft := procedure begin mdEditor.DeleteWordLeft; FocusEditor; end;
   Result.ExecuteFormat :=
     procedure(const Command: TEditorCommand)
     begin
@@ -1940,8 +1950,7 @@ begin
 
   EnforceTopBarOrder;
 
-  if mdEditor.CanFocus then
-    mdEditor.SetFocus;
+  FocusEditor;
 end;
 
 procedure TMarkdown4DStudioVCLForm.FindInEditor;
@@ -1977,8 +1986,7 @@ procedure TMarkdown4DStudioVCLForm.ClosePalette;
 begin
   FPalette.Visible := False;
 
-  if mdEditor.CanFocus then
-    mdEditor.SetFocus;
+  FocusEditor;
 end;
 
 procedure TMarkdown4DStudioVCLForm.RefreshPaletteList;
@@ -2129,8 +2137,7 @@ begin
 
   FZenActive := True;
 
-  if mdEditor.CanFocus then
-    mdEditor.SetFocus;
+  FocusEditor;
 end;
 
 procedure TMarkdown4DStudioVCLForm.ExitZen;
@@ -2150,8 +2157,7 @@ begin
 
   FZenActive := False;
 
-  if mdEditor.CanFocus then
-    mdEditor.SetFocus;
+  FocusEditor;
 end;
 
 procedure TMarkdown4DStudioVCLForm.UpdateZenPadding;
