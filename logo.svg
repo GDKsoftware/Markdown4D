@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="154" height="154" viewBox="0 0 154 154">
+  <!-- Markdown4D logo 1: the markdown mark (M with a down arrow) with the GDK Software badge.
+       Brand colors: navy #002151, green #65BA13. -->
+  <rect width="154" height="154" rx="28" fill="#002151"/>
+  <rect x="22" y="40" width="110" height="74" rx="12" fill="none" stroke="#f8fafc" stroke-width="7"/>
+  <path d="M38 96V58h11l12 15 12-15h11v38H73V74L61 89 49 74v22z" fill="#f8fafc"/>
+  <path d="M104 58h11v20h11l-16.5 20L93 78h11z" fill="#65BA13"/>
+  <circle cx="115" cy="115" r="26" fill="#002151"/>
+  <circle cx="115" cy="115" r="22" fill="#ffffff"/>
+  <svg x="99" y="99" width="32" height="31" viewBox="0 0 420 414">
+    <rect x="0"   y="30"  width="215" height="160" fill="#002151"/>
+    <rect x="237" y="0"   width="183" height="205" fill="#002151"/>
+    <rect x="25"  y="215" width="172" height="170" fill="#002151"/>
+    <rect x="215" y="228" width="205" height="186" fill="#002151"/>
+    <circle cx="207" cy="207" r="92" fill="#ffffff"/>
+    <circle cx="207" cy="207" r="66" fill="#65BA13"/>
+  </svg>
+</svg>
