@@ -1,3 +1,5 @@
+<img src="logo.png" align="right" width="128" alt="Markdown4D logo"/>
+
 # Markdown4D
 
 Markdown4D is a CommonMark / GFM markdown library written in Delphi. It parses

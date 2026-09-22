@@ -3,6 +3,7 @@ min dpm client version: 1.0.0
 metadata:
   id: GDK.Markdown4D.Vcl
   version: 2.3.0
+  icon: logo.png
   description: 'Markdown4D is a CommonMark / GFM markdown library written in Delphi. It parses markdown into a typed AST, renders HTML, writes markdown back out, and ships custom-drawn viewer and editor components for VCL and FMX. Everything is plain Object Pascal on top of the RTL; rendering happens on a canvas, without an embedded browser.'
   authors:
     - GDKSoftware
