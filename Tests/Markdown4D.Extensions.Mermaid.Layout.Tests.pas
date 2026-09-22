@@ -114,7 +114,8 @@ uses
   Markdown4D.Layout.FakeMeasurer,
   Markdown4D.Extensions.Mermaid,
   Markdown4D.Extensions.Mermaid.Layout,
-  Markdown4D.Tests.Pipeline.Helpers;
+  Markdown4D.Tests.Pipeline.Helpers,
+  Markdown4D.Tests.Arrays;
 
 class function TMermaidLayoutTests.MermaidPipeline: IMarkdownPipeline;
 begin
@@ -579,8 +580,8 @@ begin
       Labels := Labels + [Item];
   end;
 
-  Assert.AreEqual(3, Length(Wedges), 'A three-slice pie must emit three wedges');
-  Assert.AreEqual(3, Length(Labels), 'Every slice wide enough to carry a percentage must show one');
+  Assert.AreEqual(3, TTestArray.CountOf(Wedges), 'A three-slice pie must emit three wedges');
+  Assert.AreEqual(3, TTestArray.CountOf(Labels), 'Every slice wide enough to carry a percentage must show one');
 
   for var Index := 0 to High(Labels) do
   begin

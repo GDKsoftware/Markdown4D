@@ -20,9 +20,9 @@ For the full sweep, run from the repository root:
 build.bat
 ```
 
-That builds and runs both DUnitX suites, builds all four examples and all five
-packages (Win32, plus the VCL packages on Win64x), and regenerates the
-conformance table in the README. The script looks for the newest installed
+That builds and runs both DUnitX suites on Win32 and Win64x, builds all four
+examples and all five packages (Win32, plus the VCL packages on Win64x), and
+regenerates the conformance table in the README. The script looks for the newest installed
 Delphi; set `MARKDOWN4D_STUDIO` to a version number such as `23.0` to force a
 different one.
 

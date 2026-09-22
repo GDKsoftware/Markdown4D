@@ -7,7 +7,7 @@
         <Base>True</Base>
         <Config Condition="'$(Config)'==''">Debug</Config>
         <Platform Condition="'$(Platform)'==''">Win32</Platform>
-        <TargetedPlatforms>1</TargetedPlatforms>
+        <TargetedPlatforms>1048577</TargetedPlatforms>
         <AppType>Console</AppType>
         <ProjectName Condition="'$(ProjectName)'==''">Markdown4D.Tests</ProjectName>
     </PropertyGroup>
@@ -16,6 +16,11 @@
     </PropertyGroup>
     <PropertyGroup Condition="('$(Platform)'=='Win64' and '$(Base)'=='true') or '$(Base_Win64)'!=''">
         <Base_Win64>true</Base_Win64>
+        <CfgParent>Base</CfgParent>
+        <Base>true</Base>
+    </PropertyGroup>
+    <PropertyGroup Condition="('$(Platform)'=='Win64x' and '$(Base)'=='true') or '$(Base_Win64x)'!=''">
+        <Base_Win64x>true</Base_Win64x>
         <CfgParent>Base</CfgParent>
         <Base>true</Base>
     </PropertyGroup>
@@ -176,6 +181,7 @@
         <DCCReference Include="Markdown4D.Text.UrlSafety.Tests.pas"/>
         <DCCReference Include="Markdown4D.Viewer.ImageSettings.Tests.pas"/>
         <DCCReference Include="StreamingMarkdown.Demo.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Tests.Arrays.pas"/>
         <DCCReference Include="Markdown4D.Tests.Runner.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
@@ -202,6 +208,7 @@
                 <Platform value="Linux64">False</Platform>
                 <Platform value="Win32">True</Platform>
                 <Platform value="Win64">False</Platform>
+                <Platform value="Win64x">True</Platform>
             </Platforms>
         </BorlandProject>
         <ProjectFileVersion>12</ProjectFileVersion>
