@@ -13,7 +13,10 @@ uses
   Markdown4D.Ast.Interfaces;
 
 type
-  TMarkdownInlineStyle = (Strong, Emphasis);
+  // Strikethrough is not emphasis in the sense the HTML tags are, but for this
+  // command it behaves as one: a symmetric pair of markers around inline text
+  // that goes on and off the same way.
+  TMarkdownInlineStyle = (Strong, Emphasis, Strikethrough);
 
   // The one replacement that carries out the command, with where the selection
   // belongs afterwards. Every offset counts from 0, the way the caret does.
@@ -33,7 +36,8 @@ type
                                out Host: IMarkdownNode): Boolean; static;
     class function DescendantsOf(const Node: IMarkdownNode): TArray<IMarkdownNode>; static;
     class function AllCarrySource(const Nodes: TArray<IMarkdownNode>): Boolean; static;
-    class function KindOf(const Style: TMarkdownInlineStyle): TMarkdownNodeKind; static;
+    class function IsTargetNode(const Node: IMarkdownNode; const Style: TMarkdownInlineStyle): Boolean; static;
+    class function IsStrikethrough(const Node: IMarkdownNode): Boolean; static;
     class function IsKeptWhole(const Kind: TMarkdownNodeKind): Boolean; static;
     class function HoldsStyledTextInside(const Kind: TMarkdownNodeKind): Boolean; static;
     class function ContentSpanOf(const Node: IMarkdownNode): TMarkdownSegment; static;
@@ -43,9 +47,9 @@ type
     class function CoveredByAny(const Spans: TArray<TMarkdownSegment>; const Position: Integer): Boolean; static;
     class function WithoutSplitEscapes(const Text: string; const Range: TMarkdownSegment): TMarkdownSegment; static;
     class function StartsAnEscape(const Text: string; const Index: Integer): Boolean; static;
-    class function WidenedOverWholeNodes(const Nodes: TArray<IMarkdownNode>; const TargetKind: TMarkdownNodeKind;
+    class function WidenedOverWholeNodes(const Nodes: TArray<IMarkdownNode>; const Style: TMarkdownInlineStyle;
                                          const Range: TMarkdownSegment): TMarkdownSegment; static;
-    class function TargetsOverlapping(const Nodes: TArray<IMarkdownNode>; const TargetKind: TMarkdownNodeKind;
+    class function TargetsOverlapping(const Nodes: TArray<IMarkdownNode>; const Style: TMarkdownInlineStyle;
                                       const Range: TMarkdownSegment): TArray<IMarkdownNode>; static;
     class function SpanOverAll(const Range: TMarkdownSegment;
                                const Targets: TArray<IMarkdownNode>): TMarkdownSegment; static;
@@ -88,6 +92,7 @@ uses
   System.Character,
   Markdown4D,
   Markdown4D.Defines,
+  Markdown4D.Parser.Inlines,
   Markdown4D.Text.Unescape;
 
 class function TMarkdownInlineStyleNormalizer.TryNormalize(const Text: string;
@@ -111,10 +116,9 @@ begin
   if not AllCarrySource(Inlines) then
     Exit;
 
-  const TargetKind = KindOf(Style);
   const Whole = WithoutSplitEscapes(Text, Range);
-  const Widened = WidenedOverWholeNodes(Inlines, TargetKind, Whole);
-  const Targets = TargetsOverlapping(Inlines, TargetKind, Widened);
+  const Widened = WidenedOverWholeNodes(Inlines, Style, Whole);
+  const Targets = TargetsOverlapping(Inlines, Style, Widened);
 
   const Affected = SpanOverAll(Widened, Targets);
   const Markers = MarkersOf(Targets);
@@ -134,8 +138,9 @@ end;
 class function TMarkdownInlineStyleNormalizer.MarkerOf(const Style: TMarkdownInlineStyle): string;
 begin
   case Style of
-    TMarkdownInlineStyle.Strong   : Result := Asterisk + Asterisk;
-    TMarkdownInlineStyle.Emphasis : Result := Asterisk;
+    TMarkdownInlineStyle.Strong        : Result := Asterisk + Asterisk;
+    TMarkdownInlineStyle.Emphasis      : Result := Asterisk;
+    TMarkdownInlineStyle.Strikethrough : Result := Tilde + Tilde;
   else
     raise ENotSupportedException.CreateFmt('Unsupported inline style: %d', [Ord(Style)]);
   end;
@@ -238,14 +243,32 @@ begin
   Result := True;
 end;
 
-class function TMarkdownInlineStyleNormalizer.KindOf(const Style: TMarkdownInlineStyle): TMarkdownNodeKind;
+// Bold and italic are node kinds of their own; strikethrough is not.
+class function TMarkdownInlineStyleNormalizer.IsTargetNode(const Node: IMarkdownNode;
+  const Style: TMarkdownInlineStyle): Boolean;
 begin
   case Style of
-    TMarkdownInlineStyle.Strong   : Result := TMarkdownNodeKind.Strong;
-    TMarkdownInlineStyle.Emphasis : Result := TMarkdownNodeKind.Emphasis;
+    TMarkdownInlineStyle.Strong        : Result := (Node.Kind = TMarkdownNodeKind.Strong);
+    TMarkdownInlineStyle.Emphasis      : Result := (Node.Kind = TMarkdownNodeKind.Emphasis);
+    TMarkdownInlineStyle.Strikethrough : Result := IsStrikethrough(Node);
   else
     raise ENotSupportedException.CreateFmt('Unsupported inline style: %d', [Ord(Style)]);
   end;
+end;
+
+// The GFM extension registers strikethrough under a name, and the renderer, the
+// builder and the markdown writer all pick the node out by that same name. This
+// follows them rather than inventing a second way to spell it.
+class function TMarkdownInlineStyleNormalizer.IsStrikethrough(const Node: IMarkdownNode): Boolean;
+begin
+  var Custom: IMarkdownCustomInline;
+  if not Supports(Node, IMarkdownCustomInline, Custom) then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  Result := (Custom.NodeName = TGfmInlineParser.StrikethroughNodeName);
 end;
 
 // Things a marker may not be dropped into: their source spells something other
@@ -367,7 +390,7 @@ end;
 // A range that ends inside something the parser reads as one piece takes that
 // whole piece in, so the markers land outside it.
 class function TMarkdownInlineStyleNormalizer.WidenedOverWholeNodes(const Nodes: TArray<IMarkdownNode>;
-  const TargetKind: TMarkdownNodeKind; const Range: TMarkdownSegment): TMarkdownSegment;
+  const Style: TMarkdownInlineStyle; const Range: TMarkdownSegment): TMarkdownSegment;
 begin
   Result := Range;
 
@@ -379,7 +402,7 @@ begin
 
     for var Node in Nodes do
     begin
-      if Node.Kind = TargetKind then
+      if IsTargetNode(Node, Style) then
         Continue;
 
       if not IsKeptWhole(Node.Kind) then
@@ -403,13 +426,13 @@ begin
 end;
 
 class function TMarkdownInlineStyleNormalizer.TargetsOverlapping(const Nodes: TArray<IMarkdownNode>;
-  const TargetKind: TMarkdownNodeKind; const Range: TMarkdownSegment): TArray<IMarkdownNode>;
+  const Style: TMarkdownInlineStyle; const Range: TMarkdownSegment): TArray<IMarkdownNode>;
 begin
   Result := [];
 
   for var Node in Nodes do
   begin
-    const IsTarget = (Node.Kind = TargetKind) and Overlaps(Node.Segment, Range);
+    const IsTarget = IsTargetNode(Node, Style) and Overlaps(Node.Segment, Range);
     if IsTarget then
       Result := Result + [Node];
   end;
