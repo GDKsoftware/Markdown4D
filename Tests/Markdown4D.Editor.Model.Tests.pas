@@ -178,6 +178,12 @@ type
     procedure ExecuteBold_Various_TogglesBoldMarkers(const Text: string; const SelectionEnd: Integer; const Expected: string);
 
     [Test]
+    [TestCase('Wraps selection', 'Hello world,5,~~Hello~~ world')]
+    [TestCase('On struck selection unwraps', '~~Hello~~ world,9,Hello world')]
+    procedure ExecuteStrikethrough_Various_TogglesStrikeMarkers(const Text: string; const SelectionEnd: Integer;
+                                                                const Expected: string);
+
+    [Test]
     procedure ExecuteLink_InsertsPlaceholderWithCaretInUrl;
 
     [Test]
@@ -791,6 +797,15 @@ begin
   FModel.LoadText(Text);
   FModel.SetSelection(0, SelectionEnd);
   FModel.ExecuteCommand(TEditorCommand.Bold);
+  Assert.AreEqual(Expected, FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.ExecuteStrikethrough_Various_TogglesStrikeMarkers(const Text: string;
+  const SelectionEnd: Integer; const Expected: string);
+begin
+  FModel.LoadText(Text);
+  FModel.SetSelection(0, SelectionEnd);
+  FModel.ExecuteCommand(TEditorCommand.Strikethrough);
   Assert.AreEqual(Expected, FModel.Text);
 end;
 

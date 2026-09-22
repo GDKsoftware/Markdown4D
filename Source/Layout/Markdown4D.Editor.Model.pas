@@ -205,7 +205,6 @@ const
   BulletMarker = '- ';
   QuoteMarker = '> ';
   OrderedMarkerFormat = '%d. ';
-  StrikeMarker = '~~';
   TableHeaderLine = '| Header 1 | Header 2 | Header 3 |';
   TableDelimiterLine = '| --- | --- | --- |';
   TableBodyLine = '| Cell | Cell | Cell |';
@@ -934,7 +933,7 @@ begin
     TEditorCommand.Quote:
       ToggleLinePrefix(QuoteMarker);
     TEditorCommand.Strikethrough:
-      WrapOrToggle(StrikeMarker);
+      ToggleInlineStyle(TMarkdownInlineStyle.Strikethrough);
     TEditorCommand.Table:
       InsertTable;
   else

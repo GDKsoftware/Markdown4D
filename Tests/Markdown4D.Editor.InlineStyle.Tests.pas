@@ -15,6 +15,7 @@ type
     function Normalize(const Text, SourceSlice: string; const Style: TMarkdownInlineStyle): string;
     function Strong(const Text, SourceSlice: string): string;
     function Emphasis(const Text, SourceSlice: string): string;
+    function Strikethrough(const Text, SourceSlice: string): string;
 
   public
     [Test]
@@ -84,6 +85,34 @@ type
     [TestCase('InsideExistingEmphasis', '*text*,text,text')]
     [TestCase('InsideStrong', '**a b**,a,***a* b**')]
     procedure Emphasis_Range_TogglesOnlyTheEmphasis(const Text, Slice, Expected: string);
+
+    [Test]
+    [TestCase('PlainWord', 'plain text here,text,plain ~~text~~ here')]
+    [TestCase('WholeContent', '~~gone~~,gone,gone')]
+    [TestCase('MiddleOfContent', '~~a b c~~,b,~~a~~ b ~~c~~')]
+    [TestCase('AcrossParagraphs', 'one'#10#10'two,one'#10#10'two,one'#10#10'two')]
+    procedure Strikethrough_Range_TogglesTheMarks(const Text, Slice, Expected: string);
+
+    // The same for strikethrough: a second press takes the marks off instead of
+    // adding another pair.
+    [Test]
+    procedure Strikethrough_AppliedTwiceOverTheSameWords_LeavesTheTextAsItWas;
+
+    [Test]
+    procedure Strikethrough_RangeHalfOverExistingStrikethrough_TakesTheWholeStretchIn;
+
+    // The two styles sit inside one another without either losing its marks.
+    [Test]
+    procedure Strikethrough_InsideStrong_LeavesTheStrongStanding;
+
+    [Test]
+    procedure Strong_InsideStrikethrough_LeavesTheMarksStanding;
+
+    [Test]
+    procedure Strikethrough_NextToACodeSpanHoldingTildes_LeavesTheCodeAlone;
+
+    [Test]
+    procedure Strikethrough_RangeInsideALinkLabel_PutsTheMarksInsideTheLabel;
   end;
 
 implementation
@@ -120,6 +149,11 @@ end;
 function TMarkdownInlineStyleNormalizerTests.Emphasis(const Text, SourceSlice: string): string;
 begin
   Result := Normalize(Text, SourceSlice, TMarkdownInlineStyle.Emphasis);
+end;
+
+function TMarkdownInlineStyleNormalizerTests.Strikethrough(const Text, SourceSlice: string): string;
+begin
+  Result := Normalize(Text, SourceSlice, TMarkdownInlineStyle.Strikethrough);
 end;
 
 procedure TMarkdownInlineStyleNormalizerTests.Strong_RangeOutsideAnyMarks_WrapsTheRange(
@@ -218,6 +252,47 @@ procedure TMarkdownInlineStyleNormalizerTests.Emphasis_Range_TogglesOnlyTheEmpha
   const Text, Slice, Expected: string);
 begin
   Assert.AreEqual(Expected, Emphasis(Text, Slice));
+end;
+
+procedure TMarkdownInlineStyleNormalizerTests.Strikethrough_Range_TogglesTheMarks(
+  const Text, Slice, Expected: string);
+begin
+  Assert.AreEqual(Expected, Strikethrough(Text, Slice));
+end;
+
+procedure TMarkdownInlineStyleNormalizerTests.Strikethrough_AppliedTwiceOverTheSameWords_LeavesTheTextAsItWas;
+begin
+  const Original = 'plain text here';
+
+  const Once = Strikethrough(Original, 'text');
+  Assert.AreEqual('plain ~~text~~ here', Once);
+
+  Assert.AreEqual(Original, Strikethrough(Once, 'text'));
+end;
+
+procedure TMarkdownInlineStyleNormalizerTests.Strikethrough_RangeHalfOverExistingStrikethrough_TakesTheWholeStretchIn;
+begin
+  Assert.AreEqual('~~gone te~~xt', Strikethrough('~~gone~~ text', 'ne~~ te'));
+end;
+
+procedure TMarkdownInlineStyleNormalizerTests.Strikethrough_InsideStrong_LeavesTheStrongStanding;
+begin
+  Assert.AreEqual('**~~a~~ b**', Strikethrough('**a b**', 'a'));
+end;
+
+procedure TMarkdownInlineStyleNormalizerTests.Strong_InsideStrikethrough_LeavesTheMarksStanding;
+begin
+  Assert.AreEqual('~~**a** b~~', Strong('~~a b~~', 'a'));
+end;
+
+procedure TMarkdownInlineStyleNormalizerTests.Strikethrough_NextToACodeSpanHoldingTildes_LeavesTheCodeAlone;
+begin
+  Assert.AreEqual('`~~x~~` ~~text~~', Strikethrough('`~~x~~` text', 'text'));
+end;
+
+procedure TMarkdownInlineStyleNormalizerTests.Strikethrough_RangeInsideALinkLabel_PutsTheMarksInsideTheLabel;
+begin
+  Assert.AreEqual('see [~~the~~ docs](u) now', Strikethrough('see [the docs](u) now', 'the '));
 end;
 
 end.
