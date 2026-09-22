@@ -38,7 +38,8 @@ type
 implementation
 
 uses
-  System.SysUtils;
+  System.SysUtils,
+  Markdown4D.Tests.Arrays;
 
 function TMarkdownFoldComputerTests.RegionAt(const Regions: TArray<TFoldRegion>;
   const HeaderLine: Integer): TFoldRegion;
@@ -127,7 +128,7 @@ end;
 procedure TMarkdownFoldComputerTests.PlainParagraphs_ProduceNoRegions;
 begin
   const Regions = TMarkdownFoldComputer.ComputeRegions(['just text', 'more text', '']);
-  Assert.AreEqual(0, Length(Regions));
+  Assert.AreEqual(0, TTestArray.CountOf(Regions));
 end;
 
 end.

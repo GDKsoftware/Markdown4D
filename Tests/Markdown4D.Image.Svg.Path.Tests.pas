@@ -52,14 +52,15 @@ uses
   System.SysUtils,
   System.Math,
   Markdown4D.Layout.Interfaces,
-  Markdown4D.Image.Svg.Path;
+  Markdown4D.Image.Svg.Path,
+  Markdown4D.Tests.Arrays;
 
 procedure TSvgPathParserTests.Parse_AbsoluteLines_FollowTheCoordinatesGiven;
 begin
   const Paths = TSvgPathParser.Parse('M 10 20 L 30 40');
 
-  Assert.AreEqual(1, Length(Paths));
-  Assert.AreEqual(2, Length(Paths[0].Points));
+  Assert.AreEqual(1, TTestArray.CountOf(Paths));
+  Assert.AreEqual(2, TTestArray.CountOf(Paths[0].Points));
   Assert.AreEqual(10.0, Paths[0].Points[0].X, Tolerance);
   Assert.AreEqual(20.0, Paths[0].Points[0].Y, Tolerance);
   Assert.AreEqual(30.0, Paths[0].Points[1].X, Tolerance);
@@ -70,7 +71,7 @@ procedure TSvgPathParserTests.Parse_RelativeLines_AreTakenFromTheCurrentPoint;
 begin
   const Paths = TSvgPathParser.Parse('M 10 10 l 5 0 l 0 5');
 
-  Assert.AreEqual(3, Length(Paths[0].Points));
+  Assert.AreEqual(3, TTestArray.CountOf(Paths[0].Points));
   Assert.AreEqual(15.0, Paths[0].Points[1].X, Tolerance);
   Assert.AreEqual(10.0, Paths[0].Points[1].Y, Tolerance);
   Assert.AreEqual(15.0, Paths[0].Points[2].X, Tolerance);
@@ -81,7 +82,7 @@ procedure TSvgPathParserTests.Parse_ClosePath_MarksTheSubPathClosed;
 begin
   const Paths = TSvgPathParser.Parse('M 0 0 L 10 0 L 10 10 Z');
 
-  Assert.AreEqual(1, Length(Paths));
+  Assert.AreEqual(1, TTestArray.CountOf(Paths));
   Assert.IsTrue(Paths[0].IsClosed, 'Z closes the sub-path');
 end;
 
@@ -90,8 +91,8 @@ procedure TSvgPathParserTests.Parse_SecondPairAfterMoveTo_DrawsALine;
 begin
   const Paths = TSvgPathParser.Parse('M 0 0 10 0 10 10');
 
-  Assert.AreEqual(1, Length(Paths));
-  Assert.AreEqual(3, Length(Paths[0].Points));
+  Assert.AreEqual(1, TTestArray.CountOf(Paths));
+  Assert.AreEqual(3, TTestArray.CountOf(Paths[0].Points));
   Assert.AreEqual(10.0, Paths[0].Points[2].Y, Tolerance);
 end;
 
@@ -140,7 +141,7 @@ procedure TSvgPathParserTests.Parse_SeparateMoveTos_ProduceSeparateSubPaths;
 begin
   const Paths = TSvgPathParser.Parse('M 0 0 L 10 0 M 20 0 L 30 0');
 
-  Assert.AreEqual(2, Length(Paths));
+  Assert.AreEqual(2, TTestArray.CountOf(Paths));
   Assert.AreEqual(20.0, Paths[1].Points[0].X, Tolerance);
 end;
 
@@ -149,16 +150,16 @@ procedure TSvgPathParserTests.Parse_NumbersRunTogether_AreStillSeparated;
 begin
   const Paths = TSvgPathParser.Parse('M0 0L10-5');
 
-  Assert.AreEqual(2, Length(Paths[0].Points));
+  Assert.AreEqual(2, TTestArray.CountOf(Paths[0].Points));
   Assert.AreEqual(10.0, Paths[0].Points[1].X, Tolerance);
   Assert.AreEqual(-5.0, Paths[0].Points[1].Y, Tolerance);
 end;
 
 procedure TSvgPathParserTests.Parse_Empty_ProducesNothing;
 begin
-  Assert.AreEqual(0, Length(TSvgPathParser.Parse('')));
-  Assert.AreEqual(0, Length(TSvgPathParser.Parse('   ')));
-  Assert.AreEqual(0, Length(TSvgPathParser.Parse('M 10 10')));
+  Assert.AreEqual(0, TTestArray.CountOf(TSvgPathParser.Parse('')));
+  Assert.AreEqual(0, TTestArray.CountOf(TSvgPathParser.Parse('   ')));
+  Assert.AreEqual(0, TTestArray.CountOf(TSvgPathParser.Parse('M 10 10')));
 end;
 
 end.

@@ -209,7 +209,8 @@ uses
   Markdown4D.Defines,
   Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Engine,
-  Markdown4D.Layout.FakeMeasurer;
+  Markdown4D.Layout.FakeMeasurer,
+  Markdown4D.Tests.Arrays;
 
 procedure TMarkdownLayoutEngineTests.Layout_EmptyDocument_ReturnsEmptyDisplayListWithZeroHeight;
 begin
@@ -572,7 +573,7 @@ begin
   const DisplayList = LayoutMarkdown('<div class="note">'#10'  <span>visible</span>'#10'</div>', DefaultWidth);
 
   const Runs = TextRunsOf(DisplayList);
-  Assert.AreEqual(1, Length(Runs));
+  Assert.AreEqual(1, TTestArray.CountOf(Runs));
   Assert.AreEqual('visible', Runs[0].Text);
 end;
 
@@ -580,7 +581,7 @@ procedure TMarkdownLayoutEngineTests.Layout_HtmlBlock_DropsScriptEntirely;
 begin
   const DisplayList = LayoutMarkdown('<script>alert(1)</script>', DefaultWidth);
 
-  Assert.AreEqual(0, Length(TextRunsOf(DisplayList)));
+  Assert.AreEqual(0, TTestArray.CountOf(TextRunsOf(DisplayList)));
   AssertSingle(0, DisplayList.Height);
 end;
 
@@ -609,7 +610,7 @@ begin
     '  <img src="' + ImageUrl + '" alt="A screenshot" width="90%">'#10 +
     '</p>', DefaultWidth);
 
-  Assert.AreEqual(0, Length(TextRunsOf(DisplayList)));
+  Assert.AreEqual(0, TTestArray.CountOf(TextRunsOf(DisplayList)));
 
   const Image = FirstImageOf(DisplayList);
   Assert.IsNotNull(Image);

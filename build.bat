@@ -19,9 +19,13 @@ set TEST_PROJECT=%ROOT%Tests\Markdown4D.Tests.dproj
 set TEST_EXE=%ROOT%Tests\Win32\Debug\Markdown4D.Tests.exe
 set FMX_TEST_PROJECT=%ROOT%Tests\Markdown4D.Fmx.Tests.dproj
 set FMX_TEST_EXE=%ROOT%Tests\Win32\Debug\Markdown4D.Fmx.Tests.exe
+set TEST_EXE_X64=%ROOT%Tests\Win64x\Debug\Markdown4D.Tests.exe
+set FMX_TEST_EXE_X64=%ROOT%Tests\Win64x\Debug\Markdown4D.Fmx.Tests.exe
 set RESULTS_DIR=%ROOT%Tests\results
 set RESULTS_XML=%RESULTS_DIR%\dunitx-results.xml
 set FMX_RESULTS_XML=%RESULTS_DIR%\dunitx-fmx-results.xml
+set RESULTS_XML_X64=%RESULTS_DIR%\dunitx-results-win64x.xml
+set FMX_RESULTS_XML_X64=%RESULTS_DIR%\dunitx-fmx-results-win64x.xml
 
 if not defined RSVARS (
     echo [build] No supported Delphi found under "%STUDIO_ROOT%".
@@ -40,38 +44,60 @@ echo [build] Using "%RSVARS%"
 call "%RSVARS%"
 
 echo.
-echo === Building test suites ^(Debug, Win32^) ===
-for %%T in ("%TEST_PROJECT%" "%FMX_TEST_PROJECT%") do (
-    msbuild "%%~T" /t:Build /p:Config=Debug /p:Platform=Win32 /v:m
-    if errorlevel 1 (
-        echo.
-        echo === TEST BUILD FAILED: %%~nxT ===
-        exit /b 1
+echo === Building test suites ^(Debug, Win32 and Win64x^) ===
+for %%A in (Win32 Win64x) do (
+    for %%T in ("%TEST_PROJECT%" "%FMX_TEST_PROJECT%") do (
+        msbuild "%%~T" /t:Build /p:Config=Debug /p:Platform=%%A /v:m
+        if errorlevel 1 (
+            echo.
+            echo === TEST BUILD FAILED ^(%%A^): %%~nxT ===
+            exit /b 1
+        )
     )
 )
 
 if not exist "%RESULTS_DIR%" mkdir "%RESULTS_DIR%"
 
 echo.
-echo === Running main test suite ===
+echo === Running main test suite ^(Win32^) ===
 "%TEST_EXE%" -xml:"%RESULTS_XML%" -exit:continue
 set MAIN_EXIT=%ERRORLEVEL%
 
 echo.
-echo === Running FMX test suite ===
+echo === Running FMX test suite ^(Win32^) ===
 "%FMX_TEST_EXE%" -xml:"%FMX_RESULTS_XML%" -exit:continue
 set FMX_EXIT=%ERRORLEVEL%
 
 echo.
+echo === Running main test suite ^(Win64x^) ===
+"%TEST_EXE_X64%" -xml:"%RESULTS_XML_X64%" -exit:continue
+set MAIN_EXIT_X64=%ERRORLEVEL%
+
+echo.
+echo === Running FMX test suite ^(Win64x^) ===
+"%FMX_TEST_EXE_X64%" -xml:"%FMX_RESULTS_XML_X64%" -exit:continue
+set FMX_EXIT_X64=%ERRORLEVEL%
+
+echo.
 if "%MAIN_EXIT%"=="0" (
-    echo === Main suite: all tests passed ===
+    echo === Main suite ^(Win32^): all tests passed ===
 ) else (
-    echo === Main suite: failures reported, exit code %MAIN_EXIT% ===
+    echo === Main suite ^(Win32^): failures reported, exit code %MAIN_EXIT% ===
 )
 if "%FMX_EXIT%"=="0" (
-    echo === FMX suite: all tests passed ===
+    echo === FMX suite ^(Win32^): all tests passed ===
 ) else (
-    echo === FMX suite: failures reported, exit code %FMX_EXIT% ===
+    echo === FMX suite ^(Win32^): failures reported, exit code %FMX_EXIT% ===
+)
+if "%MAIN_EXIT_X64%"=="0" (
+    echo === Main suite ^(Win64x^): all tests passed ===
+) else (
+    echo === Main suite ^(Win64x^): failures reported, exit code %MAIN_EXIT_X64% ===
+)
+if "%FMX_EXIT_X64%"=="0" (
+    echo === FMX suite ^(Win64x^): all tests passed ===
+) else (
+    echo === FMX suite ^(Win64x^): failures reported, exit code %FMX_EXIT_X64% ===
 )
 
 echo.

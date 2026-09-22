@@ -14,6 +14,7 @@ uses
   Markdown4D.Fmx.Editor in '..\Source\Fmx\Markdown4D.Fmx.Editor.pas',
   Markdown4D.Fmx.Editor.Tests in 'Markdown4D.Fmx.Editor.Tests.pas',
   Markdown4D.Fmx.Design.Tests in 'Markdown4D.Fmx.Design.Tests.pas',
+  Markdown4D.Tests.Arrays in 'Markdown4D.Tests.Arrays.pas',
   Markdown4D.Tests.Runner in 'Markdown4D.Tests.Runner.pas';
 
 begin
