@@ -8,7 +8,8 @@ uses
   System.SysUtils,
   System.Generics.Collections,
   Markdown4D.Ast.Interfaces,
-  Markdown4D.Parser.HtmlBlocks;
+  Markdown4D.Parser.HtmlBlocks,
+  Markdown4D.Parser.SourceMap;
 
 type
   TListData = record
@@ -29,6 +30,7 @@ type
     FChildren: TObjectList<TStagingBlock>;
     FIsOpen: Boolean;
     FContent: TStringBuilder;
+    FSourceMap: TMarkdownContentSourceMap;
     FLiteral: string;
     FInfoString: string;
     FHeadingLevel: Integer;
@@ -58,6 +60,9 @@ type
     property Children: TObjectList<TStagingBlock> read FChildren;
     property IsOpen: Boolean read FIsOpen write FIsOpen;
     property Content: TStringBuilder read FContent;
+    // Where every line of Content sits in the markdown source, so the nodes
+    // parsed out of Content can point back at the characters they came from.
+    property SourceMap: TMarkdownContentSourceMap read FSourceMap;
     property Literal: string read FLiteral write FLiteral;
     property InfoString: string read FInfoString write FInfoString;
     property HeadingLevel: Integer read FHeadingLevel write FHeadingLevel;
@@ -96,6 +101,7 @@ begin
   FParent := Parent;
   FChildren := TObjectList<TStagingBlock>.Create(True);
   FContent := TStringBuilder.Create;
+  FSourceMap := TMarkdownContentSourceMap.Create;
   FIsOpen := True;
 end;
 
@@ -103,6 +109,7 @@ destructor TStagingBlock.Destroy;
 begin
   FreeDescendantsIteratively;
 
+  FSourceMap.Free;
   FContent.Free;
   FChildren.Free;
 

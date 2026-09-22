@@ -111,6 +111,7 @@
         <DCCReference Include="..\Source\Core\Markdown4D.Parser.LineScanner.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Parser.LinkSyntax.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Parser.References.pas"/>
+        <DCCReference Include="..\Source\Core\Markdown4D.Parser.SourceMap.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Parser.StagingBlock.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Pipeline.Configuration.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Pipeline.pas"/>
@@ -129,6 +130,7 @@
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Rows.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Keys.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Actions.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Editor.InlineStyle.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.ContextMenu.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Highlights.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Sync.pas"/>
@@ -141,6 +143,7 @@
         <DCCReference Include="..\Source\Layout\Markdown4D.Math.Font.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.Defaults.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.DisplayList.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Layout.SourceMapping.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.Engine.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.ExtensionCanvas.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.HitTest.pas"/>

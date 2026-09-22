@@ -5,6 +5,7 @@ unit Markdown4D.Editor.Model;
 interface
 
 uses
+  Markdown4D.Editor.InlineStyle,
   Markdown4D.Editor.Folding;
 
 type
@@ -88,6 +89,7 @@ type
     function CollapsedIndexOf(const HeaderOffset: Integer): Integer;
     function TryRegionAtHeader(const HeaderLine: Integer; out Region: TFoldRegion): Boolean;
     procedure WrapOrToggle(const Marker: string);
+    procedure ToggleInlineStyle(const Style: TMarkdownInlineStyle);
     procedure InsertLink;
     procedure WrapCodeBlock;
     procedure ToggleHeading(const Level: Integer);
@@ -133,6 +135,11 @@ type
     procedure MoveWordRight(const Extend: Boolean);
     procedure SelectAll;
     procedure SetSelection(const Start, Length: Integer);
+    // Selects the text inside the range, leaving the whitespace at either end
+    // of it out. Style markers cannot sit against the whitespace they
+    // enclose, so a range that came from somewhere else is pulled in to the
+    // characters it really covers before a command wraps them.
+    procedure SelectTextRange(const Start, CharacterCount: Integer);
     procedure SelectWordAt(const Offset: Integer);
     procedure SelectLineAt(const Offset: Integer);
     function HasSelection: Boolean;
@@ -444,6 +451,24 @@ procedure TMarkdownEditorModel.SetSelection(const Start, Length: Integer);
 begin
   FAnchor := SnapOffset(Start);
   FCaret := SnapOffset(Start + Length);
+end;
+
+procedure TMarkdownEditorModel.SelectTextRange(const Start, CharacterCount: Integer);
+begin
+  var First := ClampOffset(Start);
+  var Last := ClampOffset(Start + CharacterCount);
+
+  while (First < Last) and FText[First + 1].IsWhiteSpace do
+  begin
+    Inc(First);
+  end;
+
+  while (Last > First) and FText[Last].IsWhiteSpace do
+  begin
+    Dec(Last);
+  end;
+
+  SetSelection(First, Last - First);
 end;
 
 procedure TMarkdownEditorModel.SelectWordAt(const Offset: Integer);
@@ -889,9 +914,9 @@ begin
 
   case Command of
     TEditorCommand.Bold:
-      WrapOrToggle('**');
+      ToggleInlineStyle(TMarkdownInlineStyle.Strong);
     TEditorCommand.Italic:
-      WrapOrToggle('*');
+      ToggleInlineStyle(TMarkdownInlineStyle.Emphasis);
     TEditorCommand.Link:
       InsertLink;
     TEditorCommand.CodeBlock:
@@ -1317,6 +1342,26 @@ begin
   ApplyReplace(Start, Len, Wrapped, False);
   FAnchor := Start + MarkerLen;
   FCaret := Start + MarkerLen + System.Length(Selected);
+end;
+
+// Reads what the markdown already says before changing it, so half covering a
+// marked word widens it instead of cutting it in two, and running the command
+// again on the same words takes the marks back off. Where the text gives
+// nothing to read, across a block boundary or inside a table cell, the
+// selection is wrapped as it stands.
+procedure TMarkdownEditorModel.ToggleInlineStyle(const Style: TMarkdownInlineStyle);
+begin
+  var Edit: TMarkdownInlineStyleEdit;
+  if not TMarkdownInlineStyleNormalizer.TryNormalize(FText, SelectionStart, SelectionLength, Style, Edit) then
+  begin
+    WrapOrToggle(TMarkdownInlineStyleNormalizer.MarkerOf(Style));
+    Exit;
+  end;
+
+  ApplyReplace(Edit.Start, Edit.Length, Edit.Replacement, False);
+
+  FAnchor := SnapOffset(Edit.SelectionStart);
+  FCaret := SnapOffset(Edit.SelectionStart + Edit.SelectionLength);
 end;
 
 procedure TMarkdownEditorModel.InsertLink;

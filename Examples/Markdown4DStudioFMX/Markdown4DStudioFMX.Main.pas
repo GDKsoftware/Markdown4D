@@ -199,6 +199,7 @@ type
     function TryHandleCommandShortcut(const Key: Word): Boolean;
     function TryHandleGlobalKey(const Key: Word): Boolean;
     procedure ExecuteFormatCommand(const Command: TEditorCommand);
+    procedure AdoptPreviewSelection;
     procedure ToggleDarkTheme;
     procedure ToggleTocPane;
     procedure HandleDocumentHandedOver(const FileName: string);
@@ -1009,8 +1010,7 @@ begin
   Result.ExecuteFormat :=
     procedure(const Command: TEditorCommand)
     begin
-      FEditor.ExecuteCommand(Command);
-      FocusEditor;
+      ExecuteFormatCommand(Command);
     end;
 end;
 
@@ -1031,6 +1031,11 @@ begin
   inherited KeyDown(Key, KeyChar, Shift);
 end;
 
+// The form sees every key before the control that has the focus does, and a key
+// it handles is swallowed. That makes it the one place a shortcut runs: the
+// editor's own Ctrl+B never fires here, so the command is not carried out
+// twice, and it still works when the editor is hidden behind the preview. An
+// editor used on its own, without a form like this one, keeps its own keys.
 function TMarkdown4DStudioFMXForm.HandleFormKey(const Key: Word; const Shift: TShiftState): Boolean;
 begin
   if FPalette.Visible then
@@ -1128,10 +1133,14 @@ begin
       SetViewMode(TPadViewMode.Split);
     vk3:
       SetViewMode(TPadViewMode.PreviewOnly);
+    vkB:
+      ExecuteFormatCommand(TEditorCommand.Bold);
     vkF:
       ShowFindBar;
     vkH:
       ShowReplaceBar;
+    vkI:
+      ExecuteFormatCommand(TEditorCommand.Italic);
     vkK:
       ShowPalette;
     vkN:
@@ -1196,8 +1205,21 @@ end;
 
 procedure TMarkdown4DStudioFMXForm.ExecuteFormatCommand(const Command: TEditorCommand);
 begin
+  AdoptPreviewSelection;
   FEditor.ExecuteCommand(Command);
   FocusEditor;
+end;
+
+// With the editor out of sight its caret sits wherever it was left, which is
+// not where the reader was pointing. The selection made in the preview says
+// which characters were meant, so the editor takes it over first.
+procedure TMarkdown4DStudioFMXForm.AdoptPreviewSelection;
+begin
+  const IsPreviewOnly = (EffectiveViewMode = TPadViewMode.PreviewOnly);
+  if not IsPreviewOnly then
+    Exit;
+
+  FEditor.TryAdoptPreviewSelection;
 end;
 
 procedure TMarkdown4DStudioFMXForm.DoShow;
@@ -1708,26 +1730,22 @@ end;
 
 procedure TMarkdown4DStudioFMXForm.HandleBoldClick(Sender: TObject);
 begin
-  FEditor.ExecuteCommand(TEditorCommand.Bold);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.Bold);
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleItalicClick(Sender: TObject);
 begin
-  FEditor.ExecuteCommand(TEditorCommand.Italic);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.Italic);
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleLinkClick(Sender: TObject);
 begin
-  FEditor.ExecuteCommand(TEditorCommand.Link);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.Link);
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleCodeClick(Sender: TObject);
 begin
-  FEditor.ExecuteCommand(TEditorCommand.CodeBlock);
-  FocusEditor;
+  ExecuteFormatCommand(TEditorCommand.CodeBlock);
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleViewEditorClick(Sender: TObject);
@@ -2365,7 +2383,7 @@ begin
     'A native FireMonkey Markdown editor with a **live preview**. Type on the left; ' +
     'the right pane re-renders through the debounced incremental pipeline.'#10#10 +
     '## Editing'#10#10 +
-    '- **Ctrl+B** bold, *Ctrl+I* italic, Ctrl+K link'#10 +
+    '- **Ctrl+B** bold, *Ctrl+I* italic; the toolbar has Link and Code'#10 +
     '- Undo / redo with Ctrl+Z / Ctrl+Y'#10 +
     '- Source syntax highlighting with line numbers'#10#10 +
     '## Documents'#10#10 +

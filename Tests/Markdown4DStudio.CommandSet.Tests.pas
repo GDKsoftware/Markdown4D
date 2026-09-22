@@ -40,6 +40,15 @@ type
     [Test]
     procedure TableCommand_InvokesFormatWithTable;
 
+    // The palette prints these next to the command, and the sample document
+    // tells the reader the same thing. Only the two the form binds carry one.
+    [Test]
+    [TestCase('Bold', 'Bold,Ctrl+B')]
+    [TestCase('Italic', 'Italic,Ctrl+I')]
+    [TestCase('Link', 'Link,')]
+    [TestCase('CodeBlock', 'Code block,')]
+    procedure FormatCommand_AdvertisesTheShortcutTheFormBinds(const Name, Expected: string);
+
     [Test]
     procedure EveryCommand_HasNameAndCategory;
 
@@ -56,6 +65,7 @@ type
 implementation
 
 uses
+  System.SysUtils,
   Markdown4DStudio.Defines;
 
 procedure TPadCommandSetTests.Setup;
@@ -179,6 +189,22 @@ begin
   TPadCommandSet.Register(FRegistry, BuildActions);
   Invoke(CmdIndentName);
   Assert.AreEqual('Indent', FFired);
+end;
+
+procedure TPadCommandSetTests.FormatCommand_AdvertisesTheShortcutTheFormBinds(const Name, Expected: string);
+begin
+  TPadCommandSet.Register(FRegistry, BuildActions);
+
+  for var Command in FRegistry.Commands do
+  begin
+    if Command.Name <> Name then
+      Continue;
+
+    Assert.AreEqual(Expected, Command.ShortcutText);
+    Exit;
+  end;
+
+  Assert.Fail(Format('The palette has no command called "%s"', [Name]));
 end;
 
 procedure TPadCommandSetTests.EveryCommand_HasNameAndCategory;

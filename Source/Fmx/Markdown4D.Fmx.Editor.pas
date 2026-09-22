@@ -13,6 +13,7 @@ uses
   FMX.Controls,
   FMX.Graphics,
   FMX.Menus,
+  Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Theme,
   Markdown4D.Editor.Model,
@@ -198,6 +199,15 @@ type
     // Inserts Value at the caret, replacing the selection when there is one.
     procedure InsertText(const Value: string);
     procedure SelectAll;
+    // Puts the selection on CharacterCount characters starting at StartOffset,
+    // counted from 0 as the caret is, and shows them.
+    procedure SelectRange(const StartOffset, CharacterCount: Integer);
+    // Moves the selection the reader made in the attached preview onto the
+    // same characters here, so a formatting command changes what was pointed
+    // at instead of wherever the caret was left. False when the preview holds
+    // no selection, or when it still shows an older version of the text, in
+    // which case the offsets it hands out belong to another document.
+    function TryAdoptPreviewSelection: Boolean;
     procedure Indent;
     procedure Outdent;
     procedure DeleteWordLeft;
@@ -399,6 +409,37 @@ procedure TMarkdownEditor.SelectAll;
 begin
   FModel.SelectAll;
   RefreshAfterEdit;
+end;
+
+procedure TMarkdownEditor.SelectRange(const StartOffset, CharacterCount: Integer);
+begin
+  FModel.SetSelection(StartOffset, CharacterCount);
+  RevealSelection;
+  RefreshAfterEdit;
+end;
+
+function TMarkdownEditor.TryAdoptPreviewSelection: Boolean;
+begin
+  Result := False;
+  if FPreview = nil then
+    Exit;
+
+  const IsPreviewCurrent = (FPreview.Text = FModel.Text);
+  if not IsPreviewCurrent then
+    Exit;
+
+  var Segment: TMarkdownSegment;
+  if not FPreview.TryGetSelectionSourceSegment(Segment) then
+    Exit;
+
+  FModel.SelectTextRange(Segment.StartOffset - 1, Segment.Length);
+  if not FModel.HasSelection then
+    Exit;
+
+  RevealSelection;
+  RefreshAfterEdit;
+
+  Result := True;
 end;
 
 procedure TMarkdownEditor.Indent;

@@ -34,12 +34,18 @@ type
     function GetColor: TLayoutColor;
     function GetBaseline: Single;
     function GetStartOffset: Integer;
+    function GetSourceNode: IMarkdownNode;
     function GetRole: TDisplayTextRunRole;
     property Text: string read GetText;
     property Font: TMarkdownFontStyle read GetFont;
     property Color: TLayoutColor read GetColor;
     property Baseline: Single read GetBaseline;
+    // Where this run starts inside the literal of SourceNode, counted from 0.
     property StartOffset: Integer read GetStartOffset;
+    // The inline node whose literal the characters come from. Node is the node
+    // the run is attributed to for styling and hit testing, which for a link is
+    // the link itself, while SourceNode stays the text leaf inside it.
+    property SourceNode: IMarkdownNode read GetSourceNode;
     property Role: TDisplayTextRunRole read GetRole;
   end;
 

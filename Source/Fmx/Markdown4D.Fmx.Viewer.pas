@@ -14,6 +14,7 @@ uses
   FMX.Controls,
   FMX.Graphics,
   FMX.Menus,
+  Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.DisplayList,
   Markdown4D.Theme,
@@ -167,6 +168,10 @@ type
     procedure CopySelectionToClipboard;
     procedure SelectAll;
     procedure ClearSelection;
+    // Answers the stretch of markdown the selection in the preview was
+    // rendered from, so an editor can put its own selection on those same
+    // characters before a formatting command runs.
+    function TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean;
     property Theme: TMarkdownTheme read FTheme write SetTheme;
     property ContentHeight: Integer read GetContentHeight;
     property ScrollOffset: Single read GetScrollOffset write SetScrollPosition;
@@ -218,7 +223,6 @@ uses
   Markdown4D.Image.Svg.Native,
   Markdown4D.Fmx.Glyphs,
   Markdown4D.Fmx.ImageDecoder,
-  Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Defaults,
   Markdown4D.Layout.HitTest,
   Markdown4D.Layout.Renderer,
@@ -1281,6 +1285,11 @@ end;
 function TMarkdownViewer.GetSelectedText: string;
 begin
   Result := FModel.SelectedText;
+end;
+
+function TMarkdownViewer.TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean;
+begin
+  Result := FModel.TryGetSelectionSourceSegment(Segment);
 end;
 
 end.
