@@ -123,7 +123,6 @@ implementation
 
 uses
   System.SysUtils,
-  System.Math,
   System.Generics.Collections,
   Markdown4D,
   Markdown4D.Extensions.Interfaces,
@@ -512,8 +511,8 @@ begin
       Continue;
 
     Inc(NumericLabels);
-    Assert.AreEqual(FormatFloat(CleanDecimals, Value), Run.Text,
-      'A tick label on a fractional axis must not show floating-point noise');
+    const CleanText = FormatFloat(CleanDecimals, Value);
+    Assert.AreEqual(CleanText, Run.Text, 'A tick label on a fractional axis must not show floating-point noise');
   end;
 
   Assert.IsTrue(NumericLabels >= 2, Format('Expected at least two tick labels but found %d', [NumericLabels]));
@@ -665,7 +664,8 @@ begin
         Inc(FormattedLabels);
     end;
 
-    Assert.IsTrue(FormattedLabels >= 2, Format('Case "%s" must draw its axis labels through the formatter', [CaseName]));
+    Assert.IsTrue(FormattedLabels >= 2,
+      Format('Case "%s" must draw its axis labels through the formatter', [CaseName]));
   end;
 end;
 

@@ -625,8 +625,8 @@ chart is laid out without replacing the override:
 | `BarRowHeightFactor` | Horizontal bar charts only: each label row is this many label line heights tall, so the chart grows with its label count | The aspect ratio applies |
 | `TickLabelFormatter` | Formats every value-axis label | `Format('%g', [Value])` |
 
-A zeroed record, `Default(TChartLayoutOptions)`, lays a chart out exactly as
-before. Pass the options to the first `RegisterOverride` call:
+A zeroed record, `Default(TChartLayoutOptions)`, gives the same layout as the
+calls without options. Pass the options to the first `RegisterOverride` call:
 
 ```pascal
 uses
@@ -658,7 +658,7 @@ TMarkdownLayoutEngine.RegisterBlockOverride(TChartBlockOverride.Create(Options),
 Code that draws charts itself passes the same record to the overloads of
 `TChartLayouter.Draw`, `BuildDisplayItems` and `PreferredHeight`. The
 `PreferredHeight` overload that takes the model is the one that knows about row
-sizing; the older one without a model always returns the 16:9 height.
+sizing; the one without a model always returns the 16:9 height.
 
 ### Mermaid
 

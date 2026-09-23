@@ -197,7 +197,11 @@ begin
   for var Index := 0 to DisplayList.ItemCount - 1 do
   begin
     var Run: IDisplayTextRun;
-    if Supports(DisplayList.Items[Index], IDisplayTextRun, Run) and (Run.Text = FollowingText) then
+    if not Supports(DisplayList.Items[Index], IDisplayTextRun, Run) then
+      Continue;
+
+    const IsFollowingText = (Run.Text = FollowingText);
+    if IsFollowingText then
     begin
       Result := Run.Bounds.Top;
       Exit;
