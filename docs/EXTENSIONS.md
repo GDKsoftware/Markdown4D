@@ -614,6 +614,52 @@ uses
 TChartBlockOverride.RegisterOverride;
 ```
 
+#### Chart layout options
+
+`TChartLayoutOptions` (unit `Markdown4D.Extensions.Chart.Layout`) adjusts how a
+chart is laid out without replacing the override:
+
+| Field | Effect | Zero or nil |
+|-------|--------|-------------|
+| `AspectRatio` | Width over height of the chart | 16:9 |
+| `BarRowHeightFactor` | Horizontal bar charts only: each label row is this many label line heights tall, so the chart grows with its label count | The aspect ratio applies |
+| `TickLabelFormatter` | Formats every value-axis label | `Format('%g', [Value])` |
+
+A zeroed record, `Default(TChartLayoutOptions)`, lays a chart out exactly as
+before. Pass the options to the first `RegisterOverride` call:
+
+```pascal
+uses
+  System.SysUtils,
+  Markdown4D.Extensions.Chart.Layout,
+  Markdown4D.Extensions.Chart.BlockOverride;
+
+var Options := Default(TChartLayoutOptions);
+Options.BarRowHeightFactor := 2;
+Options.TickLabelFormatter :=
+  function(const Value: Double): string
+  begin
+    Result := FormatFloat('0.##', Value);
+  end;
+
+TChartBlockOverride.RegisterOverride(Options);
+```
+
+The layout engine keeps the first override of equal priority, so
+`RegisterOverride(Options)` raises an `EMarkdownError` when the chart override
+is already registered rather than dropping the options. To use different
+options later, register another instance above the stock priority:
+
+```pascal
+TMarkdownLayoutEngine.RegisterBlockOverride(TChartBlockOverride.Create(Options),
+  TChartBlockOverride.OverridePriority + 1);
+```
+
+Code that draws charts itself passes the same record to the overloads of
+`TChartLayouter.Draw`, `BuildDisplayItems` and `PreferredHeight`. The
+`PreferredHeight` overload that takes the model is the one that knows about row
+sizing; the older one without a model always returns the 16:9 height.
+
 ### Mermaid
 
 A fenced code block whose info string is `mermaid` (the GitHub convention) is

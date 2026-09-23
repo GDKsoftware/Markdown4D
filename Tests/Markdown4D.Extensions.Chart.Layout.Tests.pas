@@ -6,9 +6,11 @@ interface
 
 uses
   DUnitX.TestFramework,
+  Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.DisplayList,
   Markdown4D.Theme,
+  Markdown4D.Extensions.Chart,
   Markdown4D.Charts.Corpus;
 
 type
@@ -18,12 +20,21 @@ type
     const
       ChartWidth = 480.0;
       ChartHeight = 270.0;
+      // Mirrors the layouter's private label size; the fake measurer derives
+      // line heights from the font size alone.
+      LabelFontSize = 11.0;
+      LegendSwatchSize = 10.0;
+      RowHeightFactor = 2.0;
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
       FCorpus: TChartCorpus;
     function ModelItems(const CaseName: string): TArray<IDisplayItem>;
     function MarkdownItems(const Markdown: string): TArray<IDisplayItem>;
+    function ParseModel(const Markdown: string; out Code: IMarkdownCodeBlock): IChartModel;
+    function LabelLineHeight: Single;
+    function BarTops(const Items: TArray<IDisplayItem>): TArray<Single>;
+    class function BarChartMarkdown(const LabelCount: Integer; const Horizontal: Boolean): string; static;
 
   public
     [SetupFixture]
@@ -82,18 +93,40 @@ type
 
     [Test]
     procedure Axis_LargeValuesInNarrowRange_LabelsStayWithTheData;
+
+    [Test]
+    procedure PreferredHeight_DefaultOptions_MatchesSixteenByNine;
+
+    [Test]
+    procedure AspectRatio_Custom_SetsPreferredHeight;
+
+    [Test]
+    procedure BarRowHeightFactor_HorizontalBar_HeightGrowsWithLabelCount;
+
+    [Test]
+    procedure BarRowHeightFactor_HorizontalBar_RowIsFactorTimesLineHeight;
+
+    [Test]
+    procedure BarRowHeightFactor_VerticalBar_KeepsAspectRatio;
+
+    [Test]
+    procedure BarRowHeightFactor_TallerThanAspectRatio_IsNotClamped;
+
+    [Test]
+    procedure TickLabelFormatter_Custom_FormatsEveryAxisLabel;
   end;
 
 implementation
 
 uses
   System.SysUtils,
+  System.Math,
+  System.Generics.Collections,
   Markdown4D,
-  Markdown4D.Ast.Interfaces,
   Markdown4D.Extensions.Interfaces,
   Markdown4D.Pipeline,
   Markdown4D.Layout.FakeMeasurer,
-  Markdown4D.Extensions.Chart,
+  Markdown4D.Tests.Arrays,
   Markdown4D.Extensions.Chart.Layout;
 
 function ChartPipeline: IMarkdownPipeline;
@@ -176,6 +209,70 @@ begin
 
   const Bounds = TLayoutRectF.Create(0, 0, ChartWidth, ChartHeight);
   Result := TChartLayouter.BuildDisplayItems(Model, Bounds, FTheme, FMeasurer, Code);
+end;
+
+function TChartLayoutTests.ParseModel(const Markdown: string; out Code: IMarkdownCodeBlock): IChartModel;
+begin
+  const Document = ChartPipeline.Parse(Markdown);
+  Assert.IsTrue(FindFirstCodeBlock(Document, Code), 'The markdown must expose a code block');
+
+  var Model: IChartModel;
+  Assert.IsTrue(TChartExtension.TryParse(Code, Model), 'The code block must parse into a chart model');
+  Result := Model;
+end;
+
+function TChartLayoutTests.LabelLineHeight: Single;
+begin
+  const Font = TMarkdownFontStyle.Create(FTheme.BaseFont.FamilyName, LabelFontSize);
+  Result := FMeasurer.LineHeight(Font);
+end;
+
+// The single-dataset bars share the first palette colour with the legend
+// swatch; the swatch is told apart by its fixed size.
+function TChartLayoutTests.BarTops(const Items: TArray<IDisplayItem>): TArray<Single>;
+begin
+  const BarColor = TChartLayouter.PaletteColor(FTheme, 0);
+  const Tops = TList<Single>.Create;
+  try
+    for var Item in Items do
+    begin
+      var Rectangle: IDisplayRectangle;
+      if not Supports(Item, IDisplayRectangle, Rectangle) then
+        Continue;
+
+      const IsBar = (Rectangle.FillColor = BarColor) and (Rectangle.Bounds.Height > LegendSwatchSize);
+      if IsBar then
+        Tops.Add(Rectangle.Bounds.Top);
+    end;
+
+    Tops.Sort;
+    Result := Tops.ToArray;
+  finally
+    Tops.Free;
+  end;
+end;
+
+class function TChartLayoutTests.BarChartMarkdown(const LabelCount: Integer; const Horizontal: Boolean): string;
+begin
+  var Labels: TArray<string>;
+  var Values: TArray<string>;
+  SetLength(Labels, LabelCount);
+  SetLength(Values, LabelCount);
+  for var Index := 0 to LabelCount - 1 do
+  begin
+    Labels[Index] := Format('"L%d"', [Index + 1]);
+    Values[Index] := IntToStr(Index + 1);
+  end;
+
+  var IndexAxis := 'x';
+  if Horizontal then
+    IndexAxis := 'y';
+
+  const Json = Format('{"type":"chart","data":{"type":"bar","data":{"labels":[%s],' +
+    '"datasets":[{"label":"Series","data":[%s]}]},' +
+    '"options":{"indexAxis":"%s","plugins":{"title":{"display":true,"text":"Rows"}}}}}',
+    [string.Join(',', Labels), string.Join(',', Values), IndexAxis]);
+  Result := Format('```chart'#10'%s'#10'```', [Json]);
 end;
 
 procedure TChartLayoutTests.Bar_PlotRect_ExcludesTitleLegendAndAxisLabels;
@@ -387,6 +484,156 @@ begin
   const Items = ModelItems('scatter-minimal');
   Assert.AreEqual(3, CountKind(Items, TDisplayItemKind.Wedge),
     'A three-point scatter chart must emit one marker per point');
+end;
+
+procedure TChartLayoutTests.PreferredHeight_DefaultOptions_MatchesSixteenByNine;
+begin
+  var Code: IMarkdownCodeBlock;
+  const Markdown = BarChartMarkdown(12, True);
+  const Model = ParseModel(Markdown, Code);
+
+  const Expected = TChartLayouter.PreferredHeight(ChartWidth, FTheme);
+  const Actual = TChartLayouter.PreferredHeight(Model, ChartWidth, FTheme, FMeasurer, Default(TChartLayoutOptions));
+
+  Assert.AreEqual(Double(Expected), Double(Actual), 0,
+    'A zeroed options record must give the same height as the overload without options');
+end;
+
+procedure TChartLayoutTests.AspectRatio_Custom_SetsPreferredHeight;
+const
+  WideRatio = 2.0;
+begin
+  var Code: IMarkdownCodeBlock;
+  const Markdown = BarChartMarkdown(3, False);
+  const Model = ParseModel(Markdown, Code);
+
+  var Options := Default(TChartLayoutOptions);
+  Options.AspectRatio := WideRatio;
+  const Height = TChartLayouter.PreferredHeight(Model, ChartWidth, FTheme, FMeasurer, Options);
+
+  Assert.AreEqual(Double(ChartWidth / WideRatio), Double(Height), 0.01,
+    'The chart height must be the width divided by the aspect ratio');
+end;
+
+procedure TChartLayoutTests.BarRowHeightFactor_HorizontalBar_HeightGrowsWithLabelCount;
+const
+  FewLabels = 3;
+  ManyLabels = 7;
+begin
+  var Options := Default(TChartLayoutOptions);
+  Options.BarRowHeightFactor := RowHeightFactor;
+
+  var Code: IMarkdownCodeBlock;
+  const FewMarkdown = BarChartMarkdown(FewLabels, True);
+  const ManyMarkdown = BarChartMarkdown(ManyLabels, True);
+  const FewModel = ParseModel(FewMarkdown, Code);
+  const ManyModel = ParseModel(ManyMarkdown, Code);
+  const FewHeight = TChartLayouter.PreferredHeight(FewModel, ChartWidth, FTheme, FMeasurer, Options);
+  const ManyHeight = TChartLayouter.PreferredHeight(ManyModel, ChartWidth, FTheme, FMeasurer, Options);
+
+  const Expected = (ManyLabels - FewLabels) * RowHeightFactor * LabelLineHeight;
+  Assert.AreEqual(Double(Expected), Double(ManyHeight - FewHeight), 0.01,
+    'Each extra label must add one row of the requested height');
+end;
+
+procedure TChartLayoutTests.BarRowHeightFactor_HorizontalBar_RowIsFactorTimesLineHeight;
+const
+  LabelCount = 5;
+begin
+  var Options := Default(TChartLayoutOptions);
+  Options.BarRowHeightFactor := RowHeightFactor;
+
+  var Code: IMarkdownCodeBlock;
+  const Markdown = BarChartMarkdown(LabelCount, True);
+  const Model = ParseModel(Markdown, Code);
+  const Height = TChartLayouter.PreferredHeight(Model, ChartWidth, FTheme, FMeasurer, Options);
+  const Bounds = TLayoutRectF.Create(0, 0, ChartWidth, Height);
+  const Items = TChartLayouter.BuildDisplayItems(Model, Bounds, FTheme, FMeasurer, Code, Options);
+
+  const Tops = BarTops(Items);
+  Assert.AreEqual(LabelCount, TTestArray.CountOf(Tops),
+    'A single-dataset horizontal chart must emit one bar per label');
+
+  const ExpectedRow = RowHeightFactor * LabelLineHeight;
+  for var Index := 1 to High(Tops) do
+  begin
+    Assert.AreEqual(Double(ExpectedRow), Double(Tops[Index] - Tops[Index - 1]), 0.01,
+      Format('Bar row %d must be the factor times the label line height', [Index]));
+  end;
+end;
+
+procedure TChartLayoutTests.BarRowHeightFactor_VerticalBar_KeepsAspectRatio;
+begin
+  var Options := Default(TChartLayoutOptions);
+  Options.BarRowHeightFactor := RowHeightFactor;
+
+  var Code: IMarkdownCodeBlock;
+  const Markdown = BarChartMarkdown(12, False);
+  const Model = ParseModel(Markdown, Code);
+  const Height = TChartLayouter.PreferredHeight(Model, ChartWidth, FTheme, FMeasurer, Options);
+
+  Assert.AreEqual(Double(ChartHeight), Double(Height), 0.01,
+    'The row height factor applies to horizontal bar charts only');
+end;
+
+procedure TChartLayoutTests.BarRowHeightFactor_TallerThanAspectRatio_IsNotClamped;
+const
+  LabelCount = 12;
+begin
+  var Options := Default(TChartLayoutOptions);
+  Options.BarRowHeightFactor := RowHeightFactor;
+
+  var Code: IMarkdownCodeBlock;
+  const Markdown = BarChartMarkdown(LabelCount, True);
+  const Model = ParseModel(Markdown, Code);
+  const Height = TChartLayouter.PreferredHeight(Model, ChartWidth, FTheme, FMeasurer, Options);
+  Assert.IsTrue(Height > ChartHeight, 'Twelve rows at twice the line height must be taller than 16:9');
+
+  const Bounds = TLayoutRectF.Create(0, 0, ChartWidth, Height);
+  const Items = TChartLayouter.BuildDisplayItems(Model, Bounds, FTheme, FMeasurer, Code, Options);
+
+  const Tops = BarTops(Items);
+  Assert.AreEqual(LabelCount, TTestArray.CountOf(Tops), 'Every row must still get its bar');
+  Assert.IsTrue(Tops[High(Tops)] > ChartHeight, 'The last bar must lie below the 16:9 height, not be squeezed into it');
+end;
+
+procedure TChartLayoutTests.TickLabelFormatter_Custom_FormatsEveryAxisLabel;
+const
+  CaseNames: array[0..3] of string = ('bar-minimal', 'bar-horizontal', 'line-scales-minmax', 'scatter-minimal');
+  Marker = '#';
+begin
+  var Options := Default(TChartLayoutOptions);
+  Options.TickLabelFormatter :=
+    function(const Value: Double): string
+    begin
+      Result := Format('%s%g', [Marker, Value]);
+    end;
+
+  for var CaseName in CaseNames do
+  begin
+    var Code: IMarkdownCodeBlock;
+    const ChartCase = FCorpus.FindCase(CaseName);
+    const Model = ParseModel(ChartCase.Markdown, Code);
+    const Bounds = TLayoutRectF.Create(0, 0, ChartWidth, ChartHeight);
+    const Items = TChartLayouter.BuildDisplayItems(Model, Bounds, FTheme, FMeasurer, Code, Options);
+
+    var FormattedLabels := 0;
+    for var Item in Items do
+    begin
+      var Run: IDisplayTextRun;
+      if not Supports(Item, IDisplayTextRun, Run) then
+        Continue;
+
+      var Value: Double;
+      Assert.IsFalse(TryStrToFloat(Run.Text, Value),
+        Format('Case "%s" drew the axis label %s without the formatter', [CaseName, Run.Text]));
+
+      if Run.Text.StartsWith(Marker) then
+        Inc(FormattedLabels);
+    end;
+
+    Assert.IsTrue(FormattedLabels >= 2, Format('Case "%s" must draw its axis labels through the formatter', [CaseName]));
+  end;
 end;
 
 end.
