@@ -93,6 +93,10 @@ type
       // which case the axis falls back to its two ends.
       MaxTickCount = 64;
       TickTolerance = 0.001;
+      // Typed so Power resolves to its Double overload: with an integer base
+      // the Win64 compiler picks the Single one, and every tick label then
+      // shows single-precision noise such as 0.200000002980232.
+      DecimalBase: Double = 10.0;
       GridStrokeWidth = 1.0;
       LineStrokeWidth = 2.0;
       MinLabelSweepDegrees = 18.0;
@@ -682,7 +686,7 @@ begin
   end;
 
   const Exponent = Floor(Log10(Value));
-  const PowerOfTen = Power(10, Exponent);
+  const PowerOfTen = Power(DecimalBase, Exponent);
   const Fraction = Value / PowerOfTen;
   var NiceFraction: Double;
 

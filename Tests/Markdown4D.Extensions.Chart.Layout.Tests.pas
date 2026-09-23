@@ -95,6 +95,9 @@ type
     procedure Axis_LargeValuesInNarrowRange_LabelsStayWithTheData;
 
     [Test]
+    procedure Axis_FractionalSpacing_DefaultLabelsHaveNoFloatingPointNoise;
+
+    [Test]
     procedure PreferredHeight_DefaultOptions_MatchesSixteenByNine;
 
     [Test]
@@ -484,6 +487,36 @@ begin
   const Items = ModelItems('scatter-minimal');
   Assert.AreEqual(3, CountKind(Items, TDisplayItemKind.Wedge),
     'A three-point scatter chart must emit one marker per point');
+end;
+
+procedure TChartLayoutTests.Axis_FractionalSpacing_DefaultLabelsHaveNoFloatingPointNoise;
+const
+  Markdown =
+    '```chart'#10 +
+    '{"type":"chart","data":{"type":"bar","data":{"labels":["A","B","C"],' +
+    '"datasets":[{"label":"Share","data":[0.1,0.35,0.6]}]},"options":{"indexAxis":"y"}}}'#10 +
+    '```';
+  CleanDecimals = '0.##########';
+begin
+  const Items = MarkdownItems(Markdown);
+
+  var NumericLabels := 0;
+  for var Item in Items do
+  begin
+    var Run: IDisplayTextRun;
+    if not Supports(Item, IDisplayTextRun, Run) then
+      Continue;
+
+    var Value: Double;
+    if not TryStrToFloat(Run.Text, Value) then
+      Continue;
+
+    Inc(NumericLabels);
+    Assert.AreEqual(FormatFloat(CleanDecimals, Value), Run.Text,
+      'A tick label on a fractional axis must not show floating-point noise');
+  end;
+
+  Assert.IsTrue(NumericLabels >= 2, Format('Expected at least two tick labels but found %d', [NumericLabels]));
 end;
 
 procedure TChartLayoutTests.PreferredHeight_DefaultOptions_MatchesSixteenByNine;
