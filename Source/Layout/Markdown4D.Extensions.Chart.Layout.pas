@@ -34,7 +34,8 @@ type
     // horizontal. Zero or less keeps 0.8 for grouped bars and 0.6 for stacked
     // ones; above 1 counts as 1, bars touching their neighbours.
     BarFillFactor: Single;
-    // Formats every value-axis label. Unassigned keeps the %g format.
+    // Formats every value-axis label. Unassigned keeps the %g format with a
+    // point as decimal separator, whatever the locale.
     TickLabelFormatter: TChartTickLabelFormatter;
     function HasAspectRatio: Boolean;
     function IsRowSized(const Model: IChartModel): Boolean;
@@ -229,7 +230,7 @@ begin
     Exit;
   end;
 
-  Result := Format(DefaultTickLabelFormat, [Value]);
+  Result := Format(DefaultTickLabelFormat, [Value], TFormatSettings.Invariant);
 end;
 
 class function TChartLayouter.PreferredHeight(const AvailableWidth: Single; const Theme: TMarkdownTheme): Single;

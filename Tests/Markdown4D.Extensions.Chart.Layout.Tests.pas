@@ -32,6 +32,11 @@ type
       SingleColor = '"#ff0000"';
       ChartFence = '```chart'#10'%s'#10'```';
       ThreeBarsExpected = 'A three-label chart must emit three bars';
+      FractionalBarChart =
+        '```chart'#10 +
+        '{"type":"chart","data":{"type":"bar","data":{"labels":["A","B","C"],' +
+        '"datasets":[{"label":"Share","data":[0.1,0.35,0.6]}]},"options":{"indexAxis":"y"}}}'#10 +
+        '```';
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
@@ -107,6 +112,9 @@ type
 
     [Test]
     procedure Axis_FractionalSpacing_DefaultLabelsHaveNoFloatingPointNoise;
+
+    [Test]
+    procedure Axis_CommaDecimalSeparator_DefaultLabelsUseAPoint;
 
     [Test]
     procedure PreferredHeight_DefaultOptions_MatchesSixteenByNine;
@@ -570,14 +578,10 @@ end;
 
 procedure TChartLayoutTests.Axis_FractionalSpacing_DefaultLabelsHaveNoFloatingPointNoise;
 const
-  Markdown =
-    '```chart'#10 +
-    '{"type":"chart","data":{"type":"bar","data":{"labels":["A","B","C"],' +
-    '"datasets":[{"label":"Share","data":[0.1,0.35,0.6]}]},"options":{"indexAxis":"y"}}}'#10 +
-    '```';
   CleanDecimals = '0.##########';
 begin
-  const Items = MarkdownItems(Markdown);
+  const Items = MarkdownItems(FractionalBarChart);
+  const Invariant = TFormatSettings.Invariant;
 
   var NumericLabels := 0;
   for var Item in Items do
@@ -587,15 +591,45 @@ begin
       Continue;
 
     var Value: Double;
-    if not TryStrToFloat(Run.Text, Value) then
+    if not TryStrToFloat(Run.Text, Value, Invariant) then
       Continue;
 
     Inc(NumericLabels);
-    const CleanText = FormatFloat(CleanDecimals, Value);
+    const CleanText = FormatFloat(CleanDecimals, Value, Invariant);
     Assert.AreEqual(CleanText, Run.Text, 'A tick label on a fractional axis must not show floating-point noise');
   end;
 
   Assert.IsTrue(NumericLabels >= 2, Format('Expected at least two tick labels but found %d', [NumericLabels]));
+end;
+
+procedure TChartLayoutTests.Axis_CommaDecimalSeparator_DefaultLabelsUseAPoint;
+const
+  Comma = ',';
+begin
+  const SavedSeparator = FormatSettings.DecimalSeparator;
+  FormatSettings.DecimalSeparator := Comma;
+  try
+    const Items = MarkdownItems(FractionalBarChart);
+
+    var FractionalLabels := 0;
+    for var Item in Items do
+    begin
+      var Run: IDisplayTextRun;
+      if not Supports(Item, IDisplayTextRun, Run) then
+        Continue;
+
+      Assert.IsFalse(Run.Text.Contains(Comma),
+        Format('The axis label %s must not follow the decimal separator of the locale', [Run.Text]));
+
+      if Run.Text.Contains('.') then
+        Inc(FractionalLabels);
+    end;
+
+    Assert.IsTrue(FractionalLabels >= 2,
+      Format('Expected at least two fractional tick labels but found %d', [FractionalLabels]));
+  finally
+    FormatSettings.DecimalSeparator := SavedSeparator;
+  end;
 end;
 
 procedure TChartLayoutTests.PreferredHeight_DefaultOptions_MatchesSixteenByNine;
