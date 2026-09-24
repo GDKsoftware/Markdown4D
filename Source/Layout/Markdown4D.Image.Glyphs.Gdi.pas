@@ -98,7 +98,13 @@ begin
   begin
     const HeaderStart = FIndex;
     const HeaderSize = ReadLongWord;
-    if (HeaderSize = 0) or (HeaderStart + Integer(HeaderSize) > Length(FData)) then
+
+    // The size comes from the font, so the end of the polygon is computed wide and
+    // checked before it is used as an index. Adding it to FIndex directly would wrap
+    // on a size above MaxInt and turn the bounds check below into a pass.
+    const HeaderEnd = Int64(HeaderStart) + HeaderSize;
+
+    if (HeaderSize = 0) or (HeaderEnd > Length(FData)) then
       Exit;
 
     const HeaderType = ReadLongWord;
@@ -106,7 +112,7 @@ begin
     if HeaderType <> TT_POLYGON_TYPE then
       Exit;
 
-    while FIndex < HeaderStart + Integer(HeaderSize) do
+    while FIndex < HeaderEnd do
     begin
       const CurveType = ReadWord;
       const CurveCount = ReadWord;
@@ -165,7 +171,7 @@ begin
     if Length(Points) >= 3 then
       Result := Result + [Points];
 
-    FIndex := HeaderStart + Integer(HeaderSize);
+    FIndex := Integer(HeaderEnd);
   end;
 end;
 
