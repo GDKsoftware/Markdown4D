@@ -640,7 +640,7 @@ Options.BarRowHeightFactor := 2;
 Options.TickLabelFormatter :=
   function(const Value: Double): string
   begin
-    Result := FormatFloat('0.##', Value);
+    Result := FormatFloat('0.##', Value, TFormatSettings.Invariant);
   end;
 
 TChartBlockOverride.RegisterOverride(Options);
