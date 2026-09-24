@@ -11,6 +11,7 @@ uses
   Markdown4D.Layout.DisplayList,
   Markdown4D.Theme,
   Markdown4D.Extensions.Chart,
+  Markdown4D.Extensions.Chart.Layout,
   Markdown4D.Charts.Corpus;
 
 type
@@ -25,6 +26,9 @@ type
       LabelFontSize = 11.0;
       LegendSwatchSize = 10.0;
       RowHeightFactor = 2.0;
+      NarrowBarFill = 0.4;
+      DefaultGroupedBarFill = 0.8;
+      ThreeColors = '["#ff0000","#00ff00","#0000ff"]';
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
@@ -34,7 +38,11 @@ type
     function ParseModel(const Markdown: string; out Code: IMarkdownCodeBlock): IChartModel;
     function LabelLineHeight: Single;
     function BarTops(const Items: TArray<IDisplayItem>): TArray<Single>;
+    function OptionItems(const Markdown: string; const Options: TChartLayoutOptions): TArray<IDisplayItem>;
     class function BarChartMarkdown(const LabelCount: Integer; const Horizontal: Boolean): string; static;
+    class function ColoredBarMarkdown(const BackgroundColor: string; const Horizontal: Boolean): string; static;
+    class function Bars(const Items: TArray<IDisplayItem>): TArray<IDisplayRectangle>; static;
+    procedure AssertBarsTakeColorPerLabel(const Horizontal: Boolean);
 
   public
     [SetupFixture]
@@ -117,6 +125,27 @@ type
 
     [Test]
     procedure TickLabelFormatter_Custom_FormatsEveryAxisLabel;
+
+    [Test]
+    procedure BarColor_ColorPerBar_VerticalBarsTakeTheirOwnColor;
+
+    [Test]
+    procedure BarColor_ColorPerBar_HorizontalBarsTakeTheirOwnColor;
+
+    [Test]
+    procedure BarColor_FewerColorsThanBars_StartsOverAtTheFirstColor;
+
+    [Test]
+    procedure BarColor_SingleColor_ColorsEveryBar;
+
+    [Test]
+    procedure BarFillFactor_VerticalBar_ScalesBarWidth;
+
+    [Test]
+    procedure BarFillFactor_HorizontalBar_ScalesBarHeight;
+
+    [Test]
+    procedure BarFillFactor_AboveOne_BarsTouchTheirNeighbours;
   end;
 
 implementation
@@ -128,8 +157,7 @@ uses
   Markdown4D.Extensions.Interfaces,
   Markdown4D.Pipeline,
   Markdown4D.Layout.FakeMeasurer,
-  Markdown4D.Tests.Arrays,
-  Markdown4D.Extensions.Chart.Layout;
+  Markdown4D.Tests.Arrays;
 
 function ChartPipeline: IMarkdownPipeline;
 begin
@@ -275,6 +303,55 @@ begin
     '"options":{"indexAxis":"%s","plugins":{"title":{"display":true,"text":"Rows"}}}}}',
     [string.Join(',', Labels), string.Join(',', Values), IndexAxis]);
   Result := Format('```chart'#10'%s'#10'```', [Json]);
+end;
+
+// Three bars without a legend, so every rectangle in the output is a bar.
+class function TChartLayoutTests.ColoredBarMarkdown(const BackgroundColor: string; const Horizontal: Boolean): string;
+begin
+  var IndexAxis := 'x';
+  if Horizontal then
+    IndexAxis := 'y';
+
+  const Json = Format('{"type":"chart","data":{"type":"bar","data":{"labels":["A","B","C"],' +
+    '"datasets":[{"label":"Series","data":[1,2,3],"backgroundColor":%s}]},' +
+    '"options":{"indexAxis":"%s","plugins":{"legend":{"display":false}}}}}',
+    [BackgroundColor, IndexAxis]);
+  Result := Format('```chart'#10'%s'#10'```', [Json]);
+end;
+
+function TChartLayoutTests.OptionItems(const Markdown: string; const Options: TChartLayoutOptions): TArray<IDisplayItem>;
+begin
+  var Code: IMarkdownCodeBlock;
+  const Model = ParseModel(Markdown, Code);
+  const Bounds = TLayoutRectF.Create(0, 0, ChartWidth, ChartHeight);
+  Result := TChartLayouter.BuildDisplayItems(Model, Bounds, FTheme, FMeasurer, Code, Options);
+end;
+
+class function TChartLayoutTests.Bars(const Items: TArray<IDisplayItem>): TArray<IDisplayRectangle>;
+begin
+  Result := [];
+
+  for var Item in Items do
+  begin
+    var Rectangle: IDisplayRectangle;
+    if Supports(Item, IDisplayRectangle, Rectangle) then
+      Result := Result + [Rectangle];
+  end;
+end;
+
+procedure TChartLayoutTests.AssertBarsTakeColorPerLabel(const Horizontal: Boolean);
+begin
+  var Code: IMarkdownCodeBlock;
+  const Markdown = ColoredBarMarkdown(ThreeColors, Horizontal);
+  const Dataset = ParseModel(Markdown, Code).Datasets[0];
+  const BarItems = Bars(OptionItems(Markdown, Default(TChartLayoutOptions)));
+
+  Assert.AreEqual(3, TTestArray.CountOf(BarItems), 'A three-label chart must emit three bars');
+  for var Index := 0 to High(BarItems) do
+  begin
+    Assert.AreEqual<TLayoutColor>(Dataset.BackgroundColors[Index], BarItems[Index].FillColor,
+      Format('Bar %d must take the background colour at its own index', [Index]));
+  end;
 end;
 
 procedure TChartLayoutTests.Bar_PlotRect_ExcludesTitleLegendAndAxisLabels;
@@ -666,6 +743,87 @@ begin
 
     Assert.IsTrue(FormattedLabels >= 2,
       Format('Case "%s" must draw its axis labels through the formatter', [CaseName]));
+  end;
+end;
+
+procedure TChartLayoutTests.BarColor_ColorPerBar_VerticalBarsTakeTheirOwnColor;
+begin
+  AssertBarsTakeColorPerLabel(False);
+end;
+
+procedure TChartLayoutTests.BarColor_ColorPerBar_HorizontalBarsTakeTheirOwnColor;
+begin
+  AssertBarsTakeColorPerLabel(True);
+end;
+
+procedure TChartLayoutTests.BarColor_FewerColorsThanBars_StartsOverAtTheFirstColor;
+begin
+  var Code: IMarkdownCodeBlock;
+  const Markdown = ColoredBarMarkdown('["#ff0000","#00ff00"]', False);
+  const Dataset = ParseModel(Markdown, Code).Datasets[0];
+  const BarItems = Bars(OptionItems(Markdown, Default(TChartLayoutOptions)));
+
+  Assert.AreEqual(3, TTestArray.CountOf(BarItems), 'A three-label chart must emit three bars');
+  Assert.AreEqual<TLayoutColor>(Dataset.BackgroundColors[0], BarItems[2].FillColor,
+    'The third bar of a two-colour dataset must start over at the first colour');
+end;
+
+procedure TChartLayoutTests.BarColor_SingleColor_ColorsEveryBar;
+begin
+  var Code: IMarkdownCodeBlock;
+  const Markdown = ColoredBarMarkdown('"#ff0000"', False);
+  const Dataset = ParseModel(Markdown, Code).Datasets[0];
+  const BarItems = Bars(OptionItems(Markdown, Default(TChartLayoutOptions)));
+
+  for var Bar in BarItems do
+  begin
+    Assert.AreEqual<TLayoutColor>(Dataset.BackgroundColors[0], Bar.FillColor, 'A single background colour must colour every bar');
+  end;
+end;
+
+procedure TChartLayoutTests.BarFillFactor_VerticalBar_ScalesBarWidth;
+begin
+  const Markdown = ColoredBarMarkdown('"#ff0000"', False);
+  var Options := Default(TChartLayoutOptions);
+  Options.BarFillFactor := NarrowBarFill;
+
+  const DefaultBar = Bars(OptionItems(Markdown, Default(TChartLayoutOptions)))[0];
+  const NarrowBar = Bars(OptionItems(Markdown, Options))[0];
+
+  Assert.AreEqual(Double(NarrowBarFill / DefaultGroupedBarFill),
+    Double(NarrowBar.Bounds.Width / DefaultBar.Bounds.Width), 0.001,
+    'The bar width must follow the fill factor instead of the 0.8 default');
+end;
+
+procedure TChartLayoutTests.BarFillFactor_HorizontalBar_ScalesBarHeight;
+begin
+  const Markdown = ColoredBarMarkdown('"#ff0000"', True);
+  var Options := Default(TChartLayoutOptions);
+  Options.BarFillFactor := NarrowBarFill;
+
+  const DefaultBar = Bars(OptionItems(Markdown, Default(TChartLayoutOptions)))[0];
+  const NarrowBar = Bars(OptionItems(Markdown, Options))[0];
+
+  Assert.AreEqual(Double(NarrowBarFill / DefaultGroupedBarFill),
+    Double(NarrowBar.Bounds.Height / DefaultBar.Bounds.Height), 0.001,
+    'The bar height must follow the fill factor instead of the 0.8 default');
+end;
+
+procedure TChartLayoutTests.BarFillFactor_AboveOne_BarsTouchTheirNeighbours;
+const
+  OversizedFill = 3.0;
+begin
+  const Markdown = ColoredBarMarkdown('"#ff0000"', False);
+  var Options := Default(TChartLayoutOptions);
+  Options.BarFillFactor := OversizedFill;
+
+  const BarItems = Bars(OptionItems(Markdown, Options));
+
+  Assert.AreEqual(3, TTestArray.CountOf(BarItems), 'A three-label chart must emit three bars');
+  for var Index := 1 to High(BarItems) do
+  begin
+    Assert.AreEqual(Double(BarItems[Index - 1].Bounds.Right), Double(BarItems[Index].Bounds.Left), 0.01,
+      Format('Bar %d must start where the previous one ends, not overlap it', [Index]));
   end;
 end;
 

@@ -30,10 +30,15 @@ type
     // heights tall, so the chart grows with its label count instead of
     // following the aspect ratio. Zero or less keeps the aspect ratio.
     BarRowHeightFactor: Single;
+    // Bar charts only: the share of each label slot its bars fill, vertical or
+    // horizontal. Zero or less keeps 0.8 for grouped bars and 0.6 for stacked
+    // ones; above 1 counts as 1, bars touching their neighbours.
+    BarFillFactor: Single;
     // Formats every value-axis label. Unassigned keeps the %g format.
     TickLabelFormatter: TChartTickLabelFormatter;
     function HasAspectRatio: Boolean;
     function IsRowSized(const Model: IChartModel): Boolean;
+    function BarFill(const DefaultFill: Single): Single;
     function FormatTickLabel(const Value: Double): string;
   end;
 
@@ -97,6 +102,8 @@ type
       // the Win64 compiler picks the Single one, and every tick label then
       // shows single-precision noise such as 0.200000002980232.
       DecimalBase: Double = 10.0;
+      GroupedBarFill = 0.8;
+      StackedBarFill = 0.6;
       GridStrokeWidth = 1.0;
       LineStrokeWidth = 2.0;
       MinLabelSweepDegrees = 18.0;
@@ -144,6 +151,7 @@ type
     function EntryColor(const Index: Integer): TLayoutColor;
     function EntryCaption(const Index: Integer): string;
     function DatasetColor(const Index: Integer): TLayoutColor;
+    function BarColor(const DatasetIndex, LabelIndex: Integer): TLayoutColor;
     function SliceColor(const Index: Integer): TLayoutColor;
     class function IsColorSet(const Color: TLayoutColor): Boolean; static;
     procedure LayoutTitle;
@@ -197,6 +205,19 @@ end;
 function TChartLayoutOptions.IsRowSized(const Model: IChartModel): Boolean;
 begin
   Result := (BarRowHeightFactor > 0) and (Model.ChartKind = TChartKind.Bar) and Model.Horizontal;
+end;
+
+function TChartLayoutOptions.BarFill(const DefaultFill: Single): Single;
+begin
+  const FullSlot: Single = 1.0;
+
+  if BarFillFactor <= 0 then
+  begin
+    Result := DefaultFill;
+    Exit;
+  end;
+
+  Result := Min(BarFillFactor, FullSlot);
 end;
 
 function TChartLayoutOptions.FormatTickLabel(const Value: Double): string;
@@ -508,6 +529,27 @@ begin
   end;
 
   Result := TChartLayouter.PaletteColor(FTheme, Index);
+end;
+
+// A dataset with more than one background colour colours each bar by its label
+// index, as Chart.js does, starting over when there are more labels than colours.
+function TChartLayoutBuilder.BarColor(const DatasetIndex, LabelIndex: Integer): TLayoutColor;
+begin
+  const Dataset = FModel.Datasets[DatasetIndex];
+  const ColorCount = Dataset.BackgroundColorCount;
+
+  const HasColorPerBar = (ColorCount > 1);
+  if HasColorPerBar then
+  begin
+    const Background = Dataset.BackgroundColors[LabelIndex mod ColorCount];
+    if IsColorSet(Background) then
+    begin
+      Result := Background;
+      Exit;
+    end;
+  end;
+
+  Result := DatasetColor(DatasetIndex);
 end;
 
 function TChartLayoutBuilder.SliceColor(const Index: Integer): TLayoutColor;
@@ -864,7 +906,7 @@ end;
 procedure TChartLayoutBuilder.EmitStackedBars(const LabelIndex: Integer; const SlotLeft, SlotWidth, BaseY,
   AxisSpan, PlotHeight: Single);
 begin
-  const BarWidth = SlotWidth * 0.6;
+  const BarWidth = SlotWidth * FOptions.BarFill(StackedBarFill);
   const BarLeft = SlotLeft + (SlotWidth - BarWidth) / 2;
   var StackTopY := BaseY;
   var StackBottomY := BaseY;
@@ -894,14 +936,14 @@ begin
     end;
 
     EmitRectangle(TLayoutRectF.Create(BarLeft, Min(SegmentTop, SegmentBottom), BarLeft + BarWidth,
-      Max(SegmentTop, SegmentBottom)), DatasetColor(DatasetIndex), 0, 0);
+      Max(SegmentTop, SegmentBottom)), BarColor(DatasetIndex, LabelIndex), 0, 0);
   end;
 end;
 
 procedure TChartLayoutBuilder.EmitGroupedBars(const LabelIndex: Integer; const SlotLeft, SlotWidth, BaseY,
   AxisMin, AxisSpan, PlotHeight, PlotBottom: Single);
 begin
-  const GroupWidth = SlotWidth * 0.8;
+  const GroupWidth = SlotWidth * FOptions.BarFill(GroupedBarFill);
   const BarWidth = GroupWidth / Max(1, FModel.DatasetCount);
   const GroupLeft = SlotLeft + (SlotWidth - GroupWidth) / 2;
 
@@ -916,7 +958,7 @@ begin
     const BarLeft = GroupLeft + BarWidth * DatasetIndex;
 
     EmitRectangle(TLayoutRectF.Create(BarLeft, Min(BaseY, ValueY), BarLeft + BarWidth, Max(BaseY, ValueY)),
-      DatasetColor(DatasetIndex), 0, 0);
+      BarColor(DatasetIndex, LabelIndex), 0, 0);
   end;
 end;
 
@@ -1097,7 +1139,7 @@ end;
 procedure TChartLayoutBuilder.EmitHorizontalStackedBars(const LabelIndex: Integer; const SlotTop, SlotHeight, BaseX,
   AxisSpan, PlotWidth: Single);
 begin
-  const BarHeight = SlotHeight * 0.6;
+  const BarHeight = SlotHeight * FOptions.BarFill(StackedBarFill);
   const BarTop = SlotTop + (SlotHeight - BarHeight) / 2;
   var StackRightX := BaseX;
   var StackLeftX := BaseX;
@@ -1127,14 +1169,14 @@ begin
     end;
 
     EmitRectangle(TLayoutRectF.Create(Min(SegmentLeft, SegmentRight), BarTop, Max(SegmentLeft, SegmentRight),
-      BarTop + BarHeight), DatasetColor(DatasetIndex), 0, 0);
+      BarTop + BarHeight), BarColor(DatasetIndex, LabelIndex), 0, 0);
   end;
 end;
 
 procedure TChartLayoutBuilder.EmitHorizontalGroupedBars(const LabelIndex: Integer; const SlotTop, SlotHeight, BaseX,
   AxisMin, AxisSpan, PlotWidth, PlotLeft: Single);
 begin
-  const GroupHeight = SlotHeight * 0.8;
+  const GroupHeight = SlotHeight * FOptions.BarFill(GroupedBarFill);
   const BarHeight = GroupHeight / Max(1, FModel.DatasetCount);
   const GroupTop = SlotTop + (SlotHeight - GroupHeight) / 2;
 
@@ -1149,7 +1191,7 @@ begin
     const BarTop = GroupTop + BarHeight * DatasetIndex;
 
     EmitRectangle(TLayoutRectF.Create(Min(BaseX, ValueX), BarTop, Max(BaseX, ValueX), BarTop + BarHeight),
-      DatasetColor(DatasetIndex), 0, 0);
+      BarColor(DatasetIndex, LabelIndex), 0, 0);
   end;
 end;
 

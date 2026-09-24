@@ -623,6 +623,7 @@ chart is laid out without replacing the override:
 |-------|--------|-------------|
 | `AspectRatio` | Width over height of the chart | 16:9 |
 | `BarRowHeightFactor` | Horizontal bar charts only: each label row is this many label line heights tall, so the chart grows with its label count | The aspect ratio applies |
+| `BarFillFactor` | Bar charts: the share of each label slot the bars fill, capped at 1 | 0.8 for grouped bars, 0.6 for stacked |
 | `TickLabelFormatter` | Formats every value-axis label | `Format('%g', [Value])` |
 
 A zeroed record, `Default(TChartLayoutOptions)`, gives the same layout as the
