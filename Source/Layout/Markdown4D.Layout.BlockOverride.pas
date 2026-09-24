@@ -75,6 +75,7 @@ type
   public
     class procedure Register(const Handler: ILayoutBlockOverride; const Priority: Integer);
     class function TryFind(const Node: IMarkdownNode; out Handler: ILayoutBlockOverride): Boolean;
+    class function IsRegistered(const Name: string; const Priority: Integer): Boolean;
     class procedure Clear;
   end;
 
@@ -128,6 +129,18 @@ begin
 
   Handler := FRegistrations[BestIndex].Handler;
   Result := True;
+end;
+
+class function TLayoutBlockOverrideRegistry.IsRegistered(const Name: string; const Priority: Integer): Boolean;
+begin
+  for var Registration in FRegistrations do
+  begin
+    const IsMatch = ((Registration.Priority = Priority) and (Registration.Handler.Name = Name));
+    if IsMatch then
+      Exit(True);
+  end;
+
+  Result := False;
 end;
 
 class procedure TLayoutBlockOverrideRegistry.Clear;

@@ -15,12 +15,12 @@ uses
 type
   TChartBlockOverride = class(TInterfacedObject, ILayoutBlockOverride)
   strict private
-    class var FRegistered: Boolean;
     var FOptions: TChartLayoutOptions;
     function GetName: string;
     function Handles(const Node: IMarkdownNode): Boolean;
     function LayoutBlock(const Node: IMarkdownNode; const Top: Single; const Context: ILayoutBlockContext): Single;
     class function TryResolveModel(const Node: IMarkdownNode; out Model: IChartModel): Boolean;
+    class function IsRegistered: Boolean;
     class procedure RegisterWith(const Options: TChartLayoutOptions);
   public
     const
@@ -41,7 +41,7 @@ uses
 
 class procedure TChartBlockOverride.RegisterOverride;
 begin
-  if FRegistered then
+  if IsRegistered then
     Exit;
 
   RegisterWith(Default(TChartLayoutOptions));
@@ -51,18 +51,22 @@ class procedure TChartBlockOverride.RegisterOverride(const Options: TChartLayout
 begin
   // The registry keeps the first handler of equal priority, so options passed
   // after the first registration would otherwise be dropped without a word.
-  if FRegistered then
+  if IsRegistered then
     raise EMarkdownError.Create('The chart override is already registered; pass the layout options to the first ' +
       'RegisterOverride call, or register a TChartBlockOverride with a higher priority');
 
   RegisterWith(Options);
 end;
 
+class function TChartBlockOverride.IsRegistered: Boolean;
+begin
+  Result := TLayoutBlockOverrideRegistry.IsRegistered(OverrideName, OverridePriority);
+end;
+
 class procedure TChartBlockOverride.RegisterWith(const Options: TChartLayoutOptions);
 begin
   TMarkdownLayoutEngine.RegisterBlockOverride(TChartBlockOverride.Create(Options), OverridePriority);
   TLayoutDocumentProcessorRegistry.Register(TChartExtension.CreateDocumentProcessor);
-  FRegistered := True;
 end;
 
 constructor TChartBlockOverride.Create;

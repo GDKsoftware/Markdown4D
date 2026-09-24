@@ -80,6 +80,9 @@ type
 
     [Test]
     procedure RegisterOverride_OptionsAfterRegistration_Raises;
+
+    [Test]
+    procedure RegisterOverride_OptionsAfterClearBlockOverrides_Registers;
   end;
 
 implementation
@@ -242,6 +245,22 @@ begin
     end,
     EMarkdownError,
     'Options passed after the first registration must not be ignored silently');
+end;
+
+procedure TViewerExtensionCachingTests.RegisterOverride_OptionsAfterClearBlockOverrides_Registers;
+begin
+  TChartBlockOverride.RegisterOverride;
+  TMarkdownLayoutEngine.ClearBlockOverrides;
+
+  Assert.WillNotRaise(
+    procedure
+    begin
+      TChartBlockOverride.RegisterOverride(Default(TChartLayoutOptions));
+    end);
+
+  const IsRegistered = TLayoutBlockOverrideRegistry.IsRegistered(TChartBlockOverride.OverrideName,
+                                                                 TChartBlockOverride.OverridePriority);
+  Assert.IsTrue(IsRegistered, 'Clearing the overrides must let the chart override register again');
 end;
 
 end.

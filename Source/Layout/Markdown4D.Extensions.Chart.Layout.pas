@@ -211,7 +211,8 @@ function TChartLayoutOptions.BarFill(const DefaultFill: Single): Single;
 begin
   const FullSlot: Single = 1.0;
 
-  if BarFillFactor <= 0 then
+  const KeepsDefaultFill = (BarFillFactor <= 0);
+  if KeepsDefaultFill then
   begin
     Result := DefaultFill;
     Exit;
@@ -388,7 +389,7 @@ end;
 class function TChartLayoutBuilder.LegendBandHeight(const Model: IChartModel; const Theme: TMarkdownTheme;
   const Measurer: ITextMeasurer): Single;
 begin
-  const TakesHeight = HasLegend(Model) and not IsVerticalLegend(Model);
+  const TakesHeight = (HasLegend(Model) and not IsVerticalLegend(Model));
   if not TakesHeight then
   begin
     Result := 0;

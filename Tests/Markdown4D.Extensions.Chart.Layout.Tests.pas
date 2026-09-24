@@ -29,6 +29,9 @@ type
       NarrowBarFill = 0.4;
       DefaultGroupedBarFill = 0.8;
       ThreeColors = '["#ff0000","#00ff00","#0000ff"]';
+      SingleColor = '"#ff0000"';
+      ChartFence = '```chart'#10'%s'#10'```';
+      ThreeBarsExpected = 'A three-label chart must emit three bars';
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
@@ -302,7 +305,7 @@ begin
     '"datasets":[{"label":"Series","data":[%s]}]},' +
     '"options":{"indexAxis":"%s","plugins":{"title":{"display":true,"text":"Rows"}}}}}',
     [string.Join(',', Labels), string.Join(',', Values), IndexAxis]);
-  Result := Format('```chart'#10'%s'#10'```', [Json]);
+  Result := Format(ChartFence, [Json]);
 end;
 
 // Three bars without a legend, so every rectangle in the output is a bar.
@@ -316,7 +319,7 @@ begin
     '"datasets":[{"label":"Series","data":[1,2,3],"backgroundColor":%s}]},' +
     '"options":{"indexAxis":"%s","plugins":{"legend":{"display":false}}}}}',
     [BackgroundColor, IndexAxis]);
-  Result := Format('```chart'#10'%s'#10'```', [Json]);
+  Result := Format(ChartFence, [Json]);
 end;
 
 function TChartLayoutTests.OptionItems(const Markdown: string; const Options: TChartLayoutOptions): TArray<IDisplayItem>;
@@ -346,7 +349,7 @@ begin
   const Dataset = ParseModel(Markdown, Code).Datasets[0];
   const BarItems = Bars(OptionItems(Markdown, Default(TChartLayoutOptions)));
 
-  Assert.AreEqual(3, TTestArray.CountOf(BarItems), 'A three-label chart must emit three bars');
+  Assert.AreEqual(3, TTestArray.CountOf(BarItems), ThreeBarsExpected);
   for var Index := 0 to High(BarItems) do
   begin
     Assert.AreEqual<TLayoutColor>(Dataset.BackgroundColors[Index], BarItems[Index].FillColor,
@@ -763,7 +766,7 @@ begin
   const Dataset = ParseModel(Markdown, Code).Datasets[0];
   const BarItems = Bars(OptionItems(Markdown, Default(TChartLayoutOptions)));
 
-  Assert.AreEqual(3, TTestArray.CountOf(BarItems), 'A three-label chart must emit three bars');
+  Assert.AreEqual(3, TTestArray.CountOf(BarItems), ThreeBarsExpected);
   Assert.AreEqual<TLayoutColor>(Dataset.BackgroundColors[0], BarItems[2].FillColor,
     'The third bar of a two-colour dataset must start over at the first colour');
 end;
@@ -771,7 +774,7 @@ end;
 procedure TChartLayoutTests.BarColor_SingleColor_ColorsEveryBar;
 begin
   var Code: IMarkdownCodeBlock;
-  const Markdown = ColoredBarMarkdown('"#ff0000"', False);
+  const Markdown = ColoredBarMarkdown(SingleColor, False);
   const Dataset = ParseModel(Markdown, Code).Datasets[0];
   const BarItems = Bars(OptionItems(Markdown, Default(TChartLayoutOptions)));
 
@@ -783,7 +786,7 @@ end;
 
 procedure TChartLayoutTests.BarFillFactor_VerticalBar_ScalesBarWidth;
 begin
-  const Markdown = ColoredBarMarkdown('"#ff0000"', False);
+  const Markdown = ColoredBarMarkdown(SingleColor, False);
   var Options := Default(TChartLayoutOptions);
   Options.BarFillFactor := NarrowBarFill;
 
@@ -797,7 +800,7 @@ end;
 
 procedure TChartLayoutTests.BarFillFactor_HorizontalBar_ScalesBarHeight;
 begin
-  const Markdown = ColoredBarMarkdown('"#ff0000"', True);
+  const Markdown = ColoredBarMarkdown(SingleColor, True);
   var Options := Default(TChartLayoutOptions);
   Options.BarFillFactor := NarrowBarFill;
 
@@ -813,13 +816,13 @@ procedure TChartLayoutTests.BarFillFactor_AboveOne_BarsTouchTheirNeighbours;
 const
   OversizedFill = 3.0;
 begin
-  const Markdown = ColoredBarMarkdown('"#ff0000"', False);
+  const Markdown = ColoredBarMarkdown(SingleColor, False);
   var Options := Default(TChartLayoutOptions);
   Options.BarFillFactor := OversizedFill;
 
   const BarItems = Bars(OptionItems(Markdown, Options));
 
-  Assert.AreEqual(3, TTestArray.CountOf(BarItems), 'A three-label chart must emit three bars');
+  Assert.AreEqual(3, TTestArray.CountOf(BarItems), ThreeBarsExpected);
   for var Index := 1 to High(BarItems) do
   begin
     Assert.AreEqual(Double(BarItems[Index - 1].Bounds.Right), Double(BarItems[Index].Bounds.Left), 0.01,
