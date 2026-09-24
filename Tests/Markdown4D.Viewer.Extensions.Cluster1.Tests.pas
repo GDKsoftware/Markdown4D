@@ -37,11 +37,21 @@ type
         '    "Dogs" : 3'#10 +
         '    "Cats" : 2';
       MermaidFenceClose = #10'```'#10#10'after';
+      TallViewportHeight = 2000.0;
+      RowHeightFactor = 2.0;
+      FollowingText = 'after';
+      HorizontalBarTwelveRows =
+        '```chart'#10 +
+        '{"type":"chart","data":{"type":"bar","data":{"labels":["A","B","C","D","E","F","G","H","I","J","K","L"],' +
+        '"datasets":[{"label":"S","data":[1,2,3,4,5,6,7,8,9,10,11,12]}]},"options":{"indexAxis":"y"}}}'#10 +
+        '```'#10#10 +
+        FollowingText;
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
       FModel: TMarkdownViewerModel;
     function WedgeCount: Integer;
+    function FollowingTextTop: Single;
 
   public
     [Setup]
@@ -64,6 +74,15 @@ type
 
     [Test]
     procedure ReopeningFence_ByMutation_DropsDiagram;
+
+    [Test]
+    procedure ChartOverride_WithRowHeightOptions_GrowsTheChartBlock;
+
+    [Test]
+    procedure RegisterOverride_OptionsAfterRegistration_Raises;
+
+    [Test]
+    procedure RegisterOverride_OptionsAfterClearBlockOverrides_Registers;
   end;
 
 implementation
@@ -74,7 +93,9 @@ uses
   Markdown4D.Layout.Engine,
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Layout.FakeMeasurer,
+  Markdown4D.Defines,
   Markdown4D.Extensions.Chart,
+  Markdown4D.Extensions.Chart.Layout,
   Markdown4D.Extensions.Chart.BlockOverride,
   Markdown4D.Extensions.Mermaid,
   Markdown4D.Extensions.Mermaid.BlockOverride;
@@ -169,6 +190,77 @@ begin
 
   Assert.AreEqual(0, WedgeCount,
     'Mutating the document back to an open fence must rebuild the cache and drop the diagram');
+end;
+
+function TViewerExtensionCachingTests.FollowingTextTop: Single;
+begin
+  const DisplayList = FModel.DisplayList;
+  Assert.IsNotNull(DisplayList, 'The viewer must have laid the document out');
+
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    if not Supports(DisplayList.Items[Index], IDisplayTextRun, Run) then
+      Continue;
+
+    const IsFollowingText = (Run.Text = FollowingText);
+    if IsFollowingText then
+    begin
+      Result := Run.Bounds.Top;
+      Exit;
+    end;
+  end;
+
+  Assert.Fail('The paragraph after the chart must be laid out');
+  Result := 0;
+end;
+
+procedure TViewerExtensionCachingTests.ChartOverride_WithRowHeightOptions_GrowsTheChartBlock;
+begin
+  FModel.SetViewport(ViewportWidth, TallViewportHeight);
+  FModel.Text := HorizontalBarTwelveRows;
+  const DefaultTop = FollowingTextTop;
+
+  var Options := Default(TChartLayoutOptions);
+  Options.BarRowHeightFactor := RowHeightFactor;
+  TMarkdownLayoutEngine.RegisterBlockOverride(TChartBlockOverride.Create(Options),
+    TChartBlockOverride.OverridePriority + 1);
+  FModel.Text := '';
+  FModel.Text := HorizontalBarTwelveRows;
+  const RowSizedTop = FollowingTextTop;
+
+  Assert.IsTrue(RowSizedTop > DefaultTop,
+    Format('Twelve rows at twice the line height must push the next paragraph down (%.1f, was %.1f)',
+    [RowSizedTop, DefaultTop]));
+end;
+
+procedure TViewerExtensionCachingTests.RegisterOverride_OptionsAfterRegistration_Raises;
+begin
+  TChartBlockOverride.RegisterOverride;
+
+  Assert.WillRaise(
+    procedure
+    begin
+      TChartBlockOverride.RegisterOverride(Default(TChartLayoutOptions));
+    end,
+    EMarkdownError,
+    'Options passed after the first registration must not be ignored silently');
+end;
+
+procedure TViewerExtensionCachingTests.RegisterOverride_OptionsAfterClearBlockOverrides_Registers;
+begin
+  TChartBlockOverride.RegisterOverride;
+  TMarkdownLayoutEngine.ClearBlockOverrides;
+
+  Assert.WillNotRaise(
+    procedure
+    begin
+      TChartBlockOverride.RegisterOverride(Default(TChartLayoutOptions));
+    end);
+
+  const IsRegistered = TLayoutBlockOverrideRegistry.IsRegistered(TChartBlockOverride.OverrideName,
+                                                                 TChartBlockOverride.OverridePriority);
+  Assert.IsTrue(IsRegistered, 'Clearing the overrides must let the chart override register again');
 end;
 
 end.

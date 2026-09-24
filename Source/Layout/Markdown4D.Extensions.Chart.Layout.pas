@@ -13,16 +13,52 @@ uses
   Markdown4D.Extensions.Chart;
 
 type
+  TChartTickLabelFormatter = reference to function(const Value: Double): string;
+
+  // Presentation settings for a chart. A zeroed record, Default(TChartLayoutOptions),
+  // lays a chart out exactly as the overloads without options do, so a new
+  // field must keep zero or nil as "unchanged".
+  TChartLayoutOptions = record
+  private
+    const
+      DefaultTickLabelFormat = '%g';
+
+  public
+    // Width over height of the chart. Zero or less keeps the 16:9 default.
+    AspectRatio: Single;
+    // Horizontal bar charts only: each label row becomes this many label line
+    // heights tall, so the chart grows with its label count instead of
+    // following the aspect ratio. Zero or less keeps the aspect ratio.
+    BarRowHeightFactor: Single;
+    // Bar charts only: the share of each label slot its bars fill, vertical or
+    // horizontal. Zero or less keeps 0.8 for grouped bars and 0.6 for stacked
+    // ones; above 1 counts as 1, bars touching their neighbours.
+    BarFillFactor: Single;
+    // Formats every value-axis label. Unassigned keeps the %g format.
+    TickLabelFormatter: TChartTickLabelFormatter;
+    function HasAspectRatio: Boolean;
+    function IsRowSized(const Model: IChartModel): Boolean;
+    function BarFill(const DefaultFill: Single): Single;
+    function FormatTickLabel(const Value: Double): string;
+  end;
+
   TChartLayouter = class
   public
     const
       AspectRatioWidth = 16.0;
       AspectRatioHeight = 9.0;
     class procedure Draw(const Model: IChartModel; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
-      const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
+      const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas); overload;
+    class procedure Draw(const Model: IChartModel; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
+      const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas; const Options: TChartLayoutOptions); overload;
     class function BuildDisplayItems(const Model: IChartModel; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
-      const Measurer: ITextMeasurer; const Node: IMarkdownNode): TArray<IDisplayItem>;
-    class function PreferredHeight(const AvailableWidth: Single; const Theme: TMarkdownTheme): Single;
+      const Measurer: ITextMeasurer; const Node: IMarkdownNode): TArray<IDisplayItem>; overload;
+    class function BuildDisplayItems(const Model: IChartModel; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
+      const Measurer: ITextMeasurer; const Node: IMarkdownNode;
+      const Options: TChartLayoutOptions): TArray<IDisplayItem>; overload;
+    class function PreferredHeight(const AvailableWidth: Single; const Theme: TMarkdownTheme): Single; overload;
+    class function PreferredHeight(const Model: IChartModel; const AvailableWidth: Single; const Theme: TMarkdownTheme;
+      const Measurer: ITextMeasurer; const Options: TChartLayoutOptions): Single; overload;
     class function PaletteColor(const Theme: TMarkdownTheme; const DatasetIndex: Integer): TLayoutColor;
   end;
 
@@ -62,12 +98,17 @@ type
       // which case the axis falls back to its two ends.
       MaxTickCount = 64;
       TickTolerance = 0.001;
+      // Typed so Power resolves to its Double overload: with an integer base
+      // the Win64 compiler picks the Single one, and every tick label then
+      // shows single-precision noise such as 0.200000002980232.
+      DecimalBase: Double = 10.0;
+      GroupedBarFill = 0.8;
+      StackedBarFill = 0.6;
       GridStrokeWidth = 1.0;
       LineStrokeWidth = 2.0;
       MinLabelSweepDegrees = 18.0;
       PieRadiusFactor = 0.9;
       DoughnutInnerFactor = 0.55;
-      TickLabelFormat = '%g';
       AreaFillAlphaFactor = 0.3;
       RadarRingCount = 4;
       RadarMinAxes = 3;
@@ -78,10 +119,22 @@ type
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
       FCanvas: IExtensionCanvas;
+      FOptions: TChartLayoutOptions;
       FLeft: Single;
       FTop: Single;
       FRight: Single;
       FBottom: Single;
+    class function LabelFontFor(const Theme: TMarkdownTheme): TMarkdownFontStyle; static;
+    class function TitleFontFor(const Theme: TMarkdownTheme): TMarkdownFontStyle; static;
+    class function HasTitle(const Model: IChartModel): Boolean; static;
+    class function HasLegend(const Model: IChartModel): Boolean; static;
+    class function IsVerticalLegend(const Model: IChartModel): Boolean; static;
+    class function LegendEntryCount(const Model: IChartModel): Integer; static;
+    class function LegendRowHeight(const Theme: TMarkdownTheme; const Measurer: ITextMeasurer): Single; static;
+    class function TitleBandHeight(const Model: IChartModel; const Theme: TMarkdownTheme;
+      const Measurer: ITextMeasurer): Single; static;
+    class function LegendBandHeight(const Model: IChartModel; const Theme: TMarkdownTheme;
+      const Measurer: ITextMeasurer): Single; static;
     function LabelFont: TMarkdownFontStyle;
     function TitleFont: TMarkdownFontStyle;
     procedure EmitRectangle(const Bounds: TLayoutRectF; const FillColor, StrokeColor: TLayoutColor;
@@ -98,6 +151,7 @@ type
     function EntryColor(const Index: Integer): TLayoutColor;
     function EntryCaption(const Index: Integer): string;
     function DatasetColor(const Index: Integer): TLayoutColor;
+    function BarColor(const DatasetIndex, LabelIndex: Integer): TLayoutColor;
     function SliceColor(const Index: Integer): TLayoutColor;
     class function IsColorSet(const Color: TLayoutColor): Boolean; static;
     procedure LayoutTitle;
@@ -136,14 +190,69 @@ type
     function CollectUnstackedRange(var HasValue: Boolean): TChartValueRange;
 
   public
+    class function RowSizedHeight(const Model: IChartModel; const Theme: TMarkdownTheme; const Measurer: ITextMeasurer;
+      const RowHeightFactor: Single): Single; static;
     constructor Create(const Model: IChartModel; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
-      const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
+      const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas; const Options: TChartLayoutOptions);
     procedure Build;
   end;
+
+function TChartLayoutOptions.HasAspectRatio: Boolean;
+begin
+  Result := AspectRatio > 0;
+end;
+
+function TChartLayoutOptions.IsRowSized(const Model: IChartModel): Boolean;
+begin
+  Result := (BarRowHeightFactor > 0) and (Model.ChartKind = TChartKind.Bar) and Model.Horizontal;
+end;
+
+function TChartLayoutOptions.BarFill(const DefaultFill: Single): Single;
+begin
+  const FullSlot: Single = 1.0;
+
+  const KeepsDefaultFill = (BarFillFactor <= 0);
+  if KeepsDefaultFill then
+  begin
+    Result := DefaultFill;
+    Exit;
+  end;
+
+  Result := Min(BarFillFactor, FullSlot);
+end;
+
+function TChartLayoutOptions.FormatTickLabel(const Value: Double): string;
+begin
+  if Assigned(TickLabelFormatter) then
+  begin
+    Result := TickLabelFormatter(Value);
+    Exit;
+  end;
+
+  Result := Format(DefaultTickLabelFormat, [Value]);
+end;
 
 class function TChartLayouter.PreferredHeight(const AvailableWidth: Single; const Theme: TMarkdownTheme): Single;
 begin
   Result := AvailableWidth * AspectRatioHeight / AspectRatioWidth;
+end;
+
+class function TChartLayouter.PreferredHeight(const Model: IChartModel; const AvailableWidth: Single;
+  const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Options: TChartLayoutOptions): Single;
+begin
+  if Options.IsRowSized(Model) then
+  begin
+    Result := TChartLayoutBuilder.RowSizedHeight(Model, Theme, Measurer, Options.BarRowHeightFactor);
+    Exit;
+  end;
+
+  if Options.HasAspectRatio then
+  begin
+    Result := AvailableWidth / Options.AspectRatio;
+    Exit;
+  end;
+
+  Result := PreferredHeight(AvailableWidth, Theme);
 end;
 
 class function TChartLayouter.PaletteColor(const Theme: TMarkdownTheme; const DatasetIndex: Integer): TLayoutColor;
@@ -162,10 +271,17 @@ end;
 class function TChartLayouter.BuildDisplayItems(const Model: IChartModel; const Bounds: TLayoutRectF;
   const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Node: IMarkdownNode): TArray<IDisplayItem>;
 begin
+  Result := BuildDisplayItems(Model, Bounds, Theme, Measurer, Node, Default(TChartLayoutOptions));
+end;
+
+class function TChartLayouter.BuildDisplayItems(const Model: IChartModel; const Bounds: TLayoutRectF;
+  const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Node: IMarkdownNode;
+  const Options: TChartLayoutOptions): TArray<IDisplayItem>;
+begin
   const Items = TList<IDisplayItem>.Create;
   try
     var Canvas: IExtensionCanvas := TDisplayListExtensionCanvas.Create(Measurer, Items, Node);
-    Draw(Model, Bounds, Theme, Measurer, Canvas);
+    Draw(Model, Bounds, Theme, Measurer, Canvas, Options);
 
     Result := Items.ToArray;
   finally
@@ -176,7 +292,17 @@ end;
 class procedure TChartLayouter.Draw(const Model: IChartModel; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
   const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
 begin
-  const Builder = TChartLayoutBuilder.Create(Model, Bounds, Theme, Measurer, Canvas);
+  Draw(Model, Bounds, Theme, Measurer, Canvas, Default(TChartLayoutOptions));
+end;
+
+class procedure TChartLayouter.Draw(const Model: IChartModel; const Bounds: TLayoutRectF; const Theme: TMarkdownTheme;
+  const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas; const Options: TChartLayoutOptions);
+begin
+  const Preferred = PreferredHeight(Model, Bounds.Width, Theme, Measurer, Options);
+  const ClampedHeight = Min(Bounds.Height, Preferred);
+  const Clamped = TLayoutRectF.Create(Bounds.Left, Bounds.Top, Bounds.Left + Bounds.Width, Bounds.Top + ClampedHeight);
+
+  const Builder = TChartLayoutBuilder.Create(Model, Clamped, Theme, Measurer, Canvas, Options);
   try
     Builder.Build;
   finally
@@ -184,8 +310,25 @@ begin
   end;
 end;
 
+// The row-sized height adds up the same bands Build takes off the chart, so
+// the plot that remains holds each label row at exactly the requested height.
+class function TChartLayoutBuilder.RowSizedHeight(const Model: IChartModel; const Theme: TMarkdownTheme;
+  const Measurer: ITextMeasurer; const RowHeightFactor: Single): Single;
+begin
+  const Font = LabelFontFor(Theme);
+  const LabelLineHeight = Measurer.LineHeight(Font);
+  const RowCount = Max(1, Model.LabelCount);
+  const AxisBand = LabelLineHeight + AxisGap;
+  const RowsHeight = RowCount * RowHeightFactor * LabelLineHeight;
+  const TitleBand = TitleBandHeight(Model, Theme, Measurer);
+  const LegendBand = LegendBandHeight(Model, Theme, Measurer);
+
+  Result := 2 * Padding + TitleBand + LegendBand + AxisBand + RowsHeight;
+end;
+
 constructor TChartLayoutBuilder.Create(const Model: IChartModel; const Bounds: TLayoutRectF;
-  const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas);
+  const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Canvas: IExtensionCanvas;
+  const Options: TChartLayoutOptions);
 begin
   inherited Create;
 
@@ -193,13 +336,12 @@ begin
   FTheme := Theme;
   FMeasurer := Measurer;
   FCanvas := Canvas;
-
-  const ClampedHeight = Min(Bounds.Height, TChartLayouter.PreferredHeight(Bounds.Width, Theme));
+  FOptions := Options;
 
   FLeft := Bounds.Left + Padding;
   FTop := Bounds.Top + Padding;
   FRight := Bounds.Left + Bounds.Width - Padding;
-  FBottom := Bounds.Top + ClampedHeight - Padding;
+  FBottom := Bounds.Top + Bounds.Height - Padding;
 end;
 
 procedure TChartLayoutBuilder.Build;
@@ -230,14 +372,83 @@ begin
   end;
 end;
 
+class function TChartLayoutBuilder.TitleBandHeight(const Model: IChartModel; const Theme: TMarkdownTheme;
+  const Measurer: ITextMeasurer): Single;
+begin
+  if not HasTitle(Model) then
+  begin
+    Result := 0;
+    Exit;
+  end;
+
+  const Font = TitleFontFor(Theme);
+  Result := Measurer.LineHeight(Font) + Padding;
+end;
+
+// A legend on the left or right takes width from the chart, not height.
+class function TChartLayoutBuilder.LegendBandHeight(const Model: IChartModel; const Theme: TMarkdownTheme;
+  const Measurer: ITextMeasurer): Single;
+begin
+  const TakesHeight = (HasLegend(Model) and not IsVerticalLegend(Model));
+  if not TakesHeight then
+  begin
+    Result := 0;
+    Exit;
+  end;
+
+  Result := LegendRowHeight(Theme, Measurer) + Padding;
+end;
+
+class function TChartLayoutBuilder.HasTitle(const Model: IChartModel): Boolean;
+begin
+  Result := Model.TitleVisible and (Model.Title <> '');
+end;
+
+class function TChartLayoutBuilder.HasLegend(const Model: IChartModel): Boolean;
+begin
+  Result := Model.LegendVisible and (LegendEntryCount(Model) > 0);
+end;
+
+class function TChartLayoutBuilder.LegendEntryCount(const Model: IChartModel): Integer;
+begin
+  case Model.ChartKind of
+    TChartKind.Pie, TChartKind.Doughnut:
+      Result := Model.LabelCount;
+  else
+    Result := Model.DatasetCount;
+  end;
+end;
+
+class function TChartLayoutBuilder.IsVerticalLegend(const Model: IChartModel): Boolean;
+begin
+  Result := (Model.LegendPosition = TChartLegendPosition.Left) or (Model.LegendPosition = TChartLegendPosition.Right);
+end;
+
+class function TChartLayoutBuilder.LegendRowHeight(const Theme: TMarkdownTheme; const Measurer: ITextMeasurer): Single;
+begin
+  const Font = LabelFontFor(Theme);
+  const LabelLineHeight = Measurer.LineHeight(Font);
+  Result := Max(LabelLineHeight, SwatchSize);
+end;
+
+class function TChartLayoutBuilder.LabelFontFor(const Theme: TMarkdownTheme): TMarkdownFontStyle;
+begin
+  Result := TMarkdownFontStyle.Create(Theme.BaseFont.FamilyName, LabelFontSize);
+end;
+
+class function TChartLayoutBuilder.TitleFontFor(const Theme: TMarkdownTheme): TMarkdownFontStyle;
+begin
+  Result := TMarkdownFontStyle.Create(Theme.BaseFont.FamilyName, TitleFontSize, True);
+end;
+
 function TChartLayoutBuilder.LabelFont: TMarkdownFontStyle;
 begin
-  Result := TMarkdownFontStyle.Create(FTheme.BaseFont.FamilyName, LabelFontSize);
+  Result := LabelFontFor(FTheme);
 end;
 
 function TChartLayoutBuilder.TitleFont: TMarkdownFontStyle;
 begin
-  Result := TMarkdownFontStyle.Create(FTheme.BaseFont.FamilyName, TitleFontSize, True);
+  Result := TitleFontFor(FTheme);
 end;
 
 procedure TChartLayoutBuilder.EmitRectangle(const Bounds: TLayoutRectF; const FillColor, StrokeColor: TLayoutColor;
@@ -279,12 +490,7 @@ end;
 
 function TChartLayoutBuilder.EntryCount: Integer;
 begin
-  case FModel.ChartKind of
-    TChartKind.Pie, TChartKind.Doughnut:
-      Result := FModel.LabelCount;
-  else
-    Result := FModel.DatasetCount;
-  end;
+  Result := LegendEntryCount(FModel);
 end;
 
 function TChartLayoutBuilder.EntryColor(const Index: Integer): TLayoutColor;
@@ -326,6 +532,27 @@ begin
   Result := TChartLayouter.PaletteColor(FTheme, Index);
 end;
 
+// A dataset with more than one background colour colours each bar by its label
+// index, as Chart.js does, starting over when there are more labels than colours.
+function TChartLayoutBuilder.BarColor(const DatasetIndex, LabelIndex: Integer): TLayoutColor;
+begin
+  const Dataset = FModel.Datasets[DatasetIndex];
+  const ColorCount = Dataset.BackgroundColorCount;
+
+  const HasColorPerBar = (ColorCount > 1);
+  if HasColorPerBar then
+  begin
+    const Background = Dataset.BackgroundColors[LabelIndex mod ColorCount];
+    if IsColorSet(Background) then
+    begin
+      Result := Background;
+      Exit;
+    end;
+  end;
+
+  Result := DatasetColor(DatasetIndex);
+end;
+
 function TChartLayoutBuilder.SliceColor(const Index: Integer): TLayoutColor;
 begin
   if FModel.DatasetCount > 0 then
@@ -348,27 +575,22 @@ end;
 
 procedure TChartLayoutBuilder.LayoutTitle;
 begin
-  if not FModel.TitleVisible or (FModel.Title = '') then
+  if not HasTitle(FModel) then
     Exit;
 
-  const Font = TitleFont;
-  const Height = FMeasurer.LineHeight(Font);
-  EmitCenteredText(FModel.Title, (FLeft + FRight) / 2, FTop, Font, FTheme.ChartTextColor);
-  FTop := FTop + Height + Padding;
+  EmitCenteredText(FModel.Title, (FLeft + FRight) / 2, FTop, TitleFont, FTheme.ChartTextColor);
+  FTop := FTop + TitleBandHeight(FModel, FTheme, FMeasurer);
 end;
 
 procedure TChartLayoutBuilder.LayoutLegend;
 begin
-  if not FModel.LegendVisible or (EntryCount = 0) then
+  if not HasLegend(FModel) then
     Exit;
 
   const Font = LabelFont;
-  const RowHeight = Max(FMeasurer.LineHeight(Font), SwatchSize);
+  const RowHeight = LegendRowHeight(FTheme, FMeasurer);
 
-  const IsVertical = (FModel.LegendPosition = TChartLegendPosition.Left) or
-    (FModel.LegendPosition = TChartLegendPosition.Right);
-
-  if IsVertical then
+  if IsVerticalLegend(FModel) then
     EmitVerticalLegend(Font, RowHeight)
   else
     EmitHorizontalLegend(Font, RowHeight);
@@ -507,7 +729,7 @@ begin
   end;
 
   const Exponent = Floor(Log10(Value));
-  const PowerOfTen = Power(10, Exponent);
+  const PowerOfTen = Power(DecimalBase, Exponent);
   const Fraction = Value / PowerOfTen;
   var NiceFraction: Double;
 
@@ -619,7 +841,7 @@ begin
   var GutterWidth := 0.0;
   for var Tick in Axis.Ticks do
   begin
-    const Text = Format(TickLabelFormat, [Tick]);
+    const Text = FOptions.FormatTickLabel(Tick);
     GutterWidth := Max(GutterWidth, FMeasurer.MeasureText(Text, Font).Width);
   end;
   GutterWidth := GutterWidth + AxisGap;
@@ -642,7 +864,7 @@ begin
     const GridY = PlotBottom - Ratio * (PlotBottom - PlotTop);
     EmitLineSegment(PlotLeft, GridY, PlotRight, GridY, FTheme.ChartGridLineColor, GridStrokeWidth);
 
-    const Text = Format(TickLabelFormat, [Tick]);
+    const Text = FOptions.FormatTickLabel(Tick);
     const Size = FMeasurer.MeasureText(Text, Font);
     EmitText(Text, PlotLeft - AxisGap - Size.Width, GridY - Size.Height / 2, Font, FTheme.ChartTextColor);
   end;
@@ -685,7 +907,7 @@ end;
 procedure TChartLayoutBuilder.EmitStackedBars(const LabelIndex: Integer; const SlotLeft, SlotWidth, BaseY,
   AxisSpan, PlotHeight: Single);
 begin
-  const BarWidth = SlotWidth * 0.6;
+  const BarWidth = SlotWidth * FOptions.BarFill(StackedBarFill);
   const BarLeft = SlotLeft + (SlotWidth - BarWidth) / 2;
   var StackTopY := BaseY;
   var StackBottomY := BaseY;
@@ -715,14 +937,14 @@ begin
     end;
 
     EmitRectangle(TLayoutRectF.Create(BarLeft, Min(SegmentTop, SegmentBottom), BarLeft + BarWidth,
-      Max(SegmentTop, SegmentBottom)), DatasetColor(DatasetIndex), 0, 0);
+      Max(SegmentTop, SegmentBottom)), BarColor(DatasetIndex, LabelIndex), 0, 0);
   end;
 end;
 
 procedure TChartLayoutBuilder.EmitGroupedBars(const LabelIndex: Integer; const SlotLeft, SlotWidth, BaseY,
   AxisMin, AxisSpan, PlotHeight, PlotBottom: Single);
 begin
-  const GroupWidth = SlotWidth * 0.8;
+  const GroupWidth = SlotWidth * FOptions.BarFill(GroupedBarFill);
   const BarWidth = GroupWidth / Max(1, FModel.DatasetCount);
   const GroupLeft = SlotLeft + (SlotWidth - GroupWidth) / 2;
 
@@ -737,7 +959,7 @@ begin
     const BarLeft = GroupLeft + BarWidth * DatasetIndex;
 
     EmitRectangle(TLayoutRectF.Create(BarLeft, Min(BaseY, ValueY), BarLeft + BarWidth, Max(BaseY, ValueY)),
-      DatasetColor(DatasetIndex), 0, 0);
+      BarColor(DatasetIndex, LabelIndex), 0, 0);
   end;
 end;
 
@@ -877,7 +1099,7 @@ begin
     const Ratio = (Tick - Axis.Minimum) / AxisSpan;
     const GridX = PlotLeft + Ratio * (PlotRight - PlotLeft);
     EmitLineSegment(GridX, PlotTop, GridX, PlotBottom, FTheme.ChartGridLineColor, GridStrokeWidth);
-    EmitCenteredText(Format(TickLabelFormat, [Tick]), GridX, PlotBottom + AxisGap, Font, FTheme.ChartTextColor);
+    EmitCenteredText(FOptions.FormatTickLabel(Tick), GridX, PlotBottom + AxisGap, Font, FTheme.ChartTextColor);
   end;
 
   const SlotHeight = (PlotBottom - PlotTop) / Max(1, FModel.LabelCount);
@@ -918,7 +1140,7 @@ end;
 procedure TChartLayoutBuilder.EmitHorizontalStackedBars(const LabelIndex: Integer; const SlotTop, SlotHeight, BaseX,
   AxisSpan, PlotWidth: Single);
 begin
-  const BarHeight = SlotHeight * 0.6;
+  const BarHeight = SlotHeight * FOptions.BarFill(StackedBarFill);
   const BarTop = SlotTop + (SlotHeight - BarHeight) / 2;
   var StackRightX := BaseX;
   var StackLeftX := BaseX;
@@ -948,14 +1170,14 @@ begin
     end;
 
     EmitRectangle(TLayoutRectF.Create(Min(SegmentLeft, SegmentRight), BarTop, Max(SegmentLeft, SegmentRight),
-      BarTop + BarHeight), DatasetColor(DatasetIndex), 0, 0);
+      BarTop + BarHeight), BarColor(DatasetIndex, LabelIndex), 0, 0);
   end;
 end;
 
 procedure TChartLayoutBuilder.EmitHorizontalGroupedBars(const LabelIndex: Integer; const SlotTop, SlotHeight, BaseX,
   AxisMin, AxisSpan, PlotWidth, PlotLeft: Single);
 begin
-  const GroupHeight = SlotHeight * 0.8;
+  const GroupHeight = SlotHeight * FOptions.BarFill(GroupedBarFill);
   const BarHeight = GroupHeight / Max(1, FModel.DatasetCount);
   const GroupTop = SlotTop + (SlotHeight - GroupHeight) / 2;
 
@@ -970,7 +1192,7 @@ begin
     const BarTop = GroupTop + BarHeight * DatasetIndex;
 
     EmitRectangle(TLayoutRectF.Create(Min(BaseX, ValueX), BarTop, Max(BaseX, ValueX), BarTop + BarHeight),
-      DatasetColor(DatasetIndex), 0, 0);
+      BarColor(DatasetIndex, LabelIndex), 0, 0);
   end;
 end;
 
@@ -1103,7 +1325,7 @@ begin
 
   const Font = LabelFont;
   const BottomGutter = FMeasurer.LineHeight(Font) + AxisGap;
-  const GutterWidth = FMeasurer.MeasureText(Format(TickLabelFormat, [MaxY]), Font).Width + AxisGap;
+  const GutterWidth = FMeasurer.MeasureText(FOptions.FormatTickLabel(MaxY), Font).Width + AxisGap;
 
   const PlotLeft = FLeft + GutterWidth;
   const PlotTop = FTop;
@@ -1116,9 +1338,9 @@ begin
   EmitLineSegment(PlotLeft, PlotTop, PlotLeft, PlotBottom, FTheme.ChartGridLineColor, GridStrokeWidth);
   EmitLineSegment(PlotLeft, PlotBottom, PlotRight, PlotBottom, FTheme.ChartGridLineColor, GridStrokeWidth);
 
-  EmitText(Format(TickLabelFormat, [MinX]), PlotLeft, PlotBottom + AxisGap, Font, FTheme.ChartTextColor);
-  EmitCenteredText(Format(TickLabelFormat, [MaxX]), PlotRight, PlotBottom + AxisGap, Font, FTheme.ChartTextColor);
-  EmitText(Format(TickLabelFormat, [MaxY]), FLeft, PlotTop, Font, FTheme.ChartTextColor);
+  EmitText(FOptions.FormatTickLabel(MinX), PlotLeft, PlotBottom + AxisGap, Font, FTheme.ChartTextColor);
+  EmitCenteredText(FOptions.FormatTickLabel(MaxX), PlotRight, PlotBottom + AxisGap, Font, FTheme.ChartTextColor);
+  EmitText(FOptions.FormatTickLabel(MaxY), FLeft, PlotTop, Font, FTheme.ChartTextColor);
 
   const SpanX = MaxX - MinX;
   const SpanY = MaxY - MinY;

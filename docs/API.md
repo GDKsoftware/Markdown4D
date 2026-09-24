@@ -284,7 +284,8 @@ Selected properties: `BaseFont`, `CodeFont`, `MathFont`, `HeadingFonts[Level]`,
 `TableBorderColor`, `ThematicBreakColor`, `MathErrorColor`, `ParagraphSpacing`,
 `ListIndent`, `ContentPadding`, the `Chart*` colours and `ChartPalette`, and
 `TokenColors[Kind]` for code highlighting. Colours are `TLayoutColor`
-(`$AARRGGBB`).
+(`$AARRGGBB`). Chart sizing and axis-label formatting are not part of the
+theme; see [Chart layout options](EXTENSIONS.md#chart-layout-options).
 
 `SaveToJson` / `LoadFromJson` serialise a complete theme so you can ship it as a
 resource or let users edit it.
