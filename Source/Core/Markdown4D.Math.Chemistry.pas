@@ -2,9 +2,9 @@ unit Markdown4D.Math.Chemistry;
 
 // A subset of mhchem, lowered to TeX that the math parser already lays out.
 //
-// Chemistry notes and generated text write formulas as \ce inside math:
-// element counts are subscripts, a trailing plus or minus is a charge, and an
-// arrow such as -> is a reaction. mhchem in KaTeX and MathJax translates to
+// mhchem writes a chemical formula as \ce inside math: element counts are
+// subscripts, a trailing plus or minus is a charge, and an arrow such as ->
+// is a reaction. Its implementations in KaTeX and MathJax translate to
 // ordinary TeX the same way, which keeps the layouter unaware of chemistry.
 //
 // The subset covers formulas and counts, charges, isotopes, states of matter,
