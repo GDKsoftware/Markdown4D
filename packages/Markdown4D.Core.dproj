@@ -91,6 +91,7 @@
         <DCCReference Include="..\Source\Core\Markdown4D.Extensions.Gfm.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Extensions.Math.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Math.Syntax.pas"/>
+        <DCCReference Include="..\Source\Core\Markdown4D.Math.Chemistry.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Extensions.Interfaces.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Extensions.Sample.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Highlighter.Interfaces.pas"/>

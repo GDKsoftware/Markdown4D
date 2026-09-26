@@ -41,7 +41,9 @@ Written for this project and covered by the repository's MIT licence, in the
 same shape as the specification corpora (`markdown`, `html`, `example`,
 `section`). It pins the `$` syntax: the inline rules that keep prices as text,
 display blocks, the ```` ```math ```` alias, and the HTML the renderer writes
-for KaTeX and MathJax. The first cases follow the examples of Markdig's math
+for KaTeX and MathJax. One example keeps an mhchem `\ce` command in that
+HTML, because the viewers typeset it while the renderer still emits the
+formula source. The first cases follow the examples of Markdig's math
 extension so both libraries read the same input the same way.
 
 ## Updating a corpus

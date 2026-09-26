@@ -138,6 +138,12 @@
   "section": "Inline math"
  },
  {
+  "markdown": "Water is $\\ce{H2O}$.\n",
+  "html": "<p>Water is <span class=\"math\">\\(\\ce{H2O}\\)</span>.</p>\n",
+  "example": 35,
+  "section": "Inline math"
+ },
+ {
   "markdown": "$$\n\\frac{a}{b}\n$$\n",
   "html": "<div class=\"math\">\\[\n\\frac{a}{b}\n\\]</div>\n",
   "example": 23,

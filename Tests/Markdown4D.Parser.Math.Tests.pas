@@ -13,7 +13,7 @@ type
   private
     const
       MathCorpusFileName = 'math.json';
-      MathCorpusExampleCount = 34;
+      MathCorpusExampleCount = 35;
     var
       FCorpus: TSpecCorpus;
     procedure VerifySection(const Section: string);
