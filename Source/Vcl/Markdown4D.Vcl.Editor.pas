@@ -92,6 +92,8 @@ type
       FOnChange: TNotifyEvent;
       FOnScroll: TNotifyEvent;
       FOnSyncScroll: TMarkdownSyncScrollEvent;
+    class constructor Create;
+    class destructor Destroy;
     procedure HandleModelChange(const Sender: TObject; const Range: TEditorReplaceRange);
     procedure HandlePreviewTimer(Sender: TObject);
     procedure HandleAutoScrollTimer(Sender: TObject);
@@ -278,9 +280,16 @@ uses
   System.Math,
   System.UITypes,
   Vcl.Clipbrd,
+  Vcl.Forms,
+  Vcl.Themes,
   Markdown4D,
   Markdown4D.Defines,
   Markdown4D.Layout.Defaults;
+
+class constructor TMarkdownEditor.Create;
+begin
+  TCustomStyleEngine.RegisterStyleHook(TMarkdownEditor, TScrollingStyleHook);
+end;
 
 constructor TMarkdownEditor.Create(Owner: TComponent);
 begin
@@ -329,6 +338,11 @@ begin
   FAutoScrollTimer.OnTimer := HandleAutoScrollTimer;
 
   RebuildRows;
+end;
+
+class destructor TMarkdownEditor.Destroy;
+begin
+  TCustomStyleEngine.UnRegisterStyleHook(TMarkdownEditor, TScrollingStyleHook);
 end;
 
 destructor TMarkdownEditor.Destroy;
