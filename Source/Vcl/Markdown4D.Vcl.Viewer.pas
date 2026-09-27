@@ -94,6 +94,8 @@ type
       FOnResolveImage: TMarkdownResolveImageEvent;
       FOnRemoteImageRequest: TMarkdownRemoteImageEvent;
       FOnScroll: TNotifyEvent;
+    class constructor Create;
+    class destructor Destroy;
     function InvokeOnMainThread(const Action: TThreadProcedure): Boolean;
     procedure HandleFlushTimer(Sender: TObject);
     procedure ResolvePendingImages;
@@ -212,9 +214,11 @@ uses
   System.UITypes,
   System.IOUtils,
   Vcl.Clipbrd,
+  Vcl.Forms,
   Vcl.Imaging.pngimage,
   Vcl.Imaging.jpeg,
   Vcl.Imaging.GIFImg,
+  Vcl.Themes,
   Markdown4D.Image.Svg.Native,
   Markdown4D.Vcl.ImageDecoder,
   Markdown4D.Layout.Defaults,
@@ -222,6 +226,11 @@ uses
   Markdown4D.Layout.Renderer,
   Markdown4D.Viewer.Shared;
 
+
+class constructor TMarkdownViewer.Create;
+begin
+  TCustomStyleEngine.RegisterStyleHook(TMarkdownViewer, TScrollingStyleHook);
+end;
 
 constructor TMarkdownViewer.Create(Owner: TComponent);
 begin
@@ -281,6 +290,11 @@ begin
         Action();
     end);
   Result := True;
+end;
+
+class destructor TMarkdownViewer.Destroy;
+begin
+  TCustomStyleEngine.UnRegisterStyleHook(TMarkdownViewer, TScrollingStyleHook);
 end;
 
 destructor TMarkdownViewer.Destroy;
