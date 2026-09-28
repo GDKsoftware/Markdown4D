@@ -8,7 +8,8 @@ uses
   DUnitX.TestFramework,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.DisplayList,
-  Markdown4D.Math.Layout;
+  Markdown4D.Math.Layout,
+  Markdown4D.Tests.Math;
 
 type
   [TestFixture]
@@ -20,6 +21,13 @@ type
       TextColor = $FF102030;
       ErrorColor = $FFCC0000;
       Tolerance = 0.01;
+      DeepNesting = 1000;
+      MatrixBegin = '\begin{matrix}';
+      MatrixEnd = '\end{matrix}';
+      ChemistryBegin = '\ce{';
+      ChemistryEnd = '}';
+      MatricesPerChemistry = 50;
+      ChemistryLevels = 5;
     var
       FMeasurer: ITextMeasurer;
     function Layout(const Source: string; const IsDisplay: Boolean): IMathLayout;
@@ -92,12 +100,31 @@ type
 
     [Test]
     procedure Layout_UnclosedInput_StillProducesItems;
+
+    [Test]
+    [TestCase('Groups', TNestedFormula.Groups)]
+    [TestCase('Fractions', TNestedFormula.Fractions)]
+    [TestCase('Binomials', '\binom{1}{,}')]
+    [TestCase('Radicals', '\sqrt{,}')]
+    [TestCase('RadicalIndices', '\sqrt[,]{1}')]
+    [TestCase('Delimiters', '\left(,\right)')]
+    [TestCase('Environments', MatrixBegin + ',' + MatrixEnd)]
+    [TestCase('Styles', '\mathrm{,}')]
+    [TestCase('Accents', '\hat{,}')]
+    [TestCase('Superscripts', 'x^{,}')]
+    [TestCase('Primes', TNestedFormula.Primes)]
+    [TestCase('StyleTextAndGroup', '\mathrm{A}\text{-}{(,')]
+    procedure Layout_DeeplyNestedInput_DoesNotOverflowStack(const Opening, Closing: string);
+
+    [Test]
+    procedure Layout_ChemistryBetweenDeepMatrices_DoesNotOverflowStack;
   end;
 
 implementation
 
 uses
   System.SysUtils,
+  System.StrUtils,
   System.Generics.Collections,
   System.Math,
   Markdown4D.Layout.BlockOverride,
@@ -387,6 +414,28 @@ begin
 
   RunWithText(Drawn, 'a');
   RunWithText(Drawn, 'b');
+end;
+
+procedure TMathLayoutTests.Layout_DeeplyNestedInput_DoesNotOverflowStack(const Opening, Closing: string);
+begin
+  const Source = TNestedFormula.Build(Opening, Closing, DeepNesting);
+
+  const Formula = Layout(Source, True);
+
+  Assert.IsNotNull(Formula);
+end;
+
+// Each \ce parses its content in a parser of its own, which has to carry on
+// counting from the depth around it rather than start again.
+procedure TMathLayoutTests.Layout_ChemistryBetweenDeepMatrices_DoesNotOverflowStack;
+begin
+  const Opening = DupeString(MatrixBegin, MatricesPerChemistry) + ChemistryBegin;
+  const Closing = ChemistryEnd + DupeString(MatrixEnd, MatricesPerChemistry);
+  const Source = TNestedFormula.Build(Opening, Closing, ChemistryLevels);
+
+  const Formula = Layout(Source, True);
+
+  Assert.IsNotNull(Formula);
 end;
 
 end.

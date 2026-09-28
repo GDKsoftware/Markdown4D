@@ -115,6 +115,7 @@ uses
   Markdown4D.Viewer.ImageSettings.Tests in 'Markdown4D.Viewer.ImageSettings.Tests.pas',
   StreamingMarkdown.Demo.Tests in 'StreamingMarkdown.Demo.Tests.pas',
   Markdown4D.Tests.Arrays in 'Markdown4D.Tests.Arrays.pas',
+  Markdown4D.Tests.Math in 'Markdown4D.Tests.Math.pas',
   Markdown4D.Tests.Runner in 'Markdown4D.Tests.Runner.pas';
 
 begin

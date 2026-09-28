@@ -203,6 +203,8 @@ type
     // The raw text of a braced group, braces balanced, spaces kept. Used for
     // \text and friends, where the content is words rather than math.
     function ReadRawGroup: string;
+    // Everything not read yet, a peeked token included, as typed.
+    function ReadRemainder: string;
     function AtEnd: Boolean;
   end;
 
@@ -226,8 +228,15 @@ type
       ThickSpaceEm = 5 / 18;
       WordSpaceEm = 0.333;
       QuadEm = 1.0;
+      // Every nested group, command argument and stacked script costs stack
+      // in the parser, the layouter and the destructor chain of the tree.
+      // One level can add up to three levels to the tree (a matrix, its row
+      // and its cell), so this keeps the deepest tree at about half of what
+      // a default Win64 stack survives. A real formula never comes close.
+      MaxNestingDepth = 100;
     var
       FScanner: TMathScanner;
+      FDepth: Integer;
       FChemistryDepth: Integer;
     function ParseLines: IMathNode;
     procedure ParseSequenceInto(const Row: TMathNode);
@@ -237,7 +246,11 @@ type
     class function IsLineBreak(const Token: TMathToken): Boolean; static;
     procedure ConsumeStrayTerminator(const Token: TMathToken; const Line: TMathNode);
     function ParseAtomWithScripts: TMathNode;
+    function ParseScripts(const Atom: TMathNode): TMathNode;
     function ParseAtom: TMathNode;
+    function IsAtDepthLimit: Boolean;
+    function ParseRemainderAsError: TMathNode;
+    function ParseAtomToken: TMathNode;
     function ParseArgument: TMathNode;
     function ParseCharacter(const Value: Char): TMathNode;
     function ParseDigits(const First: Char): TMathNode;
@@ -266,13 +279,15 @@ type
     class function SymbolNode(const Text: string; const AtomClass: TMathAtomClass;
                               const Variant: TMathFontVariant): TMathNode; static;
     class function ErrorNode(const Name: string): TMathNode; static;
+    class function ErrorSymbol(const Text: string): TMathNode; static;
     class function EmptyRow: TMathNode; static;
     class function TryMatrixDelimiters(const Name: string; out Left, Right: string;
                                        out Alignment: TMathColumnAlignment): Boolean; static;
 
   public
-    // ChemistryDepth counts the \ce commands this formula is nested in.
-    constructor Create(const Source: string; const ChemistryDepth: Integer = 0);
+    // ChemistryDepth counts the \ce commands this formula is nested in, and
+    // Depth the nesting levels around it, so a \ce cannot reset the limit.
+    constructor Create(const Source: string; const ChemistryDepth: Integer = 0; const Depth: Integer = 0);
     destructor Destroy; override;
     function Parse: IMathNode;
   end;
@@ -756,6 +771,14 @@ begin
   Result := Copy(FSource, Start, EndPosition - Start);
 end;
 
+function TMathScanner.ReadRemainder: string;
+begin
+  FPeeked := False;
+
+  Result := Copy(FSource, FPosition, MaxInt);
+  FPosition := Length(FSource) + 1;
+end;
+
 class function TMathParser.Parse(const Source: string): IMathNode;
 begin
   const Parser = TMathTreeParser.Create(Source);
@@ -766,12 +789,13 @@ begin
   end;
 end;
 
-constructor TMathTreeParser.Create(const Source: string; const ChemistryDepth: Integer);
+constructor TMathTreeParser.Create(const Source: string; const ChemistryDepth: Integer; const Depth: Integer);
 begin
   inherited Create;
 
   FScanner := TMathScanner.Create(Source);
   FChemistryDepth := ChemistryDepth;
+  FDepth := Depth;
 end;
 
 destructor TMathTreeParser.Destroy;
@@ -942,6 +966,34 @@ begin
 
   ApplyLimitsCommands(Base);
 
+  // Stacked scripts deepen the tree without passing through ParseAtom, so
+  // ParseScripts counts them itself; that count ends with this atom.
+  const DepthBefore = FDepth;
+  try
+    Result := ParseScripts(Base);
+  finally
+    FDepth := DepthBefore;
+  end;
+end;
+
+procedure TMathTreeParser.ApplyLimitsCommands(const Atom: TMathNode);
+begin
+  while True do
+  begin
+    const Token = FScanner.Peek;
+    const IsLimits = (Token.Kind = TMathTokenKind.Command) and (Token.Text = LimitsCommand);
+    const IsNoLimits = (Token.Kind = TMathTokenKind.Command) and (Token.Text = NoLimitsCommand);
+    if not (IsLimits or IsNoLimits) then
+      Exit;
+
+    FScanner.Next;
+    Atom.TakesLimits := IsLimits;
+  end;
+end;
+
+function TMathTreeParser.ParseScripts(const Atom: TMathNode): TMathNode;
+begin
+  var Base := Atom;
   var Superscript: TMathNode := nil;
   var Subscript: TMathNode := nil;
   var Script: TMathNode := nil;
@@ -956,10 +1008,15 @@ begin
       Break;
 
     // TeX rejects a double superscript; here it nests, so f'^2 still shows
-    // both rather than dropping one.
+    // both rather than dropping one. Each nesting is a level deeper; at
+    // the limit the rest of the scripts start a new atom next to this one.
     const NeedsNesting = (IsSuperscript and (Superscript <> nil)) or (IsSubscript and (Subscript <> nil));
     if NeedsNesting then
     begin
+      if IsAtDepthLimit then
+        Break;
+
+      Inc(FDepth);
       Base := Script;
       Script := nil;
       Superscript := nil;
@@ -1003,22 +1060,37 @@ begin
   Result := Base;
 end;
 
-procedure TMathTreeParser.ApplyLimitsCommands(const Atom: TMathNode);
+// Every recursive path in the parser passes through here, so this is where
+// the nesting depth is counted.
+function TMathTreeParser.ParseAtom: TMathNode;
 begin
-  while True do
+  if IsAtDepthLimit then
   begin
-    const Token = FScanner.Peek;
-    const IsLimits = (Token.Kind = TMathTokenKind.Command) and (Token.Text = LimitsCommand);
-    const IsNoLimits = (Token.Kind = TMathTokenKind.Command) and (Token.Text = NoLimitsCommand);
-    if not (IsLimits or IsNoLimits) then
-      Exit;
+    Result := ParseRemainderAsError;
+    Exit;
+  end;
 
-    FScanner.Next;
-    Atom.TakesLimits := IsLimits;
+  Inc(FDepth);
+  try
+    Result := ParseAtomToken;
+  finally
+    Dec(FDepth);
   end;
 end;
 
-function TMathTreeParser.ParseAtom: TMathNode;
+function TMathTreeParser.IsAtDepthLimit: Boolean;
+begin
+  Result := (FDepth >= MaxNestingDepth);
+end;
+
+// Past the nesting limit the rest of the formula is shown as typed, in the
+// error colour, so the author sees where it stopped.
+function TMathTreeParser.ParseRemainderAsError: TMathNode;
+begin
+  Result := ErrorSymbol(FScanner.ReadRemainder);
+end;
+
+function TMathTreeParser.ParseAtomToken: TMathNode;
 begin
   const Token = FScanner.Next;
 
@@ -1180,7 +1252,7 @@ begin
     Exit;
   end;
 
-  const Parser = TMathTreeParser.Create(TMathChemistry.ToTeX(Source), FChemistryDepth + 1);
+  const Parser = TMathTreeParser.Create(TMathChemistry.ToTeX(Source), FChemistryDepth + 1, FDepth);
   try
     const Parsed = Parser.Parse;
 
@@ -1720,7 +1792,12 @@ end;
 
 class function TMathTreeParser.ErrorNode(const Name: string): TMathNode;
 begin
-  Result := SymbolNode(Backslash + Name, TMathAtomClass.Ordinary, TMathFontVariant.Upright);
+  Result := ErrorSymbol(Backslash + Name);
+end;
+
+class function TMathTreeParser.ErrorSymbol(const Text: string): TMathNode;
+begin
+  Result := SymbolNode(Text, TMathAtomClass.Ordinary, TMathFontVariant.Upright);
   Result.IsError := True;
 end;
 
