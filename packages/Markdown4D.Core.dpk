@@ -41,6 +41,7 @@ contains
   Markdown4D.Extensions.Gfm in '..\Source\Core\Markdown4D.Extensions.Gfm.pas',
   Markdown4D.Extensions.Math in '..\Source\Core\Markdown4D.Extensions.Math.pas',
   Markdown4D.Math.Syntax in '..\Source\Core\Markdown4D.Math.Syntax.pas',
+  Markdown4D.Math.Chemistry in '..\Source\Core\Markdown4D.Math.Chemistry.pas',
   Markdown4D.Extensions.Interfaces in '..\Source\Core\Markdown4D.Extensions.Interfaces.pas',
   Markdown4D.Extensions.Sample in '..\Source\Core\Markdown4D.Extensions.Sample.pas',
   Markdown4D.Highlighter.Interfaces in '..\Source\Core\Markdown4D.Highlighter.Interfaces.pas',

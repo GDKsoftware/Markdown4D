@@ -54,6 +54,16 @@ $$
 \nabla \cdot \vec{E} = \frac{\rho}{\varepsilon_0}
 $$
 
+## Chemistry
+
+The same dollars carry a chemical formula. `\ce` keeps element symbols
+upright: water is $\ce{H2O}$, the sulfate ion is $\ce{SO4^2-}$, and a
+reaction stands on its own line.
+
+$$\ce{2H2 + O2 -> 2H2O}$$
+
+An equilibrium uses `<=>`, as in $\ce{N2 + 3H2 <=> 2NH3}$.
+
 ## Fence alias and errors
 
 ```math

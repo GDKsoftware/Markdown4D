@@ -376,6 +376,42 @@ streaming in token by token therefore draws at every flush and only grows.
 Anything else comes out as its name, in the error colour, so the author sees
 what did not resolve.
 
+### Chemistry
+
+Inside a formula, `\ce{...}` is a subset of mhchem. The stored formula is
+unchanged: HTML, the markdown writer, find, and copy still carry `\ce{...}`.
+The viewers lower the command onto the math list above before drawing it.
+
+| Form | Result |
+|------|--------|
+| `H2O`, `2H2O`, `2.5H2O` | Element symbols stay upright. A count after an atom is a subscript. A leading number is a coefficient and may contain a decimal point. |
+| `Ca3(PO4)2`, `[Cu(NH3)4]^2+` | A parenthesised or bracketed group takes a count or a charge like an atom. |
+| `SO4^2-`, `Na+`, `[AgCl2]-` | A charge sticks to the last atom or group. |
+| `^{14}C`, `^{227}_{90}Th` | Mass and atomic numbers stand to the left of the element that follows. |
+| `(s)`, `(l)`, `(g)`, `(aq)` | The state of matter stays upright, and `Cl-(aq)` keeps its charge. |
+| `->`, `<-`, `<->`, `<=>` | Reaction, reverse, resonance, and equilibrium arrows. |
+| `CH3-CH2-OH`, `C=C`, `C#N` | The bonds stay upright and tight between their atoms: a hyphen, an equals sign, and an equivalence sign for the triple bond. |
+| `CuSO4*5H2O`, `CuSO4.5H2O` | An asterisk, or a dot before a number, is the addition dot of a hydrate. |
+
+A space ends a species, so the `+` in `Na +` is an operator rather than a
+charge, but it is not drawn: the spacing around `+` and the arrows comes from
+the math layout, as it does for any operator.
+
+A piece the subset does not recognise is copied into the formula, so an
+unknown command is still drawn by name in `Theme.MathErrorColor`. Text over
+an arrow (`->[H2O]`), the `\pu` units command, and italic variables such as
+the `n` in `C_nH_{2n+2}` are outside the subset. The mass and atomic numbers
+of an isotope align on their left edge, where mhchem aligns them on the
+right. The lowering stops at 32 nested groups, drawing a deeper group as an
+ellipsis, and at a `\ce` nested inside four others, drawing it in the error
+colour; real formulas never come close.
+
+The native viewers need no setup. An HTML consumer must make `\ce` available
+to its typesetter: load KaTeX's `contrib/mhchem` extension after KaTeX and
+before auto-render, or enable MathJax's `mhchem` package when it is not already
+provided by autoload. Both typeset the whole of mhchem, so the forms outside
+the subset still render in HTML.
+
 ## Incremental parser
 
 Units `Markdown4D` and `Markdown4D.Parser.Interfaces`.
