@@ -8,7 +8,8 @@ uses
   DUnitX.TestFramework,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.DisplayList,
-  Markdown4D.Math.Layout;
+  Markdown4D.Math.Layout,
+  Markdown4D.Tests.Math;
 
 type
   [TestFixture]
@@ -92,6 +93,21 @@ type
 
     [Test]
     procedure Layout_UnclosedInput_StillProducesItems;
+
+    [Test]
+    [TestCase('Groups', TNestedFormula.Groups)]
+    [TestCase('Fractions', TNestedFormula.Fractions)]
+    [TestCase('Binomials', '\binom{1}{,}')]
+    [TestCase('Radicals', '\sqrt{,}')]
+    [TestCase('RadicalIndices', '\sqrt[,]{1}')]
+    [TestCase('Delimiters', '\left(,\right)')]
+    [TestCase('Environments', '\begin{matrix},\end{matrix}')]
+    [TestCase('Styles', '\mathrm{,}')]
+    [TestCase('Accents', '\hat{,}')]
+    [TestCase('Superscripts', 'x^{,}')]
+    [TestCase('Primes', TNestedFormula.Primes)]
+    [TestCase('StyleTextAndGroup', '\mathrm{A}\text{-}{(,')]
+    procedure Layout_DeeplyNestedInput_DoesNotOverflowStack(const Opening, Closing: string);
   end;
 
 implementation
@@ -387,6 +403,15 @@ begin
 
   RunWithText(Drawn, 'a');
   RunWithText(Drawn, 'b');
+end;
+
+procedure TMathLayoutTests.Layout_DeeplyNestedInput_DoesNotOverflowStack(const Opening, Closing: string);
+begin
+  const Source = TNestedFormula.Build(Opening, Closing, 1000);
+
+  const Formula = Layout(Source, True);
+
+  Assert.IsNotNull(Formula);
 end;
 
 end.

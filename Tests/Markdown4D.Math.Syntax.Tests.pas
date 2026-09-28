@@ -6,13 +6,16 @@ interface
 
 uses
   DUnitX.TestFramework,
-  Markdown4D.Math.Syntax;
+  Markdown4D.Math.Syntax,
+  Markdown4D.Tests.Math;
 
 type
   [TestFixture]
   TMathSyntaxTests = class
   private
     class function Parse(const Source: string): IMathNode;
+    class function HasError(const Node: IMathNode): Boolean;
+    class function InnermostNode(const Row: IMathNode): IMathNode;
 
   public
     [Test]
@@ -77,6 +80,15 @@ type
 
     [Test]
     procedure Parse_EmptySource_YieldsEmptyRow;
+
+    [Test]
+    procedure Parse_NestingBeyondLimit_ShowsRemainderAsError;
+
+    [Test]
+    [TestCase('Groups', TNestedFormula.Groups)]
+    [TestCase('Fractions', TNestedFormula.Fractions)]
+    [TestCase('Primes', TNestedFormula.Primes)]
+    procedure Parse_NestingWithinLimit_HasNoError(const Opening, Closing: string);
   end;
 
 implementation
@@ -87,6 +99,36 @@ uses
 class function TMathSyntaxTests.Parse(const Source: string): IMathNode;
 begin
   Result := TMathParser.Parse(Source);
+end;
+
+class function TMathSyntaxTests.HasError(const Node: IMathNode): Boolean;
+begin
+  if Node.IsError then
+    Exit(True);
+
+  for var Index := 0 to Node.ChildCount - 1 do
+  begin
+    if HasError(Node.Children[Index]) then
+      Exit(True);
+  end;
+
+  Result := False;
+end;
+
+// Follows the first child down through rows to the first node that is not
+// a row, or to an empty row.
+class function TMathSyntaxTests.InnermostNode(const Row: IMathNode): IMathNode;
+begin
+  Result := Row;
+
+  while True do
+  begin
+    const IsNonEmptyRow = (Result.Kind = TMathNodeKind.Row) and (Result.ChildCount > 0);
+    if not IsNonEmptyRow then
+      Exit;
+
+    Result := Result.Children[0];
+  end;
 end;
 
 procedure TMathSyntaxTests.Parse_LettersAndPlus_YieldsClassifiedSymbols;
@@ -285,6 +327,29 @@ begin
   const Row = Parse('');
 
   Assert.IsTrue(Row.IsEmpty);
+end;
+
+procedure TMathSyntaxTests.Parse_NestingBeyondLimit_ShowsRemainderAsError;
+begin
+  const Opening = '{';
+  const Closing = '}';
+  const Source = TNestedFormula.Build(Opening, Closing, 1000);
+
+  const Row = Parse(Source);
+
+  const Innermost = InnermostNode(Row);
+  Assert.IsTrue(Innermost.IsError);
+  Assert.IsTrue(Innermost.Text.StartsWith(Opening));
+  Assert.IsTrue(Innermost.Text.EndsWith(Closing));
+end;
+
+procedure TMathSyntaxTests.Parse_NestingWithinLimit_HasNoError(const Opening, Closing: string);
+begin
+  const Source = TNestedFormula.Build(Opening, Closing, 40);
+
+  const Row = Parse(Source);
+
+  Assert.IsFalse(HasError(Row));
 end;
 
 end.

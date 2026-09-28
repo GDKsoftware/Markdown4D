@@ -182,6 +182,7 @@
         <DCCReference Include="Markdown4D.Viewer.ImageSettings.Tests.pas"/>
         <DCCReference Include="StreamingMarkdown.Demo.Tests.pas"/>
         <DCCReference Include="Markdown4D.Tests.Arrays.pas"/>
+        <DCCReference Include="Markdown4D.Tests.Math.pas"/>
         <DCCReference Include="Markdown4D.Tests.Runner.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
