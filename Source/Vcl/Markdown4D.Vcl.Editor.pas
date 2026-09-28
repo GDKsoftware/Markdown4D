@@ -171,6 +171,7 @@ type
     procedure SetCaretPosition(const Value: Integer);
     function GetSelectedText: string;
     procedure SetTheme(const Value: TMarkdownTheme);
+    procedure ApplyScrollBarTheme;
     procedure SetShowLineNumbers(const Value: Boolean);
     procedure WMVScroll(var Message: TWMVScroll); message WM_VSCROLL;
     procedure WMEraseBkgnd(var Message: TWMEraseBkgnd); message WM_ERASEBKGND;
@@ -284,7 +285,8 @@ uses
   Vcl.Themes,
   Markdown4D,
   Markdown4D.Defines,
-  Markdown4D.Layout.Defaults;
+  Markdown4D.Layout.Defaults,
+  Markdown4D.Vcl.ScrollBarTheme;
 
 class constructor TMarkdownEditor.Create;
 begin
@@ -1559,6 +1561,7 @@ begin
   FMeasurePainter.PixelsPerInch := CurrentPPI;
   RebuildRows;
   UpdateScrollBar;
+  ApplyScrollBarTheme;
 end;
 
 procedure TMarkdownEditor.Resize;
@@ -1915,6 +1918,7 @@ begin
   FTheme := TMarkdownTheme.CreatePreset(Value);
   FOwnsTheme := True;
   RecomputeMetrics;
+  ApplyScrollBarTheme;
 end;
 
 function TMarkdownEditor.GetCaretPosition: Integer;
@@ -1947,6 +1951,12 @@ begin
   FTheme := Value;
   FOwnsTheme := False;
   RecomputeMetrics;
+  ApplyScrollBarTheme;
+end;
+
+procedure TMarkdownEditor.ApplyScrollBarTheme;
+begin
+  TMarkdownScrollBarTheme.Apply(Self, FTheme.BackgroundColor);
 end;
 
 procedure TMarkdownEditor.SetShowLineNumbers(const Value: Boolean);

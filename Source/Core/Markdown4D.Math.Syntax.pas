@@ -85,7 +85,8 @@ type
 implementation
 
 uses
-  System.Character;
+  System.Character,
+  Markdown4D.Math.Chemistry;
 
 type
   TMathNode = class(TInterfacedObject, IMathNode)
@@ -217,6 +218,8 @@ type
       LineBreakCommand = '\';
       LimitsCommand = 'limits';
       NoLimitsCommand = 'nolimits';
+      ChemistryCommand = 'ce';
+      MaxChemistryDepth = 4;
       PrimeGlyph = #$2032;
       MinusGlyph = #$2212;
       AsteriskGlyph = #$2217;
@@ -234,6 +237,7 @@ type
     var
       FScanner: TMathScanner;
       FDepth: Integer;
+      FChemistryDepth: Integer;
     function ParseLines: IMathNode;
     procedure ParseSequenceInto(const Row: TMathNode);
     function ParseSequence: TMathNode;
@@ -257,6 +261,7 @@ type
     function TryParseAccentCommand(const Name: string; out Node: TMathNode): Boolean;
     function TryParseSpacingCommand(const Name: string; out Node: TMathNode): Boolean;
     function TryParseEnvironmentCommand(const Name: string; out Node: TMathNode): Boolean;
+    function ParseChemistry: TMathNode;
     function ParseFraction(const HasRule: Boolean): TMathNode;
     function ParseBinomial: TMathNode;
     function ParseRadical: TMathNode;
@@ -280,7 +285,9 @@ type
                                        out Alignment: TMathColumnAlignment): Boolean; static;
 
   public
-    constructor Create(const Source: string);
+    // ChemistryDepth counts the \ce commands this formula is nested in, and
+    // Depth the nesting levels around it, so a \ce cannot reset the limit.
+    constructor Create(const Source: string; const ChemistryDepth: Integer = 0; const Depth: Integer = 0);
     destructor Destroy; override;
     function Parse: IMathNode;
   end;
@@ -526,7 +533,8 @@ begin
     Entry('uparrow', #$2191, Relation), Entry('downarrow', #$2193, Relation), Entry('updownarrow', #$2195, Relation),
     Entry('Uparrow', #$21D1, Relation), Entry('Downarrow', #$21D3, Relation), Entry('nearrow', #$2197, Relation),
     Entry('searrow', #$2198, Relation), Entry('swarrow', #$2199, Relation), Entry('nwarrow', #$2196, Relation),
-    Entry('hookrightarrow', #$21AA, Relation), Entry('hookleftarrow', #$21A9, Relation)]);
+    Entry('hookrightarrow', #$21AA, Relation), Entry('hookleftarrow', #$21A9, Relation),
+    Entry('rightleftharpoons', #$21CC, Relation)]);
 end;
 
 class procedure TMathSymbolTable.AddMiscellaneous;
@@ -781,11 +789,13 @@ begin
   end;
 end;
 
-constructor TMathTreeParser.Create(const Source: string);
+constructor TMathTreeParser.Create(const Source: string; const ChemistryDepth: Integer; const Depth: Integer);
 begin
   inherited Create;
 
   FScanner := TMathScanner.Create(Source);
+  FChemistryDepth := ChemistryDepth;
+  FDepth := Depth;
 end;
 
 destructor TMathTreeParser.Destroy;
@@ -1194,6 +1204,12 @@ begin
     Exit;
   end;
 
+  if Name = ChemistryCommand then
+  begin
+    Result := ParseChemistry;
+    Exit;
+  end;
+
   if TryParseFractionCommand(Name, Result) then
     Exit;
 
@@ -1219,6 +1235,33 @@ begin
     Exit;
 
   Result := ErrorNode(Name);
+end;
+
+// \ce is lowered to TeX and parsed on its own, then joins the formula as one
+// group. The nested root goes when Parsed does, so its children move to a
+// fresh row. A \ce in a script or an argument of the lowered text comes back
+// here in the nested parser, so the depth travels with it and is capped.
+function TMathTreeParser.ParseChemistry: TMathNode;
+begin
+  const Source = FScanner.ReadRawGroup;
+
+  const IsTooDeep = (FChemistryDepth >= MaxChemistryDepth);
+  if IsTooDeep then
+  begin
+    Result := ErrorNode(ChemistryCommand);
+    Exit;
+  end;
+
+  const Parser = TMathTreeParser.Create(TMathChemistry.ToTeX(Source), FChemistryDepth + 1, FDepth);
+  try
+    const Parsed = Parser.Parse;
+
+    Result := TMathNode.Create(TMathNodeKind.Row);
+    for var Index := 0 to Parsed.ChildCount - 1 do
+      Result.AddChild(Parsed.Children[Index]);
+  finally
+    Parser.Free;
+  end;
 end;
 
 function TMathTreeParser.TryParseFractionCommand(const Name: string; out Node: TMathNode): Boolean;

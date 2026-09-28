@@ -141,6 +141,7 @@ type
     procedure SetThemePreset(const Value: TMarkdownThemePreset);
     procedure EnsureDesignSample;
     procedure SetTheme(const Value: TMarkdownTheme);
+    procedure ApplyScrollBarTheme;
     function GetSelectedText: string;
     procedure WMVScroll(var Message: TWMVScroll); message WM_VSCROLL;
     procedure WMEraseBkgnd(var Message: TWMEraseBkgnd); message WM_ERASEBKGND;
@@ -224,7 +225,8 @@ uses
   Markdown4D.Layout.Defaults,
   Markdown4D.Layout.HitTest,
   Markdown4D.Layout.Renderer,
-  Markdown4D.Viewer.Shared;
+  Markdown4D.Viewer.Shared,
+  Markdown4D.Vcl.ScrollBarTheme;
 
 
 class constructor TMarkdownViewer.Create;
@@ -466,6 +468,7 @@ begin
   FModel.SetViewport(ClientWidth, ClientHeight);
   ResolvePendingImages;
   UpdateScrollBar;
+  ApplyScrollBarTheme;
 end;
 
 procedure TMarkdownViewer.Resize;
@@ -1221,6 +1224,7 @@ begin
   ClearCodeHover;
   FModel.ApplyTheme(FTheme);
   UpdateScrollBar;
+  ApplyScrollBarTheme;
   Invalidate;
 end;
 
@@ -1238,7 +1242,13 @@ begin
   ClearCodeHover;
   FModel.ApplyTheme(FTheme);
   UpdateScrollBar;
+  ApplyScrollBarTheme;
   Invalidate;
+end;
+
+procedure TMarkdownViewer.ApplyScrollBarTheme;
+begin
+  TMarkdownScrollBarTheme.Apply(Self, FTheme.BackgroundColor);
 end;
 
 function TMarkdownViewer.GetSelectedText: string;
