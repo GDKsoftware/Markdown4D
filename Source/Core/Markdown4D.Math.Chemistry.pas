@@ -14,8 +14,13 @@ unit Markdown4D.Math.Chemistry;
 
 interface
 
-// Source is the interior of a \ce argument, without its braces.
-function ChemistryToTeX(const Source: string): string;
+type
+  TMathChemistry = class
+  public
+    // Source is the interior of a \ce argument, without its braces. The
+    // result is the TeX that TMathParser reads in its place.
+    class function ToTeX(const Source: string): string;
+  end;
 
 implementation
 
@@ -42,6 +47,12 @@ type
       HashChar = '#';
       DotChar = '.';
       AsteriskChar = '*';
+      EmptyBase = OpenBraceChar + CloseBraceChar;
+      UprightCommand = '\mathrm';
+      TextCommand = '\text';
+      ThinSpaceCommand = '\,';
+      CentredDotCommand = '\cdot';
+      EllipsisCommand = '\ldots';
       // \equiv is a relation, which the layouter spaces; a bond sits tight
       // between its atoms like = and -.
       TripleBondGlyph = #$2261;
@@ -84,6 +95,9 @@ type
     procedure TranslateDot;
     procedure TranslateCommand;
     class function ScriptText(const Body: string): string; static;
+    class function Braced(const Value: string): string; static;
+    class function Upright(const Value: string): string; static;
+    class function AsText(const Value: string): string; static;
     class function IsState(const Body: string): Boolean; static;
     class function StartsFormula(const Value: Char): Boolean; static;
 
@@ -94,7 +108,7 @@ type
     function Translate: string;
   end;
 
-function ChemistryToTeX(const Source: string): string;
+class function TMathChemistry.ToTeX(const Source: string): string;
 begin
   Result := TChemistryTranslator.Lower(Source, 0);
 end;
@@ -200,7 +214,7 @@ end;
 // count.
 procedure TChemistryTranslator.EmitCharge(const Sign: string);
 begin
-  EmitSeparator('^{' + Sign + '}');
+  EmitSeparator(CaretChar + Braced(Sign));
 end;
 
 // Past MaxGroupDepth the group keeps its delimiters around an ellipsis.
@@ -209,11 +223,11 @@ begin
   const IsTooDeep = (FDepth >= MaxGroupDepth);
   if IsTooDeep then
   begin
-    EmitAtom('{' + Left + '\ldots' + Right + '}');
+    EmitAtom(Braced(Left + EllipsisCommand + Right));
     Exit;
   end;
 
-  EmitAtom('{' + Left + Lower(Inner, FDepth + 1) + Right + '}');
+  EmitAtom(Braced(Left + Lower(Inner, FDepth + 1) + Right));
 end;
 
 // The cursor is on OpenChar. An unclosed group runs to the end, because the
@@ -382,9 +396,9 @@ begin
     Exit;
 
   if not FCanAttachScript then
-    FOutput.Append('{}');
+    FOutput.Append(EmptyBase);
 
-  EmitAtom(Marker + '{' + Body + '}');
+  EmitAtom(Marker + Braced(Body));
 end;
 
 // A number after an atom is its count. Elsewhere it is a coefficient, which
@@ -394,7 +408,7 @@ begin
   if FCanAttachScript then
   begin
     // A count is an integer: the dot in CuSO4.5H2O is an addition dot.
-    FOutput.Append('_{').Append(ReadDigits).Append('}');
+    FOutput.Append(UnderscoreChar).Append(Braced(ReadDigits));
     Exit;
   end;
 
@@ -402,7 +416,7 @@ begin
 
   SkipWhitespace;
   if StartsFormula(Peek) then
-    FOutput.Append('\,');
+    FOutput.Append(ThinSpaceCommand);
 end;
 
 // An element is a capital and its lowercase tail: Na is sodium, while CH is
@@ -417,7 +431,7 @@ begin
     while (not AtEnd) and Peek.IsLower do
       Advance(1);
 
-  EmitAtom('\mathrm{' + Copy(FSource, Start, FIndex - Start) + '}');
+  EmitAtom(Upright(Copy(FSource, Start, FIndex - Start)));
 end;
 
 procedure TChemistryTranslator.TranslateParenthesis;
@@ -426,7 +440,7 @@ begin
 
   if IsState(Inner) then
   begin
-    EmitSeparator('\,\text{(' + Inner.Trim + ')}');
+    EmitSeparator(ThinSpaceCommand + AsText(OpenParenthesisChar + Inner.Trim + CloseParenthesisChar));
     Exit;
   end;
 
@@ -457,7 +471,7 @@ begin
 
   if StartsSpecies then
   begin
-    EmitSeparator('\text{-}');
+    EmitSeparator(AsText(MinusChar));
     Exit;
   end;
 
@@ -476,7 +490,7 @@ begin
 
   if StartsSpecies then
   begin
-    EmitSeparator('\text{=}');
+    EmitSeparator(AsText(EqualsChar));
     Exit;
   end;
 
@@ -492,7 +506,7 @@ begin
 
   if IsAsterisk or Peek.IsDigit then
   begin
-    EmitSeparator('\cdot');
+    EmitSeparator(CentredDotCommand);
     Exit;
   end;
 
@@ -518,7 +532,7 @@ begin
 
   const HasArgument = (not IsControlSymbol) and (Peek = OpenBraceChar);
   if HasArgument then
-    Command := Command + '{' + ReadBalanced(OpenBraceChar, CloseBraceChar) + '}';
+    Command := Command + Braced(ReadBalanced(OpenBraceChar, CloseBraceChar));
 
   EmitSeparator(Command);
 end;
@@ -527,39 +541,60 @@ end;
 // such as \bullet is copied unchanged.
 class function TChemistryTranslator.ScriptText(const Body: string): string;
 begin
-  Result := '';
-  var Index := 1;
+  const Builder = TStringBuilder.Create;
+  try
+    var Index := 1;
 
-  while Index <= Length(Body) do
-  begin
-    const Start = Index;
-
-    if Body[Index] = Backslash then
+    while Index <= Length(Body) do
     begin
+      const Start = Index;
+
+      if Body[Index] = Backslash then
+      begin
+        Inc(Index);
+        while (Index <= Length(Body)) and Body[Index].IsLetter do
+          Inc(Index);
+
+        const IsControlSymbol = (Index = Start + 1) and (Index <= Length(Body));
+        if IsControlSymbol then
+          Inc(Index);
+
+        Builder.Append(Copy(Body, Start, Index - Start));
+        Continue;
+      end;
+
+      if Body[Index].IsLetter then
+      begin
+        while (Index <= Length(Body)) and Body[Index].IsLetter do
+          Inc(Index);
+
+        Builder.Append(Upright(Copy(Body, Start, Index - Start)));
+        Continue;
+      end;
+
+      Builder.Append(Body[Index]);
       Inc(Index);
-      while (Index <= Length(Body)) and Body[Index].IsLetter do
-        Inc(Index);
-
-      const IsControlSymbol = (Index = Start + 1) and (Index <= Length(Body));
-      if IsControlSymbol then
-        Inc(Index);
-
-      Result := Result + Copy(Body, Start, Index - Start);
-      Continue;
     end;
 
-    if Body[Index].IsLetter then
-    begin
-      while (Index <= Length(Body)) and Body[Index].IsLetter do
-        Inc(Index);
-
-      Result := Result + '\mathrm{' + Copy(Body, Start, Index - Start) + '}';
-      Continue;
-    end;
-
-    Result := Result + Body[Index];
-    Inc(Index);
+    Result := Builder.ToString;
+  finally
+    Builder.Free;
   end;
+end;
+
+class function TChemistryTranslator.Braced(const Value: string): string;
+begin
+  Result := OpenBraceChar + Value + CloseBraceChar;
+end;
+
+class function TChemistryTranslator.Upright(const Value: string): string;
+begin
+  Result := UprightCommand + Braced(Value);
+end;
+
+class function TChemistryTranslator.AsText(const Value: string): string;
+begin
+  Result := TextCommand + Braced(Value);
 end;
 
 // Case matters: (S) is a sulfur group, not a solid.

@@ -1180,7 +1180,7 @@ begin
     Exit;
   end;
 
-  const Parser = TMathTreeParser.Create(ChemistryToTeX(Source), FChemistryDepth + 1);
+  const Parser = TMathTreeParser.Create(TMathChemistry.ToTeX(Source), FChemistryDepth + 1);
   try
     const Parsed = Parser.Parse;
 
