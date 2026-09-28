@@ -111,6 +111,7 @@
         <DCCReference Include="Markdown4DStudio.SingleInstance.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Render.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Viewer.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Vcl.ScrollBarTheme.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Image.Tests.pas"/>
         <DCCReference Include="Markdown4D.Tests.Pipeline.Helpers.pas"/>
         <DCCReference Include="Markdown4D.Tests.Vcl.BitmapHelpers.pas"/>

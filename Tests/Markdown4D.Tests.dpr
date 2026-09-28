@@ -43,6 +43,7 @@ uses
   Markdown4DStudio.SingleInstance.Tests in 'Markdown4DStudio.SingleInstance.Tests.pas',
   Markdown4D.Vcl.Render.Tests in 'Markdown4D.Vcl.Render.Tests.pas',
   Markdown4D.Vcl.Viewer.Tests in 'Markdown4D.Vcl.Viewer.Tests.pas',
+  Markdown4D.Vcl.ScrollBarTheme.Tests in 'Markdown4D.Vcl.ScrollBarTheme.Tests.pas',
   Markdown4D.Vcl.Image.Tests in 'Markdown4D.Vcl.Image.Tests.pas',
   Markdown4D.Charts.Corpus in 'Markdown4D.Charts.Corpus.pas',
   Markdown4D.Extensions.Chart.Tests in 'Markdown4D.Extensions.Chart.Tests.pas',

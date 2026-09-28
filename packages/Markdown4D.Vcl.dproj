@@ -86,6 +86,7 @@
         <DCCReference Include="Markdown4D.Core.dcp"/>
         <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.Painter.pas"/>
         <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.ImageDecoder.pas"/>
+        <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.ScrollBarTheme.pas"/>
         <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.Viewer.pas"/>
         <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.Editor.pas"/>
         <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.MathFont.pas"/>
