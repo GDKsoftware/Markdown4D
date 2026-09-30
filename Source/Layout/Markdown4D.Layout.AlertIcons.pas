@@ -26,6 +26,13 @@ type
       OctagonCorners = 8;
       OctagonRadius = 6.75;
       OctagonStartAngle = 22.5;
+      // The upright of an exclamation mark or of the i in the note icon.
+      UprightLeft = 7.25;
+      UprightRight = 8.75;
+      DotRadius = 0.9;
+      // The two bands under the light bulb of the tip icon.
+      BulbNeckHalfWidth = 2.0;
+      BulbBaseHalfWidth = 1.25;
     var
       FLeft: Single;
       FTop: Single;
@@ -39,11 +46,12 @@ type
     procedure AddWarning;
     procedure AddCaution;
     procedure AddExclamation(const BarTop, BarBottom, DotY: Single);
-    procedure AddRing(const CenterX, CenterY, OuterRadius, InnerRadius: Single);
     procedure AddDisc(const CenterX, CenterY, Radius: Single);
+    procedure AddRing(const CenterX, CenterY, OuterRadius, InnerRadius: Single);
     procedure AddBar(const Left, Top, Right, Bottom: Single);
     procedure AddOutline(const GridPoints: array of Single);
-    function Point(const GridX, GridY: Single): TLayoutPointF;
+    procedure AddItem(const Item: IDisplayItem);
+    function GridPoint(const GridX, GridY: Single): TLayoutPointF;
     function IconBounds: TLayoutRectF;
 
   public
@@ -81,7 +89,7 @@ begin
     TMarkdownAlertKind.Warning   : AddWarning;
     TMarkdownAlertKind.Caution   : AddCaution;
   else
-    raise ENotSupportedException.CreateFmt('Unsupported alert kind: %d', [Ord(Kind)]);
+    raise ENotSupportedException.CreateFmt(TMarkdownAlerts.UnsupportedKindMessage, [Ord(Kind)]);
   end;
 
   Result := FItems;
@@ -89,16 +97,16 @@ end;
 
 procedure TAlertIconBuilder.AddNote;
 begin
-  AddRing(8, 8, 7, 5.5);
-  AddDisc(8, 4.75, 1);
-  AddBar(7.25, 6.75, 8.75, 11.5);
+  AddRing(GridCentre, GridCentre, 7, 5.5);
+  AddDisc(GridCentre, 4.75, 1);
+  AddBar(UprightLeft, 6.75, UprightRight, 11.5);
 end;
 
 procedure TAlertIconBuilder.AddTip;
 begin
-  AddRing(8, 6.25, 5.25, 3.75);
-  AddBar(6, 11.25, 10, 12.5);
-  AddBar(6.75, 13.5, 9.25, 14.75);
+  AddRing(GridCentre, 6.25, 5.25, 3.75);
+  AddBar(GridCentre - BulbNeckHalfWidth, 11.25, GridCentre + BulbNeckHalfWidth, 12.5);
+  AddBar(GridCentre - BulbBaseHalfWidth, 13.5, GridCentre + BulbBaseHalfWidth, 14.75);
 end;
 
 procedure TAlertIconBuilder.AddImportant;
@@ -109,7 +117,7 @@ end;
 
 procedure TAlertIconBuilder.AddWarning;
 begin
-  AddOutline([8, 1.75, 14.75, 13.75, 1.25, 13.75]);
+  AddOutline([GridCentre, 1.75, 14.75, 13.75, 1.25, 13.75]);
   AddExclamation(5.75, 9.5, 11.5);
 end;
 
@@ -130,15 +138,8 @@ end;
 
 procedure TAlertIconBuilder.AddExclamation(const BarTop, BarBottom, DotY: Single);
 begin
-  AddBar(7.25, BarTop, 8.75, BarBottom);
-  AddDisc(8, DotY, 0.9);
-end;
-
-procedure TAlertIconBuilder.AddRing(const CenterX, CenterY, OuterRadius, InnerRadius: Single);
-begin
-  const Center = Point(CenterX, CenterY);
-  FItems := FItems + [TDisplayWedge.Create(IconBounds, FNode, Center, OuterRadius * FScale, InnerRadius * FScale,
-    0, FullTurn, FColor, 0, 0)];
+  AddBar(UprightLeft, BarTop, UprightRight, BarBottom);
+  AddDisc(GridCentre, DotY, DotRadius);
 end;
 
 procedure TAlertIconBuilder.AddDisc(const CenterX, CenterY, Radius: Single);
@@ -146,11 +147,26 @@ begin
   AddRing(CenterX, CenterY, Radius, 0);
 end;
 
+procedure TAlertIconBuilder.AddRing(const CenterX, CenterY, OuterRadius, InnerRadius: Single);
+begin
+  const Center = GridPoint(CenterX, CenterY);
+  const Bounds = IconBounds;
+  const Ring: IDisplayItem = TDisplayWedge.Create(Bounds, FNode, Center, OuterRadius * FScale,
+    InnerRadius * FScale, 0, FullTurn, FColor, 0, 0);
+  AddItem(Ring);
+end;
+
 procedure TAlertIconBuilder.AddBar(const Left, Top, Right, Bottom: Single);
 begin
-  const Corners: TArray<TLayoutPointF> = [Point(Left, Top), Point(Right, Top), Point(Right, Bottom),
-    Point(Left, Bottom)];
-  FItems := FItems + [TDisplayPolygon.Create(IconBounds, FNode, Corners, FColor, 0, 0)];
+  const TopLeft = GridPoint(Left, Top);
+  const TopRight = GridPoint(Right, Top);
+  const BottomRight = GridPoint(Right, Bottom);
+  const BottomLeft = GridPoint(Left, Bottom);
+  const Bounds = IconBounds;
+
+  const Bar: IDisplayItem = TDisplayPolygon.Create(Bounds, FNode, [TopLeft, TopRight, BottomRight, BottomLeft],
+    FColor, 0, 0);
+  AddItem(Bar);
 end;
 
 procedure TAlertIconBuilder.AddOutline(const GridPoints: array of Single);
@@ -158,13 +174,21 @@ begin
   var Corners: TArray<TLayoutPointF>;
   for var Index := 0 to Length(GridPoints) div 2 - 1 do
   begin
-    Corners := Corners + [Point(GridPoints[2 * Index], GridPoints[2 * Index + 1])];
+    const Corner = GridPoint(GridPoints[2 * Index], GridPoints[2 * Index + 1]);
+    Corners := Corners + [Corner];
   end;
 
-  FItems := FItems + [TDisplayPolygon.Create(IconBounds, FNode, Corners, 0, FColor, StrokeWidth * FScale)];
+  const Bounds = IconBounds;
+  const Outline: IDisplayItem = TDisplayPolygon.Create(Bounds, FNode, Corners, 0, FColor, StrokeWidth * FScale);
+  AddItem(Outline);
 end;
 
-function TAlertIconBuilder.Point(const GridX, GridY: Single): TLayoutPointF;
+procedure TAlertIconBuilder.AddItem(const Item: IDisplayItem);
+begin
+  FItems := FItems + [Item];
+end;
+
+function TAlertIconBuilder.GridPoint(const GridX, GridY: Single): TLayoutPointF;
 begin
   Result := TLayoutPointF.Create(FLeft + GridX * FScale, FTop + GridY * FScale);
 end;

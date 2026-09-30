@@ -21,19 +21,17 @@ type
     class function Html(const Source: string): string;
     class function FirstChild(const Source: string): IMarkdownNode;
     class function IsAlert(const Node: IMarkdownNode): Boolean;
+    class function KindNamed(const Name: string): TMarkdownAlertKind;
 
   public
     [Test]
-    [TestCase('Note', 'NOTE,0')]
-    [TestCase('Tip', 'TIP,1')]
-    [TestCase('Important', 'IMPORTANT,2')]
-    [TestCase('Warning', 'WARNING,3')]
-    [TestCase('Caution', 'CAUTION,4')]
-    [TestCase('LowerCase', 'note,0')]
-    procedure Parse_MarkerLine_TagsQuoteWithKind(const MarkerName: string; const ExpectedOrdinal: Integer);
-
-    [Test]
-    procedure Parse_MarkerLine_IsRemovedFromText;
+    [TestCase('Note', 'NOTE,Note')]
+    [TestCase('Tip', 'TIP,Tip')]
+    [TestCase('Important', 'IMPORTANT,Important')]
+    [TestCase('Warning', 'WARNING,Warning')]
+    [TestCase('Caution', 'CAUTION,Caution')]
+    [TestCase('LowerCase', 'note,Note')]
+    procedure Parse_MarkerLine_TagsQuoteWithKind(const MarkerName, ExpectedKindName: string);
 
     [Test]
     procedure Parse_MarkerInOwnParagraph_DropsEmptyParagraph;
@@ -46,10 +44,19 @@ type
     procedure Parse_NotAnAlert_StaysBlockQuote(const Source: string);
 
     [Test]
+    procedure Parse_QuoteInsideAlert_KeepsItsMarker;
+
+    [Test]
     procedure Parse_CommonMark_KeepsMarkerAsText;
 
     [Test]
+    procedure ToHtml_MarkerLine_IsNotRendered;
+
+    [Test]
     procedure ToHtml_Alert_WritesGitHubMarkup;
+
+    [Test]
+    procedure ToHtml_AlertWithoutBody_WritesTitleOnly;
 
     [Test]
     [TestCase('WithBody', '> [!TIP]'#10'> Body text.')]
@@ -73,24 +80,25 @@ type
     procedure Layout_Alert_DrawsTitleAndBarInKindColor;
 
     [Test]
-    procedure Layout_Alert_DrawsIcon;
+    [TestCase('Note', 'NOTE')]
+    [TestCase('Tip', 'TIP')]
+    [TestCase('Important', 'IMPORTANT')]
+    [TestCase('Warning', 'WARNING')]
+    [TestCase('Caution', 'CAUTION')]
+    procedure Layout_Alert_DrawsIconForEachKind(const MarkerName: string);
 
     [Test]
     procedure Layout_Alert_KeepsBodyInTextColor;
-
-    [Test]
-    procedure Layout_DiffBlock_ShadesAddedAndRemovedLines;
   end;
 
 implementation
 
 uses
   System.SysUtils,
+  System.TypInfo,
   Markdown4D,
   Markdown4D.Defines,
   Markdown4D.Theme,
-  Markdown4D.Highlighter.Interfaces,
-  Markdown4D.Highlighter.Diff,
   Markdown4D.Layout.Engine,
   Markdown4D.Layout.FakeMeasurer;
 
@@ -116,24 +124,24 @@ begin
   Result := TMarkdownAlerts.TryGetKind(Node, Kind);
 end;
 
-procedure TMarkdownAlertTests.Parse_MarkerLine_TagsQuoteWithKind(const MarkerName: string;
-  const ExpectedOrdinal: Integer);
+class function TMarkdownAlertTests.KindNamed(const Name: string): TMarkdownAlertKind;
+begin
+  const Ordinal = GetEnumValue(TypeInfo(TMarkdownAlertKind), Name);
+  const IsKnownName = (Ordinal >= 0);
+  Assert.IsTrue(IsKnownName, Format('Unknown alert kind in test case: %s', [Name]));
+  Result := TMarkdownAlertKind(Ordinal);
+end;
+
+procedure TMarkdownAlertTests.Parse_MarkerLine_TagsQuoteWithKind(const MarkerName, ExpectedKindName: string);
 begin
   const Source = Format('> [!%s]'#10'> Body text.', [MarkerName]);
+  const Expected = KindNamed(ExpectedKindName);
 
   const Quote = FirstChild(Source);
 
   var Kind: TMarkdownAlertKind;
   Assert.IsTrue(TMarkdownAlerts.TryGetKind(Quote, Kind));
-  Assert.AreEqual<TMarkdownAlertKind>(TMarkdownAlertKind(ExpectedOrdinal), Kind);
-end;
-
-procedure TMarkdownAlertTests.Parse_MarkerLine_IsRemovedFromText;
-begin
-  const Output = Html(NoteSource);
-
-  Assert.DoesNotContain(Output, '[!NOTE]');
-  Assert.Contains(Output, '<p>Body text.</p>');
+  Assert.AreEqual<TMarkdownAlertKind>(Expected, Kind);
 end;
 
 procedure TMarkdownAlertTests.Parse_MarkerInOwnParagraph_DropsEmptyParagraph;
@@ -152,12 +160,29 @@ begin
   Assert.DoesNotContain(Output, 'markdown-alert');
 end;
 
+procedure TMarkdownAlertTests.Parse_QuoteInsideAlert_KeepsItsMarker;
+begin
+  const Output = Html('> [!NOTE]'#10'> > [!TIP]'#10'> > Inner');
+
+  Assert.Contains(Output, 'markdown-alert-note');
+  Assert.Contains(Output, '<blockquote>');
+  Assert.Contains(Output, '[!TIP]');
+end;
+
 procedure TMarkdownAlertTests.Parse_CommonMark_KeepsMarkerAsText;
 begin
   const Output = TMarkdown.ToHtml(NoteSource, TMarkdownDialect.CommonMark);
 
   Assert.Contains(Output, '[!NOTE]');
   Assert.Contains(Output, '<blockquote>');
+end;
+
+procedure TMarkdownAlertTests.ToHtml_MarkerLine_IsNotRendered;
+begin
+  const Output = Html(NoteSource);
+
+  Assert.DoesNotContain(Output, '[!NOTE]');
+  Assert.Contains(Output, '<p>Body text.</p>');
 end;
 
 procedure TMarkdownAlertTests.ToHtml_Alert_WritesGitHubMarkup;
@@ -171,9 +196,19 @@ begin
   Assert.DoesNotContain(Output, '<blockquote>');
 end;
 
+procedure TMarkdownAlertTests.ToHtml_AlertWithoutBody_WritesTitleOnly;
+begin
+  const Output = Html('> [!CAUTION]');
+
+  Assert.Contains(Output, '<div class="markdown-alert markdown-alert-caution">');
+  Assert.Contains(Output, '<p class="markdown-alert-title">Caution</p>');
+  Assert.DoesNotContain(Output, '<p>');
+end;
+
 procedure TMarkdownAlertTests.ToMarkdown_Alert_RoundTrips(const Source: string);
 begin
-  const Written = TMarkdown.ToMarkdown(Parse(Source));
+  const Document = Parse(Source);
+  const Written = TMarkdown.ToMarkdown(Document);
 
   Assert.AreEqual(Html(Source), Html(Written));
 end;
@@ -193,15 +228,19 @@ end;
 class function TMarkdownAlertLayoutTests.FindRun(const DisplayList: IMarkdownDisplayList;
   const Prefix: string): IDisplayTextRun;
 begin
+  Result := nil;
+
   for var Index := 0 to DisplayList.ItemCount - 1 do
   begin
     var Run: IDisplayTextRun;
-    const IsMatch = Supports(DisplayList.Items[Index], IDisplayTextRun, Run) and Run.Text.StartsWith(Prefix);
+    const IsTextRun = Supports(DisplayList.Items[Index], IDisplayTextRun, Run);
+    const IsMatch = (IsTextRun and Run.Text.StartsWith(Prefix));
     if IsMatch then
-      Exit(Run);
+    begin
+      Result := Run;
+      Exit;
+    end;
   end;
-
-  Result := nil;
 end;
 
 class function TMarkdownAlertLayoutTests.CountRectanglesIn(const DisplayList: IMarkdownDisplayList;
@@ -212,8 +251,8 @@ begin
   for var Index := 0 to DisplayList.ItemCount - 1 do
   begin
     var Rectangle: IDisplayRectangle;
-    const IsMatch = Supports(DisplayList.Items[Index], IDisplayRectangle, Rectangle) and
-                    (Rectangle.FillColor = Color);
+    const IsRectangle = Supports(DisplayList.Items[Index], IDisplayRectangle, Rectangle);
+    const IsMatch = (IsRectangle and (Rectangle.FillColor = Color));
     if IsMatch then
       Inc(Result);
   end;
@@ -226,7 +265,9 @@ begin
 
   for var Index := 0 to DisplayList.ItemCount - 1 do
   begin
-    if DisplayList.Items[Index].Kind = Kind then
+    const Item = DisplayList.Items[Index];
+    const IsMatch = (Item.Kind = Kind);
+    if IsMatch then
       Inc(Result);
   end;
 end;
@@ -249,12 +290,16 @@ begin
   end;
 end;
 
-procedure TMarkdownAlertLayoutTests.Layout_Alert_DrawsIcon;
+procedure TMarkdownAlertLayoutTests.Layout_Alert_DrawsIconForEachKind(const MarkerName: string);
 begin
-  const DisplayList = Layout('> [!CAUTION]'#10'> Body text.');
+  const Source = Format('> [!%s]'#10'> Body text.', [MarkerName]);
 
-  const HasIconShapes = (CountOfKind(DisplayList, TDisplayItemKind.Polygon) > 0);
-  Assert.IsTrue(HasIconShapes);
+  const DisplayList = Layout(Source);
+
+  const ShapeCount = CountOfKind(DisplayList, TDisplayItemKind.Polygon) +
+                     CountOfKind(DisplayList, TDisplayItemKind.Wedge);
+  const HasIcon = (ShapeCount > 0);
+  Assert.IsTrue(HasIcon);
 end;
 
 procedure TMarkdownAlertLayoutTests.Layout_Alert_KeepsBodyInTextColor;
@@ -266,21 +311,6 @@ begin
     const Body = FindRun(DisplayList, 'Body');
     Assert.IsNotNull(Body);
     Assert.AreEqual<TLayoutColor>(Theme.TextColor, Body.Color);
-  finally
-    Theme.Free;
-  end;
-end;
-
-procedure TMarkdownAlertLayoutTests.Layout_DiffBlock_ShadesAddedAndRemovedLines;
-begin
-  THighlighterRegistry.Register(DiffLanguageName, TDiffSyntaxHighlighter.Create);
-
-  const Theme = TMarkdownTheme.CreateLight;
-  try
-    const DisplayList = Layout('```diff'#10'+ added'#10'- removed'#10'  same'#10'+ again'#10'```');
-
-    Assert.AreEqual(2, CountRectanglesIn(DisplayList, Theme.DiffInsertedBackgroundColor));
-    Assert.AreEqual(1, CountRectanglesIn(DisplayList, Theme.DiffDeletedBackgroundColor));
   finally
     Theme.Free;
   end;

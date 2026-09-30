@@ -113,6 +113,8 @@ type
       TokenColorCount = Ord(High(TSyntaxTokenKind)) + 1;
       LegacyTokenColorCount = Ord(TSyntaxTokenKind.CDataSection) + 1;
       ArrayCountMessage = 'Theme JSON array "%s" must contain %d entries';
+      TokenColorCountMessage = 'Theme JSON array "%s" must contain %d entries, or %d from an earlier version';
+      AnyEntryCount = -1;
       // Rec. 601 luma weights; a background below half brightness counts as dark.
       RedWeight = 0.299;
       GreenWeight = 0.587;
@@ -588,7 +590,6 @@ begin
   Result.TableHeaderBackgroundColor := ReadColor(Root, TableHeaderBackgroundColorKey);
   Result.TableBorderColor := ReadColor(Root, TableBorderColorKey);
   Result.ThematicBreakColor := ReadColor(Root, ThematicBreakColorKey);
-  Result.MathErrorColor := ReadColorOrDefault(Root, MathErrorColorKey, LightMathErrorColor);
 
   Result.ParagraphSpacing := ReadSingle(Root, ParagraphSpacingKey);
   Result.ListIndent := ReadSingle(Root, ListIndentKey);
@@ -610,11 +611,13 @@ begin
   Result.ChartTextColor := ReadColor(Root, ChartTextColorKey);
   Result.ChartPalette := ReadPalette(Root);
 
-  // The diff and alert colours arrived after 2.3. A theme saved before then
-  // gets them from the preset its background matches, so a dark theme does
-  // not end up with light line backgrounds.
-  const Defaults = CreatePreset(PresetMatching(Result.BackgroundColor));
+  // A theme saved by an earlier version may lack the colours added since. They
+  // come from the preset its background matches, so a dark theme does not end
+  // up with light line backgrounds.
+  const Preset = PresetMatching(Result.BackgroundColor);
+  const Defaults = CreatePreset(Preset);
   try
+    Result.MathErrorColor := ReadColorOrDefault(Root, MathErrorColorKey, Defaults.FMathErrorColor);
     Result.TokenColors := ReadTokenColors(Root, Defaults.FTokenColors);
     Result.DiffInsertedBackgroundColor := ReadColorOrDefault(Root, DiffInsertedBackgroundColorKey,
       Defaults.FDiffInsertedBackgroundColor);
@@ -709,7 +712,7 @@ end;
 
 class function TMarkdownTheme.ReadPalette(const Root: TJSONObject): TArray<TLayoutColor>;
 begin
-  const Colors = RequireArray(Root, ChartPaletteKey, -1);
+  const Colors = RequireArray(Root, ChartPaletteKey, AnyEntryCount);
   SetLength(Result, Colors.Count);
 
   for var Index := 0 to Colors.Count - 1 do
@@ -723,17 +726,19 @@ end;
 class function TMarkdownTheme.ReadTokenColors(const Root: TJSONObject;
   const Defaults: TTokenColorArray): TTokenColorArray;
 begin
-  const Colors = RequireArray(Root, CodeTokenColorsKey, -1);
+  const Colors = RequireArray(Root, CodeTokenColorsKey, AnyEntryCount);
 
   const HasKnownCount = ((Colors.Count = TokenColorCount) or (Colors.Count = LegacyTokenColorCount));
   if not HasKnownCount then
-    raise EMarkdownError.CreateFmt(ArrayCountMessage, [CodeTokenColorsKey, TokenColorCount]);
+    raise EMarkdownError.CreateFmt(TokenColorCountMessage, [CodeTokenColorsKey, TokenColorCount,
+      LegacyTokenColorCount]);
 
   Result := Defaults;
   for var Index := 0 to Colors.Count - 1 do
   begin
     const Kind = TSyntaxTokenKind(Index);
-    Result[Kind] := TLayoutColor(RequireNumber(Colors.Items[Index], CodeTokenColorsKey).AsInt64);
+    const Number = RequireNumber(Colors.Items[Index], CodeTokenColorsKey);
+    Result[Kind] := TLayoutColor(Number.AsInt64);
   end;
 end;
 
@@ -743,13 +748,15 @@ begin
   Result := Defaults;
 
   const Value = Root.GetValue(AlertColorsKey);
-  if Value = nil then
+  const HasAlertColors = Assigned(Value);
+  if not HasAlertColors then
     Exit;
 
   const Colors = RequireArray(Root, AlertColorsKey, AlertColorCount);
   for var Kind := Low(TMarkdownAlertKind) to High(TMarkdownAlertKind) do
   begin
-    Result[Kind] := TLayoutColor(RequireNumber(Colors.Items[Ord(Kind)], AlertColorsKey).AsInt64);
+    const Number = RequireNumber(Colors.Items[Ord(Kind)], AlertColorsKey);
+    Result[Kind] := TLayoutColor(Number.AsInt64);
   end;
 end;
 

@@ -54,10 +54,13 @@ type
     [Test]
     [TestCase('Added line', '+ added;Inserted@1+7', ';')]
     [TestCase('Removed line', '- removed;Deleted@1+9', ';')]
-    [TestCase('Hunk header', '@@ -1 +1 @@;Directive@1+11', ';')]
-    [TestCase('File header', 'diff --git a/x b/x;Comment@1+18', ';')]
+    [TestCase('Old file line', '--- a/x;Comment@1+7', ';')]
+    [TestCase('New file line', '+++ b/x;Comment@1+7', ';')]
     [TestCase('Context line', 'x = 1;Plain@1+5', ';')]
     procedure Diff_Line_IsTokenizedByItsStart(const LineText, Expected: string);
+
+    [Test]
+    procedure Diff_TripleDashInsideHunk_IsRemovedLineUntilNextFile;
 
     [Test]
     procedure Sql_KeywordsAndNumbers_AreTokenized;
@@ -187,6 +190,23 @@ end;
 procedure TSyntaxHighlighterTests.Diff_Line_IsTokenizedByItsStart(const LineText, Expected: string);
 begin
   AssertTokenizes(TDiffSyntaxHighlighter.Create, LineText, Expected);
+end;
+
+procedure TSyntaxHighlighterTests.Diff_TripleDashInsideHunk_IsRemovedLineUntilNextFile;
+begin
+  const Highlighter: IMarkdownSyntaxHighlighter = TDiffSyntaxHighlighter.Create;
+  const Lines: TArray<string> = ['diff --git a/q.sql b/q.sql', '--- a/q.sql', '+++ b/q.sql', '@@ -1 +1 @@',
+    '--- old comment', '+++ new comment', '-- note', 'diff --git a/r.sql b/r.sql', '--- a/r.sql'];
+  const Expected: TArray<string> = ['Comment@1+26', 'Comment@1+11', 'Comment@1+11', 'Directive@1+11',
+    'Deleted@1+15', 'Inserted@1+15', 'Deleted@1+7', 'Comment@1+26', 'Comment@1+11'];
+
+  var State := Highlighter.InitialState;
+  for var Index := 0 to High(Lines) do
+  begin
+    const Line = Highlighter.TokenizeLine(Lines[Index], State);
+    AssertLineTokens(Line, Lines[Index], Expected[Index]);
+    State := Line.NextState;
+  end;
 end;
 
 procedure TSyntaxHighlighterTests.Sql_KeywordsAndNumbers_AreTokenized;

@@ -99,6 +99,12 @@ type
     procedure Parse_UnknownColor_ShowsCommandAsError;
 
     [Test]
+    [TestCase('ColorWithoutBraces', '\color red x,\color')]
+    [TestCase('TextColorWithoutBraces', '\textcolor red x,\textcolor')]
+    [TestCase('XcolorModel', '\color[HTML]{FF0000}x,\color')]
+    procedure Parse_ColorWithoutBracedName_ShowsCommandAsError(const Source, ExpectedError: string);
+
+    [Test]
     procedure Parse_Mathbb_YieldsStyledDoubleStruck;
 
     [Test]
@@ -520,6 +526,16 @@ begin
   const Error = FindText(Row, '\color{nosuchcolor}');
   Assert.IsNotNull(Error);
   Assert.IsTrue(Error.IsError);
+  Assert.IsNotNull(FindText(Row, 'x'));
+end;
+
+procedure TMathSyntaxTests.Parse_ColorWithoutBracedName_ShowsCommandAsError(const Source, ExpectedError: string);
+begin
+  const Row = Parse(Source);
+
+  const Command = Row.Children[0];
+  Assert.IsTrue(Command.IsError);
+  Assert.AreEqual(ExpectedError, Command.Text);
   Assert.IsNotNull(FindText(Row, 'x'));
 end;
 

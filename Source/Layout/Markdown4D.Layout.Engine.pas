@@ -179,9 +179,8 @@ type
     Kind: TLayoutCommandKind;
     Node: IMarkdownNode;
     X: Single;
-    // A block's text colour; for a quote bar or an alert title, the colour it
-    // is drawn in.
-    TextColor: TLayoutColor;
+    // A block's text colour, a quote bar's colour or an alert title's colour.
+    Color: TLayoutColor;
     AlertKind: TMarkdownAlertKind;
     GapAmount: Single;
     InsertIndex: Integer;
@@ -636,10 +635,10 @@ begin
 
   case Command.Node.Kind of
     TMarkdownNodeKind.Paragraph:
-      LayoutInlineBlock(Command.Node, Command.X, FTheme.BaseFont, Command.TextColor);
+      LayoutInlineBlock(Command.Node, Command.X, FTheme.BaseFont, Command.Color);
     TMarkdownNodeKind.Heading:
       LayoutInlineBlock(Command.Node, Command.X, FTheme.HeadingFonts[(Command.Node as IMarkdownHeading).Level],
-        Command.TextColor);
+        Command.Color);
     TMarkdownNodeKind.CodeBlock:
       EmitCodeBlock(Command);
     TMarkdownNodeKind.HtmlBlock:
@@ -699,7 +698,7 @@ begin
     if IsNestedList then
       ChildX := Command.X + FTheme.ListIndent;
 
-    PushBlock(Child, ChildX, Command.TextColor);
+    PushBlock(Child, ChildX, Command.Color);
 
     const NeedsGap = (Index > 0) and not Command.Tight;
     if NeedsGap then
@@ -713,7 +712,7 @@ begin
   const MarkerHeight = FMeasurer.LineHeight(FTheme.BaseFont);
   const Bounds = TLayoutRectF.Create(Command.X, FCurrentY, Command.X + MarkerSize.Width, FCurrentY + MarkerHeight);
 
-  FItems.Add(TDisplayTextRun.Create(Bounds, Command.Node, Command.MarkerText, FTheme.BaseFont, Command.TextColor,
+  FItems.Add(TDisplayTextRun.Create(Bounds, Command.Node, Command.MarkerText, FTheme.BaseFont, Command.Color,
     FMeasurer.Baseline(FTheme.BaseFont), 0));
 end;
 
@@ -761,7 +760,7 @@ begin
   TitleCommand.Kind := TLayoutCommandKind.AlertTitle;
   TitleCommand.Node := Command.Node;
   TitleCommand.X := ContentX;
-  TitleCommand.TextColor := AlertColor;
+  TitleCommand.Color := AlertColor;
   TitleCommand.AlertKind := Kind;
   FCommands.Add(TitleCommand);
 end;
@@ -772,7 +771,7 @@ begin
   BarCommand.Kind := TLayoutCommandKind.QuoteBar;
   BarCommand.Node := Command.Node;
   BarCommand.X := Command.X;
-  BarCommand.TextColor := BarColor;
+  BarCommand.Color := BarColor;
   BarCommand.StartY := FCurrentY;
   BarCommand.InsertIndex := FItems.Count;
   FCommands.Add(BarCommand);
@@ -786,7 +785,7 @@ begin
 
   const Bounds = TLayoutRectF.Create(Command.X, Command.StartY, Command.X + FTheme.BlockQuoteBarWidth,
     Command.StartY + Height);
-  FItems.Insert(Command.InsertIndex, TDisplayRectangle.Create(Bounds, Command.Node, Command.TextColor, 0, 0));
+  FItems.Insert(Command.InsertIndex, TDisplayRectangle.Create(Bounds, Command.Node, Command.Color, 0, 0));
 end;
 
 // The icon takes three quarters of the title's line height, centred on the
@@ -800,7 +799,7 @@ begin
   const IconSize = LineHeight * AlertIconScale;
   const IconTop = FCurrentY + (LineHeight - IconSize) / 2;
 
-  const Icon = TAlertIconBuilder.Create(Command.X, IconTop, IconSize, Command.TextColor, Command.Node);
+  const Icon = TAlertIconBuilder.Create(Command.X, IconTop, IconSize, Command.Color, Command.Node);
   try
     const IconItems = Icon.Build(Command.AlertKind);
     FItems.AddRange(IconItems);
@@ -812,8 +811,10 @@ begin
   const TitleLeft = Command.X + IconSize * (1 + AlertIconGapScale);
   const TitleSize = FMeasurer.MeasureText(Title, TitleFont);
   const Bounds = TLayoutRectF.Create(TitleLeft, FCurrentY, TitleLeft + TitleSize.Width, FCurrentY + LineHeight);
-  FItems.Add(TDisplayTextRun.Create(Bounds, Command.Node, Title, TitleFont, Command.TextColor,
-    FMeasurer.Baseline(TitleFont), 0));
+  const TitleBaseline = FMeasurer.Baseline(TitleFont);
+  const TitleRun: IDisplayItem = TDisplayTextRun.Create(Bounds, Command.Node, Title, TitleFont, Command.Color,
+    TitleBaseline, 0);
+  FItems.Add(TitleRun);
 
   FCurrentY := FCurrentY + LineHeight;
 end;
@@ -832,7 +833,7 @@ begin
     ItemCommand.Kind := TLayoutCommandKind.ListItem;
     ItemCommand.Node := Command.Node.Children[Index];
     ItemCommand.X := Command.X;
-    ItemCommand.TextColor := Command.TextColor;
+    ItemCommand.Color := Command.Color;
     ItemCommand.Tight := List.IsTight;
 
     var TaskMarker: IMarkdownCustomInline;
@@ -909,7 +910,7 @@ begin
   Command.Kind := TLayoutCommandKind.Block;
   Command.Node := Node;
   Command.X := X;
-  Command.TextColor := TextColor;
+  Command.Color := TextColor;
 
   FCommands.Add(Command);
 end;
@@ -1015,11 +1016,13 @@ end;
 procedure TLayoutWorker.EmitCodeLineBackground(const Command: TLayoutCommand; const Line: TSyntaxLine;
   const Top, LineHeight: Single);
 begin
-  if Length(Line.Tokens) = 0 then
+  const HasTokens = (Length(Line.Tokens) > 0);
+  if not HasTokens then
     Exit;
 
+  const FirstKind = Line.Tokens[0].Kind;
   var Background: TLayoutColor;
-  case Line.Tokens[0].Kind of
+  case FirstKind of
     TSyntaxTokenKind.Inserted:
       Background := FTheme.DiffInsertedBackgroundColor;
     TSyntaxTokenKind.Deleted:
@@ -1029,7 +1032,8 @@ begin
   end;
 
   const Bounds = TLayoutRectF.Create(Command.X, Top, ContentRight, Top + LineHeight);
-  FItems.Add(TDisplayRectangle.Create(Bounds, Command.Node, Background, 0, 0));
+  const LineBackground: IDisplayItem = TDisplayRectangle.Create(Bounds, Command.Node, Background, 0, 0);
+  FItems.Add(LineBackground);
 end;
 
 procedure TLayoutWorker.EmitPlainCodeLine(const Command: TLayoutCommand; const LineText: string;
@@ -1092,7 +1096,7 @@ begin
   if (Document = nil) or (Document.ChildCount = 0) then
     Exit;
 
-  PushContainerChildren(Document, Command.X, Command.TextColor);
+  PushContainerChildren(Document, Command.X, Command.Color);
 end;
 
 procedure TLayoutWorker.EmitThematicBreak(const Command: TLayoutCommand);
@@ -1115,7 +1119,7 @@ procedure TLayoutWorker.EmitMathBlock(const Command: TLayoutCommand);
 begin
   const Math = Command.Node as IMarkdownMath;
   const Font = TMarkdownFontStyle.Create(FTheme.MathFont.FamilyName, FTheme.MathFont.Size);
-  const Options = TMathLayoutOptions.Create(Font, Command.TextColor, FTheme.MathErrorColor, True);
+  const Options = TMathLayoutOptions.Create(Font, Command.Color, FTheme.MathErrorColor, True);
   const Formula = TMathLayouter.Layout(Math.Literal, Options, FMeasurer);
 
   const Padding = FTheme.ParagraphSpacing / 2;
@@ -1129,7 +1133,7 @@ begin
   Formula.Draw(Canvas, Left, Baseline);
 
   const SourceBounds = TLayoutRectF.Create(Left, FCurrentY, Left + Formula.Width, FCurrentY + Height);
-  FItems.Add(TDisplayTextRun.Create(SourceBounds, Command.Node, MathSourceOf(Math, True), Font, Command.TextColor,
+  FItems.Add(TDisplayTextRun.Create(SourceBounds, Command.Node, MathSourceOf(Math, True), Font, Command.Color,
     Baseline - FCurrentY, 0, TDisplayTextRunRole.Source));
 
   FCurrentY := FCurrentY + Height;
@@ -1224,7 +1228,7 @@ begin
         Continue;
       end;
 
-      const Atoms = FCollector.Collect(Row.Children[ColumnIndex], RowFont, Command.TextColor);
+      const Atoms = FCollector.Collect(Row.Children[ColumnIndex], RowFont, Command.Color);
       Cells.Add(Atoms);
       Result[ColumnIndex] := Max(Result[ColumnIndex], NaturalWidthOf(Atoms));
     end;

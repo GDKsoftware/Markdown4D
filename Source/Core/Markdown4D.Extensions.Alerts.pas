@@ -31,6 +31,7 @@ type
   public
     const
       ExtensionDataKey = 'markdown4d.alert';
+      UnsupportedKindMessage = 'Unsupported alert kind: %d';
     class function TryGetKind(const Node: IMarkdownNode; out Kind: TMarkdownAlertKind): Boolean; static;
   end;
 
@@ -68,8 +69,8 @@ type
     class function TryReadMarker(const Paragraph: IMarkdownNode; out Kind: TMarkdownAlertKind;
       out MarkerNodeCount: Integer): Boolean; static;
     class function TryParseMarker(const Text: string; out Kind: TMarkdownAlertKind): Boolean; static;
-    class function IsLineBreak(const Node: IMarkdownNode): Boolean; static;
     class procedure RemoveMarker(const BlockQuote, Paragraph: IMarkdownNode; const MarkerNodeCount: Integer); static;
+    class function IsLineBreak(const Node: IMarkdownNode): Boolean; static;
 
   public
     procedure Process(const Document: IMarkdownDocument);
@@ -84,7 +85,7 @@ begin
     TMarkdownAlertKind.Warning   : Result := 'WARNING';
     TMarkdownAlertKind.Caution   : Result := 'CAUTION';
   else
-    raise ENotSupportedException.CreateFmt('Unsupported alert kind: %d', [Ord(Self)]);
+    raise ENotSupportedException.CreateFmt(TMarkdownAlerts.UnsupportedKindMessage, [Ord(Self)]);
   end;
 end;
 
@@ -97,13 +98,14 @@ begin
     TMarkdownAlertKind.Warning   : Result := 'Warning';
     TMarkdownAlertKind.Caution   : Result := 'Caution';
   else
-    raise ENotSupportedException.CreateFmt('Unsupported alert kind: %d', [Ord(Self)]);
+    raise ENotSupportedException.CreateFmt(TMarkdownAlerts.UnsupportedKindMessage, [Ord(Self)]);
   end;
 end;
 
 function TMarkdownAlertKindHelper.CssName: string;
 begin
-  Result := MarkerName.ToLower;
+  const Marker = MarkerName;
+  Result := Marker.ToLower;
 end;
 
 class function TMarkdownAlerts.TryGetKind(const Node: IMarkdownNode; out Kind: TMarkdownAlertKind): Boolean;
@@ -111,15 +113,20 @@ begin
   Kind := TMarkdownAlertKind.Note;
 
   var Data: IInterface;
+  Result := Node.TryGetExtensionData(ExtensionDataKey, Data);
+  if not Result then
+    Exit;
+
   var Alert: IMarkdownAlert;
-  Result := (Node.TryGetExtensionData(ExtensionDataKey, Data) and Supports(Data, IMarkdownAlert, Alert));
+  Result := Supports(Data, IMarkdownAlert, Alert);
   if Result then
     Kind := Alert.Kind;
 end;
 
 procedure TAlertExtension.Setup(const Pipeline: IMarkdownPipelineBuilder);
 begin
-  Pipeline.RegisterDocumentProcessor(TAlertDocumentProcessor.Create, TMarkdownPriorities.ExtensionProcessor);
+  const Processor: IMarkdownDocumentProcessor = TAlertDocumentProcessor.Create;
+  Pipeline.RegisterDocumentProcessor(Processor, TMarkdownPriorities.ExtensionProcessor);
 end;
 
 constructor TMarkdownAlert.Create(const Kind: TMarkdownAlertKind);
@@ -134,26 +141,15 @@ begin
   Result := FKind;
 end;
 
-// Only quotes at the top level become alerts, as on GitHub: a quote inside a
-// list or another quote keeps its marker as text.
-procedure TAlertDocumentProcessor.Process(const Document: IMarkdownDocument);
-begin
-  for var Index := 0 to Document.ChildCount - 1 do
-  begin
-    const Child = Document.Children[Index];
-    const IsBlockQuote = (Child.Kind = TMarkdownNodeKind.BlockQuote);
-    if IsBlockQuote then
-      TagIfAlert(Child);
-  end;
-end;
-
 class procedure TAlertDocumentProcessor.TagIfAlert(const BlockQuote: IMarkdownNode);
 begin
-  if BlockQuote.ChildCount = 0 then
+  const HasChildren = (BlockQuote.ChildCount > 0);
+  if not HasChildren then
     Exit;
 
   const Paragraph = BlockQuote.Children[0];
-  if Paragraph.Kind <> TMarkdownNodeKind.Paragraph then
+  const StartsWithParagraph = (Paragraph.Kind = TMarkdownNodeKind.Paragraph);
+  if not StartsWithParagraph then
     Exit;
 
   const CanRemoveMarker = ((BlockQuote is TMarkdownAstNode) and (Paragraph is TMarkdownAstNode));
@@ -166,7 +162,9 @@ begin
     Exit;
 
   RemoveMarker(BlockQuote, Paragraph, MarkerNodeCount);
-  BlockQuote.SetExtensionData(TMarkdownAlerts.ExtensionDataKey, TMarkdownAlert.Create(Kind));
+
+  const Alert: IMarkdownAlert = TMarkdownAlert.Create(Kind);
+  BlockQuote.SetExtensionData(TMarkdownAlerts.ExtensionDataKey, Alert);
 end;
 
 // The marker is the whole first line of the paragraph. The inline parser may
@@ -178,6 +176,7 @@ class function TAlertDocumentProcessor.TryReadMarker(const Paragraph: IMarkdownN
 begin
   Kind := TMarkdownAlertKind.Note;
   MarkerNodeCount := 0;
+  Result := False;
 
   var Line := '';
   for var Index := 0 to Paragraph.ChildCount - 1 do
@@ -187,9 +186,10 @@ begin
       Break;
 
     var Text: IMarkdownText;
-    const IsText = (Child.Kind = TMarkdownNodeKind.Text) and Supports(Child, IMarkdownText, Text);
+    const IsTextKind = (Child.Kind = TMarkdownNodeKind.Text);
+    const IsText = (IsTextKind and Supports(Child, IMarkdownText, Text));
     if not IsText then
-      Exit(False);
+      Exit;
 
     Line := Line + Text.Literal;
     Inc(MarkerNodeCount);
@@ -201,30 +201,26 @@ end;
 class function TAlertDocumentProcessor.TryParseMarker(const Text: string; out Kind: TMarkdownAlertKind): Boolean;
 begin
   Kind := TMarkdownAlertKind.Note;
+  Result := False;
 
   const Trimmed = Text.Trim;
   const HasBrackets = (Trimmed.StartsWith(MarkerOpen) and Trimmed.EndsWith(MarkerClose));
   if not HasBrackets then
-    Exit(False);
+    Exit;
 
   const NameLength = Length(Trimmed) - Length(MarkerOpen) - Length(MarkerClose);
   const Name = Trimmed.Substring(Length(MarkerOpen), NameLength);
 
   for var Candidate := Low(TMarkdownAlertKind) to High(TMarkdownAlertKind) do
   begin
-    if SameText(Candidate.MarkerName, Name) then
+    const IsMatch = SameText(Candidate.MarkerName, Name);
+    if IsMatch then
     begin
       Kind := Candidate;
-      Exit(True);
+      Result := True;
+      Exit;
     end;
   end;
-
-  Result := False;
-end;
-
-class function TAlertDocumentProcessor.IsLineBreak(const Node: IMarkdownNode): Boolean;
-begin
-  Result := (Node.Kind = TMarkdownNodeKind.SoftLineBreak) or (Node.Kind = TMarkdownNodeKind.HardLineBreak);
 end;
 
 // Drops the marker nodes and the line break after them. A paragraph left
@@ -232,12 +228,17 @@ end;
 class procedure TAlertDocumentProcessor.RemoveMarker(const BlockQuote, Paragraph: IMarkdownNode;
   const MarkerNodeCount: Integer);
 begin
+  const QuoteNode = BlockQuote as TMarkdownAstNode;
   const ParagraphNode = Paragraph as TMarkdownAstNode;
 
   var RemoveCount := MarkerNodeCount;
-  const HasLineBreak = (RemoveCount < Paragraph.ChildCount) and IsLineBreak(Paragraph.Children[RemoveCount]);
-  if HasLineBreak then
-    Inc(RemoveCount);
+  const HasNodeAfterMarker = (RemoveCount < Paragraph.ChildCount);
+  if HasNodeAfterMarker then
+  begin
+    const NodeAfterMarker = Paragraph.Children[RemoveCount];
+    if IsLineBreak(NodeAfterMarker) then
+      Inc(RemoveCount);
+  end;
 
   for var Removed := 1 to RemoveCount do
   begin
@@ -246,7 +247,26 @@ begin
 
   const IsEmpty = (Paragraph.ChildCount = 0);
   if IsEmpty then
-    (BlockQuote as TMarkdownAstNode).DeleteChild(0);
+    QuoteNode.DeleteChild(0);
+end;
+
+class function TAlertDocumentProcessor.IsLineBreak(const Node: IMarkdownNode): Boolean;
+begin
+  Result := ((Node.Kind = TMarkdownNodeKind.SoftLineBreak) or (Node.Kind = TMarkdownNodeKind.HardLineBreak));
+end;
+
+// Only quotes at the top level become alerts, as on GitHub: a quote inside a
+// list or another quote keeps its marker as text. The children are indexed
+// because a node exposes no enumerator.
+procedure TAlertDocumentProcessor.Process(const Document: IMarkdownDocument);
+begin
+  for var Index := 0 to Document.ChildCount - 1 do
+  begin
+    const Child = Document.Children[Index];
+    const IsBlockQuote = (Child.Kind = TMarkdownNodeKind.BlockQuote);
+    if IsBlockQuote then
+      TagIfAlert(Child);
+  end;
 end;
 
 end.

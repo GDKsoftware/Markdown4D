@@ -1,5 +1,7 @@
 unit Markdown4DStudioVCL.ToolButton;
 
+{$SCOPEDENUMS ON}
+
 // A flat toolbar button that paints its own hover and pressed backgrounds in
 // the theme's colours. TSpeedButton draws its pressed state with a fixed light
 // pattern built from the system colours, which stands out on a dark toolbar.
@@ -16,14 +18,15 @@ type
   private
     FHoverColor: TColor;
     FActiveColor: TColor;
+    function BackgroundColor: TColor;
     procedure SetHoverColor(const Value: TColor);
     procedure SetActiveColor(const Value: TColor);
-    function BackgroundColor: TColor;
 
   protected
     procedure Paint; override;
 
   public
+    // AOwner keeps the name TComponent gives it, so it does not hide Owner.
     constructor Create(AOwner: TComponent); override;
     property HoverColor: TColor read FHoverColor write SetHoverColor;
     property ActiveColor: TColor read FActiveColor write SetActiveColor;
@@ -44,13 +47,15 @@ begin
   FActiveColor := clNone;
 end;
 
+// DrawText rather than TCanvas.TextRect, whose TTextFormat overload does not
+// accept a property such as Caption as its var text argument.
 procedure TPadToolButton.Paint;
 begin
   const Background = BackgroundColor;
   const HasBackground = (Background <> clNone);
   if HasBackground then
   begin
-    Canvas.Brush.Style := bsSolid;
+    Canvas.Brush.Style := TBrushStyle.bsSolid;
     Canvas.Brush.Color := Background;
     Canvas.FillRect(ClientRect);
   end;
@@ -60,21 +65,22 @@ begin
     Canvas.Font.Color := clGrayText;
 
   var TextBounds := ClientRect;
-  Canvas.Brush.Style := bsClear;
-  DrawText(Canvas.Handle, PChar(Caption), -1, TextBounds, DT_CENTER or DT_VCENTER or DT_SINGLELINE);
+  const Glyph = Caption;
+  Canvas.Brush.Style := TBrushStyle.bsClear;
+  DrawText(Canvas.Handle, PChar(Glyph), -1, TextBounds, DT_CENTER or DT_VCENTER or DT_SINGLELINE);
 end;
 
 function TPadToolButton.BackgroundColor: TColor;
 begin
-  const IsPressed = (Down or (FState = bsDown));
-  if IsPressed then
-    Exit(FActiveColor);
-
+  const IsPressed = (Down or (FState = TButtonState.bsDown));
   const IsHovered = (MouseInControl and Enabled);
-  if IsHovered then
-    Exit(FHoverColor);
 
-  Result := clNone;
+  if IsPressed then
+    Result := FActiveColor
+  else if IsHovered then
+    Result := FHoverColor
+  else
+    Result := clNone;
 end;
 
 procedure TPadToolButton.SetHoverColor(const Value: TColor);

@@ -187,6 +187,9 @@ type
     procedure Layout_WrappedCodeSpan_EmitsChipPerLine;
 
     [Test]
+    procedure Layout_DiffCodeBlock_ShadesAddedAndRemovedLines;
+
+    [Test]
     procedure Layout_LargeDocument_CompletesWithinBudget;
 
     [Test]
@@ -208,6 +211,8 @@ uses
   Markdown4D,
   Markdown4D.Defines,
   Markdown4D.Ast.Interfaces,
+  Markdown4D.Highlighter.Interfaces,
+  Markdown4D.Highlighter.Diff,
   Markdown4D.Layout.Engine,
   Markdown4D.Layout.FakeMeasurer,
   Markdown4D.Tests.Arrays;
@@ -847,6 +852,27 @@ begin
   AssertSingle(BaseLineHeight, Chips[1].Bounds.Top);
   AssertSingle(Runs[1].Bounds.Left - CodeSpanChipPaddingValue, Chips[1].Bounds.Left);
   AssertSingle(Runs[1].Bounds.Right + CodeSpanChipPaddingValue, Chips[1].Bounds.Right);
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_DiffCodeBlock_ShadesAddedAndRemovedLines;
+begin
+  const Theme = CreateTestTheme;
+  try
+    THighlighterRegistry.Register(DiffLanguageName, TDiffSyntaxHighlighter.Create);
+    try
+      const DisplayList = LayoutMarkdown('```diff'#10'+ added'#10'- removed'#10'  same'#10'+ again'#10'```',
+        DefaultWidth);
+
+      const Inserted = RectanglesWithFill(DisplayList, Theme.DiffInsertedBackgroundColor);
+      const Deleted = RectanglesWithFill(DisplayList, Theme.DiffDeletedBackgroundColor);
+      Assert.AreEqual(2, Integer(Length(Inserted)));
+      Assert.AreEqual(1, Integer(Length(Deleted)));
+    finally
+      THighlighterRegistry.Clear;
+    end;
+  finally
+    Theme.Free;
+  end;
 end;
 
 procedure TMarkdownLayoutEngineTests.Layout_LargeDocument_CompletesWithinBudget;

@@ -1557,14 +1557,26 @@ begin
     Node := ParseColored(Name);
 end;
 
-// An unknown colour name shows as typed in the error colour, followed by the
-// body in the normal colour, so the author sees which name did not resolve.
+// The colour must be a braced group. Without one, such as \color red or the
+// xcolor form \color[HTML]{...}, the command itself shows in the error colour
+// and what follows is read as ordinary math. An unknown colour name shows as
+// typed, followed by the body in the normal colour, so the author sees which
+// name did not resolve.
 function TMathTreeParser.ParseColored(const CommandName: string): TMathNode;
 begin
+  const NextToken = FScanner.Peek;
+  const HasColorGroup = (NextToken.Kind = TMathTokenKind.OpenBrace);
+  if not HasColorGroup then
+  begin
+    Result := ErrorNode(CommandName);
+    Exit;
+  end;
+
   const ColorName = FScanner.ReadRawGroup;
 
   var Content: TMathNode;
-  if CommandName = TextColorCommand then
+  const IsTextColor = (CommandName = TextColorCommand);
+  if IsTextColor then
     Content := ParseArgument
   else
     Content := ParseSequence;
@@ -1573,7 +1585,7 @@ begin
   if TMarkdownColorNames.TryParse(ColorName, Color) then
   begin
     Result := TMathNode.Create(TMathNodeKind.Colored);
-    Result.AtomClass := TMathAtomClass.Ordinary;
+    Result.AtomClass := Content.AtomClass;
     Result.Color := Color;
     Result.AddChild(Content);
     Exit;

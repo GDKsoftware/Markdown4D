@@ -5,6 +5,7 @@ unit Markdown4D.Theme.Tests;
 interface
 
 uses
+  System.JSON,
   DUnitX.TestFramework,
   Markdown4D.Theme;
 
@@ -33,6 +34,10 @@ type
       KeysAddedWithDiffAndAlerts: array[0..2] of string = ('diffInsertedBackgroundColor',
         'diffDeletedBackgroundColor', 'alertColors');
     class function LegacyThemeJson(const Preset: TMarkdownThemePreset): string;
+    class function ThemeJsonWithArrayCount(const Key: string; const Count: Integer): string;
+    class procedure TrimArray(const Root: TJSONObject; const Key: string; const Count: Integer);
+    class function ParseObject(const Json: string): TJSONObject;
+    class function PresetNamed(const Name: string): TMarkdownThemePreset;
 
   public
     [Test]
@@ -63,18 +68,24 @@ type
     procedure LoadFromJson_WronglyTypedValue_RaisesMarkdownError;
 
     [Test]
-    procedure DiffAndAlertColors_SurviveJsonRoundTrip;
+    procedure SaveToJson_DiffAndAlertColors_SurviveRoundTrip;
 
     [Test]
-    [TestCase('Light', '0')]
-    [TestCase('Dark', '1')]
-    procedure LoadFromJson_ThemeSavedBeforeDiffAndAlerts_GetsDefaultsOfItsPreset(const PresetOrdinal: Integer);
+    [TestCase('Light', 'Light')]
+    [TestCase('Dark', 'Dark')]
+    procedure LoadFromJson_ThemeSavedBeforeDiffAndAlerts_GetsDefaultsOfItsPreset(const PresetName: string);
+
+    [Test]
+    [TestCase('TokenColors', 'codeTokenColors,14')]
+    [TestCase('AlertColors', 'alertColors,4')]
+    procedure LoadFromJson_ArrayWithWrongCount_RaisesMarkdownError(const Key: string; const Count: Integer);
   end;
 
 implementation
 
 uses
-  System.JSON,
+  System.SysUtils,
+  System.TypInfo,
   Markdown4D.Defines,
   Markdown4D.Extensions.Alerts,
   Markdown4D.Highlighter.Interfaces,
@@ -86,19 +97,16 @@ class function TMarkdownThemeTests.LegacyThemeJson(const Preset: TMarkdownThemeP
 begin
   const Source = TMarkdownTheme.CreatePreset(Preset);
   try
-    const Root = TJSONObject.ParseJSONValue(Source.SaveToJson) as TJSONObject;
+    const Json = Source.SaveToJson;
+    const Root = ParseObject(Json);
     try
       for var Key in KeysAddedWithDiffAndAlerts do
       begin
-        Root.RemovePair(Key).Free;
+        const Removed = Root.RemovePair(Key);
+        Removed.Free;
       end;
 
-      const TokenColors = Root.GetValue(TokenColorsKey) as TJSONArray;
-      while TokenColors.Count > LegacyTokenColorCount do
-      begin
-        TokenColors.Remove(TokenColors.Count - 1).Free;
-      end;
-
+      TrimArray(Root, TokenColorsKey, LegacyTokenColorCount);
       Result := Root.ToJSON;
     finally
       Root.Free;
@@ -106,6 +114,50 @@ begin
   finally
     Source.Free;
   end;
+end;
+
+// A light theme whose array under Key holds Count entries instead of its own.
+class function TMarkdownThemeTests.ThemeJsonWithArrayCount(const Key: string; const Count: Integer): string;
+begin
+  const Source = TMarkdownTheme.CreateLight;
+  try
+    const Json = Source.SaveToJson;
+    const Root = ParseObject(Json);
+    try
+      TrimArray(Root, Key, Count);
+      Result := Root.ToJSON;
+    finally
+      Root.Free;
+    end;
+  finally
+    Source.Free;
+  end;
+end;
+
+class procedure TMarkdownThemeTests.TrimArray(const Root: TJSONObject; const Key: string; const Count: Integer);
+begin
+  const Value = Root.GetValue(Key);
+  const Entries = Value as TJSONArray;
+
+  for var Index := Entries.Count - 1 downto Count do
+  begin
+    const Removed = Entries.Remove(Index);
+    Removed.Free;
+  end;
+end;
+
+class function TMarkdownThemeTests.ParseObject(const Json: string): TJSONObject;
+begin
+  const Parsed = TJSONObject.ParseJSONValue(Json);
+  Result := Parsed as TJSONObject;
+end;
+
+class function TMarkdownThemeTests.PresetNamed(const Name: string): TMarkdownThemePreset;
+begin
+  const Ordinal = GetEnumValue(TypeInfo(TMarkdownThemePreset), Name);
+  const IsKnownName = (Ordinal >= 0);
+  Assert.IsTrue(IsKnownName, Format('Unknown theme preset in test case: %s', [Name]));
+  Result := TMarkdownThemePreset(Ordinal);
 end;
 
 procedure TMarkdownThemeTests.CreateLightAndCreateDark_CoreColorsDiffer;
@@ -297,7 +349,7 @@ begin
   end;
 end;
 
-procedure TMarkdownThemeTests.DiffAndAlertColors_SurviveJsonRoundTrip;
+procedure TMarkdownThemeTests.SaveToJson_DiffAndAlertColors_SurviveRoundTrip;
 begin
   const Source = TMarkdownTheme.CreateLight;
   try
@@ -322,13 +374,14 @@ begin
 end;
 
 procedure TMarkdownThemeTests.LoadFromJson_ThemeSavedBeforeDiffAndAlerts_GetsDefaultsOfItsPreset(
-  const PresetOrdinal: Integer);
+  const PresetName: string);
 begin
-  const Preset = TMarkdownThemePreset(PresetOrdinal);
+  const Preset = PresetNamed(PresetName);
   const Json = LegacyThemeJson(Preset);
 
   var OtherPreset := TMarkdownThemePreset.Light;
-  if Preset = TMarkdownThemePreset.Light then
+  const IsLight = (Preset = TMarkdownThemePreset.Light);
+  if IsLight then
     OtherPreset := TMarkdownThemePreset.Dark;
 
   const Expected = TMarkdownTheme.CreatePreset(Preset);
@@ -349,6 +402,23 @@ begin
     end;
   finally
     Expected.Free;
+  end;
+end;
+
+procedure TMarkdownThemeTests.LoadFromJson_ArrayWithWrongCount_RaisesMarkdownError(const Key: string;
+  const Count: Integer);
+begin
+  const Json = ThemeJsonWithArrayCount(Key, Count);
+
+  const Target = TMarkdownTheme.CreateLight;
+  try
+    Assert.WillRaise(
+      procedure
+      begin
+        Target.LoadFromJson(Json);
+      end, EMarkdownError);
+  finally
+    Target.Free;
   end;
 end;
 

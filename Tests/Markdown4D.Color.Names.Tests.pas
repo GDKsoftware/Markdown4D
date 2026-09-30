@@ -24,6 +24,7 @@ type
     [Test]
     [TestCase('UnknownName', 'nosuchcolor')]
     [TestCase('TransparentRtlEntry', 'null')]
+    [TestCase('NameMissingFirstLetter', 'qua')]
     [TestCase('Empty', '')]
     [TestCase('FourDigits', '#abcd')]
     [TestCase('NonHexDigits', '#12345g')]

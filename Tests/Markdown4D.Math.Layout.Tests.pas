@@ -99,6 +99,9 @@ type
     procedure Layout_ColorSwitch_EndsWithItsGroup;
 
     [Test]
+    procedure Layout_NestedColor_RestoresOuterColor;
+
+    [Test]
     procedure Layout_Extent_CoversEveryPart;
 
     [Test]
@@ -398,6 +401,20 @@ begin
   Assert.AreEqual<TLayoutColor>(TextColor, Before.Color);
   Assert.AreEqual<TLayoutColor>($FF0000FF, Switched.Color);
   Assert.AreEqual<TLayoutColor>(TextColor, After.Color);
+end;
+
+procedure TMathLayoutTests.Layout_NestedColor_RestoresOuterColor;
+begin
+  const Drawn = Items('{\color{red}1{\color{blue}2}3}4', False);
+
+  const Outer = RunWithText(Drawn, '1');
+  const Inner = RunWithText(Drawn, '2');
+  const OuterAgain = RunWithText(Drawn, '3');
+  const Outside = RunWithText(Drawn, '4');
+  Assert.AreEqual<TLayoutColor>($FFFF0000, Outer.Color);
+  Assert.AreEqual<TLayoutColor>($FF0000FF, Inner.Color);
+  Assert.AreEqual<TLayoutColor>($FFFF0000, OuterAgain.Color);
+  Assert.AreEqual<TLayoutColor>(TextColor, Outside.Color);
 end;
 
 procedure TMathLayoutTests.Layout_Extent_CoversEveryPart;

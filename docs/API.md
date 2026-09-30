@@ -291,7 +291,8 @@ theme; see [Chart layout options](EXTENSIONS.md#chart-layout-options).
 
 `SaveToJson` / `LoadFromJson` serialise a complete theme so you can ship it as a
 resource or let users edit it. A theme saved by an earlier version still loads;
-the colours it does not contain keep the light defaults.
+the colours it does not contain come from the preset, light or dark, that its
+background matches.
 
 ```pascal
 uses
