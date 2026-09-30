@@ -15,6 +15,7 @@ type
     [TestCase('Name', 'red,$FFFF0000')]
     [TestCase('NameIgnoresCase', 'LightBlue,$FFADD8E6')]
     [TestCase('NameIgnoresSpaces', ' orange ,$FFFFA500')]
+    [TestCase('CssColor4Name', 'rebeccapurple,$FF663399')]
     [TestCase('LongHex', '#1f883d,$FF1F883D')]
     [TestCase('LongHexWithoutHash', '1F883D,$FF1F883D')]
     [TestCase('ShortHex', '#0af,$FF00AAFF')]
@@ -22,6 +23,7 @@ type
 
     [Test]
     [TestCase('UnknownName', 'nosuchcolor')]
+    [TestCase('TransparentRtlEntry', 'null')]
     [TestCase('Empty', '')]
     [TestCase('FourDigits', '#abcd')]
     [TestCase('NonHexDigits', '#12345g')]
