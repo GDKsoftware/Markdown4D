@@ -47,7 +47,7 @@ type
         DiffInsertedBackgroundColor: TLayoutColor;
         DiffDeletedBackgroundColor: TLayoutColor;
         AlertColors: TAlertColorArray;
-        ParagraphSpacing: Single;
+        BlockSpacing: Single;
         ListIndent: Single;
         ListMarkerWidth: Single;
         BlockQuoteBarWidth: Single;
@@ -76,11 +76,11 @@ type
       DefaultMathFamilyName = MathFamilyName;
       DefaultBaseFontSize = 16.0;
       DefaultHeadingSizes: THeadingSpacingArray = (32, 28, 24, 20, 18, 16);
-      // GitHub's spacings: a block is 16 apart from the next, a heading 24 from
-      // the block above it. They collapse, so these are not added together.
+      // Taken from GitHub's stylesheet. The engine collapses adjacent spacings
+      // to the larger one, as a browser does, so they are not added together.
       DefaultHeadingSpacingsAbove: THeadingSpacingArray = (24, 24, 24, 24, 24, 24);
       DefaultHeadingSpacingsBelow: THeadingSpacingArray = (16, 16, 16, 16, 16, 16);
-      DefaultParagraphSpacing = 16.0;
+      DefaultBlockSpacing = 16.0;
       DefaultListIndent = 24.0;
       DefaultListMarkerWidth = 24.0;
       DefaultBlockQuoteBarWidth = 4.0;
@@ -152,7 +152,7 @@ type
       TableHeaderBackgroundColorKey = 'tableHeaderBackgroundColor';
       TableBorderColorKey = 'tableBorderColor';
       ThematicBreakColorKey = 'thematicBreakColor';
-      ParagraphSpacingKey = 'paragraphSpacing';
+      BlockSpacingKey = 'blockSpacing';
       ListIndentKey = 'listIndent';
       ListMarkerWidthKey = 'listMarkerWidth';
       BlockQuoteBarWidthKey = 'blockQuoteBarWidth';
@@ -200,7 +200,7 @@ type
       FDiffInsertedBackgroundColor: TLayoutColor;
       FDiffDeletedBackgroundColor: TLayoutColor;
       FAlertColors: TAlertColorArray;
-      FParagraphSpacing: Single;
+      FBlockSpacing: Single;
       FListIndent: Single;
       FListMarkerWidth: Single;
       FBlockQuoteBarWidth: Single;
@@ -244,7 +244,6 @@ type
     class function ReadColorOrDefault(const Root: TJSONObject; const Name: string;
       const Default: TLayoutColor): TLayoutColor;
     class function ReadSingle(const Root: TJSONObject; const Name: string): Single;
-    class function ReadSingleOrDefault(const Root: TJSONObject; const Name: string; const Default: Single): Single;
     class function RequireArray(const Root: TJSONObject; const Name: string; const ExpectedCount: Integer): TJSONArray;
     class function RequireValue(const Root: TJSONObject; const Name: string): TJSONValue;
     class function RequireNumber(const Value: TJSONValue; const Name: string): TJSONNumber;
@@ -299,7 +298,7 @@ type
       write FDiffDeletedBackgroundColor;
     // The bar, icon and title colour of each kind of alert.
     property AlertColors[const Kind: TMarkdownAlertKind]: TLayoutColor read GetAlertColor write SetAlertColor;
-    property ParagraphSpacing: Single read FParagraphSpacing write FParagraphSpacing;
+    property BlockSpacing: Single read FBlockSpacing write FBlockSpacing;
     property ListIndent: Single read FListIndent write FListIndent;
     property ListMarkerWidth: Single read FListMarkerWidth write FListMarkerWidth;
     property BlockQuoteBarWidth: Single read FBlockQuoteBarWidth write FBlockQuoteBarWidth;
@@ -382,7 +381,7 @@ begin
     FHeadingSpacingsBelow[Level] := DefaultHeadingSpacingsBelow[Level];
   end;
 
-  FParagraphSpacing := DefaultParagraphSpacing;
+  FBlockSpacing := DefaultBlockSpacing;
   FListIndent := DefaultListIndent;
   FListMarkerWidth := DefaultListMarkerWidth;
   FBlockQuoteBarWidth := DefaultBlockQuoteBarWidth;
@@ -457,7 +456,7 @@ begin
     AddColorPair(Root, DiffDeletedBackgroundColorKey, FDiffDeletedBackgroundColor);
     Root.AddPair(AlertColorsKey, AlertColorsToJson);
 
-    AddSinglePair(Root, ParagraphSpacingKey, FParagraphSpacing);
+    AddSinglePair(Root, BlockSpacingKey, FBlockSpacing);
     AddSinglePair(Root, ListIndentKey, FListIndent);
     AddSinglePair(Root, ListMarkerWidthKey, FListMarkerWidth);
     AddSinglePair(Root, BlockQuoteBarWidthKey, FBlockQuoteBarWidth);
@@ -601,7 +600,7 @@ begin
   Result.TableBorderColor := ReadColor(Root, TableBorderColorKey);
   Result.ThematicBreakColor := ReadColor(Root, ThematicBreakColorKey);
 
-  Result.ParagraphSpacing := ReadSingle(Root, ParagraphSpacingKey);
+  Result.BlockSpacing := ReadSingle(Root, BlockSpacingKey);
   Result.ListIndent := ReadSingle(Root, ListIndentKey);
   Result.ListMarkerWidth := ReadSingle(Root, ListMarkerWidthKey);
   Result.BlockQuoteBarWidth := ReadSingle(Root, BlockQuoteBarWidthKey);
@@ -614,8 +613,7 @@ begin
   Result.ImagePlaceholderHeight := ReadSingle(Root, ImagePlaceholderHeightKey);
   Result.CheckboxSize := ReadSingle(Root, CheckboxSizeKey);
   Result.ThematicBreakThickness := ReadSingle(Root, ThematicBreakThicknessKey);
-  // A theme saved before this key existed spaced a thematic break like a paragraph.
-  Result.ThematicBreakSpacing := ReadSingleOrDefault(Root, ThematicBreakSpacingKey, Result.ParagraphSpacing);
+  Result.ThematicBreakSpacing := ReadSingle(Root, ThematicBreakSpacingKey);
   Result.ContentPadding := ReadSingle(Root, ContentPaddingKey);
 
   Result.ChartBackgroundColor := ReadColor(Root, ChartBackgroundColorKey);
@@ -680,7 +678,7 @@ begin
   FDiffDeletedBackgroundColor := Data.DiffDeletedBackgroundColor;
   FAlertColors := Data.AlertColors;
 
-  FParagraphSpacing := Data.ParagraphSpacing;
+  FBlockSpacing := Data.BlockSpacing;
   FListIndent := Data.ListIndent;
   FListMarkerWidth := Data.ListMarkerWidth;
   FBlockQuoteBarWidth := Data.BlockQuoteBarWidth;
@@ -819,19 +817,6 @@ end;
 class function TMarkdownTheme.ReadSingle(const Root: TJSONObject; const Name: string): Single;
 begin
   Result := Single(RequireNumber(RequireValue(Root, Name), Name).AsDouble);
-end;
-
-class function TMarkdownTheme.ReadSingleOrDefault(const Root: TJSONObject; const Name: string;
-  const Default: Single): Single;
-begin
-  const Value = Root.GetValue(Name);
-  if Value = nil then
-  begin
-    Result := Default;
-    Exit;
-  end;
-
-  Result := Single(RequireNumber(Value, Name).AsDouble);
 end;
 
 class function TMarkdownTheme.RequireArray(const Root: TJSONObject; const Name: string;

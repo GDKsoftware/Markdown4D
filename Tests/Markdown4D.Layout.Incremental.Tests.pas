@@ -18,7 +18,7 @@ type
     const
       BaseFamilyName = 'Test Sans';
       BaseFontSize = 16.0;
-      ParagraphSpacingValue = 8.0;
+      BlockSpacingValue = 8.0;
       FirstParagraph = 'first paragraph words';
       SecondParagraph = 'second paragraph words';
       ThirdParagraph = 'third paragraph words';
@@ -160,7 +160,7 @@ begin
   Result := TMarkdownTheme.CreateLight;
 
   Result.BaseFont := TMarkdownFontStyle.Create(BaseFamilyName, BaseFontSize);
-  Result.ParagraphSpacing := ParagraphSpacingValue;
+  Result.BlockSpacing := BlockSpacingValue;
   Result.HeadingSpacingAbove[1] := HeadingSpacingAboveValue;
 end;
 

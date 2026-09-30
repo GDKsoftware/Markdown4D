@@ -272,6 +272,10 @@ type
       FCommands: TList<TLayoutCommand>;
       FCollector: TInlineAtomCollector;
       FCurrentY: Single;
+    function LayoutBlock(const Node: IMarkdownNode; const Top: Single): Single;
+    function SpacingAboveOf(const Node: IMarkdownNode): Single;
+    function SpacingBelowOf(const Node: IMarkdownNode): Single;
+    function GapBetween(const PreviousBelow, NextAbove: Single): Single;
     procedure ProcessCommand(const Command: TLayoutCommand);
     procedure ProcessBlock(const Command: TLayoutCommand);
     procedure ApplyBlockOverride(const Command: TLayoutCommand; const Handler: ILayoutBlockOverride);
@@ -317,14 +321,10 @@ type
     constructor Create(const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Width: Single;
       const Items: TList<IDisplayItem>; const ImageSizes: IMarkdownImageSizeProvider);
     destructor Destroy; override;
-    function LayoutBlock(const Node: IMarkdownNode; const Top: Single): Single;
     function RecomputeBlock(const Node: IMarkdownNode; const Index: Integer; var Y: Single;
       const PreviousBelow: Single): TLayoutBlockInfo;
     function ReusePreviousBlock(const Previous: IMarkdownDisplayList; const ChangedRange: TLayoutBlockRange;
       const Index: Integer; var Y: Single; const PreviousBelow: Single): TLayoutBlockInfo;
-    function SpacingAboveOf(const Node: IMarkdownNode): Single;
-    function SpacingBelowOf(const Node: IMarkdownNode): Single;
-    class function GapBetween(const PreviousBelow, NextAbove: Single): Single;
     procedure AppendPreviousBlock(const Previous: IMarkdownDisplayList; const Info: TLayoutBlockInfo;
       const DeltaY: Single);
     function ContentWidth: Single;
@@ -354,25 +354,17 @@ begin
       var Recomputed: TArray<Integer>;
       SetLength(Recomputed, BlockCount);
 
-      var Y := Theme.ContentPadding;
-      var PreviousBelow := 0.0;
+      var Y: Single := Theme.ContentPadding;
+      var PreviousBelow: Single := 0.0;
 
       for var Index := 0 to BlockCount - 1 do
       begin
-        const Node = Document.Children[Index];
-        const Above = Worker.SpacingAboveOf(Node);
-        const Below = Worker.SpacingBelowOf(Node);
+        const Info = Worker.RecomputeBlock(Document.Children[Index], Index, Y, PreviousBelow);
 
-        if Index > 0 then
-          Y := Y + TLayoutWorker.GapBetween(PreviousBelow, Above);
-
-        const FirstItemIndex = Items.Count;
-        const Height = Worker.LayoutBlock(Node, Y);
-
-        Blocks[Index] := TLayoutBlockInfo.Create(FirstItemIndex, Items.Count - FirstItemIndex, Y, Height, Above, Below);
+        Blocks[Index] := Info;
         Recomputed[Index] := Index;
-        Y := Y + Height;
-        PreviousBelow := Below;
+        Y := Y + Info.Height;
+        PreviousBelow := Info.SpacingBelow;
       end;
 
       Y := Y + Theme.ContentPadding;
@@ -576,13 +568,13 @@ begin
     TMarkdownNodeKind.Heading       : Result := FTheme.HeadingSpacingBelow[(Node as IMarkdownHeading).Level];
     TMarkdownNodeKind.ThematicBreak : Result := FTheme.ThematicBreakSpacing;
   else
-    Result := FTheme.ParagraphSpacing;
+    Result := FTheme.BlockSpacing;
   end;
 end;
 
 // Adjacent spacings collapse to the larger of the two, as CSS margins do, so a
 // document keeps the vertical rhythm a browser gives the same markdown.
-class function TLayoutWorker.GapBetween(const PreviousBelow, NextAbove: Single): Single;
+function TLayoutWorker.GapBetween(const PreviousBelow, NextAbove: Single): Single;
 begin
   Result := Max(PreviousBelow, NextAbove);
 end;
@@ -768,7 +760,7 @@ begin
 
   const HasContent = (Command.Node.ChildCount > 0);
   if HasContent then
-    PushGap(FTheme.ParagraphSpacing);
+    PushGap(FTheme.BlockSpacing);
 
   var TitleCommand := Default(TLayoutCommand);
   TitleCommand.Kind := TLayoutCommandKind.AlertTitle;
@@ -837,7 +829,7 @@ procedure TLayoutWorker.PushList(const Command: TLayoutCommand);
 begin
   const List = Command.Node as IMarkdownList;
 
-  var ItemGap := FTheme.ParagraphSpacing;
+  var ItemGap := FTheme.BlockSpacing;
   if List.IsTight then
     ItemGap := 0;
 
@@ -1147,7 +1139,7 @@ begin
   const Options = TMathLayoutOptions.Create(Font, Command.Color, FTheme.MathErrorColor, True);
   const Formula = TMathLayouter.Layout(Math.Literal, Options, FMeasurer);
 
-  const Padding = FTheme.ParagraphSpacing / 2;
+  const Padding = FTheme.BlockSpacing / 2;
   const AvailableWidth = ContentRight - Command.X;
   const Left = Command.X + Max(0, (AvailableWidth - Formula.Width) / 2);
   const Height = Max(Formula.Ascent + Formula.Descent, FMeasurer.LineHeight(Font)) + 2 * Padding;

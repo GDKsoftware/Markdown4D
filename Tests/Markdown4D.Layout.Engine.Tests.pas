@@ -28,7 +28,7 @@ type
       HeadingOneFontSize = 32.0;
       HeadingOneCharWidth = 24.0;
       HeadingOneLineHeight = 44.8;
-      ParagraphSpacingValue = 8.0;
+      BlockSpacingValue = 8.0;
       HeadingOneSpacingAbove = 20.0;
       HeadingOneSpacingBelow = 12.0;
       ListIndentValue = 30.0;
@@ -328,8 +328,8 @@ begin
   Assert.AreEqual(2, Integer(Length(Runs)));
 
   AssertSingle(0, Runs[0].Bounds.Top);
-  AssertSingle(BaseLineHeight + ParagraphSpacingValue, Runs[1].Bounds.Top);
-  AssertSingle(2 * BaseLineHeight + ParagraphSpacingValue, DisplayList.Height);
+  AssertSingle(BaseLineHeight + BlockSpacingValue, Runs[1].Bounds.Top);
+  AssertSingle(2 * BaseLineHeight + BlockSpacingValue, DisplayList.Height);
 end;
 
 procedure TMarkdownLayoutEngineTests.Layout_HeadingAfterParagraph_CollapsesToLargerSpacing;
@@ -1023,7 +1023,7 @@ begin
   Result.HeadingFonts[1] := TMarkdownFontStyle.Create(BaseFamilyName, HeadingOneFontSize, True);
   Result.HeadingSpacingAbove[1] := HeadingOneSpacingAbove;
   Result.HeadingSpacingBelow[1] := HeadingOneSpacingBelow;
-  Result.ParagraphSpacing := ParagraphSpacingValue;
+  Result.BlockSpacing := BlockSpacingValue;
   Result.ListIndent := ListIndentValue;
   Result.ListMarkerWidth := ListMarkerWidthValue;
   Result.BlockQuoteBarWidth := BlockQuoteBarWidthValue;
