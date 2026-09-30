@@ -21,7 +21,7 @@ type
       WrapWidthCharacters = 12;
       BaseCharWidth = 10.0;
       BaseLineHeight = 22.4;
-      ParagraphSpacingValue = 8.0;
+      ParagraphSpacingValue = 16.0;
       FlushIntervalValue = 100;
       StartTime = 1000;
       SingleTolerance = 0.05;

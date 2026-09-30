@@ -288,6 +288,7 @@ type
     procedure PushContainerChildren(const Container: IMarkdownNode; const X: Single; const TextColor: TLayoutColor);
     procedure PushBlock(const Node: IMarkdownNode; const X: Single; const TextColor: TLayoutColor);
     procedure PushGap(const Amount: Single);
+    function GapBetweenNodes(const Previous, Next: IMarkdownNode): Single;
     procedure LayoutInlineBlock(const Container: IMarkdownNode; const X: Single; const BaseFont: TMarkdownFontStyle;
       const TextColor: TLayoutColor);
     procedure EmitCodeBlock(const Command: TLayoutCommand);
@@ -323,6 +324,7 @@ type
       const Index: Integer; var Y: Single; const PreviousBelow: Single): TLayoutBlockInfo;
     function SpacingAboveOf(const Node: IMarkdownNode): Single;
     function SpacingBelowOf(const Node: IMarkdownNode): Single;
+    class function GapBetween(const PreviousBelow, NextAbove: Single): Single;
     procedure AppendPreviousBlock(const Previous: IMarkdownDisplayList; const Info: TLayoutBlockInfo;
       const DeltaY: Single);
     function ContentWidth: Single;
@@ -362,7 +364,7 @@ begin
         const Below = Worker.SpacingBelowOf(Node);
 
         if Index > 0 then
-          Y := Y + PreviousBelow + Above;
+          Y := Y + TLayoutWorker.GapBetween(PreviousBelow, Above);
 
         const FirstItemIndex = Items.Count;
         const Height = Worker.LayoutBlock(Node, Y);
@@ -530,7 +532,7 @@ begin
   const Above = SpacingAboveOf(Node);
 
   if Index > 0 then
-    Y := Y + PreviousBelow + Above;
+    Y := Y + GapBetween(PreviousBelow, Above);
 
   const FirstItemIndex = FItems.Count;
   const Height = LayoutBlock(Node, Y);
@@ -550,7 +552,7 @@ begin
   Result := Previous.BlockInfos[OldIndex];
 
   if Index > 0 then
-    Y := Y + PreviousBelow + Result.SpacingAbove;
+    Y := Y + GapBetween(PreviousBelow, Result.SpacingAbove);
 
   const FirstItemIndex = FItems.Count;
   AppendPreviousBlock(Previous, Result, Y - Result.Top);
@@ -560,20 +562,29 @@ end;
 
 function TLayoutWorker.SpacingAboveOf(const Node: IMarkdownNode): Single;
 begin
-  const IsHeading = (Node.Kind = TMarkdownNodeKind.Heading);
-  if IsHeading then
-    Result := FTheme.HeadingSpacingAbove[(Node as IMarkdownHeading).Level]
+  case Node.Kind of
+    TMarkdownNodeKind.Heading       : Result := FTheme.HeadingSpacingAbove[(Node as IMarkdownHeading).Level];
+    TMarkdownNodeKind.ThematicBreak : Result := FTheme.ThematicBreakSpacing;
   else
     Result := 0;
+  end;
 end;
 
 function TLayoutWorker.SpacingBelowOf(const Node: IMarkdownNode): Single;
 begin
-  const IsHeading = (Node.Kind = TMarkdownNodeKind.Heading);
-  if IsHeading then
-    Result := FTheme.HeadingSpacingBelow[(Node as IMarkdownHeading).Level]
+  case Node.Kind of
+    TMarkdownNodeKind.Heading       : Result := FTheme.HeadingSpacingBelow[(Node as IMarkdownHeading).Level];
+    TMarkdownNodeKind.ThematicBreak : Result := FTheme.ThematicBreakSpacing;
   else
     Result := FTheme.ParagraphSpacing;
+  end;
+end;
+
+// Adjacent spacings collapse to the larger of the two, as CSS margins do, so a
+// document keeps the vertical rhythm a browser gives the same markdown.
+class function TLayoutWorker.GapBetween(const PreviousBelow, NextAbove: Single): Single;
+begin
+  Result := Max(PreviousBelow, NextAbove);
 end;
 
 procedure TLayoutWorker.AppendPreviousBlock(const Previous: IMarkdownDisplayList; const Info: TLayoutBlockInfo;
@@ -702,7 +713,10 @@ begin
 
     const NeedsGap = (Index > 0) and not Command.Tight;
     if NeedsGap then
-      PushGap(SpacingBelowOf(Command.Node.Children[Index - 1]) + SpacingAboveOf(Child));
+    begin
+      const Gap = GapBetweenNodes(Command.Node.Children[Index - 1], Child);
+      PushGap(Gap);
+    end;
   end;
 end;
 
@@ -900,7 +914,10 @@ begin
     PushBlock(Child, X, TextColor);
 
     if Index > 0 then
-      PushGap(SpacingBelowOf(Container.Children[Index - 1]) + SpacingAboveOf(Child));
+    begin
+      const Gap = GapBetweenNodes(Container.Children[Index - 1], Child);
+      PushGap(Gap);
+    end;
   end;
 end;
 
@@ -922,6 +939,14 @@ begin
   Command.GapAmount := Amount;
 
   FCommands.Add(Command);
+end;
+
+function TLayoutWorker.GapBetweenNodes(const Previous, Next: IMarkdownNode): Single;
+begin
+  const PreviousBelow = SpacingBelowOf(Previous);
+  const NextAbove = SpacingAboveOf(Next);
+
+  Result := GapBetween(PreviousBelow, NextAbove);
 end;
 
 procedure TLayoutWorker.LayoutInlineBlock(const Container: IMarkdownNode; const X: Single;

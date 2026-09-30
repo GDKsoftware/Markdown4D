@@ -309,6 +309,13 @@ Selected properties: `BaseFont`, `CodeFont`, `MathFont`, `HeadingFonts[Level]`,
 (`$AARRGGBB`). Chart sizing and axis-label formatting are not part of the
 theme; see [Chart layout options](EXTENSIONS.md#chart-layout-options).
 
+Vertical spacing works like CSS margins. Each block has a spacing above and
+below it: `HeadingSpacingAbove[Level]` and `HeadingSpacingBelow[Level]` for
+headings, `ThematicBreakSpacing` on both sides of a thematic break, and
+`ParagraphSpacing` below every other block. Two adjacent spacings collapse to
+the larger of the two instead of adding up. The defaults are GitHub's: 16
+between blocks, 24 above a heading and 24 around a thematic break.
+
 `SaveToJson` / `LoadFromJson` serialise a complete theme so you can ship it as a
 resource or let users edit it. A theme saved by an earlier version still loads;
 the colours it does not contain come from the preset, light or dark, that its
