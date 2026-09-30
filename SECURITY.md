@@ -33,6 +33,10 @@ The library makes two promises, and a way around either one is a vulnerability:
    `OnRemoteImageRequest` event should have refused, or that makes it read a
    file outside the folder the host restricted it to, is in scope.
 
+The same holds for the stricter pipeline options: input that gets markup past
+`EscapeRawHtml`, or a destination with an unlisted scheme past
+`AllowUrlSchemes`, is in scope.
+
 Also in scope: memory-safety problems, and input that makes the parser consume
 disproportionate time or memory relative to its size.
 

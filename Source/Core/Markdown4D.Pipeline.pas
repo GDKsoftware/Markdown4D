@@ -22,6 +22,7 @@ uses
   Markdown4D.Parser.Blocks,
   Markdown4D.Parser.Inlines,
   Markdown4D.Renderer.Html,
+  Markdown4D.Text.UrlSafety,
   Markdown4D.Extensions.Gfm,
   Markdown4D.Extensions.Math,
   Markdown4D.Extensions.Alerts;
@@ -102,6 +103,9 @@ type
     function UnsafeHtml: IMarkdownPipelineBuilder;
     function UnsafeLinks: IMarkdownPipelineBuilder;
     function TagFilter: IMarkdownPipelineBuilder;
+    function EscapeRawHtml: IMarkdownPipelineBuilder;
+    function AllowUrlSchemes(const Schemes: array of string): IMarkdownPipelineBuilder;
+    function NoOpenerLinks: IMarkdownPipelineBuilder;
     function RegisterBlockParser(const Parser: IMarkdownBlockParser; const TriggerCharacters: string;
                                  const Priority: Integer): IMarkdownPipelineBuilder;
     function RegisterInlineParser(const Parser: IMarkdownInlineParser; const TriggerCharacters: string;
@@ -286,6 +290,39 @@ end;
 function TMarkdownPipelineBuilder.TagFilter: IMarkdownPipelineBuilder;
 begin
   FOptions.ApplyTagFilter := True;
+
+  Result := Self;
+end;
+
+function TMarkdownPipelineBuilder.EscapeRawHtml: IMarkdownPipelineBuilder;
+begin
+  FOptions.EscapeRawHtml := True;
+
+  Result := Self;
+end;
+
+// A second call replaces the list rather than adding to it, so the pipeline
+// allows exactly what the last call names. The list is built aside first: a
+// name that raises leaves the builder as it was, not with half a list.
+function TMarkdownPipelineBuilder.AllowUrlSchemes(const Schemes: array of string): IMarkdownPipelineBuilder;
+begin
+  var Normalized: TArray<string> := nil;
+
+  for var Scheme in Schemes do
+  begin
+    const Name = TMarkdownUrlSafety.NormalizedScheme(Scheme);
+    Normalized := Normalized + [Name];
+  end;
+
+  FOptions.AllowedUrlSchemes := Normalized;
+  FOptions.RestrictUrlSchemes := True;
+
+  Result := Self;
+end;
+
+function TMarkdownPipelineBuilder.NoOpenerLinks: IMarkdownPipelineBuilder;
+begin
+  FOptions.NoOpenerLinks := True;
 
   Result := Self;
 end;

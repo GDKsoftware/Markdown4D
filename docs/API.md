@@ -59,7 +59,21 @@ choice for trusted input, or when the result passes through an HTML sanitizer
 afterwards. The conformance suites are checked against this method.
 
 For finer control build your own pipeline; `UnsafeHtml` and `UnsafeLinks` on the
-builder correspond to the two halves of `ToUnsafeHtml`.
+builder correspond to the two halves of `ToUnsafeHtml`. For untrusted input,
+such as user text or the output of a language model, the builder can go further
+than `ToHtml`: `EscapeRawHtml` shows raw HTML as text, so `TList<T>` outside a
+code span stays readable, and `AllowUrlSchemes` keeps only the schemes you name.
+Both apply to what the renderer writes itself; a renderer hook you register
+writes its own HTML and has to check its own destinations.
+
+```pascal
+const Pipeline = TMarkdownPipeline.Create.UseGfm
+  .EscapeRawHtml
+  .AllowUrlSchemes(['http', 'https'])
+  .NoOpenerLinks
+  .Build;
+const Html = Pipeline.ToHtml(Source);
+```
 
 ```pascal
 uses
@@ -91,6 +105,9 @@ type
     function UnsafeHtml: IMarkdownPipelineBuilder;
     function UnsafeLinks: IMarkdownPipelineBuilder;
     function TagFilter: IMarkdownPipelineBuilder;
+    function EscapeRawHtml: IMarkdownPipelineBuilder;
+    function AllowUrlSchemes(const Schemes: array of string): IMarkdownPipelineBuilder;
+    function NoOpenerLinks: IMarkdownPipelineBuilder;
     function RegisterBlockParser(const Parser: IMarkdownBlockParser;
       const TriggerCharacters: string; const Priority: Integer): IMarkdownPipelineBuilder;
     function RegisterInlineParser(const Parser: IMarkdownInlineParser;
@@ -121,6 +138,9 @@ type
 | `UnsafeLinks` | Writes every link and image destination out, including `javascript:`, `vbscript:`, `file:` and non-image `data:` (spec behaviour). Without it those destinations are emptied |
 | `XhtmlOutput` | Emits self-closing XHTML tags |
 | `TagFilter` | Applies the GFM tag filter to raw HTML |
+| `EscapeRawHtml` | Writes raw HTML as escaped text instead of `<!-- raw HTML omitted -->`: inline HTML where it stands, an HTML block in a paragraph. Wins over `UnsafeHtml` |
+| `AllowUrlSchemes(['http', 'https'])` | Keeps a link or image destination only when it is relative or its scheme is on the list; otherwise a link gets `href="#"` and an image an empty `src`. `//host` counts as `https`, and a GFM e-mail autolink needs `mailto`. An empty list keeps relative destinations only; a second call replaces the list; a name that is not a scheme, such as `'https://'`, raises `EMarkdownError`. The dangerous schemes stay blocked even when listed, and the list also applies after `UnsafeLinks` |
+| `NoOpenerLinks` | Adds `rel="noopener noreferrer"` to every link |
 | `Register*` | Adds a single parser, processor or hook at a given priority |
 
 Higher priority wins; ties break by registration order. Rather than passing
