@@ -36,6 +36,10 @@ type
       AlertCloseTag = '</div>';
       TagCloseBracket = '>';
       OmittedHtmlComment = '<!-- raw HTML omitted -->';
+      EscapedHtmlBlockFormat = '<p>%s</p>';
+      NoOpenerAttribute = ' rel="noopener noreferrer"';
+      RejectedLinkDestination = '#';
+      RejectedImageSource = '';
       EscapedAmpersand = '&amp;';
       EscapedLessThan = '&lt;';
       EscapedGreaterThan = '&gt;';
@@ -84,6 +88,7 @@ type
     procedure EnterList(const Node: IMarkdownList);
     procedure EnterListItem(const Node: IMarkdownNode);
     procedure EnterHtmlBlock(const Node: IMarkdownText);
+    function HtmlBlockOutput(const Literal: string): string;
     procedure EnterTable(const Node: IMarkdownNode);
     procedure EnterTableRow(const Node: IMarkdownTableRow);
     procedure EnterTableCell(const Node: IMarkdownTableCell);
@@ -99,7 +104,7 @@ type
     procedure WriteCodeSpan(const Node: IMarkdownText);
     procedure EnterAnchor(const Node: IMarkdownLink);
     procedure WriteImage(const Node: IMarkdownLink);
-    function DestinationOutput(const Destination: string): string;
+    function DestinationOutput(const Destination, RejectedValue: string): string;
     procedure AppendAltText(const Node: IMarkdownNode);
     class procedure PushChildrenReversed(const Pending: TStack<IMarkdownNode>; const Node: IMarkdownNode);
     procedure WriteHardBreak;
@@ -391,9 +396,25 @@ end;
 
 procedure TMarkdownHtmlRenderer.EnterHtmlBlock(const Node: IMarkdownText);
 begin
+  const Output = HtmlBlockOutput(Node.Literal);
+
   AppendLineBreak;
-  FOutput.Append(RawHtmlOutput(Node.Literal));
+  FOutput.Append(Output);
   AppendLineBreak;
+end;
+
+// An escaped block reads as text, so it gets a paragraph as other text does,
+// as commonmark-java writes it; inline HTML is escaped where it stands.
+function TMarkdownHtmlRenderer.HtmlBlockOutput(const Literal: string): string;
+begin
+  if FOptions.EscapeRawHtml then
+  begin
+    const EscapedLiteral = EscapeHtml(Literal);
+    Result := Format(EscapedHtmlBlockFormat, [EscapedLiteral]);
+    Exit;
+  end;
+
+  Result := RawHtmlOutput(Literal);
 end;
 
 procedure TMarkdownHtmlRenderer.EnterTable(const Node: IMarkdownNode);
@@ -498,8 +519,16 @@ begin
   Result := TableDataCellTag;
 end;
 
+// Escaping wins over UnsafeHtml, as comrak's escape option does: the stricter
+// choice of the two is the one a host asked for on purpose.
 function TMarkdownHtmlRenderer.RawHtmlOutput(const Literal: string): string;
 begin
+  if FOptions.EscapeRawHtml then
+  begin
+    Result := EscapeHtml(Literal);
+    Exit;
+  end;
+
   if not FOptions.AllowRawHtml then
   begin
     Result := OmittedHtmlComment;
@@ -562,11 +591,17 @@ end;
 
 procedure TMarkdownHtmlRenderer.EnterAnchor(const Node: IMarkdownLink);
 begin
-  FOutput.Append(Format(AnchorOpenFormat, [EscapeHtml(DestinationOutput(Node.Destination))]));
+  const Href = DestinationOutput(Node.Destination, RejectedLinkDestination);
+  const EscapedHref = EscapeHtml(Href);
+  const AnchorOpen = Format(AnchorOpenFormat, [EscapedHref]);
+  FOutput.Append(AnchorOpen);
 
   const HasTitle = (Node.Title <> '');
   if HasTitle then
     FOutput.Append(Format(TitleAttributeFormat, [EscapeHtml(Node.Title)]));
+
+  if FOptions.NoOpenerLinks then
+    FOutput.Append(NoOpenerAttribute);
 
   FOutput.Append(TagCloseBracket);
 
@@ -575,7 +610,10 @@ end;
 
 procedure TMarkdownHtmlRenderer.WriteImage(const Node: IMarkdownLink);
 begin
-  FOutput.Append(Format(ImageOpenFormat, [EscapeHtml(DestinationOutput(Node.Destination))]));
+  const Source = DestinationOutput(Node.Destination, RejectedImageSource);
+  const EscapedSource = EscapeHtml(Source);
+  const ImageOpen = Format(ImageOpenFormat, [EscapedSource]);
+  FOutput.Append(ImageOpen);
 
   AppendAltText(Node);
   FOutput.Append('"');
@@ -587,8 +625,21 @@ begin
   FOutput.Append(' />');
 end;
 
-function TMarkdownHtmlRenderer.DestinationOutput(const Destination: string): string;
+// An allowlist of schemes applies even when unsafe links are allowed, for the
+// same reason escaping wins over UnsafeHtml. A destination it rejects becomes
+// RejectedValue, so a link stays a link that leads nowhere.
+function TMarkdownHtmlRenderer.DestinationOutput(const Destination, RejectedValue: string): string;
 begin
+  if FOptions.RestrictUrlSchemes then
+  begin
+    const IsAllowed = (TMarkdownUrlSafety.IsAllowed(Destination, FOptions.AllowedUrlSchemes));
+    if IsAllowed then
+      Result := Destination
+    else
+      Result := RejectedValue;
+    Exit;
+  end;
+
   if FOptions.AllowUnsafeLinks then
   begin
     Result := Destination;

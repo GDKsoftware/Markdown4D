@@ -17,6 +17,12 @@ type
     // When False, link and image destinations carrying a scripting scheme are
     // emptied instead of written out. See Markdown4D.Text.UrlSafety.
     AllowUnsafeLinks: Boolean;
+    EscapeRawHtml: Boolean;
+    // A flag of its own, because an empty AllowedUrlSchemes still restricts:
+    // it lets only relative destinations through.
+    RestrictUrlSchemes: Boolean;
+    AllowedUrlSchemes: TArray<string>;
+    NoOpenerLinks: Boolean;
     class function SafeDefaults: TMarkdownRendererOptions; static;
     // What the CommonMark and GFM specifications describe: raw HTML and every
     // destination pass through untouched. Only appropriate for trusted input;
