@@ -28,8 +28,10 @@ type
       // another host over the page's own protocol, which on the web is https.
       ProtocolRelativeScheme = 'https';
       ProtocolRelativePrefixLength = 2;
-      FirstCharacterLength = 1;
       PathSeparators: TSysCharSet = ['/', '\'];
+      // RFC 3986 scheme characters. System.Net.URLClient.TURI uses the same set,
+      // but only inside DecomposeURI, and TURI.Create raises for a relative URL
+      // and for most schemes without //, such as javascript: and data:.
       SchemeLetters: TSysCharSet = ['a'..'z', 'A'..'Z'];
       SchemeCharacters: TSysCharSet = ['a'..'z', 'A'..'Z', '0'..'9', '+', '-', '.'];
       SchemeTerminators: array[0..4] of Char = (':', '/', '\', '?', '#');
@@ -215,7 +217,7 @@ begin
 
       Builder.Append(Current);
 
-      const IsFirstCharacter = (Builder.Length = FirstCharacterLength);
+      const IsFirstCharacter = (Builder.Length = 1);
       const IsSchemeCharacter = (CharInSet(Current, SchemeCharacters));
       const IsLeadingSeparator = (IsFirstCharacter and CharInSet(Current, PathSeparators));
       const EndsPrefix = (not (IsSchemeCharacter or IsLeadingSeparator));
