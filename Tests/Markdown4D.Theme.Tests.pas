@@ -33,6 +33,10 @@ type
       LegacyTokenColorCount = 13;
       KeysAddedWithDiffAndAlerts: array[0..2] of string = ('diffInsertedBackgroundColor',
         'diffDeletedBackgroundColor', 'alertColors');
+      OverrideThematicBreakSpacing = 30.0;
+      GitHubBlockSpacing = 16.0;
+      GitHubHeadingSpacingAbove = 24.0;
+      GitHubThematicBreakSpacing = 24.0;
     class function LegacyThemeJson(const Preset: TMarkdownThemePreset): string;
     class function ThemeJsonWithArrayCount(const Key: string; const Count: Integer): string;
     class procedure TrimArray(const Root: TJSONObject; const Key: string; const Count: Integer);
@@ -63,6 +67,12 @@ type
 
     [Test]
     procedure CodeSpanBackground_SurvivesJsonRoundTrip;
+
+    [Test]
+    procedure BlockSpacings_LightPreset_MatchGitHub;
+
+    [Test]
+    procedure ThematicBreakSpacing_SurvivesJsonRoundTrip;
 
     [Test]
     procedure LoadFromJson_WronglyTypedValue_RaisesMarkdownError;
@@ -311,6 +321,42 @@ begin
 
       const RoundTrips = (Loaded.CodeSpanBackgroundColor = OverrideCodeSpanBackground);
       Assert.IsTrue(RoundTrips);
+    finally
+      Loaded.Free;
+    end;
+  finally
+    Source.Free;
+  end;
+end;
+
+procedure TMarkdownThemeTests.BlockSpacings_LightPreset_MatchGitHub;
+begin
+  const Theme = TMarkdownTheme.CreateLight;
+  try
+    Assert.AreEqual(Double(GitHubBlockSpacing), Double(Theme.BlockSpacing), SingleTolerance);
+    Assert.AreEqual(Double(GitHubThematicBreakSpacing), Double(Theme.ThematicBreakSpacing), SingleTolerance);
+
+    for var Level := 1 to MaxHeadingLevel do
+    begin
+      Assert.AreEqual(Double(GitHubHeadingSpacingAbove), Double(Theme.HeadingSpacingAbove[Level]), SingleTolerance);
+      Assert.AreEqual(Double(GitHubBlockSpacing), Double(Theme.HeadingSpacingBelow[Level]), SingleTolerance);
+    end;
+  finally
+    Theme.Free;
+  end;
+end;
+
+procedure TMarkdownThemeTests.ThematicBreakSpacing_SurvivesJsonRoundTrip;
+begin
+  const Source = TMarkdownTheme.CreateLight;
+  try
+    Source.ThematicBreakSpacing := OverrideThematicBreakSpacing;
+    const SavedJson = Source.SaveToJson;
+
+    const Loaded = TMarkdownTheme.CreateDark;
+    try
+      Loaded.LoadFromJson(SavedJson);
+      Assert.AreEqual(Double(OverrideThematicBreakSpacing), Double(Loaded.ThematicBreakSpacing), SingleTolerance);
     finally
       Loaded.Free;
     end;

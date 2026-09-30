@@ -28,7 +28,7 @@ type
       HeadingOneFontSize = 32.0;
       HeadingOneCharWidth = 24.0;
       HeadingOneLineHeight = 44.8;
-      ParagraphSpacingValue = 8.0;
+      BlockSpacingValue = 8.0;
       HeadingOneSpacingAbove = 20.0;
       HeadingOneSpacingBelow = 12.0;
       ListIndentValue = 30.0;
@@ -43,6 +43,9 @@ type
       ImagePlaceholderHeightValue = 60.0;
       CheckboxSizeValue = 14.0;
       ThematicBreakThicknessValue = 2.0;
+      ThematicBreakSpacingValue = 16.0;
+      HeadingText = 'Title';
+      HeadingLine = '# ' + HeadingText;
       ContentPaddingValue = 16.0;
       TextColorValue = $FF202020;
       LinkColorValue = $FF0A66C2;
@@ -104,6 +107,18 @@ type
 
     [Test]
     procedure Layout_Paragraphs_AppliesBlockSpacingBetweenBlocks;
+
+    [Test]
+    procedure Layout_HeadingAfterParagraph_CollapsesToLargerSpacing;
+
+    [Test]
+    procedure Layout_ThematicBreakBetweenListAndHeading_CollapsesBothGaps;
+
+    [Test]
+    procedure Layout_HeadingInBlockQuote_CollapsesToLargerSpacing;
+
+    [Test]
+    procedure Layout_HeadingInLooseListItem_CollapsesToLargerSpacing;
 
     [Test]
     procedure Layout_SpaceAfterStyledRun_StaysOutsideIt;
@@ -313,8 +328,53 @@ begin
   Assert.AreEqual(2, Integer(Length(Runs)));
 
   AssertSingle(0, Runs[0].Bounds.Top);
-  AssertSingle(BaseLineHeight + ParagraphSpacingValue, Runs[1].Bounds.Top);
-  AssertSingle(2 * BaseLineHeight + ParagraphSpacingValue, DisplayList.Height);
+  AssertSingle(BaseLineHeight + BlockSpacingValue, Runs[1].Bounds.Top);
+  AssertSingle(2 * BaseLineHeight + BlockSpacingValue, DisplayList.Height);
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_HeadingAfterParagraph_CollapsesToLargerSpacing;
+begin
+  const DisplayList = LayoutMarkdown('one'#10#10 + HeadingLine, DefaultWidth);
+
+  const Runs = TextRunsOf(DisplayList);
+  const Heading = FindRunByPrefix(Runs, HeadingText);
+  Assert.IsNotNull(Heading);
+  AssertSingle(BaseLineHeight + HeadingOneSpacingAbove, Heading.Bounds.Top);
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_ThematicBreakBetweenListAndHeading_CollapsesBothGaps;
+begin
+  const DisplayList = LayoutMarkdown('- item'#10#10'---'#10#10 + HeadingLine, DefaultWidth);
+
+  const Line = FirstLineOf(DisplayList);
+  Assert.IsNotNull(Line);
+  const LineTop = BaseLineHeight + ThematicBreakSpacingValue;
+  AssertSingle(LineTop, Line.Bounds.Top);
+
+  const Runs = TextRunsOf(DisplayList);
+  const Heading = FindRunByPrefix(Runs, HeadingText);
+  Assert.IsNotNull(Heading);
+  AssertSingle(LineTop + ThematicBreakThicknessValue + HeadingOneSpacingAbove, Heading.Bounds.Top);
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_HeadingInBlockQuote_CollapsesToLargerSpacing;
+begin
+  const DisplayList = LayoutMarkdown('> one'#10'>'#10'> ' + HeadingLine, DefaultWidth);
+
+  const Runs = TextRunsOf(DisplayList);
+  const Heading = FindRunByPrefix(Runs, HeadingText);
+  Assert.IsNotNull(Heading);
+  AssertSingle(BaseLineHeight + HeadingOneSpacingAbove, Heading.Bounds.Top);
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_HeadingInLooseListItem_CollapsesToLargerSpacing;
+begin
+  const DisplayList = LayoutMarkdown('- one'#10#10'  ' + HeadingLine, DefaultWidth);
+
+  const Runs = TextRunsOf(DisplayList);
+  const Heading = FindRunByPrefix(Runs, HeadingText);
+  Assert.IsNotNull(Heading);
+  AssertSingle(BaseLineHeight + HeadingOneSpacingAbove, Heading.Bounds.Top);
 end;
 
 procedure TMarkdownLayoutEngineTests.Layout_SpaceAfterStyledRun_StaysOutsideIt;
@@ -963,7 +1023,7 @@ begin
   Result.HeadingFonts[1] := TMarkdownFontStyle.Create(BaseFamilyName, HeadingOneFontSize, True);
   Result.HeadingSpacingAbove[1] := HeadingOneSpacingAbove;
   Result.HeadingSpacingBelow[1] := HeadingOneSpacingBelow;
-  Result.ParagraphSpacing := ParagraphSpacingValue;
+  Result.BlockSpacing := BlockSpacingValue;
   Result.ListIndent := ListIndentValue;
   Result.ListMarkerWidth := ListMarkerWidthValue;
   Result.BlockQuoteBarWidth := BlockQuoteBarWidthValue;
@@ -976,6 +1036,7 @@ begin
   Result.ImagePlaceholderHeight := ImagePlaceholderHeightValue;
   Result.CheckboxSize := CheckboxSizeValue;
   Result.ThematicBreakThickness := ThematicBreakThicknessValue;
+  Result.ThematicBreakSpacing := ThematicBreakSpacingValue;
   Result.TextColor := TextColorValue;
   Result.LinkColor := LinkColorValue;
   Result.CodeBackgroundColor := CodeBackgroundColorValue;

@@ -21,7 +21,7 @@ type
       WrapWidthCharacters = 12;
       BaseCharWidth = 10.0;
       BaseLineHeight = 22.4;
-      ParagraphSpacingValue = 8.0;
+      BlockSpacingValue = 16.0;
       FlushIntervalValue = 100;
       StartTime = 1000;
       SingleTolerance = 0.05;
@@ -270,7 +270,7 @@ begin
   Assert.AreEqual(2, Integer(Length(Rects)));
   AssertSingle(0, Rects[0].Left);
   AssertSingle(3 * BaseCharWidth, Rects[0].Right);
-  AssertSingle(BaseLineHeight + ParagraphSpacingValue, Rects[1].Top);
+  AssertSingle(BaseLineHeight + BlockSpacingValue, Rects[1].Top);
   AssertSingle(3 * BaseCharWidth, Rects[1].Right);
 end;
 

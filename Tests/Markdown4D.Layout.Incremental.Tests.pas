@@ -18,7 +18,7 @@ type
     const
       BaseFamilyName = 'Test Sans';
       BaseFontSize = 16.0;
-      ParagraphSpacingValue = 8.0;
+      BlockSpacingValue = 8.0;
       FirstParagraph = 'first paragraph words';
       SecondParagraph = 'second paragraph words';
       ThirdParagraph = 'third paragraph words';
@@ -30,6 +30,11 @@ type
       InsertSource = FirstParagraph + ParagraphSeparator + InsertedParagraph + ParagraphSeparator + SecondParagraph +
         ParagraphSeparator + ThirdParagraph;
       DeleteSource = FirstParagraph + ParagraphSeparator + ThirdParagraph;
+      HeadingSpacingAboveValue = 20.0;
+      HeadingText = 'Heading';
+      HeadingSource = FirstParagraph + ParagraphSeparator + '# ' + HeadingText;
+      EditedHeadingSource = FirstParagraph + ' grown considerably longer so it wraps' + ParagraphSeparator + '# ' +
+        HeadingText;
       ThirdPrefix = 'third';
       LayoutWidth = 200.0;
       SingleTolerance = 0.05;
@@ -60,6 +65,9 @@ type
 
     [Test]
     procedure UpdateLayout_RemovedBlock_RecomputesNothingAndMatchesFreshLayout;
+
+    [Test]
+    procedure UpdateLayout_ChangedParagraphBeforeHeading_CollapsesSpacingToLarger;
   end;
 
 implementation
@@ -137,12 +145,23 @@ begin
   AssertEquivalent(Fresh, Updated);
 end;
 
+procedure TMarkdownLayoutIncrementalTests.UpdateLayout_ChangedParagraphBeforeHeading_CollapsesSpacingToLarger;
+begin
+  const Updated = UpdateSource(HeadingSource, EditedHeadingSource, TLayoutBlockRange.Create(0, 1, 1));
+
+  const Paragraph = Updated.BlockInfos[0];
+  const Heading = FindRunByPrefix(TextRunsOf(Updated), HeadingText);
+  Assert.IsNotNull(Heading);
+  AssertSingle(Paragraph.Top + Paragraph.Height + HeadingSpacingAboveValue, Heading.Bounds.Top);
+end;
+
 class function TMarkdownLayoutIncrementalTests.CreateTestTheme: TMarkdownTheme;
 begin
   Result := TMarkdownTheme.CreateLight;
 
   Result.BaseFont := TMarkdownFontStyle.Create(BaseFamilyName, BaseFontSize);
-  Result.ParagraphSpacing := ParagraphSpacingValue;
+  Result.BlockSpacing := BlockSpacingValue;
+  Result.HeadingSpacingAbove[1] := HeadingSpacingAboveValue;
 end;
 
 class function TMarkdownLayoutIncrementalTests.LayoutSource(const Source: string): IMarkdownDisplayList;

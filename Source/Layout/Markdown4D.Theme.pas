@@ -47,7 +47,7 @@ type
         DiffInsertedBackgroundColor: TLayoutColor;
         DiffDeletedBackgroundColor: TLayoutColor;
         AlertColors: TAlertColorArray;
-        ParagraphSpacing: Single;
+        BlockSpacing: Single;
         ListIndent: Single;
         ListMarkerWidth: Single;
         BlockQuoteBarWidth: Single;
@@ -60,6 +60,7 @@ type
         ImagePlaceholderHeight: Single;
         CheckboxSize: Single;
         ThematicBreakThickness: Single;
+        ThematicBreakSpacing: Single;
         ContentPadding: Single;
         ChartBackgroundColor: TLayoutColor;
         ChartGridLineColor: TLayoutColor;
@@ -75,9 +76,11 @@ type
       DefaultMathFamilyName = MathFamilyName;
       DefaultBaseFontSize = 16.0;
       DefaultHeadingSizes: THeadingSpacingArray = (32, 28, 24, 20, 18, 16);
-      DefaultHeadingSpacingsAbove: THeadingSpacingArray = (24, 20, 16, 12, 10, 8);
-      DefaultHeadingSpacingsBelow: THeadingSpacingArray = (12, 10, 8, 6, 4, 4);
-      DefaultParagraphSpacing = 8.0;
+      // Taken from GitHub's stylesheet. The engine collapses adjacent spacings
+      // to the larger one, as a browser does, so they are not added together.
+      DefaultHeadingSpacingsAbove: THeadingSpacingArray = (24, 24, 24, 24, 24, 24);
+      DefaultHeadingSpacingsBelow: THeadingSpacingArray = (16, 16, 16, 16, 16, 16);
+      DefaultBlockSpacing = 16.0;
       DefaultListIndent = 24.0;
       DefaultListMarkerWidth = 24.0;
       DefaultBlockQuoteBarWidth = 4.0;
@@ -91,6 +94,7 @@ type
       DefaultImagePlaceholderHeight = 90.0;
       DefaultCheckboxSize = 16.0;
       DefaultThematicBreakThickness = 2.0;
+      DefaultThematicBreakSpacing = 24.0;
       DefaultContentPadding = 16.0;
       LightInkColor = $FF1F2328;
       LightBackgroundColor = $FFFFFFFF;
@@ -148,7 +152,7 @@ type
       TableHeaderBackgroundColorKey = 'tableHeaderBackgroundColor';
       TableBorderColorKey = 'tableBorderColor';
       ThematicBreakColorKey = 'thematicBreakColor';
-      ParagraphSpacingKey = 'paragraphSpacing';
+      BlockSpacingKey = 'blockSpacing';
       ListIndentKey = 'listIndent';
       ListMarkerWidthKey = 'listMarkerWidth';
       BlockQuoteBarWidthKey = 'blockQuoteBarWidth';
@@ -161,6 +165,7 @@ type
       ImagePlaceholderHeightKey = 'imagePlaceholderHeight';
       CheckboxSizeKey = 'checkboxSize';
       ThematicBreakThicknessKey = 'thematicBreakThickness';
+      ThematicBreakSpacingKey = 'thematicBreakSpacing';
       ContentPaddingKey = 'contentPadding';
       ChartBackgroundColorKey = 'chartBackgroundColor';
       ChartGridLineColorKey = 'chartGridLineColor';
@@ -195,7 +200,7 @@ type
       FDiffInsertedBackgroundColor: TLayoutColor;
       FDiffDeletedBackgroundColor: TLayoutColor;
       FAlertColors: TAlertColorArray;
-      FParagraphSpacing: Single;
+      FBlockSpacing: Single;
       FListIndent: Single;
       FListMarkerWidth: Single;
       FBlockQuoteBarWidth: Single;
@@ -208,6 +213,7 @@ type
       FImagePlaceholderHeight: Single;
       FCheckboxSize: Single;
       FThematicBreakThickness: Single;
+      FThematicBreakSpacing: Single;
       FContentPadding: Single;
       FChartBackgroundColor: TLayoutColor;
       FChartGridLineColor: TLayoutColor;
@@ -292,7 +298,7 @@ type
       write FDiffDeletedBackgroundColor;
     // The bar, icon and title colour of each kind of alert.
     property AlertColors[const Kind: TMarkdownAlertKind]: TLayoutColor read GetAlertColor write SetAlertColor;
-    property ParagraphSpacing: Single read FParagraphSpacing write FParagraphSpacing;
+    property BlockSpacing: Single read FBlockSpacing write FBlockSpacing;
     property ListIndent: Single read FListIndent write FListIndent;
     property ListMarkerWidth: Single read FListMarkerWidth write FListMarkerWidth;
     property BlockQuoteBarWidth: Single read FBlockQuoteBarWidth write FBlockQuoteBarWidth;
@@ -305,6 +311,7 @@ type
     property ImagePlaceholderHeight: Single read FImagePlaceholderHeight write FImagePlaceholderHeight;
     property CheckboxSize: Single read FCheckboxSize write FCheckboxSize;
     property ThematicBreakThickness: Single read FThematicBreakThickness write FThematicBreakThickness;
+    property ThematicBreakSpacing: Single read FThematicBreakSpacing write FThematicBreakSpacing;
     property ContentPadding: Single read FContentPadding write FContentPadding;
     property ChartBackgroundColor: TLayoutColor read FChartBackgroundColor write FChartBackgroundColor;
     property ChartGridLineColor: TLayoutColor read FChartGridLineColor write FChartGridLineColor;
@@ -374,7 +381,7 @@ begin
     FHeadingSpacingsBelow[Level] := DefaultHeadingSpacingsBelow[Level];
   end;
 
-  FParagraphSpacing := DefaultParagraphSpacing;
+  FBlockSpacing := DefaultBlockSpacing;
   FListIndent := DefaultListIndent;
   FListMarkerWidth := DefaultListMarkerWidth;
   FBlockQuoteBarWidth := DefaultBlockQuoteBarWidth;
@@ -387,6 +394,7 @@ begin
   FImagePlaceholderHeight := DefaultImagePlaceholderHeight;
   FCheckboxSize := DefaultCheckboxSize;
   FThematicBreakThickness := DefaultThematicBreakThickness;
+  FThematicBreakSpacing := DefaultThematicBreakSpacing;
   FContentPadding := DefaultContentPadding;
 
   FTextColor := LightInkColor;
@@ -448,7 +456,7 @@ begin
     AddColorPair(Root, DiffDeletedBackgroundColorKey, FDiffDeletedBackgroundColor);
     Root.AddPair(AlertColorsKey, AlertColorsToJson);
 
-    AddSinglePair(Root, ParagraphSpacingKey, FParagraphSpacing);
+    AddSinglePair(Root, BlockSpacingKey, FBlockSpacing);
     AddSinglePair(Root, ListIndentKey, FListIndent);
     AddSinglePair(Root, ListMarkerWidthKey, FListMarkerWidth);
     AddSinglePair(Root, BlockQuoteBarWidthKey, FBlockQuoteBarWidth);
@@ -461,6 +469,7 @@ begin
     AddSinglePair(Root, ImagePlaceholderHeightKey, FImagePlaceholderHeight);
     AddSinglePair(Root, CheckboxSizeKey, FCheckboxSize);
     AddSinglePair(Root, ThematicBreakThicknessKey, FThematicBreakThickness);
+    AddSinglePair(Root, ThematicBreakSpacingKey, FThematicBreakSpacing);
     AddSinglePair(Root, ContentPaddingKey, FContentPadding);
 
     AddColorPair(Root, ChartBackgroundColorKey, FChartBackgroundColor);
@@ -591,7 +600,7 @@ begin
   Result.TableBorderColor := ReadColor(Root, TableBorderColorKey);
   Result.ThematicBreakColor := ReadColor(Root, ThematicBreakColorKey);
 
-  Result.ParagraphSpacing := ReadSingle(Root, ParagraphSpacingKey);
+  Result.BlockSpacing := ReadSingle(Root, BlockSpacingKey);
   Result.ListIndent := ReadSingle(Root, ListIndentKey);
   Result.ListMarkerWidth := ReadSingle(Root, ListMarkerWidthKey);
   Result.BlockQuoteBarWidth := ReadSingle(Root, BlockQuoteBarWidthKey);
@@ -604,6 +613,7 @@ begin
   Result.ImagePlaceholderHeight := ReadSingle(Root, ImagePlaceholderHeightKey);
   Result.CheckboxSize := ReadSingle(Root, CheckboxSizeKey);
   Result.ThematicBreakThickness := ReadSingle(Root, ThematicBreakThicknessKey);
+  Result.ThematicBreakSpacing := ReadSingle(Root, ThematicBreakSpacingKey);
   Result.ContentPadding := ReadSingle(Root, ContentPaddingKey);
 
   Result.ChartBackgroundColor := ReadColor(Root, ChartBackgroundColorKey);
@@ -668,7 +678,7 @@ begin
   FDiffDeletedBackgroundColor := Data.DiffDeletedBackgroundColor;
   FAlertColors := Data.AlertColors;
 
-  FParagraphSpacing := Data.ParagraphSpacing;
+  FBlockSpacing := Data.BlockSpacing;
   FListIndent := Data.ListIndent;
   FListMarkerWidth := Data.ListMarkerWidth;
   FBlockQuoteBarWidth := Data.BlockQuoteBarWidth;
@@ -681,6 +691,7 @@ begin
   FImagePlaceholderHeight := Data.ImagePlaceholderHeight;
   FCheckboxSize := Data.CheckboxSize;
   FThematicBreakThickness := Data.ThematicBreakThickness;
+  FThematicBreakSpacing := Data.ThematicBreakSpacing;
   FContentPadding := Data.ContentPadding;
 
   FChartBackgroundColor := Data.ChartBackgroundColor;
