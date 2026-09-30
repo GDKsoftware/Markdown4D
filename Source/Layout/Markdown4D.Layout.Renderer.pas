@@ -14,8 +14,10 @@ type
     const
       CheckboxBorderColor = TLayoutColor($FF8C959F);
       CheckboxMarkColor = TLayoutColor($FF1F883D);
-      CheckboxBorderStrokeWidth = 1.0;
-      CheckboxMarkStrokeWidth = 2.0;
+      CheckboxBorderStrokeWidthFactor = 0.0625;
+      CheckboxMinimumBorderStrokeWidth = 1;
+      CheckboxMarkStrokeWidthFactor = 0.125;
+      CheckboxMarkCapSegments = 8;
       CheckboxMarkStartXFactor = 0.22;
       CheckboxMarkStartYFactor = 0.55;
       CheckboxMarkMiddleXFactor = 0.42;
@@ -31,6 +33,16 @@ type
     class procedure RenderLine(const Line: IDisplayLine; const Painter: IPainter);
     class procedure RenderImage(const Image: IDisplayImage; const Painter: IPainter);
     class procedure RenderCheckbox(const Checkbox: IDisplayCheckbox; const Painter: IPainter);
+    class function PixelAlignedBox(const Bounds: TLayoutRectF): TLayoutRectF;
+    class function BorderStrokeWidth(const Box: TLayoutRectF): Single;
+    class function CheckMarkOutline(const Box: TLayoutRectF): TArray<TLayoutPointF>;
+    class function PointInBox(const Box: TLayoutRectF; const XFactor, YFactor: Single): TLayoutPointF;
+    class function BentStrokeOutline(const StartPoint, CornerPoint, EndPoint: TLayoutPointF;
+      const HalfWidth: Single): TArray<TLayoutPointF>;
+    class function DirectionOf(const FromPoint, ToPoint: TLayoutPointF): Single;
+    class function TurnBetween(const IncomingAngle, OutgoingAngle: Single): Single;
+    class function RoundCap(const Center: TLayoutPointF; const StartAngle, Radius: Single): TArray<TLayoutPointF>;
+    class function PointAt(const Origin: TLayoutPointF; const Angle, Distance: Single): TLayoutPointF;
     class procedure RenderWedge(const Wedge: IDisplayWedge; const Painter: IPainter);
     class procedure RenderPolygon(const Polygon: IDisplayPolygon; const Painter: IPainter);
 
@@ -42,6 +54,7 @@ type
 implementation
 
 uses
+  System.Math,
   Markdown4D.Defines;
 
 class procedure TMarkdownDisplayListRenderer.Render(const DisplayList: IMarkdownDisplayList; const Painter: IPainter;
@@ -142,22 +155,102 @@ end;
 class procedure TMarkdownDisplayListRenderer.RenderCheckbox(const Checkbox: IDisplayCheckbox;
   const Painter: IPainter);
 begin
-  const Bounds = Checkbox.Bounds;
-  Painter.DrawRect(Bounds, CheckboxBorderColor, CheckboxBorderStrokeWidth);
+  const Box = PixelAlignedBox(Checkbox.Bounds);
+  const BorderWidth = BorderStrokeWidth(Box);
+  Painter.DrawRect(Box, CheckboxBorderColor, BorderWidth);
 
-  if not Checkbox.Checked then
+  const HasMark = (Checkbox.Checked and (Box.Width > 0) and (Box.Height > 0));
+  if not HasMark then
     Exit;
 
-  const Width = Bounds.Width;
-  const Height = Bounds.Height;
-  const StartPoint = TLayoutPointF.Create(Bounds.Left + (CheckboxMarkStartXFactor * Width),
-    Bounds.Top + (CheckboxMarkStartYFactor * Height));
-  const MiddlePoint = TLayoutPointF.Create(Bounds.Left + (CheckboxMarkMiddleXFactor * Width),
-    Bounds.Top + (CheckboxMarkMiddleYFactor * Height));
-  const EndPoint = TLayoutPointF.Create(Bounds.Left + (CheckboxMarkEndXFactor * Width),
-    Bounds.Top + (CheckboxMarkEndYFactor * Height));
-  Painter.DrawLine(StartPoint, MiddlePoint, CheckboxMarkColor, CheckboxMarkStrokeWidth);
-  Painter.DrawLine(MiddlePoint, EndPoint, CheckboxMarkColor, CheckboxMarkStrokeWidth);
+  const Outline = CheckMarkOutline(Box);
+  Painter.FillPolygon(Outline, CheckboxMarkColor);
+end;
+
+class function TMarkdownDisplayListRenderer.PixelAlignedBox(const Bounds: TLayoutRectF): TLayoutRectF;
+begin
+  const Left = Round(Bounds.Left);
+  const Top = Round(Bounds.Top);
+  const Width = Round(Bounds.Width);
+  const Height = Round(Bounds.Height);
+  Result := TLayoutRectF.Create(Left, Top, Left + Width, Top + Height);
+end;
+
+class function TMarkdownDisplayListRenderer.BorderStrokeWidth(const Box: TLayoutRectF): Single;
+begin
+  const ScaledWidth = Round(Box.Width * CheckboxBorderStrokeWidthFactor);
+  Result := Max(CheckboxMinimumBorderStrokeWidth, ScaledWidth);
+end;
+
+class function TMarkdownDisplayListRenderer.CheckMarkOutline(const Box: TLayoutRectF): TArray<TLayoutPointF>;
+begin
+  const StartPoint = PointInBox(Box, CheckboxMarkStartXFactor, CheckboxMarkStartYFactor);
+  const MiddlePoint = PointInBox(Box, CheckboxMarkMiddleXFactor, CheckboxMarkMiddleYFactor);
+  const EndPoint = PointInBox(Box, CheckboxMarkEndXFactor, CheckboxMarkEndYFactor);
+  const HalfWidth = Box.Width * CheckboxMarkStrokeWidthFactor / 2;
+
+  Result := BentStrokeOutline(StartPoint, MiddlePoint, EndPoint, HalfWidth);
+end;
+
+class function TMarkdownDisplayListRenderer.PointInBox(const Box: TLayoutRectF;
+  const XFactor, YFactor: Single): TLayoutPointF;
+begin
+  Result := TLayoutPointF.Create(Box.Left + (XFactor * Box.Width), Box.Top + (YFactor * Box.Height));
+end;
+
+class function TMarkdownDisplayListRenderer.BentStrokeOutline(const StartPoint, CornerPoint, EndPoint: TLayoutPointF;
+  const HalfWidth: Single): TArray<TLayoutPointF>;
+begin
+  const IncomingAngle = DirectionOf(StartPoint, CornerPoint);
+  const OutgoingAngle = DirectionOf(CornerPoint, EndPoint);
+  const HalfTurn = TurnBetween(IncomingAngle, OutgoingAngle) / 2;
+  const MiterAngle = IncomingAngle + (Pi / 2) + HalfTurn;
+  const MiterLength = HalfWidth / Cos(HalfTurn);
+
+  const LeftCorner = PointAt(CornerPoint, MiterAngle, MiterLength);
+  const RightCorner = PointAt(CornerPoint, MiterAngle, -MiterLength);
+  const StartCap = RoundCap(StartPoint, IncomingAngle - (Pi / 2), HalfWidth);
+  const EndCap = RoundCap(EndPoint, OutgoingAngle + (Pi / 2), HalfWidth);
+
+  Result := StartCap + [LeftCorner] + EndCap + [RightCorner];
+end;
+
+class function TMarkdownDisplayListRenderer.DirectionOf(const FromPoint, ToPoint: TLayoutPointF): Single;
+begin
+  Result := ArcTan2(ToPoint.Y - FromPoint.Y, ToPoint.X - FromPoint.X);
+end;
+
+class function TMarkdownDisplayListRenderer.TurnBetween(const IncomingAngle, OutgoingAngle: Single): Single;
+begin
+  const Turn = OutgoingAngle - IncomingAngle;
+  const WrapsForward = (Turn > Pi);
+  if WrapsForward then
+    Exit(Turn - (2 * Pi));
+
+  const WrapsBackward = (Turn <= -Pi);
+  if WrapsBackward then
+    Exit(Turn + (2 * Pi));
+
+  Result := Turn;
+end;
+
+class function TMarkdownDisplayListRenderer.RoundCap(const Center: TLayoutPointF;
+  const StartAngle, Radius: Single): TArray<TLayoutPointF>;
+begin
+  SetLength(Result, CheckboxMarkCapSegments + 1);
+  for var Step := 0 to CheckboxMarkCapSegments do
+  begin
+    const Angle = StartAngle - (Pi * Step / CheckboxMarkCapSegments);
+    Result[Step] := PointAt(Center, Angle, Radius);
+  end;
+end;
+
+class function TMarkdownDisplayListRenderer.PointAt(const Origin: TLayoutPointF;
+  const Angle, Distance: Single): TLayoutPointF;
+begin
+  const OffsetX = Distance * Cos(Angle);
+  const OffsetY = Distance * Sin(Angle);
+  Result := TLayoutPointF.Create(Origin.X + OffsetX, Origin.Y + OffsetY);
 end;
 
 class procedure TMarkdownDisplayListRenderer.RenderWedge(const Wedge: IDisplayWedge; const Painter: IPainter);
