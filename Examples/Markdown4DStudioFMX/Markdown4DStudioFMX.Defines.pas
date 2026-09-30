@@ -15,14 +15,11 @@ const
   WindowCaption = 'Markdown4D Studio (FMX)';
   InitialClientWidth = 1180;
   ToolbarHeight = 38;
-  TabControlHeight = 32;
   CaptionButtonWidth = 46;
   StatusBarHeight = 26;
   ControlMargin = 6;
   IconGlyphSize = 16;
-  TocHeaderHeight = 22;
   SplitterWidth = 6;
-  StatusLabelWidth = 150;
   GlyphMinimize = Char($E921);
   GlyphMaximize = Char($E922);
   GlyphRestore = Char($E923);
@@ -47,20 +44,12 @@ const
   TabHoverLightColor = TAlphaColor($FFEAEAEA);
   TabHoverDarkColor = TAlphaColor($FF383838);
   CaptionCloseHoverColor = TAlphaColor($FFE81123);
-  HintBackColor = TAlphaColor($FF1E1E1E);
-  HintTextColor = TAlphaColor($FFF0F0F0);
-  HintHeight = 24;
   HintHorizontalPadding = 8;
   HintGap = 4;
-  HintCornerRadius = 4;
   MarkdownExtension = '.md';
   SessionFileName = 'Markdown4DStudio.Fmx.json';
   OpenErrorFormat = 'Could not open the file:'#10'%s';
   CloseUnsavedPrompt = 'This document has unsaved changes. Save before closing?';
-  ReplaceButtonWidth = 90;
-  ReplaceAllButtonWidth = 110;
-  PaletteListHeight = PaletteRowHeight * PaletteVisibleRows;
-  PaletteEditHeight = 30;
   PaletteShortcutWidth = 120;
   PaletteShortcutOpacity = 0.6;
 

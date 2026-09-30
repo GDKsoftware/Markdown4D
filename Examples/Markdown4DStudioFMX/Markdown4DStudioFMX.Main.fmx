@@ -1,0 +1,296 @@
+object Markdown4DStudioFMXForm: TMarkdown4DStudioFMXForm
+  Left = 0
+  Top = 0
+  BorderStyle = None
+  Caption = 'Markdown4D Studio (FMX)'
+  ClientHeight = 760
+  ClientWidth = 1180
+  Position = ScreenCenter
+  FormFactor.Width = 320
+  FormFactor.Height = 480
+  FormFactor.Devices = [Desktop]
+  DesignerMasterStyle = 0
+  object rctTitleBar: TRectangle
+    Align = Top
+    Size.Width = 1180.000000000000000000
+    Size.Height = 40.000000000000000000
+    Size.PlatformDefault = False
+    Stroke.Kind = None
+    OnDblClick = HandleTitleBarDblClick
+    OnMouseDown = HandleTitleBarMouseDown
+  end
+  object rctToolbar: TRectangle
+    Align = Top
+    Position.Y = 40.000000000000000000
+    Size.Width = 1180.000000000000000000
+    Size.Height = 38.000000000000000000
+    Size.PlatformDefault = False
+    Stroke.Kind = None
+    object edtFind: TEdit
+      Touch.InteractiveGestures = [LongTap, DoubleTap]
+      Align = Right
+      TabOrder = 0
+      Position.X = 1014.000000000000000000
+      Position.Y = 6.000000000000000000
+      Margins.Top = 6.000000000000000000
+      Margins.Right = 6.000000000000000000
+      Margins.Bottom = 6.000000000000000000
+      Size.Width = 160.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TextPrompt = 'Find'
+      OnKeyDown = HandleFindEditKeyDown
+    end
+  end
+  object rctFindBar: TRectangle
+    Align = Top
+    Position.Y = 78.000000000000000000
+    Size.Width = 1180.000000000000000000
+    Size.Height = 32.000000000000000000
+    Size.PlatformDefault = False
+    Stroke.Kind = None
+    Visible = False
+    object edtEditorFind: TEdit
+      Touch.InteractiveGestures = [LongTap, DoubleTap]
+      Align = Left
+      TabOrder = 0
+      Position.X = 6.000000000000000000
+      Position.Y = 6.000000000000000000
+      Margins.Left = 6.000000000000000000
+      Margins.Top = 6.000000000000000000
+      Margins.Bottom = 6.000000000000000000
+      Size.Width = 240.000000000000000000
+      Size.Height = 20.000000000000000000
+      Size.PlatformDefault = False
+      TextPrompt = 'Find in editor'
+      OnChangeTracking = HandleEditorFindChange
+      OnKeyDown = HandleEditorFindKeyDown
+    end
+    object edtEditorReplace: TEdit
+      Touch.InteractiveGestures = [LongTap, DoubleTap]
+      Align = Left
+      TabOrder = 1
+      Position.X = 252.000000000000000000
+      Position.Y = 6.000000000000000000
+      Margins.Left = 6.000000000000000000
+      Margins.Top = 6.000000000000000000
+      Margins.Bottom = 6.000000000000000000
+      Size.Width = 240.000000000000000000
+      Size.Height = 20.000000000000000000
+      Size.PlatformDefault = False
+      TextPrompt = 'Replace with'
+    end
+    object btnReplace: TButton
+      Align = Left
+      Margins.Left = 6.000000000000000000
+      Margins.Top = 6.000000000000000000
+      Margins.Bottom = 6.000000000000000000
+      Position.X = 498.000000000000000000
+      Position.Y = 6.000000000000000000
+      Size.Width = 90.000000000000000000
+      Size.Height = 20.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 2
+      Text = 'Replace'
+      OnClick = HandleReplaceClick
+    end
+    object btnReplaceAll: TButton
+      Align = Left
+      Margins.Left = 6.000000000000000000
+      Margins.Top = 6.000000000000000000
+      Margins.Bottom = 6.000000000000000000
+      Position.X = 594.000000000000000000
+      Position.Y = 6.000000000000000000
+      Size.Width = 110.000000000000000000
+      Size.Height = 20.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 3
+      Text = 'Replace All'
+      OnClick = HandleReplaceAllClick
+    end
+    object lblFindCount: TLabel
+      Align = Right
+      Margins.Right = 6.000000000000000000
+      Position.X = 1024.000000000000000000
+      Size.Width = 150.000000000000000000
+      Size.Height = 32.000000000000000000
+      Size.PlatformDefault = False
+      TextSettings.HorzAlign = Trailing
+    end
+  end
+  object rctStatus: TRectangle
+    Align = Bottom
+    Position.Y = 734.000000000000000000
+    Size.Width = 1180.000000000000000000
+    Size.Height = 26.000000000000000000
+    Size.PlatformDefault = False
+    Stroke.Kind = None
+    object lblPos: TLabel
+      Align = Left
+      Margins.Left = 6.000000000000000000
+      Position.X = 6.000000000000000000
+      Size.Width = 150.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+    end
+    object lblWords: TLabel
+      Align = Left
+      Margins.Left = 6.000000000000000000
+      Position.X = 162.000000000000000000
+      Size.Width = 150.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+    end
+  end
+  object layToc: TLayout
+    Align = Left
+    Position.Y = 78.000000000000000000
+    Size.Width = 240.000000000000000000
+    Size.Height = 656.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 4
+    object txtTocHeader: TText
+      Align = Top
+      Margins.Left = 6.000000000000000000
+      Position.X = 6.000000000000000000
+      Size.Width = 234.000000000000000000
+      Size.Height = 22.000000000000000000
+      Size.PlatformDefault = False
+      Text = 'Contents'
+      TextSettings.HorzAlign = Leading
+    end
+    object lstToc: TListBox
+      Align = Client
+      Size.Width = 240.000000000000000000
+      Size.Height = 634.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 0
+      OnApplyStyleLookup = HandleTocListApplyStyle
+      DisableFocusEffect = True
+      DefaultItemStyles.ItemStyle = ''
+      DefaultItemStyles.GroupHeaderStyle = ''
+      DefaultItemStyles.GroupFooterStyle = ''
+      OnChange = HandleTocChange
+      Viewport.Width = 236.000000000000000000
+      Viewport.Height = 630.000000000000000000
+    end
+  end
+  object splToc: TSplitter
+    Align = Left
+    Cursor = crHSplit
+    MinSize = 20.000000000000000000
+    Position.X = 240.000000000000000000
+    Position.Y = 78.000000000000000000
+    Size.Width = 6.000000000000000000
+    Size.Height = 656.000000000000000000
+    Size.PlatformDefault = False
+    OnMouseUp = HandleTocSplitterMouseUp
+  end
+  object mdEditor: TMarkdownEditor
+    ShowLineNumbers = True
+    Preview = mdPreview
+    Align = Left
+    Position.X = 246.000000000000000000
+    Position.Y = 78.000000000000000000
+    Size.Width = 470.000000000000000000
+    Size.Height = 656.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 6
+    OnChange = HandleEditorChange
+    OnSyncScroll = HandleSyncScroll
+  end
+  object splMain: TSplitter
+    Align = Left
+    Cursor = crHSplit
+    MinSize = 20.000000000000000000
+    Position.X = 716.000000000000000000
+    Position.Y = 78.000000000000000000
+    Size.Width = 6.000000000000000000
+    Size.Height = 656.000000000000000000
+    Size.PlatformDefault = False
+    OnMouseUp = HandleSplitterMouseUp
+  end
+  object mdPreview: TMarkdownViewer
+    Align = Client
+    Size.Width = 458.000000000000000000
+    Size.Height = 656.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 8
+    OnLinkClick = HandlePreviewLinkClick
+  end
+  object rctHint: TRectangle
+    Fill.Color = xFF1E1E1E
+    HitTest = False
+    Size.Width = 100.000000000000000000
+    Size.Height = 24.000000000000000000
+    Size.PlatformDefault = False
+    Stroke.Kind = None
+    Visible = False
+    XRadius = 4.000000000000000000
+    YRadius = 4.000000000000000000
+    object txtHint: TText
+      Align = Client
+      HitTest = False
+      Margins.Left = 8.000000000000000000
+      Margins.Right = 8.000000000000000000
+      Size.Width = 84.000000000000000000
+      Size.Height = 24.000000000000000000
+      Size.PlatformDefault = False
+      TextSettings.FontColor = xFFF0F0F0
+    end
+  end
+  object rctPalette: TRectangle
+    Position.Y = 80.000000000000000000
+    Size.Width = 560.000000000000000000
+    Size.Height = 250.000000000000000000
+    Size.PlatformDefault = False
+    Visible = False
+    object edtPalette: TEdit
+      Touch.InteractiveGestures = [LongTap, DoubleTap]
+      Align = Top
+      TabOrder = 0
+      Size.Width = 560.000000000000000000
+      Size.Height = 30.000000000000000000
+      Size.PlatformDefault = False
+      TextPrompt = 'Type a command'
+      OnChangeTracking = HandlePaletteChange
+    end
+    object lstPalette: TListBox
+      Align = Client
+      Size.Width = 560.000000000000000000
+      Size.Height = 220.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 1
+      OnDblClick = HandlePaletteDblClick
+      DisableFocusEffect = True
+      DefaultItemStyles.ItemStyle = ''
+      DefaultItemStyles.GroupHeaderStyle = ''
+      DefaultItemStyles.GroupFooterStyle = ''
+      Viewport.Width = 556.000000000000000000
+      Viewport.Height = 216.000000000000000000
+    end
+  end
+  object tmrTick: TTimer
+    Interval = 100
+    OnTimer = HandleTick
+    Left = 136
+    Top = 16
+  end
+  object dlgOpen: TOpenDialog
+    Filter = 'Markdown files (*.md)|*.md|All files (*.*)|*.*'
+    Left = 56
+    Top = 16
+  end
+  object dlgSave: TSaveDialog
+    DefaultExt = 'md'
+    Filter = 'Markdown files (*.md)|*.md|All files (*.*)|*.*'
+    Left = 208
+    Top = 16
+  end
+  object dlgSaveHtml: TSaveDialog
+    DefaultExt = 'html'
+    Filter = 'HTML files (*.html)|*.html|All files (*.*)|*.*'
+    Left = 280
+    Top = 16
+  end
+end

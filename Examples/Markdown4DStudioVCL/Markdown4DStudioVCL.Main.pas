@@ -57,6 +57,13 @@ type
     lblWords: TLabel;
     edtEditorFind: TEdit;
     lblFindCount: TLabel;
+    edtFind: TEdit;
+    edtEditorReplace: TEdit;
+    btnReplace: TButton;
+    btnReplaceAll: TButton;
+    pnlPalette: TPanel;
+    edtPalette: TEdit;
+    lstPalette: TListBox;
     procedure HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure HandleCloseQuery(Sender: TObject; var CanClose: Boolean);
     procedure HandleResize(Sender: TObject);
@@ -66,6 +73,12 @@ type
     procedure HandleTocListClick(Sender: TObject);
     procedure HandleTick(Sender: TObject);
     procedure HandleEditorFindChange(Sender: TObject);
+    procedure HandleFindEditKeyPress(Sender: TObject; var Key: Char);
+    procedure HandleReplaceClick(Sender: TObject);
+    procedure HandleReplaceAllClick(Sender: TObject);
+    procedure HandlePaletteChange(Sender: TObject);
+    procedure HandlePaletteDrawItem(Control: TWinControl; Index: Integer; Rect: TRect; State: TOwnerDrawState);
+    procedure HandlePaletteDblClick(Sender: TObject);
   private
     type
       TPadChrome = record
@@ -98,7 +111,6 @@ type
       FZenButton: TSpeedButton;
       FCommandsButton: TSpeedButton;
       FFindButton: TSpeedButton;
-      FFindEdit: TEdit;
       FIconButtons: TArray<TPadToolButton>;
       FSeparators: TArray<TPanel>;
       FLightTheme: TMarkdownTheme;
@@ -112,12 +124,6 @@ type
       FController: TPadController;
       FViewMode: TPadViewMode;
       FSplitEditorWidth: Integer;
-      FReplaceEdit: TEdit;
-      FReplaceButton: TButton;
-      FReplaceAllButton: TButton;
-      FPalette: TPanel;
-      FPaletteEdit: TEdit;
-      FPaletteList: TListBox;
       FZenActive: Boolean;
       FPreZenViewMode: TPadViewMode;
       FZenLeftPad: TPanel;
@@ -200,7 +206,6 @@ type
     procedure HandleZenClick(Sender: TObject);
     procedure HandleCommandsClick(Sender: TObject);
     procedure HandleFindClick(Sender: TObject);
-    procedure HandleFindEditKeyPress(Sender: TObject; var Key: Char);
     procedure BuildTitleBar;
     procedure LayoutTitleBar;
     procedure ApplyCaptionColor;
@@ -252,7 +257,6 @@ type
     procedure RebuildSyncAndToc;
     procedure UpdateActiveTocEntry(const SourceLine: Integer);
     procedure ExecuteFind;
-    procedure BuildPalette;
     procedure BuildCommandRegistry;
     function BuildCommandActions: TPadCommandActions;
     procedure SetViewMode(const Mode: TPadViewMode);
@@ -268,15 +272,9 @@ type
     procedure CloseFindBar;
     procedure FindInEditor;
     procedure UpdateFindCount;
-    procedure HandleReplaceClick(Sender: TObject);
-    procedure HandleReplaceAllClick(Sender: TObject);
-    procedure BuildReplaceControls;
     procedure ShowPalette;
     procedure ClosePalette;
     procedure RefreshPaletteList;
-    procedure HandlePaletteChange(Sender: TObject);
-    procedure HandlePaletteDrawItem(Control: TWinControl; Index: Integer; Rect: TRect; State: TOwnerDrawState);
-    procedure HandlePaletteDblClick(Sender: TObject);
     procedure PaletteMoveSelection(const Delta: Integer);
     procedure ExecuteSelectedCommand;
     procedure ToggleZen;
@@ -337,7 +335,6 @@ begin
   ConfigureControls;
   BuildToolbar;
   BuildTitleBar;
-  BuildPalette;
   BuildCommandRegistry;
 
   FSplitEditorWidth := (InitialClientWidth - TocPanelWidth) div 2;
@@ -383,7 +380,6 @@ end;
 
 procedure TMarkdown4DStudioVCLForm.ConfigureControls;
 begin
-  BuildReplaceControls;
   lblFindCount.Caption := EmptyFindCaption;
 
   splMain.OnMoved := HandleSplitterMoved;
@@ -437,15 +433,6 @@ begin
   FTocButton := AddIconButton(GlyphToc, HintToc, HandleTocClick);
   FZenButton := AddIconButton(GlyphZen, HintZen, HandleZenClick);
   FCommandsButton := AddIconButton(GlyphCommands, HintCommands, HandleCommandsClick);
-
-  FFindEdit := TEdit.Create(Self);
-  FFindEdit.Parent := pnlToolbar;
-  FFindEdit.Align := alRight;
-  FFindEdit.AlignWithMargins := True;
-  FFindEdit.Margins.SetBounds(ButtonSpacing, ButtonSpacing, ButtonSpacing, ButtonSpacing);
-  FFindEdit.Width := FindEditWidth;
-  FFindEdit.TextHint := FindButtonCaption;
-  FFindEdit.OnKeyPress := HandleFindEditKeyPress;
 
   FFindButton := AddIconButton(GlyphFind, HintFind, HandleFindClick);
   FFindButton.Align := alRight;
@@ -536,7 +523,7 @@ end;
 // editor used on its own, without a form like this one, keeps its own keys.
 procedure TMarkdown4DStudioVCLForm.HandleFormKey(var Key: Word; const Shift: TShiftState);
 begin
-  if FPalette.Visible then
+  if pnlPalette.Visible then
   begin
     if TryHandlePaletteKey(Key, Shift) then
       Key := 0;
@@ -1614,32 +1601,6 @@ begin
     lstToc.ItemIndex := Index;
 end;
 
-procedure TMarkdown4DStudioVCLForm.BuildReplaceControls;
-begin
-  FReplaceEdit := TEdit.Create(Self);
-  FReplaceEdit.Parent := pnlFind;
-  FReplaceEdit.Left := FindBarEditWidth;
-  FReplaceEdit.Align := alLeft;
-  FReplaceEdit.Width := FindBarEditWidth;
-  FReplaceEdit.TextHint := ReplaceHintCaption;
-
-  FReplaceButton := TButton.Create(Self);
-  FReplaceButton.Parent := pnlFind;
-  FReplaceButton.Left := FindBarEditWidth * 2;
-  FReplaceButton.Align := alLeft;
-  FReplaceButton.Width := ReplaceButtonWidth;
-  FReplaceButton.Caption := ReplaceButtonCaption;
-  FReplaceButton.OnClick := HandleReplaceClick;
-
-  FReplaceAllButton := TButton.Create(Self);
-  FReplaceAllButton.Parent := pnlFind;
-  FReplaceAllButton.Left := FindBarEditWidth * 2 + ReplaceButtonWidth;
-  FReplaceAllButton.Align := alLeft;
-  FReplaceAllButton.Width := ReplaceAllButtonWidth;
-  FReplaceAllButton.Caption := ReplaceAllButtonCaption;
-  FReplaceAllButton.OnClick := HandleReplaceAllClick;
-end;
-
 procedure TMarkdown4DStudioVCLForm.HandleReplaceClick(Sender: TObject);
 begin
   FController.ReplaceInEditor;
@@ -1652,7 +1613,7 @@ end;
 
 function TMarkdown4DStudioVCLForm.EditorReplaceValue: string;
 begin
-  Result := FReplaceEdit.Text;
+  Result := edtEditorReplace.Text;
 end;
 
 procedure TMarkdown4DStudioVCLForm.EditorHighlightMatches(const Needle: string);
@@ -1677,7 +1638,7 @@ end;
 
 function TMarkdown4DStudioVCLForm.PreviewFindNeedle: string;
 begin
-  Result := FFindEdit.Text;
+  Result := edtFind.Text;
 end;
 
 procedure TMarkdown4DStudioVCLForm.SetFindCount(const Value: string);
@@ -1724,36 +1685,6 @@ begin
     Result := TPadConflictChoice.Reload
   else
     Result := TPadConflictChoice.Cancel;
-end;
-
-procedure TMarkdown4DStudioVCLForm.BuildPalette;
-begin
-  FPalette := TPanel.Create(Self);
-  FPalette.Parent := Self;
-  FPalette.BevelOuter := bvNone;
-  FPalette.BevelKind := bkFlat;
-  FPalette.ShowCaption := False;
-  FPalette.Width := PaletteWidth;
-  FPalette.Visible := False;
-
-  FPaletteEdit := TEdit.Create(Self);
-  FPaletteEdit.Parent := FPalette;
-  FPaletteEdit.Align := alTop;
-  FPaletteEdit.TextHint := PaletteHintCaption;
-  FPaletteEdit.OnChange := HandlePaletteChange;
-
-  FPaletteList := TListBox.Create(Self);
-  FPaletteList.Parent := FPalette;
-  FPaletteList.Align := alClient;
-  FPaletteList.BorderStyle := bsNone;
-  FPaletteList.Style := lbOwnerDrawFixed;
-  FPaletteList.ItemHeight := PaletteRowHeight;
-  FPaletteList.OnDrawItem := HandlePaletteDrawItem;
-  FPaletteList.OnDblClick := HandlePaletteDblClick;
-
-  FPalette.Height := FPaletteEdit.Height + PaletteRowHeight * PaletteVisibleRows;
-  FPalette.Left := (ClientWidth - PaletteWidth) div 2;
-  FPalette.Top := PaletteTop;
 end;
 
 procedure TMarkdown4DStudioVCLForm.BuildCommandRegistry;
@@ -1966,8 +1897,8 @@ procedure TMarkdown4DStudioVCLForm.ShowReplaceBar;
 begin
   ShowFindBar;
 
-  FReplaceEdit.SetFocus;
-  FReplaceEdit.SelectAll;
+  edtEditorReplace.SetFocus;
+  edtEditorReplace.SelectAll;
 end;
 
 procedure TMarkdown4DStudioVCLForm.CloseFindBar;
@@ -1999,51 +1930,51 @@ procedure TMarkdown4DStudioVCLForm.ShowPalette;
 begin
   FController.RebuildPaletteCommands;
 
-  FPaletteEdit.Text := '';
+  edtPalette.Text := '';
   RefreshPaletteList;
 
-  FPalette.Left := (ClientWidth - FPalette.Width) div 2;
-  FPalette.Top := PaletteTop;
-  FPalette.BringToFront;
-  FPalette.Visible := True;
-  FPaletteEdit.SetFocus;
+  pnlPalette.Left := (ClientWidth - pnlPalette.Width) div 2;
+  pnlPalette.Top := PaletteTop;
+  pnlPalette.BringToFront;
+  pnlPalette.Visible := True;
+  edtPalette.SetFocus;
 end;
 
 procedure TMarkdown4DStudioVCLForm.ClosePalette;
 begin
-  FPalette.Visible := False;
+  pnlPalette.Visible := False;
 
   FocusEditor;
 end;
 
 procedure TMarkdown4DStudioVCLForm.RefreshPaletteList;
 begin
-  FController.RefreshMatches(FPaletteEdit.Text);
+  FController.RefreshMatches(edtPalette.Text);
 
-  FPaletteList.Items.BeginUpdate;
+  lstPalette.Items.BeginUpdate;
   try
-    FPaletteList.Items.Clear;
+    lstPalette.Items.Clear;
 
     for var Entry in FPaletteMatches do
     begin
-      FPaletteList.Items.Add(Entry.Command.Name);
+      lstPalette.Items.Add(Entry.Command.Name);
     end;
   finally
-    FPaletteList.Items.EndUpdate;
+    lstPalette.Items.EndUpdate;
   end;
 
-  if FPaletteList.Count > 0 then
-    FPaletteList.ItemIndex := 0
+  if lstPalette.Count > 0 then
+    lstPalette.ItemIndex := 0
   else
-    FPaletteList.ItemIndex := -1;
+    lstPalette.ItemIndex := -1;
 end;
 
 procedure TMarkdown4DStudioVCLForm.HandlePaletteChange(Sender: TObject);
 begin
   RefreshPaletteList;
 
-  if FPaletteList.Count > 0 then
-    FPaletteList.ItemIndex := 0;
+  if lstPalette.Count > 0 then
+    lstPalette.ItemIndex := 0;
 end;
 
 procedure TMarkdown4DStudioVCLForm.HandlePaletteDrawItem(Control: TWinControl; Index: Integer; Rect: TRect;
@@ -2084,16 +2015,16 @@ end;
 
 procedure TMarkdown4DStudioVCLForm.PaletteMoveSelection(const Delta: Integer);
 begin
-  if FPaletteList.Count = 0 then
+  if lstPalette.Count = 0 then
     Exit;
 
-  const NewIndex = EnsureRange(FPaletteList.ItemIndex + Delta, 0, FPaletteList.Count - 1);
-  FPaletteList.ItemIndex := NewIndex;
+  const NewIndex = EnsureRange(lstPalette.ItemIndex + Delta, 0, lstPalette.Count - 1);
+  lstPalette.ItemIndex := NewIndex;
 end;
 
 procedure TMarkdown4DStudioVCLForm.ExecuteSelectedCommand;
 begin
-  const Index = FPaletteList.ItemIndex;
+  const Index = lstPalette.ItemIndex;
   if (Index < 0) or (Index >= FController.PaletteMatchCount) then
     Exit;
 
@@ -2112,7 +2043,7 @@ end;
 
 procedure TMarkdown4DStudioVCLForm.EnterZen;
 begin
-  if FPalette.Visible then
+  if pnlPalette.Visible then
     ClosePalette;
 
   FZenFindWasVisible := pnlFind.Visible;
@@ -2208,8 +2139,8 @@ begin
     // preview, which would otherwise be squeezed to nothing.
     ApplySplitEditorWidth(mdEditor.Width);
 
-  if FPalette <> nil then
-    FPalette.Left := (ClientWidth - FPalette.Width) div 2;
+  if pnlPalette <> nil then
+    pnlPalette.Left := (ClientWidth - pnlPalette.Width) div 2;
 end;
 
 class function TMarkdown4DStudioVCLForm.BuildSampleMarkdown: string;
