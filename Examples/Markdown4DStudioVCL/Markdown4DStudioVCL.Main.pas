@@ -34,7 +34,8 @@ uses
   Markdown4DStudio.FileWatcher,
   Markdown4DStudio.Shell,
   Markdown4DStudio.Controller,
-  Markdown4DStudioVCL.Defines;
+  Markdown4DStudioVCL.Defines,
+  Markdown4DStudioVCL.ToolButton;
 
 type
   TMarkdown4DStudioVCLForm = class(TForm, IPadEditorView, IPadShell)
@@ -73,6 +74,8 @@ type
         SeparatorColor: TColor;
         ActiveTabColor: TColor;
         HoverTabColor: TColor;
+        ButtonHoverColor: TColor;
+        ButtonActiveColor: TColor;
       end;
     var
       FIconFontName: string;
@@ -96,7 +99,7 @@ type
       FCommandsButton: TSpeedButton;
       FFindButton: TSpeedButton;
       FFindEdit: TEdit;
-      FIconButtons: TArray<TSpeedButton>;
+      FIconButtons: TArray<TPadToolButton>;
       FSeparators: TArray<TPanel>;
       FLightTheme: TMarkdownTheme;
       FDarkTheme: TMarkdownTheme;
@@ -159,7 +162,7 @@ type
     procedure FocusEditor;
     procedure BuildToolbar;
     function ResolveIconFontName: string;
-    function AddIconButton(const Glyph: string; const Hint: string; const Handler: TNotifyEvent): TSpeedButton;
+    function AddIconButton(const Glyph: string; const Hint: string; const Handler: TNotifyEvent): TPadToolButton;
     procedure AddSeparator;
     procedure WMDropFiles(var Message: TMessage); message WM_DROPFILES;
     function TryHandlePaletteKey(const Key: Word; const Shift: TShiftState): Boolean;
@@ -457,17 +460,16 @@ begin
 end;
 
 function TMarkdown4DStudioVCLForm.AddIconButton(const Glyph: string; const Hint: string;
-  const Handler: TNotifyEvent): TSpeedButton;
+  const Handler: TNotifyEvent): TPadToolButton;
 begin
   const VerticalMargin = (ToolbarHeight - IconButtonSize) div 2;
 
-  Result := TSpeedButton.Create(Self);
+  Result := TPadToolButton.Create(Self);
   Result.Parent := pnlToolbar;
   Result.Align := alLeft;
   Result.AlignWithMargins := True;
   Result.Margins.SetBounds(2, VerticalMargin, 0, VerticalMargin);
   Result.Width := IconButtonSize;
-  Result.Flat := True;
   Result.Font.Name := FIconFontName;
   Result.Font.Size := IconGlyphSize;
   Result.Caption := Glyph;
@@ -1477,6 +1479,8 @@ begin
     Result.SeparatorColor := SeparatorDarkColor;
     Result.ActiveTabColor := TabActiveDarkColor;
     Result.HoverTabColor := TabHoverDarkColor;
+    Result.ButtonHoverColor := ButtonHoverDarkColor;
+    Result.ButtonActiveColor := ButtonActiveDarkColor;
   end
   else
   begin
@@ -1485,6 +1489,8 @@ begin
     Result.SeparatorColor := SeparatorLightColor;
     Result.ActiveTabColor := clWhite;
     Result.HoverTabColor := TabHoverLightColor;
+    Result.ButtonHoverColor := ButtonHoverLightColor;
+    Result.ButtonActiveColor := ButtonActiveLightColor;
   end;
 end;
 
@@ -1521,6 +1527,8 @@ begin
   for var Button in FIconButtons do
   begin
     Button.Font.Color := Chrome.IconColor;
+    Button.HoverColor := Chrome.ButtonHoverColor;
+    Button.ActiveColor := Chrome.ButtonActiveColor;
   end;
 
   for var Separator in FSeparators do

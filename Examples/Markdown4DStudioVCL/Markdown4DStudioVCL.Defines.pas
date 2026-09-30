@@ -33,6 +33,10 @@ const
   TabActiveDarkColor = TColor($003F3F3F);
   TabHoverLightColor = TColor($00EAEAEA);
   TabHoverDarkColor = TColor($00383838);
+  ButtonHoverLightColor = TColor($00E0E0E0);
+  ButtonHoverDarkColor = TColor($003E3E3E);
+  ButtonActiveLightColor = TColor($00CBCBCB);
+  ButtonActiveDarkColor = TColor($00525252);
   ZenPadDarkColor = TColor($0017110D); // matches the dark theme editor/preview background ($0D1117)
   SessionFileName = 'Markdown4DStudio.Vcl.json';
   CloseUnsavedPrompt = 'Save changes before closing this document?';

@@ -182,8 +182,11 @@ same character.
 
 HTML rendering is not always the goal. This walkthrough builds a complete
 extension that draws GitHub-style alert callouts (`> [!NOTE]`, `> [!WARNING]`, …)
-as a coloured banner on the viewer canvas, using nothing but the public API. It
-combines the three moving parts every native-rendering extension shares:
+as a coloured banner on the viewer canvas, using nothing but the public API.
+The GFM dialect has alerts built in (see [API.md](API.md#alerts)); the
+walkthrough builds them again on a CommonMark pipeline because they make a
+small, complete example. It combines the three moving parts every
+native-rendering extension shares:
 
 1. a **document processor** that recognises the construct and stashes a small
    payload on the node through the **extension-data channel**;

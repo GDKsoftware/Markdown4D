@@ -115,7 +115,7 @@ type
 | Method | Effect |
 |--------|--------|
 | `UseCommonMark` | Registers the full CommonMark 0.31.2 block and inline grammar |
-| `UseGfm` | `UseCommonMark` plus tables, task lists, strikethrough, autolinks, tag filter |
+| `UseGfm` | `UseCommonMark` plus tables, task lists, strikethrough, autolinks, tag filter, math, GitHub alerts |
 | `Use(ext)` | Installs a custom `IMarkdownExtension` |
 | `UnsafeHtml` | Allows raw HTML in the rendered output (CommonMark spec behaviour) |
 | `UnsafeLinks` | Writes every link and image destination out, including `javascript:`, `vbscript:`, `file:` and non-image `data:` (spec behaviour). Without it those destinations are emptied |
@@ -282,13 +282,17 @@ Selected properties: `BaseFont`, `CodeFont`, `MathFont`, `HeadingFonts[Level]`,
 `TextColor`, `BackgroundColor`, `LinkColor`, `CodeTextColor`,
 `CodeBackgroundColor`, `BlockQuoteBarColor`, `TableHeaderBackgroundColor`,
 `TableBorderColor`, `ThematicBreakColor`, `MathErrorColor`, `ParagraphSpacing`,
-`ListIndent`, `ContentPadding`, the `Chart*` colours and `ChartPalette`, and
-`TokenColors[Kind]` for code highlighting. Colours are `TLayoutColor`
+`ListIndent`, `ContentPadding`, the `Chart*` colours and `ChartPalette`,
+`TokenColors[Kind]` for code highlighting, `DiffInsertedBackgroundColor` and
+`DiffDeletedBackgroundColor` for the lines of a `diff` block, and
+`AlertColors[Kind]` for GitHub alerts. Colours are `TLayoutColor`
 (`$AARRGGBB`). Chart sizing and axis-label formatting are not part of the
 theme; see [Chart layout options](EXTENSIONS.md#chart-layout-options).
 
 `SaveToJson` / `LoadFromJson` serialise a complete theme so you can ship it as a
-resource or let users edit it.
+resource or let users edit it. A theme saved by an earlier version still loads;
+the colours it does not contain come from the preset, light or dark, that its
+background matches.
 
 ```pascal
 uses
@@ -302,6 +306,21 @@ finally
   Theme.Free;
 end;
 ```
+
+## Alerts
+
+GitHub alerts are part of the GFM dialect. A block quote at the top level of
+the document whose first line is `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`,
+`[!WARNING]` or `[!CAUTION]`, in any case, becomes an alert. A quote inside a
+list or another quote keeps its marker as text, as on GitHub.
+
+The marker line is taken out of the quote, and the quote carries the kind:
+`TMarkdownAlerts.TryGetKind(Node, Kind)` in unit `Markdown4D.Extensions.Alerts`.
+The HTML renderer writes GitHub's markup, a
+`<div class="markdown-alert markdown-alert-note">` with a
+`<p class="markdown-alert-title">`, without GitHub's icon; the markdown writer
+writes the marker back. The viewers draw the bar, an icon and the title in
+`Theme.AlertColors[Kind]` and the text in `Theme.TextColor`.
 
 ## Math
 
@@ -371,7 +390,8 @@ streaming in token by token therefore draws at every flush and only grows.
 | Symbols | The Greek alphabet, `\pm \times \cdot \div \circ \cup \cap \wedge \vee \oplus \otimes`, `\leq \geq \neq \approx \equiv \sim \subset \subseteq \in \notin \perp \parallel \mid`, the arrows, `\infty \partial \nabla \forall \exists \emptyset \neg \hbar \ell \aleph \ldots \cdots \vdots \ddots \prime \angle` |
 | Alphabets | `\mathrm`, `\mathbf`, `\boldsymbol`, `\mathit`, `\mathbb`, `\mathcal`, `\mathfrak`, `\mathsf`, `\mathtt`, `\text`, `\textit`, `\textbf` |
 | Accents | `\hat`, `\bar`, `\vec`, `\dot`, `\ddot`, `\tilde`, `\check`, `\breve`, `\acute`, `\grave`, `\overline` |
-| Spacing | `\,`, `\:`, `\;`, `\!`, `\ `, `~`, `\quad`, `\qquad` |
+| Spacing | `\,`, `\:`, `\;`, `\!`, `\ `, `\space`, `~`, `\quad`, `\qquad` |
+| Colour | `\textcolor{colour}{...}` colours its argument; `\color{colour}` is a switch that colours the rest of its group, as in LaTeX, KaTeX and MathJax 3. A colour is a CSS colour name or a hex value in three or six digits, with or without `#` |
 
 Anything else comes out as its name, in the error colour, so the author sees
 what did not resolve.
@@ -493,7 +513,8 @@ same.
 
 The viewer loads `http(s)` images asynchronously and local images relative to
 `Images.BaseUrl` or the loaded document's folder. Code blocks tagged `pascal`,
-`sql`, `json` or `xml` are syntax-highlighted; `chart` blocks render as
+`sql`, `json`, `xml` or `diff` are syntax-highlighted, and the added and removed
+lines of a `diff` block get a background as well; `chart` blocks render as
 graphics when the chart block override is registered (see
 [EXTENSIONS.md](EXTENSIONS.md)).
 

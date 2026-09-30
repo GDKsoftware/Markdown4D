@@ -87,6 +87,24 @@ type
     procedure Parse_ThinSpace_YieldsSpaceNode;
 
     [Test]
+    procedure Parse_SpaceCommand_YieldsWordSpace;
+
+    [Test]
+    procedure Parse_TextColor_WrapsOnlyItsArgument;
+
+    [Test]
+    procedure Parse_ColorSwitch_WrapsRestOfGroup;
+
+    [Test]
+    procedure Parse_UnknownColor_ShowsCommandAsError;
+
+    [Test]
+    [TestCase('ColorWithoutBraces', '\color red x,\color')]
+    [TestCase('TextColorWithoutBraces', '\textcolor red x,\textcolor')]
+    [TestCase('XcolorModel', '\color[HTML]{FF0000}x,\color')]
+    procedure Parse_ColorWithoutBracedName_ShowsCommandAsError(const Source, ExpectedError: string);
+
+    [Test]
     procedure Parse_Mathbb_YieldsStyledDoubleStruck;
 
     [Test]
@@ -466,6 +484,59 @@ begin
 
   Assert.AreEqual<TMathNodeKind>(TMathNodeKind.Space, Row.Children[1].Kind);
   Assert.AreEqual(3 / 18, Row.Children[1].SpaceWidth, 0.0001);
+end;
+
+procedure TMathSyntaxTests.Parse_SpaceCommand_YieldsWordSpace;
+begin
+  const Row = Parse('a\space b');
+  const WordSpace = Parse('a\ b').Children[1];
+
+  Assert.AreEqual<TMathNodeKind>(TMathNodeKind.Space, Row.Children[1].Kind);
+  Assert.AreEqual(WordSpace.SpaceWidth, Row.Children[1].SpaceWidth, 0.0001);
+end;
+
+procedure TMathSyntaxTests.Parse_TextColor_WrapsOnlyItsArgument;
+begin
+  const Row = Parse('\textcolor{red}{x}+y');
+
+  const Colored = Row.Children[0];
+  Assert.AreEqual(3, Row.ChildCount);
+  Assert.AreEqual<TMathNodeKind>(TMathNodeKind.Colored, Colored.Kind);
+  Assert.AreEqual<Cardinal>($FFFF0000, Colored.Color);
+  Assert.AreEqual('x', InnermostNode(Colored.Children[0]).Text);
+end;
+
+procedure TMathSyntaxTests.Parse_ColorSwitch_WrapsRestOfGroup;
+begin
+  const Row = Parse('{a\color{blue}b+c}d');
+
+  const Group = Row.Children[0];
+  const Colored = Group.Children[1];
+  Assert.AreEqual(2, Group.ChildCount);
+  Assert.AreEqual<TMathNodeKind>(TMathNodeKind.Colored, Colored.Kind);
+  Assert.AreEqual<Cardinal>($FF0000FF, Colored.Color);
+  Assert.AreEqual(3, Colored.Children[0].ChildCount);
+  Assert.AreEqual('d', Row.Children[1].Text);
+end;
+
+procedure TMathSyntaxTests.Parse_UnknownColor_ShowsCommandAsError;
+begin
+  const Row = Parse('\color{nosuchcolor}x');
+
+  const Error = FindText(Row, '\color{nosuchcolor}');
+  Assert.IsNotNull(Error);
+  Assert.IsTrue(Error.IsError);
+  Assert.IsNotNull(FindText(Row, 'x'));
+end;
+
+procedure TMathSyntaxTests.Parse_ColorWithoutBracedName_ShowsCommandAsError(const Source, ExpectedError: string);
+begin
+  const Row = Parse(Source);
+
+  const Command = Row.Children[0];
+  Assert.IsTrue(Command.IsError);
+  Assert.AreEqual(ExpectedError, Command.Text);
+  Assert.IsNotNull(FindText(Row, 'x'));
 end;
 
 procedure TMathSyntaxTests.Parse_Mathbb_YieldsStyledDoubleStruck;

@@ -212,6 +212,7 @@ type
       FMeasurer: ITextMeasurer;
       FOptions: TMathLayoutOptions;
     function Build(const Node: IMathNode; const Style: TMathStyle; const Variant: TMathFontVariant): TMathBox;
+    function BuildColored(const Node: IMathNode; const Style: TMathStyle; const Variant: TMathFontVariant): TMathBox;
     function BuildRow(const Node: IMathNode; const Style: TMathStyle; const Variant: TMathFontVariant): TMathBox;
     function BuildSymbol(const Node: IMathNode; const Style: TMathStyle; const Variant: TMathFontVariant): TMathBox;
     function BuildText(const Node: IMathNode; const Style: TMathStyle): TMathBox;
@@ -572,8 +573,24 @@ begin
       Result := BuildMatrix(Node, Style, TMathStyle.Text, Variant);
     TMathNodeKind.Styled:
       Result := Build(Node.Children[0], Style, Node.Variant);
+    TMathNodeKind.Colored:
+      Result := BuildColored(Node, Style, Variant);
   else
     raise EMathSyntaxError.CreateFmt('Unhandled math node kind: %d', [Ord(Node.Kind)]);
+  end;
+end;
+
+// Every box reads the text colour from the options as it is built, so the
+// body picks up the colour for as long as it is being built.
+function TMathBoxBuilder.BuildColored(const Node: IMathNode; const Style: TMathStyle;
+  const Variant: TMathFontVariant): TMathBox;
+begin
+  const PreviousColor = FOptions.TextColor;
+  FOptions.TextColor := Node.Color;
+  try
+    Result := Build(Node.Children[0], Style, Variant);
+  finally
+    FOptions.TextColor := PreviousColor;
   end;
 end;
 
@@ -676,6 +693,8 @@ begin
         else
           Result := TMathAtomClass.Ordinary;
       end;
+    TMathNodeKind.Colored:
+      Result := AtomClassOf(Node.Children[0]);
   else
     Result := TMathAtomClass.Ordinary;
   end;

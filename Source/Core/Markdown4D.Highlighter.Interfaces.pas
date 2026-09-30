@@ -10,10 +10,13 @@ const
   JsonLanguageName = 'json';
   SqlLanguageName = 'sql';
   XmlLanguageName = 'xml';
+  DiffLanguageName = 'diff';
 
 type
+  // Inserted and Deleted mark whole lines of a diff; the layout gives such a
+  // line a background as well as a text colour.
   TSyntaxTokenKind = (PlainText, Keyword, StringLiteral, NumberLiteral, Comment, Directive, EscapeSequence, JsonKey,
-    TagName, AttributeName, AttributeValue, Entity, CDataSection);
+    TagName, AttributeName, AttributeValue, Entity, CDataSection, Inserted, Deleted);
 
   TSyntaxToken = record
     Kind: TSyntaxTokenKind;

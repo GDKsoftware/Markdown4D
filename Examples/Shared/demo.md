@@ -57,6 +57,25 @@ Task list:
 > > And it can nest another quote inside it,
 > > spanning several lines.
 
+## Alerts
+
+GitHub alerts are block quotes that start with a marker:
+
+> [!NOTE]
+> A side remark the reader should not miss.
+
+> [!TIP]
+> A shortcut that saves the reader some time.
+
+> [!IMPORTANT]
+> Something the reader must know to get it working.
+
+> [!WARNING]
+> Something that needs attention before going on.
+
+> [!CAUTION]
+> An action whose effects are hard to undo.
+
 ## Table
 
 Tables support per-column alignment:
@@ -68,6 +87,7 @@ Tables support per-column alignment:
 | Charts         |  Done  |     Bar, line, pie, doughnut|
 | Diagrams       |  Done  |  Flowchart, sequence, pie   |
 | Math           |  Done  |         Inline and display  |
+| Alerts         |  Done  |     Five kinds, as on GitHub|
 
 ## Math
 
@@ -102,6 +122,15 @@ end;
   "renders": ["text", "tables", "charts", "diagrams"],
   "embeddedBrowser": false
 }
+```
+
+A `diff` block marks added and removed lines:
+
+```diff
+@@ -1,3 +1,3 @@
+ procedure Greet(const Name: string);
+-  Writeln('Hello, ' + Name + '!');
++  Writeln(Format('Hello, %s!', [Name]));
 ```
 
 Inline code such as `TMarkdownViewer` stays monospaced within a sentence.

@@ -31,6 +31,9 @@ type
       ImageOpenFormat = '<img src="%s" alt="';
       TitleAttributeFormat = ' title="%s"';
       AnchorCloseTag = '</a>';
+      AlertOpenFormat = '<div class="markdown-alert markdown-alert-%s">';
+      AlertTitleFormat = '<p class="markdown-alert-title">%s</p>';
+      AlertCloseTag = '</div>';
       TagCloseBracket = '>';
       OmittedHtmlComment = '<!-- raw HTML omitted -->';
       EscapedAmpersand = '&amp;';
@@ -102,7 +105,7 @@ type
     procedure WriteHardBreak;
     procedure LeaveParagraph;
     procedure LeaveHeading(const Node: IMarkdownHeading);
-    procedure LeaveBlockQuote(const WasTightList: Boolean);
+    procedure LeaveBlockQuote(const Node: IMarkdownNode; const WasTightList: Boolean);
     procedure LeaveList(const Node: IMarkdownList; const WasTightList: Boolean);
     procedure LeaveListItem;
     procedure LeaveTable;
@@ -127,6 +130,7 @@ implementation
 
 uses
   Markdown4D.Defines,
+  Markdown4D.Extensions.Alerts,
   Markdown4D.Text.UrlSafety;
 
 type
@@ -261,7 +265,7 @@ begin
     TMarkdownNodeKind.Heading:
       LeaveHeading(Task.Node as IMarkdownHeading);
     TMarkdownNodeKind.BlockQuote:
-      LeaveBlockQuote(Task.WasTightList);
+      LeaveBlockQuote(Task.Node, Task.WasTightList);
     TMarkdownNodeKind.List:
       LeaveList(Task.Node as IMarkdownList, Task.WasTightList);
     TMarkdownNodeKind.ListItem:
@@ -330,13 +334,30 @@ begin
   AppendLineBreak;
 end;
 
+// An alert is written the way GitHub writes it, so stylesheets made for
+// GitHub's alerts apply: a div with the kind in its class and a title
+// paragraph. GitHub's title also carries an icon, which is left out here.
 procedure TMarkdownHtmlRenderer.EnterBlockQuote(const Node: IMarkdownNode);
 begin
   ScheduleLeaveAndChildren(Node, FTightList);
   FTightList := False;
 
   AppendLineBreak;
-  FOutput.Append('<blockquote>');
+
+  var AlertKind: TMarkdownAlertKind;
+  if TMarkdownAlerts.TryGetKind(Node, AlertKind) then
+  begin
+    const OpenTag = Format(AlertOpenFormat, [AlertKind.CssName]);
+    const TitleParagraph = Format(AlertTitleFormat, [AlertKind.Title]);
+    FOutput.Append(OpenTag);
+    AppendLineBreak;
+    FOutput.Append(TitleParagraph);
+  end
+  else
+  begin
+    FOutput.Append('<blockquote>');
+  end;
+
   AppendLineBreak;
 end;
 
@@ -639,10 +660,16 @@ begin
   AppendLineBreak;
 end;
 
-procedure TMarkdownHtmlRenderer.LeaveBlockQuote(const WasTightList: Boolean);
+procedure TMarkdownHtmlRenderer.LeaveBlockQuote(const Node: IMarkdownNode; const WasTightList: Boolean);
 begin
   AppendLineBreak;
-  FOutput.Append('</blockquote>');
+
+  var AlertKind: TMarkdownAlertKind;
+  if TMarkdownAlerts.TryGetKind(Node, AlertKind) then
+    FOutput.Append(AlertCloseTag)
+  else
+    FOutput.Append('</blockquote>');
+
   AppendLineBreak;
 
   FTightList := WasTightList;

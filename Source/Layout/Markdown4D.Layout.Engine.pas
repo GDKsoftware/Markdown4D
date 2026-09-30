@@ -45,8 +45,10 @@ uses
   Markdown4D.Defines,
   Markdown4D.Parser.Inlines,
   Markdown4D.Highlighter.Interfaces,
+  Markdown4D.Extensions.Alerts,
   Markdown4D,
   Markdown4D.Html.Subset,
+  Markdown4D.Layout.AlertIcons,
   Markdown4D.Layout.ExtensionCanvas,
   Markdown4D.Layout.Primitives,
   Markdown4D.Math.Layout;
@@ -171,13 +173,15 @@ type
       const Items: TList<IDisplayItem>; const Node: IMarkdownNode);
   end;
 
-  TLayoutCommandKind = (Block, Gap, QuoteBar, ListItem);
+  TLayoutCommandKind = (Block, Gap, QuoteBar, ListItem, AlertTitle);
 
   TLayoutCommand = record
     Kind: TLayoutCommandKind;
     Node: IMarkdownNode;
     X: Single;
-    TextColor: TLayoutColor;
+    // A block's text colour, a quote bar's colour or an alert title's colour.
+    Color: TLayoutColor;
+    AlertKind: TMarkdownAlertKind;
     GapAmount: Single;
     InsertIndex: Integer;
     StartY: Single;
@@ -257,6 +261,8 @@ type
       BulletMarkerText = #$2022;
       OrderedMarkerFormat = '%d.';
       ShiftEpsilon = 0.0001;
+      AlertIconScale = 0.75;
+      AlertIconGapScale = 0.5;
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
@@ -273,7 +279,10 @@ type
     procedure EmitListMarker(const Command: TLayoutCommand);
     procedure EmitTaskCheckbox(const Command: TLayoutCommand; const Marker: IMarkdownCustomInline);
     procedure PushBlockQuote(const Command: TLayoutCommand);
+    procedure PushAlert(const Command: TLayoutCommand; const Kind: TMarkdownAlertKind);
+    procedure PushQuoteBar(const Command: TLayoutCommand; const BarColor: TLayoutColor);
     procedure EmitQuoteBar(const Command: TLayoutCommand);
+    procedure EmitAlertTitle(const Command: TLayoutCommand);
     procedure PushList(const Command: TLayoutCommand);
     class function TryFindTaskMarker(const ListItem: IMarkdownNode; out Marker: IMarkdownCustomInline): Boolean;
     procedure PushContainerChildren(const Container: IMarkdownNode; const X: Single; const TextColor: TLayoutColor);
@@ -286,6 +295,8 @@ type
       const LineHeight, Padding: Single);
     function EmitHighlightedCodeLine(const Command: TLayoutCommand; const Highlighter: IMarkdownSyntaxHighlighter;
       const LineText: string; const Top, LineHeight: Single; const LineStart, State: Integer): Integer;
+    procedure EmitCodeLineBackground(const Command: TLayoutCommand; const Line: TSyntaxLine;
+      const Top, LineHeight: Single);
     procedure EmitPlainCodeLine(const Command: TLayoutCommand; const LineText: string; const Top, LineHeight: Single;
       const LineStart: Integer);
     class function CodeLanguageOf(const Code: IMarkdownCodeBlock): string;
@@ -606,6 +617,8 @@ begin
       EmitQuoteBar(Command);
     TLayoutCommandKind.ListItem:
       ProcessListItem(Command);
+    TLayoutCommandKind.AlertTitle:
+      EmitAlertTitle(Command);
   else
     raise EMarkdownError.CreateFmt('Unhandled layout command kind: %d', [Ord(Command.Kind)]);
   end;
@@ -622,10 +635,10 @@ begin
 
   case Command.Node.Kind of
     TMarkdownNodeKind.Paragraph:
-      LayoutInlineBlock(Command.Node, Command.X, FTheme.BaseFont, Command.TextColor);
+      LayoutInlineBlock(Command.Node, Command.X, FTheme.BaseFont, Command.Color);
     TMarkdownNodeKind.Heading:
       LayoutInlineBlock(Command.Node, Command.X, FTheme.HeadingFonts[(Command.Node as IMarkdownHeading).Level],
-        Command.TextColor);
+        Command.Color);
     TMarkdownNodeKind.CodeBlock:
       EmitCodeBlock(Command);
     TMarkdownNodeKind.HtmlBlock:
@@ -685,7 +698,7 @@ begin
     if IsNestedList then
       ChildX := Command.X + FTheme.ListIndent;
 
-    PushBlock(Child, ChildX, Command.TextColor);
+    PushBlock(Child, ChildX, Command.Color);
 
     const NeedsGap = (Index > 0) and not Command.Tight;
     if NeedsGap then
@@ -699,7 +712,7 @@ begin
   const MarkerHeight = FMeasurer.LineHeight(FTheme.BaseFont);
   const Bounds = TLayoutRectF.Create(Command.X, FCurrentY, Command.X + MarkerSize.Width, FCurrentY + MarkerHeight);
 
-  FItems.Add(TDisplayTextRun.Create(Bounds, Command.Node, Command.MarkerText, FTheme.BaseFont, Command.TextColor,
+  FItems.Add(TDisplayTextRun.Create(Bounds, Command.Node, Command.MarkerText, FTheme.BaseFont, Command.Color,
     FMeasurer.Baseline(FTheme.BaseFont), 0));
 end;
 
@@ -718,15 +731,50 @@ end;
 
 procedure TLayoutWorker.PushBlockQuote(const Command: TLayoutCommand);
 begin
+  var AlertKind: TMarkdownAlertKind;
+  if TMarkdownAlerts.TryGetKind(Command.Node, AlertKind) then
+  begin
+    PushAlert(Command, AlertKind);
+    Exit;
+  end;
+
+  PushQuoteBar(Command, FTheme.BlockQuoteBarColor);
+  PushContainerChildren(Command.Node, Command.X + FTheme.BlockQuoteInset, FTheme.BlockQuoteTextColor);
+end;
+
+// An alert is a quote with its bar in the colour of its kind, a title with an
+// icon above the text, and the text in the normal colour, as on GitHub.
+procedure TLayoutWorker.PushAlert(const Command: TLayoutCommand; const Kind: TMarkdownAlertKind);
+begin
+  const AlertColor = FTheme.AlertColors[Kind];
+  const ContentX = Command.X + FTheme.BlockQuoteInset;
+
+  PushQuoteBar(Command, AlertColor);
+  PushContainerChildren(Command.Node, ContentX, FTheme.TextColor);
+
+  const HasContent = (Command.Node.ChildCount > 0);
+  if HasContent then
+    PushGap(FTheme.ParagraphSpacing);
+
+  var TitleCommand := Default(TLayoutCommand);
+  TitleCommand.Kind := TLayoutCommandKind.AlertTitle;
+  TitleCommand.Node := Command.Node;
+  TitleCommand.X := ContentX;
+  TitleCommand.Color := AlertColor;
+  TitleCommand.AlertKind := Kind;
+  FCommands.Add(TitleCommand);
+end;
+
+procedure TLayoutWorker.PushQuoteBar(const Command: TLayoutCommand; const BarColor: TLayoutColor);
+begin
   var BarCommand := Default(TLayoutCommand);
   BarCommand.Kind := TLayoutCommandKind.QuoteBar;
   BarCommand.Node := Command.Node;
   BarCommand.X := Command.X;
+  BarCommand.Color := BarColor;
   BarCommand.StartY := FCurrentY;
   BarCommand.InsertIndex := FItems.Count;
   FCommands.Add(BarCommand);
-
-  PushContainerChildren(Command.Node, Command.X + FTheme.BlockQuoteInset, FTheme.BlockQuoteTextColor);
 end;
 
 procedure TLayoutWorker.EmitQuoteBar(const Command: TLayoutCommand);
@@ -737,7 +785,38 @@ begin
 
   const Bounds = TLayoutRectF.Create(Command.X, Command.StartY, Command.X + FTheme.BlockQuoteBarWidth,
     Command.StartY + Height);
-  FItems.Insert(Command.InsertIndex, TDisplayRectangle.Create(Bounds, Command.Node, FTheme.BlockQuoteBarColor, 0, 0));
+  FItems.Insert(Command.InsertIndex, TDisplayRectangle.Create(Bounds, Command.Node, Command.Color, 0, 0));
+end;
+
+// The icon takes three quarters of the title's line height, centred on the
+// line, with half its width as the gap before the title.
+procedure TLayoutWorker.EmitAlertTitle(const Command: TLayoutCommand);
+begin
+  var TitleFont := FTheme.BaseFont;
+  TitleFont.Bold := True;
+
+  const LineHeight = FMeasurer.LineHeight(TitleFont);
+  const IconSize = LineHeight * AlertIconScale;
+  const IconTop = FCurrentY + (LineHeight - IconSize) / 2;
+
+  const Icon = TAlertIconBuilder.Create(Command.X, IconTop, IconSize, Command.Color, Command.Node);
+  try
+    const IconItems = Icon.Build(Command.AlertKind);
+    FItems.AddRange(IconItems);
+  finally
+    Icon.Free;
+  end;
+
+  const Title = Command.AlertKind.Title;
+  const TitleLeft = Command.X + IconSize * (1 + AlertIconGapScale);
+  const TitleSize = FMeasurer.MeasureText(Title, TitleFont);
+  const Bounds = TLayoutRectF.Create(TitleLeft, FCurrentY, TitleLeft + TitleSize.Width, FCurrentY + LineHeight);
+  const TitleBaseline = FMeasurer.Baseline(TitleFont);
+  const TitleRun: IDisplayItem = TDisplayTextRun.Create(Bounds, Command.Node, Title, TitleFont, Command.Color,
+    TitleBaseline, 0);
+  FItems.Add(TitleRun);
+
+  FCurrentY := FCurrentY + LineHeight;
 end;
 
 procedure TLayoutWorker.PushList(const Command: TLayoutCommand);
@@ -754,7 +833,7 @@ begin
     ItemCommand.Kind := TLayoutCommandKind.ListItem;
     ItemCommand.Node := Command.Node.Children[Index];
     ItemCommand.X := Command.X;
-    ItemCommand.TextColor := Command.TextColor;
+    ItemCommand.Color := Command.Color;
     ItemCommand.Tight := List.IsTight;
 
     var TaskMarker: IMarkdownCustomInline;
@@ -831,7 +910,7 @@ begin
   Command.Kind := TLayoutCommandKind.Block;
   Command.Node := Node;
   Command.X := X;
-  Command.TextColor := TextColor;
+  Command.Color := TextColor;
 
   FCommands.Add(Command);
 end;
@@ -917,6 +996,8 @@ begin
   const Line = Highlighter.TokenizeLine(LineText, State);
   Result := Line.NextState;
 
+  EmitCodeLineBackground(Command, Line, Top, LineHeight);
+
   var Left := Command.X + FTheme.CodePadding;
   for var Token in Line.Tokens do
   begin
@@ -928,6 +1009,31 @@ begin
       FTheme.TokenColors[Token.Kind], FMeasurer.Baseline(FTheme.CodeFont), LineStart + Token.Start - 1));
     Left := Left + Size.Width;
   end;
+end;
+
+// An added or removed line of a diff is shaded across the whole code block,
+// so the change reads at a glance as it does on GitHub.
+procedure TLayoutWorker.EmitCodeLineBackground(const Command: TLayoutCommand; const Line: TSyntaxLine;
+  const Top, LineHeight: Single);
+begin
+  const HasTokens = (Length(Line.Tokens) > 0);
+  if not HasTokens then
+    Exit;
+
+  const FirstKind = Line.Tokens[0].Kind;
+  var Background: TLayoutColor;
+  case FirstKind of
+    TSyntaxTokenKind.Inserted:
+      Background := FTheme.DiffInsertedBackgroundColor;
+    TSyntaxTokenKind.Deleted:
+      Background := FTheme.DiffDeletedBackgroundColor;
+  else
+    Exit;
+  end;
+
+  const Bounds = TLayoutRectF.Create(Command.X, Top, ContentRight, Top + LineHeight);
+  const LineBackground: IDisplayItem = TDisplayRectangle.Create(Bounds, Command.Node, Background, 0, 0);
+  FItems.Add(LineBackground);
 end;
 
 procedure TLayoutWorker.EmitPlainCodeLine(const Command: TLayoutCommand; const LineText: string;
@@ -990,7 +1096,7 @@ begin
   if (Document = nil) or (Document.ChildCount = 0) then
     Exit;
 
-  PushContainerChildren(Document, Command.X, Command.TextColor);
+  PushContainerChildren(Document, Command.X, Command.Color);
 end;
 
 procedure TLayoutWorker.EmitThematicBreak(const Command: TLayoutCommand);
@@ -1013,7 +1119,7 @@ procedure TLayoutWorker.EmitMathBlock(const Command: TLayoutCommand);
 begin
   const Math = Command.Node as IMarkdownMath;
   const Font = TMarkdownFontStyle.Create(FTheme.MathFont.FamilyName, FTheme.MathFont.Size);
-  const Options = TMathLayoutOptions.Create(Font, Command.TextColor, FTheme.MathErrorColor, True);
+  const Options = TMathLayoutOptions.Create(Font, Command.Color, FTheme.MathErrorColor, True);
   const Formula = TMathLayouter.Layout(Math.Literal, Options, FMeasurer);
 
   const Padding = FTheme.ParagraphSpacing / 2;
@@ -1027,7 +1133,7 @@ begin
   Formula.Draw(Canvas, Left, Baseline);
 
   const SourceBounds = TLayoutRectF.Create(Left, FCurrentY, Left + Formula.Width, FCurrentY + Height);
-  FItems.Add(TDisplayTextRun.Create(SourceBounds, Command.Node, MathSourceOf(Math, True), Font, Command.TextColor,
+  FItems.Add(TDisplayTextRun.Create(SourceBounds, Command.Node, MathSourceOf(Math, True), Font, Command.Color,
     Baseline - FCurrentY, 0, TDisplayTextRunRole.Source));
 
   FCurrentY := FCurrentY + Height;
@@ -1122,7 +1228,7 @@ begin
         Continue;
       end;
 
-      const Atoms = FCollector.Collect(Row.Children[ColumnIndex], RowFont, Command.TextColor);
+      const Atoms = FCollector.Collect(Row.Children[ColumnIndex], RowFont, Command.Color);
       Cells.Add(Atoms);
       Result[ColumnIndex] := Max(Result[ColumnIndex], NaturalWidthOf(Atoms));
     end;

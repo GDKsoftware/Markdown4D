@@ -54,6 +54,17 @@ $$
 \nabla \cdot \vec{E} = \frac{\rho}{\varepsilon_0}
 $$
 
+## Colour
+
+`\textcolor` colours its argument; `\color` colours the rest of its group, as in
+KaTeX and MathJax. A colour is a CSS name or a hex value.
+
+$$
+\textcolor{#0969da}{a^2} + \textcolor{#1a7f37}{b^2} = \textcolor{#cf222e}{c^2}
+$$
+
+$${\color{darkorange}\text{warm}} \quad {\color{teal}\text{cool}} \quad \text{plain}$$
+
 ## Chemistry
 
 The same dollars carry a chemical formula. `\ce` keeps element symbols

@@ -28,6 +28,7 @@ type
       DeleteCharacter = #127;
       QuoteMarker = '>';
       QuoteContentPrefix = '> ';
+      AlertMarkerFormat = '[!%s]';
       BulletMarker = '-';
       AlternateBulletMarker = '*';
       OrderedDelimiter = '.';
@@ -137,6 +138,7 @@ uses
   System.Character,
   System.Math,
   Markdown4D.Defines,
+  Markdown4D.Extensions.Alerts,
   Markdown4D.Text.Unescape,
   Markdown4D.Parser.Inlines,
   Markdown4D.Writer.Emphasis;
@@ -340,11 +342,17 @@ begin
   EnsureLineBreak;
 end;
 
+// An alert lost its marker line when it was parsed, so the marker is written
+// back as the first line of the quote.
 procedure TMarkdownWriter.EnterBlockQuote(const Task: TWriteTask);
 begin
   BeginBlock(Task);
 
-  const IsEmpty = (Task.Node.ChildCount = 0);
+  var AlertKind: TMarkdownAlertKind;
+  const IsAlert = TMarkdownAlerts.TryGetKind(Task.Node, AlertKind);
+  const HasChildren = (Task.Node.ChildCount > 0);
+
+  const IsEmpty = not (HasChildren or IsAlert);
   if IsEmpty then
     WriteRaw(QuoteMarker)
   else if not FAtLineStart then
@@ -353,6 +361,14 @@ begin
   ScheduleLeaveAndChildren(Task, '');
   PushPrefix(QuoteContentPrefix);
   FTight := False;
+
+  if not IsAlert then
+    Exit;
+
+  const Marker = Format(AlertMarkerFormat, [AlertKind.MarkerName]);
+  WriteRaw(Marker);
+  if HasChildren then
+    WriteLineBreak;
 end;
 
 procedure TMarkdownWriter.EnterList(const Task: TWriteTask);

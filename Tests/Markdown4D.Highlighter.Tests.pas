@@ -52,6 +52,17 @@ type
     procedure Highlighter_CommentAcrossLines_CarriesStateThenResets(const Language, FirstLineText, SecondLineText, FirstExpected, SecondExpected: string);
 
     [Test]
+    [TestCase('Added line', '+ added;Inserted@1+7', ';')]
+    [TestCase('Removed line', '- removed;Deleted@1+9', ';')]
+    [TestCase('Old file line', '--- a/x;Comment@1+7', ';')]
+    [TestCase('New file line', '+++ b/x;Comment@1+7', ';')]
+    [TestCase('Context line', 'x = 1;Plain@1+5', ';')]
+    procedure Diff_Line_IsTokenizedByItsStart(const LineText, Expected: string);
+
+    [Test]
+    procedure Diff_TripleDashInsideHunk_IsRemovedLineUntilNextFile;
+
+    [Test]
     procedure Sql_KeywordsAndNumbers_AreTokenized;
 
     [Test]
@@ -110,7 +121,8 @@ uses
   Markdown4D.Highlighter.Pascal,
   Markdown4D.Highlighter.Sql,
   Markdown4D.Highlighter.Json,
-  Markdown4D.Highlighter.Xml;
+  Markdown4D.Highlighter.Xml,
+  Markdown4D.Highlighter.Diff;
 
 type
   TFakeSyntaxHighlighter = class(TInterfacedObject, IMarkdownSyntaxHighlighter)
@@ -173,6 +185,28 @@ begin
   const SecondLine = Highlighter.TokenizeLine(SecondLineText, FirstLine.NextState);
   AssertLineTokens(SecondLine, SecondLineText, SecondExpected);
   Assert.AreEqual(Highlighter.InitialState, SecondLine.NextState);
+end;
+
+procedure TSyntaxHighlighterTests.Diff_Line_IsTokenizedByItsStart(const LineText, Expected: string);
+begin
+  AssertTokenizes(TDiffSyntaxHighlighter.Create, LineText, Expected);
+end;
+
+procedure TSyntaxHighlighterTests.Diff_TripleDashInsideHunk_IsRemovedLineUntilNextFile;
+begin
+  const Highlighter: IMarkdownSyntaxHighlighter = TDiffSyntaxHighlighter.Create;
+  const Lines: TArray<string> = ['diff --git a/q.sql b/q.sql', '--- a/q.sql', '+++ b/q.sql', '@@ -1 +1 @@',
+    '--- old comment', '+++ new comment', '-- note', 'diff --git a/r.sql b/r.sql', '--- a/r.sql'];
+  const Expected: TArray<string> = ['Comment@1+26', 'Comment@1+11', 'Comment@1+11', 'Directive@1+11',
+    'Deleted@1+15', 'Inserted@1+15', 'Deleted@1+7', 'Comment@1+26', 'Comment@1+11'];
+
+  var State := Highlighter.InitialState;
+  for var Index := 0 to High(Lines) do
+  begin
+    const Line = Highlighter.TokenizeLine(Lines[Index], State);
+    AssertLineTokens(Line, Lines[Index], Expected[Index]);
+    State := Line.NextState;
+  end;
 end;
 
 procedure TSyntaxHighlighterTests.Sql_KeywordsAndNumbers_AreTokenized;
@@ -330,7 +364,7 @@ end;
 class function TSyntaxHighlighterTests.DescribeTokens(const Tokens: TArray<TSyntaxToken>): string;
 const
   KindNames: array[TSyntaxTokenKind] of string = ('Plain', 'Keyword', 'String', 'Number', 'Comment', 'Directive',
-    'Escape', 'Key', 'Tag', 'Attr', 'Value', 'Entity', 'CData');
+    'Escape', 'Key', 'Tag', 'Attr', 'Value', 'Entity', 'CData', 'Inserted', 'Deleted');
 begin
   Result := '';
 

@@ -14,7 +14,7 @@ type
   // a Row is a sequence of atoms, every atom carries the class that decides
   // the spacing around it, and the structural nodes (fraction, script,
   // radical, delimited group, accent, matrix) hold their parts as children.
-  TMathNodeKind = (Row, Symbol, Text, Fraction, Script, Radical, Delimited, Accent, Space, Matrix, Styled);
+  TMathNodeKind = (Row, Symbol, Text, Fraction, Script, Radical, Delimited, Accent, Space, Matrix, Styled, Colored);
 
   TMathAtomClass = (Ordinary, Operator, Binary, Relation, Opening, Closing, Punctuation, Inner);
 
@@ -43,6 +43,7 @@ type
     function GetIsError: Boolean;
     function GetHasRule: Boolean;
     function GetAlignment: TMathColumnAlignment;
+    function GetColor: Cardinal;
     function IsEmpty: Boolean;
     property Kind: TMathNodeKind read GetKind;
     // Symbol: the glyphs to draw; Text: the words; Accent: the accent glyph,
@@ -72,6 +73,8 @@ type
     property HasRule: Boolean read GetHasRule;
     // Matrix: how the cells sit in their columns.
     property Alignment: TMathColumnAlignment read GetAlignment;
+    // Colored: the opaque ARGB colour the body is drawn in.
+    property Color: Cardinal read GetColor;
   end;
 
   TMathParser = class
@@ -86,6 +89,7 @@ implementation
 
 uses
   System.Character,
+  Markdown4D.Color.Names,
   Markdown4D.Math.Chemistry;
 
 type
@@ -104,6 +108,7 @@ type
     FIsError: Boolean;
     FHasRule: Boolean;
     FAlignment: TMathColumnAlignment;
+    FColor: Cardinal;
 
   public
     constructor Create(const Kind: TMathNodeKind);
@@ -122,6 +127,7 @@ type
     function GetIsError: Boolean;
     function GetHasRule: Boolean;
     function GetAlignment: TMathColumnAlignment;
+    function GetColor: Cardinal;
     function IsEmpty: Boolean;
     procedure AddChild(const Child: IMathNode);
     procedure SetChild(const Index: Integer; const Child: IMathNode);
@@ -136,6 +142,7 @@ type
     property IsError: Boolean read FIsError write FIsError;
     property HasRule: Boolean read FHasRule write FHasRule;
     property Alignment: TMathColumnAlignment read FAlignment write FAlignment;
+    property Color: Cardinal read FColor write FColor;
   end;
 
   TMathSymbolInfo = record
@@ -219,6 +226,9 @@ type
       LimitsCommand = 'limits';
       NoLimitsCommand = 'nolimits';
       ChemistryCommand = 'ce';
+      ColorCommand = 'color';
+      TextColorCommand = 'textcolor';
+      UnknownColorFormat = '\%s{%s}';
       MaxChemistryDepth = 4;
       PrimeGlyph = #$2032;
       MinusGlyph = #$2212;
@@ -261,6 +271,8 @@ type
     function TryParseAccentCommand(const Name: string; out Node: TMathNode): Boolean;
     function TryParseSpacingCommand(const Name: string; out Node: TMathNode): Boolean;
     function TryParseEnvironmentCommand(const Name: string; out Node: TMathNode): Boolean;
+    function TryParseColorCommand(const Name: string; out Node: TMathNode): Boolean;
+    function ParseColored(const CommandName: string): TMathNode;
     function ParseChemistry: TMathNode;
     function ParseFraction(const HasRule: Boolean): TMathNode;
     function ParseBinomial: TMathNode;
@@ -386,6 +398,11 @@ end;
 function TMathNode.GetAlignment: TMathColumnAlignment;
 begin
   Result := FAlignment;
+end;
+
+function TMathNode.GetColor: Cardinal;
+begin
+  Result := FColor;
 end;
 
 function TMathNode.IsEmpty: Boolean;
@@ -1234,6 +1251,9 @@ begin
   if TryParseEnvironmentCommand(Name, Result) then
     Exit;
 
+  if TryParseColorCommand(Name, Result) then
+    Exit;
+
   Result := ErrorNode(Name);
 end;
 
@@ -1512,6 +1532,12 @@ begin
     Exit;
   end;
 
+  if Name = 'space' then
+  begin
+    Node := SpaceNode(WordSpaceEm);
+    Exit;
+  end;
+
   Result := False;
 end;
 
@@ -1520,6 +1546,55 @@ begin
   Result := (Name = BeginCommand);
   if Result then
     Node := ParseEnvironment;
+end;
+
+// \textcolor colours its argument. \color is a switch, as in LaTeX, KaTeX and
+// MathJax 3: it colours the rest of the group it stands in.
+function TMathTreeParser.TryParseColorCommand(const Name: string; out Node: TMathNode): Boolean;
+begin
+  Result := ((Name = TextColorCommand) or (Name = ColorCommand));
+  if Result then
+    Node := ParseColored(Name);
+end;
+
+// The colour must be a braced group. Without one, such as \color red or the
+// xcolor form \color[HTML]{...}, the command itself shows in the error colour
+// and what follows is read as ordinary math. An unknown colour name shows as
+// typed, followed by the body in the normal colour, so the author sees which
+// name did not resolve.
+function TMathTreeParser.ParseColored(const CommandName: string): TMathNode;
+begin
+  const NextToken = FScanner.Peek;
+  const HasColorGroup = (NextToken.Kind = TMathTokenKind.OpenBrace);
+  if not HasColorGroup then
+  begin
+    Result := ErrorNode(CommandName);
+    Exit;
+  end;
+
+  const ColorName = FScanner.ReadRawGroup;
+
+  var Content: TMathNode;
+  const IsTextColor = (CommandName = TextColorCommand);
+  if IsTextColor then
+    Content := ParseArgument
+  else
+    Content := ParseSequence;
+
+  var Color: Cardinal;
+  if TMarkdownColorNames.TryParse(ColorName, Color) then
+  begin
+    Result := TMathNode.Create(TMathNodeKind.Colored);
+    Result.AtomClass := Content.AtomClass;
+    Result.Color := Color;
+    Result.AddChild(Content);
+    Exit;
+  end;
+
+  const TypedCommand = Format(UnknownColorFormat, [CommandName, ColorName]);
+  Result := TMathNode.Create(TMathNodeKind.Row);
+  Result.AddChild(ErrorSymbol(TypedCommand));
+  Result.AddChild(Content);
 end;
 
 function TMathTreeParser.ParseFraction(const HasRule: Boolean): TMathNode;
