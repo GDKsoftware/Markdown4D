@@ -89,6 +89,8 @@ type
         HoverTabColor: TColor;
         ButtonHoverColor: TColor;
         ButtonActiveColor: TColor;
+        InputColor: TColor;
+        InputTextColor: TColor;
       end;
     var
       FIconFontName: string;
@@ -252,6 +254,7 @@ type
     procedure ApplyToolbarChrome(const Chrome: TPadChrome);
     procedure ApplyTabStripChrome(const Chrome: TPadChrome);
     procedure ApplySidePanelChrome(const Chrome: TPadChrome);
+    procedure ApplyInputChrome(const Chrome: TPadChrome);
     procedure ToggleDarkTheme;
     procedure ToggleTocPane;
     procedure RebuildSyncAndToc;
@@ -1455,6 +1458,7 @@ begin
   ApplyTabStripChrome(Chrome);
   ApplyTitleBarColors(Chrome.ToolbarColor, Chrome.IconColor, Chrome.SeparatorColor);
   ApplySidePanelChrome(Chrome);
+  ApplyInputChrome(Chrome);
 end;
 
 function TMarkdown4DStudioVCLForm.CurrentChrome: TPadChrome;
@@ -1468,6 +1472,8 @@ begin
     Result.HoverTabColor := TabHoverDarkColor;
     Result.ButtonHoverColor := ButtonHoverDarkColor;
     Result.ButtonActiveColor := ButtonActiveDarkColor;
+    Result.InputColor := InputDarkColor;
+    Result.InputTextColor := IconDarkColor;
   end
   else
   begin
@@ -1478,6 +1484,8 @@ begin
     Result.HoverTabColor := TabHoverLightColor;
     Result.ButtonHoverColor := ButtonHoverLightColor;
     Result.ButtonActiveColor := ButtonActiveLightColor;
+    Result.InputColor := clWindow;
+    Result.InputTextColor := clWindowText;
   end;
 end;
 
@@ -1554,6 +1562,17 @@ begin
   pnlToc.Invalidate;
   lstToc.Invalidate;
   pnlStatus.Invalidate;
+end;
+
+procedure TMarkdown4DStudioVCLForm.ApplyInputChrome(const Chrome: TPadChrome);
+begin
+  const Inputs: TArray<TEdit> = [edtFind, edtEditorFind, edtEditorReplace];
+
+  for var Input in Inputs do
+  begin
+    Input.Color := Chrome.InputColor;
+    Input.Font.Color := Chrome.InputTextColor;
+  end;
 end;
 
 procedure TMarkdown4DStudioVCLForm.RebuildSyncAndToc;

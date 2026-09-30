@@ -39,6 +39,9 @@ const
   // stays readable while the pointer rests on one of its neighbours.
   ActiveLightColor = TAlphaColor($FFCBCBCB);
   ActiveDarkColor = TAlphaColor($FF525252);
+  InputDarkColor = TAlphaColor($FF3C3C3C);
+  // Style name of the rectangle that replaces an edit's bitmap background in the dark theme.
+  InputBackingStyleName = 'studioinputbacking';
   TabActiveLightColor = TAlphaColor($FFFFFFFF);
   TabActiveDarkColor = TAlphaColor($FF3F3F3F);
   TabHoverLightColor = TAlphaColor($FFEAEAEA);
