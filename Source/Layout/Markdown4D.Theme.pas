@@ -7,6 +7,7 @@ interface
 uses
   System.JSON,
   Markdown4D.Defines,
+  Markdown4D.Extensions.Alerts,
   Markdown4D.Highlighter.Interfaces,
   Markdown4D.Layout.Defaults,
   Markdown4D.Layout.Interfaces;
@@ -23,6 +24,7 @@ type
       THeadingFontArray = array[MinHeadingLevel..MaxHeadingLevel] of TMarkdownFontStyle;
       THeadingSpacingArray = array[MinHeadingLevel..MaxHeadingLevel] of Single;
       TTokenColorArray = array[TSyntaxTokenKind] of TLayoutColor;
+      TAlertColorArray = array[TMarkdownAlertKind] of TLayoutColor;
       TThemeData = record
         BaseFont: TMarkdownFontStyle;
         CodeFont: TMarkdownFontStyle;
@@ -42,6 +44,9 @@ type
         TableBorderColor: TLayoutColor;
         ThematicBreakColor: TLayoutColor;
         MathErrorColor: TLayoutColor;
+        DiffInsertedBackgroundColor: TLayoutColor;
+        DiffDeletedBackgroundColor: TLayoutColor;
+        AlertColors: TAlertColorArray;
         ParagraphSpacing: Single;
         ListIndent: Single;
         ListMarkerWidth: Single;
@@ -102,14 +107,31 @@ type
       DarkChartPaletteColors: array[0..7] of TLayoutColor = ($FF6FA8DC, $FFF6B26B, $FFE06666, $FF76D7C4, $FF93C47D,
         $FFFFD966, $FFC27BA0, $FFF4A7B9);
       LightTokenColors: TTokenColorArray = ($FF1F2328, $FFCF222E, $FF0A3069, $FF0550AE, $FF59636E, $FF8250DF,
-        $FF953800, $FF0550AE, $FF116329, $FF0550AE, $FF0A3069, $FF6639BA, $FF57606A);
+        $FF953800, $FF0550AE, $FF116329, $FF0550AE, $FF0A3069, $FF6639BA, $FF57606A, $FF116329, $FF82071E);
       DarkTokenColors: TTokenColorArray = ($FFE6EDF3, $FFFF7B72, $FFA5D6FF, $FF79C0FF, $FF8B949E, $FFD2A8FF,
-        $FFFFA657, $FF79C0FF, $FF7EE787, $FF79C0FF, $FFA5D6FF, $FFD2A8FF, $FF8B949E);
+        $FFFFA657, $FF79C0FF, $FF7EE787, $FF79C0FF, $FFA5D6FF, $FFD2A8FF, $FF8B949E, $FFAFF5B4, $FFFFDCD7);
       TokenColorCount = Ord(High(TSyntaxTokenKind)) + 1;
+      LegacyTokenColorCount = Ord(TSyntaxTokenKind.CDataSection) + 1;
+      ArrayCountMessage = 'Theme JSON array "%s" must contain %d entries';
+      // Rec. 601 luma weights; a background below half brightness counts as dark.
+      RedWeight = 0.299;
+      GreenWeight = 0.587;
+      BlueWeight = 0.114;
+      DarkLuminanceThreshold = 128;
+      LightDiffInsertedBackgroundColor = $FFDAFBE1;
+      LightDiffDeletedBackgroundColor = $FFFFEBE9;
+      DarkDiffInsertedBackgroundColor = $262EA043;
+      DarkDiffDeletedBackgroundColor = $26F85149;
+      LightAlertColors: TAlertColorArray = ($FF0969DA, $FF1A7F37, $FF8250DF, $FF9A6700, $FFCF222E);
+      DarkAlertColors: TAlertColorArray = ($FF4493F8, $FF3FB950, $FFAB7DF8, $FFD29922, $FFF85149);
+      AlertColorCount = Ord(High(TMarkdownAlertKind)) + 1;
       BaseFontKey = 'baseFont';
       CodeFontKey = 'codeFont';
       MathFontKey = 'mathFont';
       MathErrorColorKey = 'mathErrorColor';
+      DiffInsertedBackgroundColorKey = 'diffInsertedBackgroundColor';
+      DiffDeletedBackgroundColorKey = 'diffDeletedBackgroundColor';
+      AlertColorsKey = 'alertColors';
       HeadingFontsKey = 'headingFonts';
       HeadingSpacingsAboveKey = 'headingSpacingsAbove';
       HeadingSpacingsBelowKey = 'headingSpacingsBelow';
@@ -168,6 +190,9 @@ type
       FTableBorderColor: TLayoutColor;
       FThematicBreakColor: TLayoutColor;
       FMathErrorColor: TLayoutColor;
+      FDiffInsertedBackgroundColor: TLayoutColor;
+      FDiffDeletedBackgroundColor: TLayoutColor;
+      FAlertColors: TAlertColorArray;
       FParagraphSpacing: Single;
       FListIndent: Single;
       FListMarkerWidth: Single;
@@ -192,6 +217,7 @@ type
     class function SpacingsToJson(const Spacings: THeadingSpacingArray): TJSONArray;
     function PaletteToJson: TJSONArray;
     function TokenColorsToJson: TJSONArray;
+    function AlertColorsToJson: TJSONArray;
     class function FontToJson(const Font: TMarkdownFontStyle): TJSONObject;
     class procedure AddColorPair(const Root: TJSONObject; const Name: string; const Value: TLayoutColor);
     class procedure AddSinglePair(const Root: TJSONObject; const Name: string; const Value: Single);
@@ -200,7 +226,9 @@ type
     class function ReadHeadingFonts(const Root: TJSONObject): THeadingFontArray;
     class function ReadSpacings(const Root: TJSONObject; const Name: string): THeadingSpacingArray;
     class function ReadPalette(const Root: TJSONObject): TArray<TLayoutColor>;
-    class function ReadTokenColors(const Root: TJSONObject): TTokenColorArray;
+    class function PresetMatching(const BackgroundColor: TLayoutColor): TMarkdownThemePreset;
+    class function ReadTokenColors(const Root: TJSONObject; const Defaults: TTokenColorArray): TTokenColorArray;
+    class function ReadAlertColors(const Root: TJSONObject; const Defaults: TAlertColorArray): TAlertColorArray;
     class function JsonToFont(const Value: TJSONValue; const Name: string): TMarkdownFontStyle;
     class function ReadFontOrDefault(const Root: TJSONObject; const Name: string;
       const Default: TMarkdownFontStyle): TMarkdownFontStyle;
@@ -224,6 +252,8 @@ type
     procedure ValidateHeadingLevel(const Level: Integer);
     function GetTokenColor(const Kind: TSyntaxTokenKind): TLayoutColor;
     procedure SetTokenColor(const Kind: TSyntaxTokenKind; const Value: TLayoutColor);
+    function GetAlertColor(const Kind: TMarkdownAlertKind): TLayoutColor;
+    procedure SetAlertColor(const Kind: TMarkdownAlertKind; const Value: TLayoutColor);
 
   public
     class function CreateLight: TMarkdownTheme;
@@ -253,6 +283,13 @@ type
     property ThematicBreakColor: TLayoutColor read FThematicBreakColor write FThematicBreakColor;
     // Unknown LaTeX commands are drawn by name in this colour.
     property MathErrorColor: TLayoutColor read FMathErrorColor write FMathErrorColor;
+    // The line backgrounds behind added and removed lines in a diff code block.
+    property DiffInsertedBackgroundColor: TLayoutColor read FDiffInsertedBackgroundColor
+      write FDiffInsertedBackgroundColor;
+    property DiffDeletedBackgroundColor: TLayoutColor read FDiffDeletedBackgroundColor
+      write FDiffDeletedBackgroundColor;
+    // The bar, icon and title colour of each kind of alert.
+    property AlertColors[const Kind: TMarkdownAlertKind]: TLayoutColor read GetAlertColor write SetAlertColor;
     property ParagraphSpacing: Single read FParagraphSpacing write FParagraphSpacing;
     property ListIndent: Single read FListIndent write FListIndent;
     property ListMarkerWidth: Single read FListMarkerWidth write FListMarkerWidth;
@@ -310,6 +347,9 @@ begin
   Result.FTableBorderColor := DarkBorderColor;
   Result.FThematicBreakColor := DarkBorderColor;
   Result.FMathErrorColor := DarkMathErrorColor;
+  Result.FDiffInsertedBackgroundColor := DarkDiffInsertedBackgroundColor;
+  Result.FDiffDeletedBackgroundColor := DarkDiffDeletedBackgroundColor;
+  Result.FAlertColors := DarkAlertColors;
   Result.FChartBackgroundColor := DarkBackgroundColor;
   Result.FChartGridLineColor := $FF30363D;
   Result.FChartTextColor := $FFC9D1D9;
@@ -359,6 +399,9 @@ begin
   FTableBorderColor := LightBorderColor;
   FThematicBreakColor := LightBorderColor;
   FMathErrorColor := LightMathErrorColor;
+  FDiffInsertedBackgroundColor := LightDiffInsertedBackgroundColor;
+  FDiffDeletedBackgroundColor := LightDiffDeletedBackgroundColor;
+  FAlertColors := LightAlertColors;
   FChartBackgroundColor := LightBackgroundColor;
   FChartGridLineColor := $FFE5E7EB;
   FChartTextColor := $FF374151;
@@ -399,6 +442,9 @@ begin
     AddColorPair(Root, TableBorderColorKey, FTableBorderColor);
     AddColorPair(Root, ThematicBreakColorKey, FThematicBreakColor);
     AddColorPair(Root, MathErrorColorKey, FMathErrorColor);
+    AddColorPair(Root, DiffInsertedBackgroundColorKey, FDiffInsertedBackgroundColor);
+    AddColorPair(Root, DiffDeletedBackgroundColorKey, FDiffDeletedBackgroundColor);
+    Root.AddPair(AlertColorsKey, AlertColorsToJson);
 
     AddSinglePair(Root, ParagraphSpacingKey, FParagraphSpacing);
     AddSinglePair(Root, ListIndentKey, FListIndent);
@@ -464,6 +510,16 @@ begin
   for var Kind := Low(TSyntaxTokenKind) to High(TSyntaxTokenKind) do
   begin
     Result.AddElement(TJSONNumber.Create(Int64(FTokenColors[Kind])));
+  end;
+end;
+
+function TMarkdownTheme.AlertColorsToJson: TJSONArray;
+begin
+  Result := TJSONArray.Create;
+
+  for var Kind := Low(TMarkdownAlertKind) to High(TMarkdownAlertKind) do
+  begin
+    Result.AddElement(TJSONNumber.Create(Int64(FAlertColors[Kind])));
   end;
 end;
 
@@ -553,7 +609,35 @@ begin
   Result.ChartGridLineColor := ReadColor(Root, ChartGridLineColorKey);
   Result.ChartTextColor := ReadColor(Root, ChartTextColorKey);
   Result.ChartPalette := ReadPalette(Root);
-  Result.TokenColors := ReadTokenColors(Root);
+
+  // The diff and alert colours arrived after 2.3. A theme saved before then
+  // gets them from the preset its background matches, so a dark theme does
+  // not end up with light line backgrounds.
+  const Defaults = CreatePreset(PresetMatching(Result.BackgroundColor));
+  try
+    Result.TokenColors := ReadTokenColors(Root, Defaults.FTokenColors);
+    Result.DiffInsertedBackgroundColor := ReadColorOrDefault(Root, DiffInsertedBackgroundColorKey,
+      Defaults.FDiffInsertedBackgroundColor);
+    Result.DiffDeletedBackgroundColor := ReadColorOrDefault(Root, DiffDeletedBackgroundColorKey,
+      Defaults.FDiffDeletedBackgroundColor);
+    Result.AlertColors := ReadAlertColors(Root, Defaults.FAlertColors);
+  finally
+    Defaults.Free;
+  end;
+end;
+
+class function TMarkdownTheme.PresetMatching(const BackgroundColor: TLayoutColor): TMarkdownThemePreset;
+begin
+  const Red = (BackgroundColor shr 16) and $FF;
+  const Green = (BackgroundColor shr 8) and $FF;
+  const Blue = BackgroundColor and $FF;
+  const Luminance = (RedWeight * Red) + (GreenWeight * Green) + (BlueWeight * Blue);
+
+  const IsDark = (Luminance < DarkLuminanceThreshold);
+  if IsDark then
+    Result := TMarkdownThemePreset.Dark
+  else
+    Result := TMarkdownThemePreset.Light;
 end;
 
 procedure TMarkdownTheme.ApplyThemeData(const Data: TThemeData);
@@ -577,6 +661,9 @@ begin
   FTableBorderColor := Data.TableBorderColor;
   FThematicBreakColor := Data.ThematicBreakColor;
   FMathErrorColor := Data.MathErrorColor;
+  FDiffInsertedBackgroundColor := Data.DiffInsertedBackgroundColor;
+  FDiffDeletedBackgroundColor := Data.DiffDeletedBackgroundColor;
+  FAlertColors := Data.AlertColors;
 
   FParagraphSpacing := Data.ParagraphSpacing;
   FListIndent := Data.ListIndent;
@@ -631,13 +718,38 @@ begin
   end;
 end;
 
-class function TMarkdownTheme.ReadTokenColors(const Root: TJSONObject): TTokenColorArray;
+// A theme saved before the diff token kinds holds fewer colours; the kinds
+// after them keep their defaults.
+class function TMarkdownTheme.ReadTokenColors(const Root: TJSONObject;
+  const Defaults: TTokenColorArray): TTokenColorArray;
 begin
-  const Colors = RequireArray(Root, CodeTokenColorsKey, TokenColorCount);
+  const Colors = RequireArray(Root, CodeTokenColorsKey, -1);
 
-  for var Kind := Low(TSyntaxTokenKind) to High(TSyntaxTokenKind) do
+  const HasKnownCount = ((Colors.Count = TokenColorCount) or (Colors.Count = LegacyTokenColorCount));
+  if not HasKnownCount then
+    raise EMarkdownError.CreateFmt(ArrayCountMessage, [CodeTokenColorsKey, TokenColorCount]);
+
+  Result := Defaults;
+  for var Index := 0 to Colors.Count - 1 do
   begin
-    Result[Kind] := TLayoutColor(RequireNumber(Colors.Items[Ord(Kind)], CodeTokenColorsKey).AsInt64);
+    const Kind = TSyntaxTokenKind(Index);
+    Result[Kind] := TLayoutColor(RequireNumber(Colors.Items[Index], CodeTokenColorsKey).AsInt64);
+  end;
+end;
+
+class function TMarkdownTheme.ReadAlertColors(const Root: TJSONObject;
+  const Defaults: TAlertColorArray): TAlertColorArray;
+begin
+  Result := Defaults;
+
+  const Value = Root.GetValue(AlertColorsKey);
+  if Value = nil then
+    Exit;
+
+  const Colors = RequireArray(Root, AlertColorsKey, AlertColorCount);
+  for var Kind := Low(TMarkdownAlertKind) to High(TMarkdownAlertKind) do
+  begin
+    Result[Kind] := TLayoutColor(RequireNumber(Colors.Items[Ord(Kind)], AlertColorsKey).AsInt64);
   end;
 end;
 
@@ -696,7 +808,7 @@ begin
 
   const HasExpectedCount = (ExpectedCount < 0) or (Result.Count = ExpectedCount);
   if not HasExpectedCount then
-    raise EMarkdownError.CreateFmt('Theme JSON array "%s" must contain %d entries', [Name, ExpectedCount]);
+    raise EMarkdownError.CreateFmt(ArrayCountMessage, [Name, ExpectedCount]);
 end;
 
 class function TMarkdownTheme.RequireValue(const Root: TJSONObject; const Name: string): TJSONValue;
@@ -809,6 +921,16 @@ end;
 procedure TMarkdownTheme.SetTokenColor(const Kind: TSyntaxTokenKind; const Value: TLayoutColor);
 begin
   FTokenColors[Kind] := Value;
+end;
+
+function TMarkdownTheme.GetAlertColor(const Kind: TMarkdownAlertKind): TLayoutColor;
+begin
+  Result := FAlertColors[Kind];
+end;
+
+procedure TMarkdownTheme.SetAlertColor(const Kind: TMarkdownAlertKind; const Value: TLayoutColor);
+begin
+  FAlertColors[Kind] := Value;
 end;
 
 end.

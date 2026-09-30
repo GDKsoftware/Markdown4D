@@ -36,6 +36,7 @@ uses
   Markdown4D.Highlighter.Sql,
   Markdown4D.Highlighter.Json,
   Markdown4D.Highlighter.Xml,
+  Markdown4D.Highlighter.Diff,
   Markdown4D.Math.Font;
 
 class function TMarkdownViewerShared.AlphaOf(const Color: TLayoutColor): Byte;
@@ -176,6 +177,9 @@ begin
 
   if not THighlighterRegistry.TryGet(XmlLanguageName, Existing) then
     THighlighterRegistry.Register(XmlLanguageName, TXmlSyntaxHighlighter.Create);
+
+  if not THighlighterRegistry.TryGet(DiffLanguageName, Existing) then
+    THighlighterRegistry.Register(DiffLanguageName, TDiffSyntaxHighlighter.Create);
 end;
 
 end.

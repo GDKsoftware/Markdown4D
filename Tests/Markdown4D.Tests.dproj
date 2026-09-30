@@ -77,6 +77,8 @@
         <DCCReference Include="Markdown4D.Parser.Gfm.Tests.pas"/>
         <DCCReference Include="Markdown4D.Parser.Math.Tests.pas"/>
         <DCCReference Include="Markdown4D.Math.Syntax.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Color.Names.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Extensions.Alerts.Tests.pas"/>
         <DCCReference Include="Markdown4D.Math.Layout.Tests.pas"/>
         <DCCReference Include="Markdown4D.Math.Integration.Tests.pas"/>
         <DCCReference Include="Markdown4D.Writer.RoundTrip.Tests.pas"/>

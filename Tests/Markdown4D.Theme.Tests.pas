@@ -26,6 +26,13 @@ type
       OverrideCodeSpanBackground = $FF7788AA;
       WrongTypeKey = 'linkColor';
       WrongTypeValue = 'not-a-color';
+      OverrideDiffBackground = $FF224466;
+      OverrideAlertColor = $FF6644AA;
+      TokenColorsKey = 'codeTokenColors';
+      LegacyTokenColorCount = 13;
+      KeysAddedWithDiffAndAlerts: array[0..2] of string = ('diffInsertedBackgroundColor',
+        'diffDeletedBackgroundColor', 'alertColors');
+    class function LegacyThemeJson(const Preset: TMarkdownThemePreset): string;
 
   public
     [Test]
@@ -54,6 +61,14 @@ type
 
     [Test]
     procedure LoadFromJson_WronglyTypedValue_RaisesMarkdownError;
+
+    [Test]
+    procedure DiffAndAlertColors_SurviveJsonRoundTrip;
+
+    [Test]
+    [TestCase('Light', '0')]
+    [TestCase('Dark', '1')]
+    procedure LoadFromJson_ThemeSavedBeforeDiffAndAlerts_GetsDefaultsOfItsPreset(const PresetOrdinal: Integer);
   end;
 
 implementation
@@ -61,7 +76,37 @@ implementation
 uses
   System.JSON,
   Markdown4D.Defines,
+  Markdown4D.Extensions.Alerts,
+  Markdown4D.Highlighter.Interfaces,
   Markdown4D.Layout.Interfaces;
+
+// A preset as it was saved before the diff and alert colours existed:
+// without their keys, and with thirteen token colours.
+class function TMarkdownThemeTests.LegacyThemeJson(const Preset: TMarkdownThemePreset): string;
+begin
+  const Source = TMarkdownTheme.CreatePreset(Preset);
+  try
+    const Root = TJSONObject.ParseJSONValue(Source.SaveToJson) as TJSONObject;
+    try
+      for var Key in KeysAddedWithDiffAndAlerts do
+      begin
+        Root.RemovePair(Key).Free;
+      end;
+
+      const TokenColors = Root.GetValue(TokenColorsKey) as TJSONArray;
+      while TokenColors.Count > LegacyTokenColorCount do
+      begin
+        TokenColors.Remove(TokenColors.Count - 1).Free;
+      end;
+
+      Result := Root.ToJSON;
+    finally
+      Root.Free;
+    end;
+  finally
+    Source.Free;
+  end;
+end;
 
 procedure TMarkdownThemeTests.CreateLightAndCreateDark_CoreColorsDiffer;
 begin
@@ -249,6 +294,61 @@ begin
     end;
   finally
     Source.Free;
+  end;
+end;
+
+procedure TMarkdownThemeTests.DiffAndAlertColors_SurviveJsonRoundTrip;
+begin
+  const Source = TMarkdownTheme.CreateLight;
+  try
+    Source.DiffInsertedBackgroundColor := OverrideDiffBackground;
+    Source.AlertColors[TMarkdownAlertKind.Tip] := OverrideAlertColor;
+    const SavedJson = Source.SaveToJson;
+
+    const Loaded = TMarkdownTheme.CreateDark;
+    try
+      Loaded.LoadFromJson(SavedJson);
+
+      Assert.AreEqual<TLayoutColor>(OverrideDiffBackground, Loaded.DiffInsertedBackgroundColor);
+      Assert.AreEqual<TLayoutColor>(OverrideAlertColor, Loaded.AlertColors[TMarkdownAlertKind.Tip]);
+      Assert.AreEqual<TLayoutColor>(Source.AlertColors[TMarkdownAlertKind.Caution],
+        Loaded.AlertColors[TMarkdownAlertKind.Caution]);
+    finally
+      Loaded.Free;
+    end;
+  finally
+    Source.Free;
+  end;
+end;
+
+procedure TMarkdownThemeTests.LoadFromJson_ThemeSavedBeforeDiffAndAlerts_GetsDefaultsOfItsPreset(
+  const PresetOrdinal: Integer);
+begin
+  const Preset = TMarkdownThemePreset(PresetOrdinal);
+  const Json = LegacyThemeJson(Preset);
+
+  var OtherPreset := TMarkdownThemePreset.Light;
+  if Preset = TMarkdownThemePreset.Light then
+    OtherPreset := TMarkdownThemePreset.Dark;
+
+  const Expected = TMarkdownTheme.CreatePreset(Preset);
+  try
+    const Loaded = TMarkdownTheme.CreatePreset(OtherPreset);
+    try
+      Loaded.LoadFromJson(Json);
+
+      Assert.AreEqual<TLayoutColor>(Expected.TokenColors[TSyntaxTokenKind.CDataSection],
+        Loaded.TokenColors[TSyntaxTokenKind.CDataSection]);
+      Assert.AreEqual<TLayoutColor>(Expected.TokenColors[TSyntaxTokenKind.Inserted],
+        Loaded.TokenColors[TSyntaxTokenKind.Inserted]);
+      Assert.AreEqual<TLayoutColor>(Expected.DiffDeletedBackgroundColor, Loaded.DiffDeletedBackgroundColor);
+      Assert.AreEqual<TLayoutColor>(Expected.AlertColors[TMarkdownAlertKind.Warning],
+        Loaded.AlertColors[TMarkdownAlertKind.Warning]);
+    finally
+      Loaded.Free;
+    end;
+  finally
+    Expected.Free;
   end;
 end;
 

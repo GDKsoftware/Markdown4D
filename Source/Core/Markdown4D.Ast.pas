@@ -28,6 +28,7 @@ type
     procedure SetExtensionData(const Key: string; const Data: IInterface);
     function TryGetExtensionData(const Key: string; out Data: IInterface): Boolean;
     procedure AddChild(const Child: IMarkdownNode);
+    procedure DeleteChild(const Index: Integer);
     procedure SetSegment(const Segment: TMarkdownSegment);
     property Kind: TMarkdownNodeKind read FKind;
     property ChildCount: Integer read GetChildCount;
@@ -280,6 +281,11 @@ end;
 procedure TMarkdownAstNode.AddChild(const Child: IMarkdownNode);
 begin
   FChildren.Add(Child);
+end;
+
+procedure TMarkdownAstNode.DeleteChild(const Index: Integer);
+begin
+  FChildren.Delete(Index);
 end;
 
 procedure TMarkdownAstNode.SetSegment(const Segment: TMarkdownSegment);

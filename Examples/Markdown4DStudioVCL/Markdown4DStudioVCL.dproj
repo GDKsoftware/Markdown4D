@@ -116,6 +116,7 @@
         <DCCReference Include="..\Shared\Markdown4DStudio.Text.pas"/>
         <DCCReference Include="..\Shared\Markdown4DStudio.Outline.pas"/>
         <DCCReference Include="Markdown4DStudioVCL.Defines.pas"/>
+        <DCCReference Include="Markdown4DStudioVCL.ToolButton.pas"/>
         <DCCReference Include="..\Shared\Markdown4DStudio.Shell.pas"/>
         <DCCReference Include="..\Shared\Markdown4DStudio.CommandLine.pas"/>
         <DCCReference Include="..\Shared\Markdown4DStudio.SingleInstance.pas"/>
