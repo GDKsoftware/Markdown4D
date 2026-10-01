@@ -132,9 +132,9 @@ type
     procedure ClearCodeHover;
     procedure CopyCodeToClipboard(const Text: string);
     procedure SelectForPress(const Point: TLayoutPointF; const X, Y: Integer; const IsDoubleClick: Boolean);
-    function GetAutoScrollEnabled: Boolean;
+    function GetAutoScroll: Boolean;
     procedure PaintAutoScrollOrigin;
-    procedure SetAutoScrollEnabled(const Value: Boolean);
+    procedure SetAutoScroll(const Value: Boolean);
     function CanAutoScroll: Boolean;
     procedure AutoScrollBy(const Delta: Single);
     procedure AutoScrollChanged;
@@ -206,7 +206,7 @@ type
     property Images: TMarkdownViewerImageSettings read FImages write SetImages;
     // A middle click scrolls the content by the distance of the pointer from
     // where it was pressed, until the next click, key or wheel turn.
-    property AutoScroll: Boolean read GetAutoScrollEnabled write SetAutoScrollEnabled default True;
+    property AutoScroll: Boolean read GetAutoScroll write SetAutoScroll default True;
     property Align;
     property Anchors;
     property Constraints;
@@ -788,12 +788,12 @@ begin
   end;
 end;
 
-function TMarkdownViewer.GetAutoScrollEnabled: Boolean;
+function TMarkdownViewer.GetAutoScroll: Boolean;
 begin
   Result := FAutoScroller.Enabled;
 end;
 
-procedure TMarkdownViewer.SetAutoScrollEnabled(const Value: Boolean);
+procedure TMarkdownViewer.SetAutoScroll(const Value: Boolean);
 begin
   FAutoScroller.Enabled := Value;
 end;

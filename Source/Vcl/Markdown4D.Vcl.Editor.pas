@@ -183,9 +183,9 @@ type
     procedure WMSetFocus(var Message: TWMSetFocus); message WM_SETFOCUS;
     procedure WMKillFocus(var Message: TWMKillFocus); message WM_KILLFOCUS;
     procedure WMCaptureChanged(var Message: TMessage); message WM_CAPTURECHANGED;
-    function GetAutoScrollEnabled: Boolean;
+    function GetAutoScroll: Boolean;
     procedure PaintAutoScrollOrigin;
-    procedure SetAutoScrollEnabled(const Value: Boolean);
+    procedure SetAutoScroll(const Value: Boolean);
     function CanAutoScroll: Boolean;
     procedure AutoScrollBy(const Delta: Single);
     procedure AutoScrollChanged;
@@ -272,7 +272,7 @@ type
     property SyncScroll: Boolean read FSyncScroll write FSyncScroll default True;
     // A middle click scrolls the text by the distance of the pointer from
     // where it was pressed, until the next click, key or wheel turn.
-    property AutoScroll: Boolean read GetAutoScrollEnabled write SetAutoScrollEnabled default True;
+    property AutoScroll: Boolean read GetAutoScroll write SetAutoScroll default True;
     property Align;
     property Anchors;
     property Constraints;
@@ -1964,12 +1964,12 @@ begin
   inherited DoContextPopup(MousePos, Handled);
 end;
 
-function TMarkdownEditor.GetAutoScrollEnabled: Boolean;
+function TMarkdownEditor.GetAutoScroll: Boolean;
 begin
   Result := FAutoScroller.Enabled;
 end;
 
-procedure TMarkdownEditor.SetAutoScrollEnabled(const Value: Boolean);
+procedure TMarkdownEditor.SetAutoScroll(const Value: Boolean);
 begin
   FAutoScroller.Enabled := Value;
 end;

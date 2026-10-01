@@ -8,22 +8,8 @@ uses
   Markdown4D.AutoScroll;
 
 type
-  // The pan cursors Windows shows for autoscroll in RichEdit and the
-  // browsers. They live in user32 without a documented name, so a cursor
-  // that fails to load falls back to the plain up-down arrow.
+  // The pan cursors Windows shows for autoscroll in RichEdit and the browsers.
   TMarkdownAutoScrollCursors = class
-  {$IFDEF MSWINDOWS}
-  private
-    const
-      PanBothCursorId = 32652;
-      PanUpCursorId = 32655;
-      PanDownCursorId = 32656;
-    class var
-      FHandles: array[TMarkdownAutoScrollDirection] of NativeUInt;
-    class function LoadPanCursor(const Direction: TMarkdownAutoScrollDirection): NativeUInt; static;
-    class function CursorIdOf(const Direction: TMarkdownAutoScrollDirection): Integer; static;
-  {$ENDIF}
-
   public
     // Sets the cursor at once, for as long as nothing else sets one: while
     // the mouse is captured Windows sends no WM_SETCURSOR, so the caller
@@ -33,26 +19,37 @@ type
 
 implementation
 
-{$IFDEF MSWINDOWS}
+{$IF Defined(MSWINDOWS)}
 uses
   Winapi.Windows;
-{$ENDIF}
 
-class function TMarkdownAutoScrollCursors.TryApply(const Direction: TMarkdownAutoScrollDirection): Boolean;
+type
+  // The cursors live in user32 without a documented name, so one that fails
+  // to load falls back to the plain up-down arrow.
+  TWindowsPanCursors = class
+  private
+    const
+      PanBothCursorId = 32652;
+      PanUpCursorId = 32655;
+      PanDownCursorId = 32656;
+    class var
+      FHandles: array[TMarkdownAutoScrollDirection] of HCURSOR;
+    class function Load(const Direction: TMarkdownAutoScrollDirection): HCURSOR; static;
+    class function CursorIdOf(const Direction: TMarkdownAutoScrollDirection): Integer; static;
+
+  public
+    class function HandleOf(const Direction: TMarkdownAutoScrollDirection): HCURSOR; static;
+  end;
+
+class function TWindowsPanCursors.HandleOf(const Direction: TMarkdownAutoScrollDirection): HCURSOR;
 begin
-  {$IFDEF MSWINDOWS}
   if FHandles[Direction] = 0 then
-    FHandles[Direction] := LoadPanCursor(Direction);
+    FHandles[Direction] := Load(Direction);
 
-  Winapi.Windows.SetCursor(FHandles[Direction]);
-  Result := True;
-  {$ELSE}
-  Result := False;
-  {$ENDIF}
+  Result := FHandles[Direction];
 end;
 
-{$IFDEF MSWINDOWS}
-class function TMarkdownAutoScrollCursors.LoadPanCursor(const Direction: TMarkdownAutoScrollDirection): NativeUInt;
+class function TWindowsPanCursors.Load(const Direction: TMarkdownAutoScrollDirection): HCURSOR;
 begin
   // LR_SHARED leaves the handles to Windows, so they are never destroyed here.
   Result := LoadImage(GetModuleHandle(user32), MakeIntResource(CursorIdOf(Direction)), IMAGE_CURSOR, 0, 0,
@@ -62,7 +59,7 @@ begin
     Result := LoadCursor(0, IDC_SIZENS);
 end;
 
-class function TMarkdownAutoScrollCursors.CursorIdOf(const Direction: TMarkdownAutoScrollDirection): Integer;
+class function TWindowsPanCursors.CursorIdOf(const Direction: TMarkdownAutoScrollDirection): Integer;
 begin
   case Direction of
     TMarkdownAutoScrollDirection.Up   : Result := PanUpCursorId;
@@ -71,6 +68,17 @@ begin
   else
     Result := PanBothCursorId;
   end;
+end;
+
+class function TMarkdownAutoScrollCursors.TryApply(const Direction: TMarkdownAutoScrollDirection): Boolean;
+begin
+  Winapi.Windows.SetCursor(TWindowsPanCursors.HandleOf(Direction));
+  Result := True;
+end;
+{$ELSE}
+class function TMarkdownAutoScrollCursors.TryApply(const Direction: TMarkdownAutoScrollDirection): Boolean;
+begin
+  Result := False;
 end;
 {$ENDIF}
 

@@ -10,6 +10,7 @@ uses
   System.UITypes,
   FMX.Types,
   FMX.Controls,
+  FMX.Forms,
   Markdown4D.Layout.Interfaces,
   Markdown4D.AutoScroll;
 
@@ -36,6 +37,7 @@ type
     function TryStart(const X, Y: Single): Boolean;
     function PointerInControl: TPointF;
     procedure ShowCursor(const PointerY: Single);
+    function FormOf: TCommonCustomForm;
     procedure CaptureMouse;
     procedure ReleaseMouse;
     procedure RestoreCursor;
@@ -57,11 +59,9 @@ type
 implementation
 
 uses
-  FMX.Forms,
   FMX.Platform,
   Markdown4D.AutoScroll.Icon,
-  Markdown4D.AutoScroll.Cursors,
-  Markdown4D.Fmx.AutoScroll.LinuxCursors;
+  Markdown4D.Fmx.AutoScroll.Cursors;
 
 constructor TMarkdownFmxAutoScroller.Create(const Control: TControl; const Target: IMarkdownAutoScrollTarget);
 begin
@@ -167,13 +167,12 @@ begin
   FTarget.AutoScrollChanged;
 end;
 
-// The pan cursor was set past FMX, so FMX does not know to replace it. Linux
-// drops the cursor from the window; then the cursor service applies the
-// control's own, after a different one so it does not skip the same value.
+// The pan cursor was set past FMX, so FMX does not know to replace it. It
+// comes off the window first; then the cursor service applies the control's
+// own, after a different one so it does not skip the same value.
 procedure TMarkdownFmxAutoScroller.RestoreCursor;
 begin
-  if FControl.Root <> nil then
-    TMarkdownLinuxAutoScrollCursors.Clear(FControl.Root.GetObject as TCommonCustomForm);
+  TMarkdownFmxAutoScrollCursors.TryClear(FormOf);
 
   var CursorService: IFMXCursorService;
   if not TPlatformServices.Current.SupportsPlatformService(IFMXCursorService, CursorService) then
@@ -236,15 +235,14 @@ end;
 procedure TMarkdownFmxAutoScroller.ShowCursor(const PointerY: Single);
 begin
   const Direction = FAutoScroll.Direction(PointerY);
+  TMarkdownFmxAutoScrollCursors.TryApply(FormOf, Direction);
+end;
 
-  if TMarkdownAutoScrollCursors.TryApply(Direction) then
-    Exit;
-
-  if FControl.Root = nil then
-    Exit;
-
-  const Form = FControl.Root.GetObject as TCommonCustomForm;
-  TMarkdownLinuxAutoScrollCursors.TryApply(Form, Direction);
+function TMarkdownFmxAutoScroller.FormOf: TCommonCustomForm;
+begin
+  Result := nil;
+  if FControl.Root <> nil then
+    Result := FControl.Root.GetObject as TCommonCustomForm;
 end;
 
 end.
