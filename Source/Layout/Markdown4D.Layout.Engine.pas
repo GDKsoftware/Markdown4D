@@ -144,6 +144,7 @@ type
     procedure CommitPending;
     procedure CommitAtom(const Atom: TInlineAtom);
     procedure FlushLine(const NextLineJoin: TDisplayTextJoin);
+    function WrapJoin: TDisplayTextJoin;
     function LineAdvance: Single;
     function LineBaseline: Single;
     procedure EmitLineItems;
@@ -294,8 +295,8 @@ type
       FCollector: TInlineAtomCollector;
       FCurrentY: Single;
       FPendingJoin: TDisplayTextJoin;
-      FPendingIndentLevel: Integer;
       FAfterListMarker: Boolean;
+      FAtUnmarkedItemStart: Boolean;
     function LayoutBlock(const Node: IMarkdownNode; const Top: Single): Single;
     function SpacingAboveOf(const Node: IMarkdownNode): Single;
     function SpacingBelowOf(const Node: IMarkdownNode): Single;
@@ -304,7 +305,8 @@ type
     procedure JoinCommandRuns(const Command: TLayoutCommand; const FirstItemIndex: Integer);
     procedure JoinBlockRuns(const Command: TLayoutCommand; const FirstItemIndex: Integer);
     procedure JoinListItemRuns(const Command: TLayoutCommand; const FirstItemIndex: Integer);
-    procedure JoinLeafRuns(const FirstItemIndex: Integer; const Leading, Trailing: TDisplayTextJoin);
+    procedure JoinLeafRuns(const Command: TLayoutCommand; const FirstItemIndex: Integer;
+      const Leading, Trailing: TDisplayTextJoin);
     procedure ProcessBlock(const Command: TLayoutCommand);
     procedure ApplyBlockOverride(const Command: TLayoutCommand; const Handler: ILayoutBlockOverride);
     procedure ProcessListItem(const Command: TLayoutCommand);
@@ -559,8 +561,8 @@ begin
   // How a block joins never depends on the block before it, which is what
   // lets an incremental layout reuse a block as it is.
   FPendingJoin := TDisplayTextJoin.None;
-  FPendingIndentLevel := 0;
   FAfterListMarker := False;
+  FAtUnmarkedItemStart := False;
 
   const FirstItemIndex = FItems.Count;
   const Height = LayoutBlock(Node, Y);
@@ -678,7 +680,7 @@ begin
     TLayoutCommandKind.ListItem:
       JoinListItemRuns(Command, FirstItemIndex);
     TLayoutCommandKind.AlertTitle:
-      JoinLeafRuns(FirstItemIndex, TDisplayTextJoin.BlankLine, TDisplayTextJoin.LineBreak);
+      JoinLeafRuns(Command, FirstItemIndex, TDisplayTextJoin.BlankLine, TDisplayTextJoin.LineBreak);
     TLayoutCommandKind.Gap, TLayoutCommandKind.QuoteBar:
       Exit;
   else
@@ -696,9 +698,9 @@ begin
     Exit;
 
   if Command.InTightItem then
-    JoinLeafRuns(FirstItemIndex, TDisplayTextJoin.LineBreak, TDisplayTextJoin.LineBreak)
+    JoinLeafRuns(Command, FirstItemIndex, TDisplayTextJoin.LineBreak, TDisplayTextJoin.LineBreak)
   else
-    JoinLeafRuns(FirstItemIndex, TDisplayTextJoin.BlankLine, TDisplayTextJoin.BlankLine);
+    JoinLeafRuns(Command, FirstItemIndex, TDisplayTextJoin.BlankLine, TDisplayTextJoin.BlankLine);
 end;
 
 // The marker starts the item's line, indented by the depth of the list; the
@@ -718,18 +720,22 @@ begin
   if MarkerIndex < 0 then
   begin
     FPendingJoin := LineStart;
-    FPendingIndentLevel := IndentLevel;
     FAfterListMarker := False;
+    FAtUnmarkedItemStart := True;
     Exit;
   end;
 
   TTextRunJoins.JoinRunAt(FItems, MarkerIndex, LineStart, IndentLevel);
   FPendingJoin := TDisplayTextJoin.None;
-  FPendingIndentLevel := 0;
   FAfterListMarker := True;
+  FAtUnmarkedItemStart := False;
 end;
 
-procedure TLayoutWorker.JoinLeafRuns(const FirstItemIndex: Integer; const Leading, Trailing: TDisplayTextJoin);
+// A block inside a list item lines up with the item's text, one level deeper
+// than its marker. The first block of an item without a marker takes the
+// marker's place instead.
+procedure TLayoutWorker.JoinLeafRuns(const Command: TLayoutCommand; const FirstItemIndex: Integer;
+  const Leading, Trailing: TDisplayTextJoin);
 begin
   const RunIndex = TTextRunJoins.FirstRunIndex(FItems, FirstItemIndex);
   if RunIndex < 0 then
@@ -738,13 +744,17 @@ begin
     Exit;
   end;
 
+  var IndentLevel := Command.ListDepth;
+  if FAtUnmarkedItemStart then
+    IndentLevel := Command.ListDepth - 1;
+
   if FAfterListMarker then
     TTextRunJoins.JoinRunAt(FItems, RunIndex, TDisplayTextJoin.Space, 0)
   else
-    TTextRunJoins.JoinRunAt(FItems, RunIndex, TTextRunJoins.Stronger(FPendingJoin, Leading), FPendingIndentLevel);
+    TTextRunJoins.JoinRunAt(FItems, RunIndex, TTextRunJoins.Stronger(FPendingJoin, Leading), IndentLevel);
 
   FAfterListMarker := False;
-  FPendingIndentLevel := 0;
+  FAtUnmarkedItemStart := False;
   FPendingJoin := Trailing;
 end;
 
@@ -2102,7 +2112,7 @@ begin
 
   const HasContent = (FCommitted.Count > 0);
   if HasContent then
-    FlushLine(TDisplayTextJoin.Space);
+    FlushLine(WrapJoin);
 
   const NeedsForceBreak = (Atom.Kind = TInlineAtomKind.WordToken) and (Atom.Width > FAvailableWidth + FitEpsilon);
   if NeedsForceBreak then
@@ -2129,7 +2139,7 @@ begin
     RestOffset := RestOffset + FitCount;
     Rest := Copy(Rest, FitCount + 1, Length(Rest));
     if Rest <> '' then
-      FlushLine(TDisplayTextJoin.Space);
+      FlushLine(TDisplayTextJoin.Adjacent);
   end;
 end;
 
@@ -2164,8 +2174,8 @@ begin
   FLineWidth := FLineWidth + Atom.Width;
 end;
 
-// A line ends where the next word does not fit, which copies as a space, or at
-// a hard break, which copies as a line break.
+// A line ends where the next word does not fit, or at a hard break, which
+// copies as a line break.
 procedure TInlineWrapper.FlushLine(const NextLineJoin: TDisplayTextJoin);
 begin
   const Advance = LineAdvance;
@@ -2178,6 +2188,18 @@ begin
   FPending.Clear;
   FLineWidth := 0;
   FPendingWidth := 0;
+end;
+
+// A wrap at a space copies as that space. Where the line breaks between two
+// pieces that touch in the source, a bracket and a code span for instance,
+// nothing stands between them.
+function TInlineWrapper.WrapJoin: TDisplayTextJoin;
+begin
+  const WrapsAtSpace = (FPending.Count > 0);
+  if WrapsAtSpace then
+    Result := TDisplayTextJoin.Space
+  else
+    Result := TDisplayTextJoin.Adjacent;
 end;
 
 // Text and formulas share one baseline: the line rises as far as the tallest
@@ -2400,13 +2422,11 @@ end;
 function TInlineWrapper.TakeLineJoin(const Run: IDisplayTextRun): IDisplayTextRun;
 begin
   if FLineJoin = TDisplayTextJoin.None then
-  begin
-    Result := Run;
-    Exit;
-  end;
+    Result := Run
+  else
+    Result := Run.Joined(FLineJoin, 0);
 
-  Result := Run.Joined(FLineJoin, 0);
-  FLineJoin := TDisplayTextJoin.None;
+  FLineJoin := TDisplayTextJoin.Adjacent;
 end;
 
 end.
