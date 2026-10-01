@@ -57,7 +57,7 @@ type
     procedure Selection_AcrossWrappedLines_ProducesRectPerLine;
 
     [Test]
-    procedure Selection_AcrossBlocks_JoinsTextWithLineBreak;
+    procedure Selection_AcrossParagraphs_JoinsTextWithBlankLine;
 
     [Test]
     procedure Selection_Backwards_NormalizesToSameText;
@@ -67,6 +67,19 @@ type
 
     [Test]
     procedure SelectAll_AcrossBlocks_SelectsWholeDocument;
+
+    [Test]
+    [TestCase('BulletList', '- one'#10'- two~'#$2022' one'#13#10#$2022' two', '~', False)]
+    [TestCase('OrderedList', '1. one'#10'2. two~1. one'#13#10'2. two', '~', False)]
+    [TestCase('NestedList', '- one'#10'  - two~'#$2022' one'#13#10'  '#$2022' two', '~', False)]
+    [TestCase('TaskList', '- [x] done'#10'- [ ] open~done'#13#10'open', '~', False)]
+    [TestCase('Table', '| A | B |'#10'|---|---|'#10'| a1 | b1 |~A'#9'B'#13#10'a1'#9'b1', '~', False)]
+    [TestCase('FencedCode', '```'#10'code 1'#10'code 2'#10'```~code 1'#13#10'code 2', '~', False)]
+    [TestCase('HardBreak', 'one\'#10'two~one'#13#10'two', '~', False)]
+    [TestCase('HeadingAndParagraph', '# Title'#10'Body~Title'#13#10#13#10'Body', '~', False)]
+    [TestCase('TwoHeadings', '# One'#10'## Two~One'#13#10#13#10'Two', '~', False)]
+    [TestCase('TwoLists', '- one'#10#10'1. two~'#$2022' one'#13#10#13#10'1. two', '~', False)]
+    procedure SelectAll_BlockWithSeveralLines_KeepsLinesMarkersAndCells(const Markdown, Expected: string);
 
     [Test]
     procedure SelectAll_EmptyDocument_LeavesSelectionEmpty;
@@ -257,14 +270,14 @@ begin
   AssertSingle(2 * BaseLineHeight, Rects[1].Bottom);
 end;
 
-procedure TMarkdownViewerModelTests.Selection_AcrossBlocks_JoinsTextWithLineBreak;
+procedure TMarkdownViewerModelTests.Selection_AcrossParagraphs_JoinsTextWithBlankLine;
 begin
   FModel.SetViewport(DefaultWidth, DefaultHeight);
   FModel.Text := 'one'#10#10'two';
 
   SelectFromTo(1, 10, 30, 40);
 
-  Assert.AreEqual('one' + sLineBreak + 'two', FModel.SelectedText);
+  Assert.AreEqual('one' + sLineBreak + sLineBreak + 'two', FModel.SelectedText);
 
   const Rects = FModel.SelectionRects;
   Assert.AreEqual(2, Integer(Length(Rects)));
@@ -304,7 +317,18 @@ begin
 
   Assert.IsTrue(FModel.SelectAll);
   Assert.IsTrue(FModel.HasSelection);
-  Assert.AreEqual('one' + sLineBreak + 'two', FModel.SelectedText);
+  Assert.AreEqual('one' + sLineBreak + sLineBreak + 'two', FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.SelectAll_BlockWithSeveralLines_KeepsLinesMarkersAndCells(const Markdown,
+  Expected: string);
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := Markdown;
+
+  FModel.SelectAll;
+
+  Assert.AreEqual(Expected, FModel.SelectedText);
 end;
 
 procedure TMarkdownViewerModelTests.SelectAll_EmptyDocument_LeavesSelectionEmpty;

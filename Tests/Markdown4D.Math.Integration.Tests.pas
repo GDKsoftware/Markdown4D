@@ -351,7 +351,8 @@ begin
 
   Assert.IsTrue(FModel.SelectAll);
 
-  Assert.AreEqual('before' + sLineBreak + '$$'#10'\frac{a}{b}'#10'$$' + sLineBreak + 'after', FModel.SelectedText);
+  Assert.AreEqual('before' + sLineBreak + sLineBreak + '$$'#10'\frac{a}{b}'#10'$$' + sLineBreak + sLineBreak + 'after',
+    FModel.SelectedText);
 end;
 
 end.

@@ -17,6 +17,11 @@ type
   // copied as one unit, so a formula copies as its markdown.
   TDisplayTextRunRole = (Text, Drawing, Source);
 
+  // What stands between a text run and the text before it when a selection is
+  // copied as plain text. The order matters: of two joins that meet, the later
+  // in this list wins.
+  TDisplayTextJoin = (None, Space, Tab, LineBreak, BlankLine);
+
   IDisplayItem = interface
     ['{4F8C2D16-A93B-4E75-8C02-D51B9E3A7F64}']
     function GetKind: TDisplayItemKind;
@@ -36,6 +41,9 @@ type
     function GetStartOffset: Integer;
     function GetSourceNode: IMarkdownNode;
     function GetRole: TDisplayTextRunRole;
+    function GetJoin: TDisplayTextJoin;
+    function GetIndentLevel: Integer;
+    function Joined(const Join: TDisplayTextJoin; const IndentLevel: Integer): IDisplayTextRun;
     property Text: string read GetText;
     property Font: TMarkdownFontStyle read GetFont;
     property Color: TLayoutColor read GetColor;
@@ -47,6 +55,9 @@ type
     // the link itself, while SourceNode stays the text leaf inside it.
     property SourceNode: IMarkdownNode read GetSourceNode;
     property Role: TDisplayTextRunRole read GetRole;
+    property Join: TDisplayTextJoin read GetJoin;
+    // How many list levels a run that starts a line is indented by when copied.
+    property IndentLevel: Integer read GetIndentLevel;
   end;
 
   IDisplayRectangle = interface(IDisplayItem)

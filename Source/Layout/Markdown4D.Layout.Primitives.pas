@@ -41,6 +41,8 @@ type
     FStartOffset: Integer;
     FSourceNode: IMarkdownNode;
     FRole: TDisplayTextRunRole;
+    FJoin: TDisplayTextJoin;
+    FIndentLevel: Integer;
     function GetText: string;
     function GetFont: TMarkdownFontStyle;
     function GetColor: TLayoutColor;
@@ -48,12 +50,17 @@ type
     function GetStartOffset: Integer;
     function GetSourceNode: IMarkdownNode;
     function GetRole: TDisplayTextRunRole;
+    function GetJoin: TDisplayTextJoin;
+    function GetIndentLevel: Integer;
+    function CopyWith(const Bounds: TLayoutRectF; const Join: TDisplayTextJoin;
+      const IndentLevel: Integer): TDisplayTextRun;
 
   public
     constructor Create(const Bounds: TLayoutRectF; const Node: IMarkdownNode; const Text: string;
       const Font: TMarkdownFontStyle; const Color: TLayoutColor; const Baseline: Single; const StartOffset: Integer;
       const Role: TDisplayTextRunRole = TDisplayTextRunRole.Text; const SourceNode: IMarkdownNode = nil);
     function Shifted(const DeltaX, DeltaY: Single): IDisplayItem; override;
+    function Joined(const Join: TDisplayTextJoin; const IndentLevel: Integer): IDisplayTextRun;
   end;
 
   TDisplayRectangle = class(TDisplayItem, IDisplayRectangle)
@@ -269,10 +276,32 @@ begin
   Result := FRole;
 end;
 
+function TDisplayTextRun.GetJoin: TDisplayTextJoin;
+begin
+  Result := FJoin;
+end;
+
+function TDisplayTextRun.GetIndentLevel: Integer;
+begin
+  Result := FIndentLevel;
+end;
+
+function TDisplayTextRun.CopyWith(const Bounds: TLayoutRectF; const Join: TDisplayTextJoin;
+  const IndentLevel: Integer): TDisplayTextRun;
+begin
+  Result := TDisplayTextRun.Create(Bounds, FNode, FText, FFont, FColor, FBaseline, FStartOffset, FRole, FSourceNode);
+  Result.FJoin := Join;
+  Result.FIndentLevel := IndentLevel;
+end;
+
 function TDisplayTextRun.Shifted(const DeltaX, DeltaY: Single): IDisplayItem;
 begin
-  Result := TDisplayTextRun.Create(ShiftedBounds(DeltaX, DeltaY), FNode, FText, FFont, FColor, FBaseline, FStartOffset,
-    FRole, FSourceNode);
+  Result := CopyWith(ShiftedBounds(DeltaX, DeltaY), FJoin, FIndentLevel);
+end;
+
+function TDisplayTextRun.Joined(const Join: TDisplayTextJoin; const IndentLevel: Integer): IDisplayTextRun;
+begin
+  Result := CopyWith(FBounds, Join, IndentLevel);
 end;
 
 constructor TDisplayRectangle.Create(const Bounds: TLayoutRectF; const Node: IMarkdownNode;

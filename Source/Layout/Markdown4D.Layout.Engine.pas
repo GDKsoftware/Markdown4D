@@ -97,6 +97,17 @@ type
     Style: TInlineStyle;
   end;
 
+  // Sets the join a text run copies with, on runs already in a display list.
+  TTextRunJoins = class
+  public
+    class function Stronger(const First, Second: TDisplayTextJoin): TDisplayTextJoin; static;
+    class function FirstRunIndex(const Items: TList<IDisplayItem>; const FromIndex: Integer): Integer; static;
+    class procedure JoinRunAt(const Items: TList<IDisplayItem>; const Index: Integer; const Join: TDisplayTextJoin;
+      const IndentLevel: Integer); static;
+    class procedure JoinFirstRun(const Items: TList<IDisplayItem>; const FromIndex: Integer;
+      const Join: TDisplayTextJoin); static;
+  end;
+
   TInlineWrapper = class
   private
     const
@@ -126,12 +137,13 @@ type
       FGroupSourceNode: IMarkdownNode;
       FGroupStartOffset: Integer;
       FGroupCodeSpan: Boolean;
+      FLineJoin: TDisplayTextJoin;
     procedure AddWordLike(const Atom: TInlineAtom);
     procedure ForceBreakWord(const Atom: TInlineAtom);
     function MaxCharsFitting(const Text: string; const Font: TMarkdownFontStyle): Integer;
     procedure CommitPending;
     procedure CommitAtom(const Atom: TInlineAtom);
-    procedure FlushLine;
+    procedure FlushLine(const NextLineJoin: TDisplayTextJoin);
     function LineAdvance: Single;
     function LineBaseline: Single;
     procedure EmitLineItems;
@@ -144,6 +156,7 @@ type
     procedure EmitImageItem(const Atom: TInlineAtom);
     procedure EmitMathItem(const Atom: TInlineAtom);
     procedure EmitMathSource(const Atom: TInlineAtom);
+    function TakeLineJoin(const Run: IDisplayTextRun): IDisplayTextRun;
     procedure MeasureLine(out MaxAscent, MaxDescent, MaxImageHeight: Single);
 
   public
@@ -187,6 +200,12 @@ type
     StartY: Single;
     MarkerText: string;
     Tight: Boolean;
+    // How deep a list item sits; whether a block or a list is the content of
+    // a tight list item, which copies without blank lines; and whether an item
+    // is the first of its list.
+    ListDepth: Integer;
+    InTightItem: Boolean;
+    FirstOfList: Boolean;
   end;
 
   TInlineAtomCollector = class
@@ -241,6 +260,7 @@ type
     procedure EmitTableGrid(const Node: IMarkdownNode; const Left, Top: Single;
       const RowBottoms, ColumnWidths: TArray<Single>; const TableWidth: Single);
     procedure EmitGridLine(const Node: IMarkdownNode; const StartPoint, EndPoint: TLayoutPointF);
+    procedure JoinTableCell(const CellItemIndex, RowIndex, ColumnIndex: Integer);
     function PlaceTableCell(const Row: IMarkdownNode; const ColumnIndex: Integer; const Atoms: TList<TInlineAtom>;
       const CellLeft, RowTop, ColumnWidth: Single; const RowFont: TMarkdownFontStyle): Single;
     procedure AlignCellItems(const FirstIndex, LastIndex: Integer; const Alignment: TMarkdownTableColumnAlignment;
@@ -260,6 +280,7 @@ type
     const
       BulletMarkerText = #$2022;
       OrderedMarkerFormat = '%d.';
+      UnhandledCommandKindMessage = 'Unhandled layout command kind: %d';
       ShiftEpsilon = 0.0001;
       AlertIconScale = 0.75;
       AlertIconGapScale = 0.5;
@@ -272,11 +293,18 @@ type
       FCommands: TList<TLayoutCommand>;
       FCollector: TInlineAtomCollector;
       FCurrentY: Single;
+      FPendingJoin: TDisplayTextJoin;
+      FPendingIndentLevel: Integer;
+      FAfterListMarker: Boolean;
     function LayoutBlock(const Node: IMarkdownNode; const Top: Single): Single;
     function SpacingAboveOf(const Node: IMarkdownNode): Single;
     function SpacingBelowOf(const Node: IMarkdownNode): Single;
     function GapBetween(const PreviousBelow, NextAbove: Single): Single;
     procedure ProcessCommand(const Command: TLayoutCommand);
+    procedure JoinCommandRuns(const Command: TLayoutCommand; const FirstItemIndex: Integer);
+    procedure JoinBlockRuns(const Command: TLayoutCommand; const FirstItemIndex: Integer);
+    procedure JoinListItemRuns(const Command: TLayoutCommand; const FirstItemIndex: Integer);
+    procedure JoinLeafRuns(const FirstItemIndex: Integer; const Leading, Trailing: TDisplayTextJoin);
     procedure ProcessBlock(const Command: TLayoutCommand);
     procedure ApplyBlockOverride(const Command: TLayoutCommand; const Handler: ILayoutBlockOverride);
     procedure ProcessListItem(const Command: TLayoutCommand);
@@ -290,7 +318,8 @@ type
     procedure PushList(const Command: TLayoutCommand);
     class function TryFindTaskMarker(const ListItem: IMarkdownNode; out Marker: IMarkdownCustomInline): Boolean;
     procedure PushContainerChildren(const Container: IMarkdownNode; const X: Single; const TextColor: TLayoutColor);
-    procedure PushBlock(const Node: IMarkdownNode; const X: Single; const TextColor: TLayoutColor);
+    procedure PushBlock(const Node: IMarkdownNode; const X: Single; const TextColor: TLayoutColor;
+      const ListDepth: Integer = 0; const InTightItem: Boolean = False);
     procedure PushGap(const Amount: Single);
     function GapBetweenNodes(const Previous, Next: IMarkdownNode): Single;
     procedure LayoutInlineBlock(const Container: IMarkdownNode; const X: Single; const BaseFont: TMarkdownFontStyle;
@@ -298,6 +327,7 @@ type
     procedure EmitCodeBlock(const Command: TLayoutCommand);
     procedure EmitCodeLines(const Command: TLayoutCommand; const Code: IMarkdownCodeBlock; const Lines: TArray<string>;
       const LineHeight, Padding: Single);
+    function JoinCodeLine(const LineItemIndex, LineIndex: Integer; const PendingJoin: TDisplayTextJoin): TDisplayTextJoin;
     function EmitHighlightedCodeLine(const Command: TLayoutCommand; const Highlighter: IMarkdownSyntaxHighlighter;
       const LineText: string; const Top, LineHeight: Single; const LineStart, State: Integer): Integer;
     procedure EmitCodeLineBackground(const Command: TLayoutCommand; const Line: TSyntaxLine;
@@ -526,6 +556,12 @@ begin
   if Index > 0 then
     Y := Y + GapBetween(PreviousBelow, Above);
 
+  // How a block joins never depends on the block before it, which is what
+  // lets an incremental layout reuse a block as it is.
+  FPendingJoin := TDisplayTextJoin.None;
+  FPendingIndentLevel := 0;
+  FAfterListMarker := False;
+
   const FirstItemIndex = FItems.Count;
   const Height = LayoutBlock(Node, Y);
 
@@ -611,6 +647,8 @@ end;
 
 procedure TLayoutWorker.ProcessCommand(const Command: TLayoutCommand);
 begin
+  const FirstItemIndex = FItems.Count;
+
   case Command.Kind of
     TLayoutCommandKind.Block:
       ProcessBlock(Command);
@@ -623,8 +661,91 @@ begin
     TLayoutCommandKind.AlertTitle:
       EmitAlertTitle(Command);
   else
-    raise EMarkdownError.CreateFmt('Unhandled layout command kind: %d', [Ord(Command.Kind)]);
+    raise EMarkdownError.CreateFmt(UnhandledCommandKindMessage, [Ord(Command.Kind)]);
   end;
+
+  JoinCommandRuns(Command, FirstItemIndex);
+end;
+
+// Copied text reads like the markdown it came from: blocks stand a blank line
+// apart, the items of a tight list a line break. Containers such as a list or
+// a quote add nothing themselves; the blocks inside them do.
+procedure TLayoutWorker.JoinCommandRuns(const Command: TLayoutCommand; const FirstItemIndex: Integer);
+begin
+  case Command.Kind of
+    TLayoutCommandKind.Block:
+      JoinBlockRuns(Command, FirstItemIndex);
+    TLayoutCommandKind.ListItem:
+      JoinListItemRuns(Command, FirstItemIndex);
+    TLayoutCommandKind.AlertTitle:
+      JoinLeafRuns(FirstItemIndex, TDisplayTextJoin.BlankLine, TDisplayTextJoin.LineBreak);
+    TLayoutCommandKind.Gap, TLayoutCommandKind.QuoteBar:
+      Exit;
+  else
+    raise EMarkdownError.CreateFmt(UnhandledCommandKindMessage, [Ord(Command.Kind)]);
+  end;
+end;
+
+procedure TLayoutWorker.JoinBlockRuns(const Command: TLayoutCommand; const FirstItemIndex: Integer);
+begin
+  var Handler: ILayoutBlockOverride;
+  const IsOverridden = TLayoutBlockOverrideRegistry.TryFind(Command.Node, Handler);
+  const IsContainer = (Command.Node.Kind in [TMarkdownNodeKind.BlockQuote, TMarkdownNodeKind.List,
+                                             TMarkdownNodeKind.HtmlBlock]);
+  if IsContainer and not IsOverridden then
+    Exit;
+
+  if Command.InTightItem then
+    JoinLeafRuns(FirstItemIndex, TDisplayTextJoin.LineBreak, TDisplayTextJoin.LineBreak)
+  else
+    JoinLeafRuns(FirstItemIndex, TDisplayTextJoin.BlankLine, TDisplayTextJoin.BlankLine);
+end;
+
+// The marker starts the item's line, indented by the depth of the list; the
+// first block inside the item follows the marker after a space. A task item
+// has no marker run, so its first block takes the line start instead. A list
+// stands apart like any block, unless it is nested in a tight item.
+procedure TLayoutWorker.JoinListItemRuns(const Command: TLayoutCommand; const FirstItemIndex: Integer);
+begin
+  const IndentLevel = Command.ListDepth - 1;
+
+  var LineStart := TTextRunJoins.Stronger(FPendingJoin, TDisplayTextJoin.LineBreak);
+  const StartsLooseList = Command.FirstOfList and not Command.InTightItem;
+  if StartsLooseList then
+    LineStart := TTextRunJoins.Stronger(LineStart, TDisplayTextJoin.BlankLine);
+
+  const MarkerIndex = TTextRunJoins.FirstRunIndex(FItems, FirstItemIndex);
+  if MarkerIndex < 0 then
+  begin
+    FPendingJoin := LineStart;
+    FPendingIndentLevel := IndentLevel;
+    FAfterListMarker := False;
+    Exit;
+  end;
+
+  TTextRunJoins.JoinRunAt(FItems, MarkerIndex, LineStart, IndentLevel);
+  FPendingJoin := TDisplayTextJoin.None;
+  FPendingIndentLevel := 0;
+  FAfterListMarker := True;
+end;
+
+procedure TLayoutWorker.JoinLeafRuns(const FirstItemIndex: Integer; const Leading, Trailing: TDisplayTextJoin);
+begin
+  const RunIndex = TTextRunJoins.FirstRunIndex(FItems, FirstItemIndex);
+  if RunIndex < 0 then
+  begin
+    FPendingJoin := TTextRunJoins.Stronger(FPendingJoin, Trailing);
+    Exit;
+  end;
+
+  if FAfterListMarker then
+    TTextRunJoins.JoinRunAt(FItems, RunIndex, TDisplayTextJoin.Space, 0)
+  else
+    TTextRunJoins.JoinRunAt(FItems, RunIndex, TTextRunJoins.Stronger(FPendingJoin, Leading), FPendingIndentLevel);
+
+  FAfterListMarker := False;
+  FPendingIndentLevel := 0;
+  FPendingJoin := Trailing;
 end;
 
 procedure TLayoutWorker.ProcessBlock(const Command: TLayoutCommand);
@@ -701,7 +822,7 @@ begin
     if IsNestedList then
       ChildX := Command.X + FTheme.ListIndent;
 
-    PushBlock(Child, ChildX, Command.Color);
+    PushBlock(Child, ChildX, Command.Color, Command.ListDepth, Command.Tight);
 
     const NeedsGap = (Index > 0) and not Command.Tight;
     if NeedsGap then
@@ -841,6 +962,9 @@ begin
     ItemCommand.X := Command.X;
     ItemCommand.Color := Command.Color;
     ItemCommand.Tight := List.IsTight;
+    ItemCommand.ListDepth := Command.ListDepth + 1;
+    ItemCommand.InTightItem := Command.InTightItem;
+    ItemCommand.FirstOfList := (Index = 0);
 
     var TaskMarker: IMarkdownCustomInline;
     const IsTaskItem = TryFindTaskMarker(ItemCommand.Node, TaskMarker);
@@ -913,13 +1037,16 @@ begin
   end;
 end;
 
-procedure TLayoutWorker.PushBlock(const Node: IMarkdownNode; const X: Single; const TextColor: TLayoutColor);
+procedure TLayoutWorker.PushBlock(const Node: IMarkdownNode; const X: Single; const TextColor: TLayoutColor;
+  const ListDepth: Integer; const InTightItem: Boolean);
 begin
   var Command := Default(TLayoutCommand);
   Command.Kind := TLayoutCommandKind.Block;
   Command.Node := Node;
   Command.X := X;
   Command.Color := TextColor;
+  Command.ListDepth := ListDepth;
+  Command.InTightItem := InTightItem;
 
   FCommands.Add(Command);
 end;
@@ -991,10 +1118,12 @@ begin
     TokenizerState := Highlighter.InitialState;
 
   var LineStart := 0;
+  var LineJoin := TDisplayTextJoin.None;
   for var Index := 0 to Length(Lines) - 1 do
   begin
     const LineText = Lines[Index];
     const Top = FCurrentY + Padding + Index * LineHeight;
+    const LineItemIndex = FItems.Count;
 
     if UseHighlighter then
       TokenizerState := EmitHighlightedCodeLine(Command, Highlighter, LineText, Top, LineHeight, LineStart,
@@ -1002,8 +1131,33 @@ begin
     else if LineText <> '' then
       EmitPlainCodeLine(Command, LineText, Top, LineHeight, LineStart);
 
+    LineJoin := JoinCodeLine(LineItemIndex, Index, LineJoin);
     LineStart := LineStart + Length(LineText) + 1;
   end;
+end;
+
+// Every code line copies on a line of its own. An empty line has no run to
+// carry that, so it turns the next line's break into a blank line.
+function TLayoutWorker.JoinCodeLine(const LineItemIndex, LineIndex: Integer;
+  const PendingJoin: TDisplayTextJoin): TDisplayTextJoin;
+begin
+  var Join := PendingJoin;
+  if LineIndex > 0 then
+    Join := TTextRunJoins.Stronger(PendingJoin, TDisplayTextJoin.LineBreak);
+
+  const RunIndex = TTextRunJoins.FirstRunIndex(FItems, LineItemIndex);
+  if RunIndex < 0 then
+  begin
+    Result := PendingJoin;
+    if LineIndex > 0 then
+      Result := TDisplayTextJoin.BlankLine;
+    Exit;
+  end;
+
+  if Join <> TDisplayTextJoin.None then
+    TTextRunJoins.JoinRunAt(FItems, RunIndex, Join, 0);
+
+  Result := TDisplayTextJoin.None;
 end;
 
 function TLayoutWorker.EmitHighlightedCodeLine(const Command: TLayoutCommand;
@@ -1366,10 +1520,12 @@ begin
   for var ColumnIndex := 0 to ColumnCount - 1 do
   begin
     const Atoms = Cells[RowIndex * ColumnCount + ColumnIndex];
+    const CellItemIndex = FItems.Count;
     if Atoms <> nil then
       RowHeight := Max(RowHeight, PlaceTableCell(Row, ColumnIndex, Atoms, CellLeft, RowTop,
         ColumnWidths[ColumnIndex], RowFont));
 
+    JoinTableCell(CellItemIndex, RowIndex, ColumnIndex);
     CellLeft := CellLeft + ColumnWidths[ColumnIndex];
   end;
 
@@ -1384,6 +1540,16 @@ begin
   end;
 
   FCurrentY := RowTop + RowHeight;
+end;
+
+// A copied table keeps its grid: a Tab between the cells of a row and a line
+// break between rows, the way a spreadsheet reads it back.
+procedure TTableLayout.JoinTableCell(const CellItemIndex, RowIndex, ColumnIndex: Integer);
+begin
+  if ColumnIndex > 0 then
+    TTextRunJoins.JoinFirstRun(FItems, CellItemIndex, TDisplayTextJoin.Tab)
+  else if RowIndex > 0 then
+    TTextRunJoins.JoinFirstRun(FItems, CellItemIndex, TDisplayTextJoin.LineBreak);
 end;
 
 function TTableLayout.PlaceTableCell(const Row: IMarkdownNode; const ColumnIndex: Integer;
@@ -1831,6 +1997,45 @@ begin
   Result := FCanvas;
 end;
 
+class function TTextRunJoins.Stronger(const First, Second: TDisplayTextJoin): TDisplayTextJoin;
+begin
+  if Ord(First) >= Ord(Second) then
+    Result := First
+  else
+    Result := Second;
+end;
+
+class function TTextRunJoins.FirstRunIndex(const Items: TList<IDisplayItem>; const FromIndex: Integer): Integer;
+begin
+  for var Index := FromIndex to Items.Count - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    const IsCopiedRun = Supports(Items[Index], IDisplayTextRun, Run) and (Run.Role <> TDisplayTextRunRole.Drawing);
+    if IsCopiedRun then
+    begin
+      Result := Index;
+      Exit;
+    end;
+  end;
+
+  Result := -1;
+end;
+
+class procedure TTextRunJoins.JoinRunAt(const Items: TList<IDisplayItem>; const Index: Integer;
+  const Join: TDisplayTextJoin; const IndentLevel: Integer);
+begin
+  const Run = Items[Index] as IDisplayTextRun;
+  Items[Index] := Run.Joined(Join, IndentLevel);
+end;
+
+class procedure TTextRunJoins.JoinFirstRun(const Items: TList<IDisplayItem>; const FromIndex: Integer;
+  const Join: TDisplayTextJoin);
+begin
+  const RunIndex = FirstRunIndex(Items, FromIndex);
+  if RunIndex >= 0 then
+    JoinRunAt(Items, RunIndex, Join, 0);
+end;
+
 constructor TInlineWrapper.Create(const Measurer: ITextMeasurer; const Items: TList<IDisplayItem>;
   const Left, Top, AvailableWidth: Single; const BaseFont: TMarkdownFontStyle;
   const CodeSpanBackground: TLayoutColor);
@@ -1870,7 +2075,7 @@ begin
         end;
       end;
     TInlineAtomKind.HardBreakToken:
-      FlushLine;
+      FlushLine(TDisplayTextJoin.LineBreak);
   else
     AddWordLike(Atom);
   end;
@@ -1880,7 +2085,7 @@ function TInlineWrapper.Finish: Single;
 begin
   const HasOpenLine = (FCommitted.Count > 0);
   if HasOpenLine then
-    FlushLine;
+    FlushLine(TDisplayTextJoin.None);
 
   Result := FLineTop - FStartTop;
 end;
@@ -1897,7 +2102,7 @@ begin
 
   const HasContent = (FCommitted.Count > 0);
   if HasContent then
-    FlushLine;
+    FlushLine(TDisplayTextJoin.Space);
 
   const NeedsForceBreak = (Atom.Kind = TInlineAtomKind.WordToken) and (Atom.Width > FAvailableWidth + FitEpsilon);
   if NeedsForceBreak then
@@ -1924,7 +2129,7 @@ begin
     RestOffset := RestOffset + FitCount;
     Rest := Copy(Rest, FitCount + 1, Length(Rest));
     if Rest <> '' then
-      FlushLine;
+      FlushLine(TDisplayTextJoin.Space);
   end;
 end;
 
@@ -1959,12 +2164,15 @@ begin
   FLineWidth := FLineWidth + Atom.Width;
 end;
 
-procedure TInlineWrapper.FlushLine;
+// A line ends where the next word does not fit, which copies as a space, or at
+// a hard break, which copies as a line break.
+procedure TInlineWrapper.FlushLine(const NextLineJoin: TDisplayTextJoin);
 begin
   const Advance = LineAdvance;
 
   EmitLineItems;
 
+  FLineJoin := NextLineJoin;
   FLineTop := FLineTop + Advance;
   FCommitted.Clear;
   FPending.Clear;
@@ -2128,8 +2336,9 @@ begin
   if FGroupCodeSpan then
     EmitCodeSpanChip(Bounds);
 
-  FItems.Add(TDisplayTextRun.Create(Bounds, FGroupNode, FGroupText, FGroupFont, FGroupColor, RunBaseline,
-    FGroupStartOffset, TDisplayTextRunRole.Text, FGroupSourceNode));
+  const Run: IDisplayTextRun = TDisplayTextRun.Create(Bounds, FGroupNode, FGroupText, FGroupFont, FGroupColor,
+    RunBaseline, FGroupStartOffset, TDisplayTextRunRole.Text, FGroupSourceNode);
+  FItems.Add(TakeLineJoin(Run));
 
   FCursor := FCursor + FGroupWidth;
   FGroupOpen := False;
@@ -2181,8 +2390,23 @@ begin
   const RunBaseline = FMeasurer.Baseline(Atom.Font);
   const Top = FLineTop + (FLineBaseline - RunBaseline);
   const Bounds = TLayoutRectF.Create(FCursor, Top, FCursor + Atom.Width, Top + FMeasurer.LineHeight(Atom.Font));
-  FItems.Add(TDisplayTextRun.Create(Bounds, Atom.Node, Atom.Text, Atom.Font, Atom.Color, RunBaseline, 0,
-    TDisplayTextRunRole.Source));
+  const Run: IDisplayTextRun = TDisplayTextRun.Create(Bounds, Atom.Node, Atom.Text, Atom.Font, Atom.Color,
+    RunBaseline, 0, TDisplayTextRunRole.Source);
+  FItems.Add(TakeLineJoin(Run));
+end;
+
+// The first run of a line carries how the line began; the runs after it on
+// the same line follow on directly.
+function TInlineWrapper.TakeLineJoin(const Run: IDisplayTextRun): IDisplayTextRun;
+begin
+  if FLineJoin = TDisplayTextJoin.None then
+  begin
+    Result := Run;
+    Exit;
+  end;
+
+  Result := Run.Joined(FLineJoin, 0);
+  FLineJoin := TDisplayTextJoin.None;
 end;
 
 end.
