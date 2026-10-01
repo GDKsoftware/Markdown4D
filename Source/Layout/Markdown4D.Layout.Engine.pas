@@ -189,6 +189,10 @@ type
 
   TLayoutCommandKind = (Block, Gap, QuoteBar, ListItem, AlertTitle);
 
+  // Where the next block of a list item starts its copied line: on a line of
+  // its own, after the item's marker, or in place of a marker the item lacks.
+  TItemLineStart = (OwnLine, AfterMarker, WithoutMarker);
+
   TLayoutCommand = record
     Kind: TLayoutCommandKind;
     Node: IMarkdownNode;
@@ -282,6 +286,7 @@ type
       BulletMarkerText = #$2022;
       OrderedMarkerFormat = '%d.';
       UnhandledCommandKindMessage = 'Unhandled layout command kind: %d';
+      UnhandledItemLineStartMessage = 'Unhandled list item line start: %d';
       ShiftEpsilon = 0.0001;
       AlertIconScale = 0.75;
       AlertIconGapScale = 0.5;
@@ -295,8 +300,7 @@ type
       FCollector: TInlineAtomCollector;
       FCurrentY: Single;
       FPendingJoin: TDisplayTextJoin;
-      FAfterListMarker: Boolean;
-      FAtUnmarkedItemStart: Boolean;
+      FItemLineStart: TItemLineStart;
     function LayoutBlock(const Node: IMarkdownNode; const Top: Single): Single;
     function SpacingAboveOf(const Node: IMarkdownNode): Single;
     function SpacingBelowOf(const Node: IMarkdownNode): Single;
@@ -305,8 +309,7 @@ type
     procedure JoinCommandRuns(const Command: TLayoutCommand; const FirstItemIndex: Integer);
     procedure JoinBlockRuns(const Command: TLayoutCommand; const FirstItemIndex: Integer);
     procedure JoinListItemRuns(const Command: TLayoutCommand; const FirstItemIndex: Integer);
-    procedure JoinLeafRuns(const Command: TLayoutCommand; const FirstItemIndex: Integer;
-      const Leading, Trailing: TDisplayTextJoin);
+    procedure JoinLeafRuns(const ListDepth, FirstItemIndex: Integer; const Leading, Trailing: TDisplayTextJoin);
     procedure ProcessBlock(const Command: TLayoutCommand);
     procedure ApplyBlockOverride(const Command: TLayoutCommand; const Handler: ILayoutBlockOverride);
     procedure ProcessListItem(const Command: TLayoutCommand);
@@ -561,8 +564,7 @@ begin
   // How a block joins never depends on the block before it, which is what
   // lets an incremental layout reuse a block as it is.
   FPendingJoin := TDisplayTextJoin.None;
-  FAfterListMarker := False;
-  FAtUnmarkedItemStart := False;
+  FItemLineStart := TItemLineStart.OwnLine;
 
   const FirstItemIndex = FItems.Count;
   const Height = LayoutBlock(Node, Y);
@@ -680,7 +682,7 @@ begin
     TLayoutCommandKind.ListItem:
       JoinListItemRuns(Command, FirstItemIndex);
     TLayoutCommandKind.AlertTitle:
-      JoinLeafRuns(Command, FirstItemIndex, TDisplayTextJoin.BlankLine, TDisplayTextJoin.LineBreak);
+      JoinLeafRuns(Command.ListDepth, FirstItemIndex, TDisplayTextJoin.BlankLine, TDisplayTextJoin.LineBreak);
     TLayoutCommandKind.Gap, TLayoutCommandKind.QuoteBar:
       Exit;
   else
@@ -698,9 +700,9 @@ begin
     Exit;
 
   if Command.InTightItem then
-    JoinLeafRuns(Command, FirstItemIndex, TDisplayTextJoin.LineBreak, TDisplayTextJoin.LineBreak)
+    JoinLeafRuns(Command.ListDepth, FirstItemIndex, TDisplayTextJoin.LineBreak, TDisplayTextJoin.LineBreak)
   else
-    JoinLeafRuns(Command, FirstItemIndex, TDisplayTextJoin.BlankLine, TDisplayTextJoin.BlankLine);
+    JoinLeafRuns(Command.ListDepth, FirstItemIndex, TDisplayTextJoin.BlankLine, TDisplayTextJoin.BlankLine);
 end;
 
 // The marker starts the item's line, indented by the depth of the list; the
@@ -720,22 +722,19 @@ begin
   if MarkerIndex < 0 then
   begin
     FPendingJoin := LineStart;
-    FAfterListMarker := False;
-    FAtUnmarkedItemStart := True;
+    FItemLineStart := TItemLineStart.WithoutMarker;
     Exit;
   end;
 
   TTextRunJoins.JoinRunAt(FItems, MarkerIndex, LineStart, IndentLevel);
   FPendingJoin := TDisplayTextJoin.None;
-  FAfterListMarker := True;
-  FAtUnmarkedItemStart := False;
+  FItemLineStart := TItemLineStart.AfterMarker;
 end;
 
 // A block inside a list item lines up with the item's text, one level deeper
 // than its marker. The first block of an item without a marker takes the
 // marker's place instead.
-procedure TLayoutWorker.JoinLeafRuns(const Command: TLayoutCommand; const FirstItemIndex: Integer;
-  const Leading, Trailing: TDisplayTextJoin);
+procedure TLayoutWorker.JoinLeafRuns(const ListDepth, FirstItemIndex: Integer; const Leading, Trailing: TDisplayTextJoin);
 begin
   const RunIndex = TTextRunJoins.FirstRunIndex(FItems, FirstItemIndex);
   if RunIndex < 0 then
@@ -744,17 +743,16 @@ begin
     Exit;
   end;
 
-  var IndentLevel := Command.ListDepth;
-  if FAtUnmarkedItemStart then
-    IndentLevel := Command.ListDepth - 1;
-
-  if FAfterListMarker then
-    TTextRunJoins.JoinRunAt(FItems, RunIndex, TDisplayTextJoin.Space, 0)
+  const LineStart = TTextRunJoins.Stronger(FPendingJoin, Leading);
+  case FItemLineStart of
+    TItemLineStart.OwnLine       : TTextRunJoins.JoinRunAt(FItems, RunIndex, LineStart, ListDepth);
+    TItemLineStart.AfterMarker   : TTextRunJoins.JoinRunAt(FItems, RunIndex, TDisplayTextJoin.Space, 0);
+    TItemLineStart.WithoutMarker : TTextRunJoins.JoinRunAt(FItems, RunIndex, LineStart, ListDepth - 1);
   else
-    TTextRunJoins.JoinRunAt(FItems, RunIndex, TTextRunJoins.Stronger(FPendingJoin, Leading), IndentLevel);
+    raise EMarkdownError.CreateFmt(UnhandledItemLineStartMessage, [Ord(FItemLineStart)]);
+  end;
 
-  FAfterListMarker := False;
-  FAtUnmarkedItemStart := False;
+  FItemLineStart := TItemLineStart.OwnLine;
   FPendingJoin := Trailing;
 end;
 
