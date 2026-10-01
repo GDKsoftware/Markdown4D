@@ -42,6 +42,10 @@ type
         StartPosition: TTextPosition;
         EndPosition: TTextPosition;
       end;
+      // What a press and a drag select by: characters after a single click,
+      // whole words after a double click, whole lines after a triple click.
+      TSelectionUnit = (Character, Word, Line);
+      TCharacterClass = (WordCharacter, Space, Other);
     const
       DefaultFlushIntervalMilliseconds = 100;
       BottomEpsilon = 0.5;
@@ -66,6 +70,8 @@ type
       FSelectionActive: Boolean;
       FAnchor: TTextPosition;
       FExtent: TTextPosition;
+      FSelectionUnit: TSelectionUnit;
+      FUnitRange: TTextRange;
       FImageSlots: TDictionary<string, TImageSlot>;
       FImageSlotOrder: TList<string>;
     procedure Relayout;
@@ -74,6 +80,23 @@ type
     function TryResolvePosition(const Point: TLayoutPointF; out Position: TTextPosition): Boolean;
     function NearestCharacterBoundary(const Run: IDisplayTextRun; const X: Single): Integer;
     function TrySelectableRun(const Index: Integer; out Run: IDisplayTextRun): Boolean;
+    function TryResolveCharacter(const Point: TLayoutPointF; out Position: TTextPosition): Boolean;
+    function CharacterUnderX(const Run: IDisplayTextRun; const X: Single): Integer;
+    function SelectUnitAt(const Point: TLayoutPointF; const SelectionUnit: TSelectionUnit): Boolean;
+    procedure ExtendUnitSelection(const Position: TTextPosition);
+    function UnitRangeAt(const Position: TTextPosition): TTextRange;
+    function WordRangeAt(const Position: TTextPosition): TTextRange;
+    function WordStartFrom(const Position: TTextPosition): TTextPosition;
+    function WordEndFrom(const Position: TTextPosition): TTextPosition;
+    function LineRangeAt(const Position: TTextPosition): TTextRange;
+    function LineOriginIndex(const ItemIndex: Integer): Integer;
+    function LineStartIndexFrom(const ItemIndex: Integer): Integer;
+    function LineEndIndexFrom(const ItemIndex: Integer): Integer;
+    function TryAdjacentRun(const ItemIndex, Direction: Integer; out AdjacentIndex: Integer;
+      out Run: IDisplayTextRun): Boolean;
+    class function ContinuesWord(const Run, Before: IDisplayTextRun): Boolean; static;
+    class function ContinuesLine(const Run, Before: IDisplayTextRun): Boolean; static;
+    class function CharacterClassOf(const Character: Char): TCharacterClass; static;
     class function CaseInsensitiveIndexOf(const Needle, Haystack: string; const StartIndex: Integer): Integer; static;
     function NormalizeSelection: TTextRange;
     class function ComparePositions(const Left, Right: TTextPosition): Integer;
@@ -114,6 +137,11 @@ type
     procedure SetSelectionExtent(const Point: TLayoutPointF);
     procedure ClearSelection;
     function SelectAll: Boolean;
+    // Select the word or the line under the point, and make a drag that
+    // follows extend the selection by whole words or lines. False when there
+    // is no text to select.
+    function SelectWordAt(const Point: TLayoutPointF): Boolean;
+    function SelectLineAt(const Point: TLayoutPointF): Boolean;
     function HasSelectableText: Boolean;
     function HasSelection: Boolean;
     function SelectionRects: TArray<TLayoutRectF>;
@@ -261,6 +289,7 @@ end;
 
 procedure TMarkdownViewerModel.SetSelectionAnchor(const Point: TLayoutPointF);
 begin
+  FSelectionUnit := TSelectionUnit.Character;
   FSelectionActive := TryResolvePosition(Point, FAnchor);
   FExtent := FAnchor;
 end;
@@ -270,9 +299,270 @@ begin
   if not FSelectionActive then
     Exit;
 
-  var Position: TTextPosition;
-  if TryResolvePosition(Point, Position) then
-    FExtent := Position;
+  if FSelectionUnit = TSelectionUnit.Character then
+  begin
+    var Position: TTextPosition;
+    if TryResolvePosition(Point, Position) then
+      FExtent := Position;
+    Exit;
+  end;
+
+  var Character: TTextPosition;
+  if TryResolveCharacter(Point, Character) then
+    ExtendUnitSelection(Character);
+end;
+
+function TMarkdownViewerModel.SelectWordAt(const Point: TLayoutPointF): Boolean;
+begin
+  Result := SelectUnitAt(Point, TSelectionUnit.Word);
+end;
+
+function TMarkdownViewerModel.SelectLineAt(const Point: TLayoutPointF): Boolean;
+begin
+  Result := SelectUnitAt(Point, TSelectionUnit.Line);
+end;
+
+function TMarkdownViewerModel.SelectUnitAt(const Point: TLayoutPointF; const SelectionUnit: TSelectionUnit): Boolean;
+begin
+  var Character: TTextPosition;
+  Result := TryResolveCharacter(Point, Character);
+  FSelectionActive := Result;
+  if not Result then
+    Exit;
+
+  FSelectionUnit := SelectionUnit;
+  FUnitRange := UnitRangeAt(Character);
+  FAnchor := FUnitRange.StartPosition;
+  FExtent := FUnitRange.EndPosition;
+end;
+
+// The word or line picked first stays selected; the selection grows from it
+// to the whole unit under the pointer, on whichever side the pointer is.
+procedure TMarkdownViewerModel.ExtendUnitSelection(const Position: TTextPosition);
+begin
+  const Range = UnitRangeAt(Position);
+
+  const IsBefore = (ComparePositions(Range.StartPosition, FUnitRange.StartPosition) < 0);
+  if IsBefore then
+  begin
+    FAnchor := FUnitRange.EndPosition;
+    FExtent := Range.StartPosition;
+  end
+  else
+  begin
+    FAnchor := FUnitRange.StartPosition;
+    FExtent := Range.EndPosition;
+  end;
+end;
+
+function TMarkdownViewerModel.UnitRangeAt(const Position: TTextPosition): TTextRange;
+begin
+  case FSelectionUnit of
+    TSelectionUnit.Word : Result := WordRangeAt(Position);
+    TSelectionUnit.Line : Result := LineRangeAt(Position);
+  else
+    raise EMarkdownError.CreateFmt('Unhandled selection unit: %d', [Ord(FSelectionUnit)]);
+  end;
+end;
+
+// A word is a run of letters, digits and underscores, and carries on into the
+// next run when the formatting changes mid-word. Spaces select as spaces, any
+// other character on its own.
+function TMarkdownViewerModel.WordRangeAt(const Position: TTextPosition): TTextRange;
+begin
+  var Run: IDisplayTextRun;
+  TrySelectableRun(Position.ItemIndex, Run);
+
+  Result.StartPosition := Position;
+  Result.EndPosition := Position;
+
+  const IsAtomic = (Run.Role = TDisplayTextRunRole.Source);
+  if IsAtomic then
+  begin
+    Result.StartPosition.CharacterIndex := 0;
+    Result.EndPosition.CharacterIndex := Length(Run.Text);
+    Exit;
+  end;
+
+  const CharacterClass = CharacterClassOf(Run.Text[Position.CharacterIndex + 1]);
+  if CharacterClass = TCharacterClass.Other then
+  begin
+    Result.EndPosition.CharacterIndex := Position.CharacterIndex + 1;
+    Exit;
+  end;
+
+  Result.StartPosition := WordStartFrom(Position);
+  Result.EndPosition := WordEndFrom(Position);
+end;
+
+function TMarkdownViewerModel.WordStartFrom(const Position: TTextPosition): TTextPosition;
+begin
+  var Run: IDisplayTextRun;
+  TrySelectableRun(Position.ItemIndex, Run);
+  const CharacterClass = CharacterClassOf(Run.Text[Position.CharacterIndex + 1]);
+
+  Result := Position;
+  while True do
+  begin
+    while (Result.CharacterIndex > 0) and (CharacterClassOf(Run.Text[Result.CharacterIndex]) = CharacterClass) do
+      Result.CharacterIndex := Result.CharacterIndex - 1;
+
+    const ReachedRunStart = (Result.CharacterIndex = 0);
+    var PreviousIndex: Integer;
+    var Previous: IDisplayTextRun;
+    const CanContinue = (ReachedRunStart and (CharacterClass = TCharacterClass.WordCharacter) and
+                         TryAdjacentRun(Result.ItemIndex, -1, PreviousIndex, Previous) and ContinuesWord(Run, Previous));
+    if not CanContinue then
+      Exit;
+
+    Run := Previous;
+    Result.ItemIndex := PreviousIndex;
+    Result.CharacterIndex := Length(Run.Text);
+  end;
+end;
+
+function TMarkdownViewerModel.WordEndFrom(const Position: TTextPosition): TTextPosition;
+begin
+  var Run: IDisplayTextRun;
+  TrySelectableRun(Position.ItemIndex, Run);
+  const CharacterClass = CharacterClassOf(Run.Text[Position.CharacterIndex + 1]);
+
+  Result := Position;
+  while True do
+  begin
+    while (Result.CharacterIndex < Length(Run.Text)) and
+          (CharacterClassOf(Run.Text[Result.CharacterIndex + 1]) = CharacterClass) do
+      Result.CharacterIndex := Result.CharacterIndex + 1;
+
+    const ReachedRunEnd = (Result.CharacterIndex = Length(Run.Text));
+    var NextIndex: Integer;
+    var Next: IDisplayTextRun;
+    const CanContinue = (ReachedRunEnd and (CharacterClass = TCharacterClass.WordCharacter) and
+                         TryAdjacentRun(Result.ItemIndex, 1, NextIndex, Next) and ContinuesWord(Next, Run));
+    if not CanContinue then
+      Exit;
+
+    Run := Next;
+    Result.ItemIndex := NextIndex;
+    Result.CharacterIndex := 0;
+  end;
+end;
+
+// A line is what a browser selects on a triple click: a paragraph with all
+// its lines, a list item without its marker, a table row, a code line.
+function TMarkdownViewerModel.LineRangeAt(const Position: TTextPosition): TTextRange;
+begin
+  const OriginIndex = LineOriginIndex(Position.ItemIndex);
+  const EndIndex = LineEndIndexFrom(OriginIndex);
+
+  var EndRun: IDisplayTextRun;
+  TrySelectableRun(EndIndex, EndRun);
+
+  Result.StartPosition.ItemIndex := LineStartIndexFrom(OriginIndex);
+  Result.StartPosition.CharacterIndex := 0;
+  Result.EndPosition.ItemIndex := EndIndex;
+  Result.EndPosition.CharacterIndex := Length(EndRun.Text);
+end;
+
+// A click on a list marker selects the item's line, which starts after it.
+function TMarkdownViewerModel.LineOriginIndex(const ItemIndex: Integer): Integer;
+begin
+  Result := ItemIndex;
+
+  var Run: IDisplayTextRun;
+  TrySelectableRun(ItemIndex, Run);
+
+  var ContentIndex: Integer;
+  var Content: IDisplayTextRun;
+  const IsOnMarker = ((Run.Role = TDisplayTextRunRole.Marker) and TryAdjacentRun(ItemIndex, 1, ContentIndex, Content));
+  if IsOnMarker then
+    Result := ContentIndex;
+end;
+
+function TMarkdownViewerModel.LineStartIndexFrom(const ItemIndex: Integer): Integer;
+begin
+  Result := ItemIndex;
+
+  var Run: IDisplayTextRun;
+  TrySelectableRun(Result, Run);
+
+  var PreviousIndex: Integer;
+  var Previous: IDisplayTextRun;
+  while TryAdjacentRun(Result, -1, PreviousIndex, Previous) and ContinuesLine(Run, Previous) do
+  begin
+    Result := PreviousIndex;
+    Run := Previous;
+  end;
+end;
+
+function TMarkdownViewerModel.LineEndIndexFrom(const ItemIndex: Integer): Integer;
+begin
+  Result := ItemIndex;
+
+  var Run: IDisplayTextRun;
+  TrySelectableRun(Result, Run);
+
+  var NextIndex: Integer;
+  var Next: IDisplayTextRun;
+  while TryAdjacentRun(Result, 1, NextIndex, Next) and ContinuesLine(Next, Run) do
+  begin
+    Result := NextIndex;
+    Run := Next;
+  end;
+end;
+
+function TMarkdownViewerModel.TryAdjacentRun(const ItemIndex, Direction: Integer; out AdjacentIndex: Integer;
+  out Run: IDisplayTextRun): Boolean;
+begin
+  AdjacentIndex := ItemIndex + Direction;
+
+  while (AdjacentIndex >= 0) and (AdjacentIndex < FDisplayList.ItemCount) do
+  begin
+    if TrySelectableRun(AdjacentIndex, Run) then
+    begin
+      Result := True;
+      Exit;
+    end;
+
+    AdjacentIndex := AdjacentIndex + Direction;
+  end;
+
+  Run := nil;
+  Result := False;
+end;
+
+// Two runs make one word when the second follows the first directly on the
+// same line, as a change of formatting in the middle of a word does.
+class function TMarkdownViewerModel.ContinuesWord(const Run, Before: IDisplayTextRun): Boolean;
+begin
+  const IsDirectlyAfter = ((Run.Join = TDisplayTextJoin.None) and
+                           SameValue(Run.Bounds.Top, Before.Bounds.Top, LineTopEpsilon));
+  const BothAreText = ((Run.Role = TDisplayTextRunRole.Text) and (Before.Role = TDisplayTextRunRole.Text));
+  const MeetAtWordCharacters = ((Run.Text <> '') and (Before.Text <> '') and
+                                (CharacterClassOf(Run.Text[1]) = TCharacterClass.WordCharacter) and
+                                (CharacterClassOf(Before.Text[Length(Before.Text)]) = TCharacterClass.WordCharacter));
+
+  Result := IsDirectlyAfter and BothAreText and MeetAtWordCharacters;
+end;
+
+class function TMarkdownViewerModel.ContinuesLine(const Run, Before: IDisplayTextRun): Boolean;
+begin
+  const StaysOnLine = (Run.Join in [TDisplayTextJoin.None, TDisplayTextJoin.Space, TDisplayTextJoin.Tab,
+                                    TDisplayTextJoin.HardBreak]);
+  const NeitherIsMarker = ((Run.Role <> TDisplayTextRunRole.Marker) and (Before.Role <> TDisplayTextRunRole.Marker));
+
+  Result := StaysOnLine and NeitherIsMarker;
+end;
+
+class function TMarkdownViewerModel.CharacterClassOf(const Character: Char): TCharacterClass;
+begin
+  const IsWordCharacter = (Character.IsLetterOrDigit or (Character = '_'));
+  if IsWordCharacter then
+    Result := TCharacterClass.WordCharacter
+  else if Character.IsWhiteSpace then
+    Result := TCharacterClass.Space
+  else
+    Result := TCharacterClass.Other;
 end;
 
 procedure TMarkdownViewerModel.ClearSelection;
@@ -433,6 +723,7 @@ begin
     TDisplayTextJoin.None      : Result := FallbackSeparator(Run, StartsBlock, PreviousTop);
     TDisplayTextJoin.Space     : Result := CopiedSpace;
     TDisplayTextJoin.Tab       : Result := CopiedTab;
+    TDisplayTextJoin.HardBreak,
     TDisplayTextJoin.LineBreak : Result := sLineBreak + Indent;
     TDisplayTextJoin.BlankLine : Result := sLineBreak + sLineBreak + Indent;
   else
@@ -771,6 +1062,36 @@ begin
   Position.ItemIndex := BestIndex;
   Position.CharacterIndex := NearestCharacterBoundary(BestRun, Point.X);
   Result := True;
+end;
+
+// The character the pointer is on, rather than the boundary nearest to it: a
+// double click picks the word that character belongs to.
+function TMarkdownViewerModel.TryResolveCharacter(const Point: TLayoutPointF; out Position: TTextPosition): Boolean;
+begin
+  Result := TryResolvePosition(Point, Position);
+  if not Result then
+    Exit;
+
+  var Run: IDisplayTextRun;
+  TrySelectableRun(Position.ItemIndex, Run);
+  Result := (Run.Text <> '');
+  if Result then
+    Position.CharacterIndex := CharacterUnderX(Run, Point.X);
+end;
+
+function TMarkdownViewerModel.CharacterUnderX(const Run: IDisplayTextRun; const X: Single): Integer;
+begin
+  const LocalX = X - Run.Bounds.Left;
+
+  Result := 0;
+  for var Count := 1 to Length(Run.Text) - 1 do
+  begin
+    const IsPastCharacter = (PrefixWidth(Run, Count) <= LocalX);
+    if not IsPastCharacter then
+      Exit;
+
+    Result := Count;
+  end;
 end;
 
 // Glyphs that belong to a drawing, such as a formula, are text runs for the

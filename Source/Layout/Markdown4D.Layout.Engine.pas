@@ -840,7 +840,7 @@ begin
   const Bounds = TLayoutRectF.Create(Command.X, FCurrentY, Command.X + MarkerSize.Width, FCurrentY + MarkerHeight);
 
   FItems.Add(TDisplayTextRun.Create(Bounds, Command.Node, Command.MarkerText, FTheme.BaseFont, Command.Color,
-    FMeasurer.Baseline(FTheme.BaseFont), 0));
+    FMeasurer.Baseline(FTheme.BaseFont), 0, TDisplayTextRunRole.Marker));
 end;
 
 procedure TLayoutWorker.EmitTaskCheckbox(const Command: TLayoutCommand; const Marker: IMarkdownCustomInline);
@@ -2010,7 +2010,7 @@ begin
   for var Index := FromIndex to Items.Count - 1 do
   begin
     var Run: IDisplayTextRun;
-    const IsCopiedRun = Supports(Items[Index], IDisplayTextRun, Run) and (Run.Role <> TDisplayTextRunRole.Drawing);
+    const IsCopiedRun = (Supports(Items[Index], IDisplayTextRun, Run) and (Run.Role <> TDisplayTextRunRole.Drawing));
     if IsCopiedRun then
     begin
       Result := Index;
@@ -2075,7 +2075,7 @@ begin
         end;
       end;
     TInlineAtomKind.HardBreakToken:
-      FlushLine(TDisplayTextJoin.LineBreak);
+      FlushLine(TDisplayTextJoin.HardBreak);
   else
     AddWordLike(Atom);
   end;

@@ -31,6 +31,9 @@ type
       LoadedImageWidth = 200.0;
       LoadedImageHeight = 100.0;
       Fence = '```';
+      FirstLineY = 10.0;
+      SecondLineY = 33.0;
+      ThirdLineY = 55.0;
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
@@ -80,6 +83,37 @@ type
     [TestCase('TwoHeadings', '# One'#10'## Two~One'#13#10#13#10'Two', '~', False)]
     [TestCase('TwoLists', '- one'#10#10'1. two~'#$2022' one'#13#10#13#10'1. two', '~', False)]
     procedure SelectAll_BlockWithSeveralLines_KeepsLinesMarkersAndCells(const Markdown, Expected: string);
+
+    [Test]
+    [TestCase('InsideWord', 'alpha beta gamma~75~beta', '~', False)]
+    [TestCase('OnSpace', 'alpha beta~55~ ', '~', False)]
+    [TestCase('OnPunctuation', 'one, two~35~,', '~', False)]
+    [TestCase('WithUnderscoreAndDigit', 'call foo_bar2 now~80~foo_bar2', '~', False)]
+    [TestCase('AcrossStyledRuns', '**Mark**down~60~Markdown', '~', False)]
+    procedure SelectWordAt_PointInFirstLine_SelectsWordUnderPointer(const Markdown: string; const X: Single;
+      const Expected: string);
+
+    [Test]
+    [TestCase('WrappedParagraph', 'alpha beta gamma~120~10~33~alpha beta gamma', '~', False)]
+    [TestCase('ListItem', '- one'#10'- two~300~40~33~two', '~', False)]
+    [TestCase('TableRow', '| A | B |'#10'|---|---|'#10'| a1 | b1 |~300~12~33~a1'#9'b1', '~', False)]
+    [TestCase('Heading', '# Title'#10'Body~300~10~10~Title', '~', False)]
+    [TestCase('ParagraphWithHardBreak', 'one\'#10'two~300~10~33~one'#13#10'two', '~', False)]
+    [TestCase('CodeLine', '```'#10'code 1'#10'code 2'#10'```~300~18~35~code 2', '~', False)]
+    procedure SelectLineAt_Point_SelectsLineOrBlockUnderPointer(const Markdown: string; const Width, X, Y: Single;
+      const Expected: string);
+
+    [Test]
+    procedure SetSelectionExtent_AfterWordSelection_ExtendsByWholeWords;
+
+    [Test]
+    procedure SetSelectionExtent_AfterLineSelection_ExtendsByWholeLines;
+
+    [Test]
+    procedure SetSelectionAnchor_AfterWordSelection_SelectsByCharacterAgain;
+
+    [Test]
+    procedure SelectWordAt_EmptyDocument_ReturnsFalse;
 
     [Test]
     procedure SelectAll_EmptyDocument_LeavesSelectionEmpty;
@@ -329,6 +363,76 @@ begin
   FModel.SelectAll;
 
   Assert.AreEqual(Expected, FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.SelectWordAt_PointInFirstLine_SelectsWordUnderPointer(const Markdown: string;
+  const X: Single; const Expected: string);
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := Markdown;
+
+  const Selected = FModel.SelectWordAt(TLayoutPointF.Create(X, FirstLineY));
+
+  Assert.IsTrue(Selected);
+  Assert.AreEqual(Expected, FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.SelectLineAt_Point_SelectsLineOrBlockUnderPointer(const Markdown: string;
+  const Width, X, Y: Single; const Expected: string);
+begin
+  FModel.SetViewport(Width, DefaultHeight);
+  FModel.Text := Markdown;
+
+  const Selected = FModel.SelectLineAt(TLayoutPointF.Create(X, Y));
+
+  Assert.IsTrue(Selected);
+  Assert.AreEqual(Expected, FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.SetSelectionExtent_AfterWordSelection_ExtendsByWholeWords;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'alpha beta gamma';
+  FModel.SelectWordAt(TLayoutPointF.Create(75, FirstLineY));
+
+  FModel.SetSelectionExtent(TLayoutPointF.Create(125, FirstLineY));
+  Assert.AreEqual('beta gamma', FModel.SelectedText);
+
+  FModel.SetSelectionExtent(TLayoutPointF.Create(15, FirstLineY));
+  Assert.AreEqual('alpha beta', FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.SetSelectionExtent_AfterLineSelection_ExtendsByWholeLines;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '- one'#10'- two'#10'- three';
+  FModel.SelectLineAt(TLayoutPointF.Create(40, SecondLineY));
+
+  FModel.SetSelectionExtent(TLayoutPointF.Create(40, ThirdLineY));
+
+  Assert.AreEqual('two' + sLineBreak + #$2022' three', FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.SetSelectionAnchor_AfterWordSelection_SelectsByCharacterAgain;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'alpha beta gamma';
+  FModel.SelectWordAt(TLayoutPointF.Create(75, FirstLineY));
+
+  SelectFromTo(60, FirstLineY, 120, FirstLineY);
+
+  Assert.AreEqual('beta g', FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.SelectWordAt_EmptyDocument_ReturnsFalse;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '';
+
+  const Selected = FModel.SelectWordAt(TLayoutPointF.Create(10, FirstLineY));
+
+  Assert.IsFalse(Selected);
+  Assert.IsFalse(FModel.HasSelection);
 end;
 
 procedure TMarkdownViewerModelTests.SelectAll_EmptyDocument_LeavesSelectionEmpty;

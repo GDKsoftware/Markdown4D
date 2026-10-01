@@ -14,13 +14,16 @@ type
   // What a text run is to the reader. Text is painted, selected, searched
   // and copied. Drawing is painted only: a glyph that is part of a picture,
   // such as a formula. Source is the opposite, never painted but selected and
-  // copied as one unit, so a formula copies as its markdown.
-  TDisplayTextRunRole = (Text, Drawing, Source);
+  // copied as one unit, so a formula copies as its markdown. Marker is the
+  // bullet or number of a list item: painted and copied like text, but not
+  // part of the item's line when a whole line is selected.
+  TDisplayTextRunRole = (Text, Drawing, Source, Marker);
 
   // What stands between a text run and the text before it when a selection is
   // copied as plain text. The order matters: of two joins that meet, the later
-  // in this list wins.
-  TDisplayTextJoin = (None, Space, Tab, LineBreak, BlankLine);
+  // in this list wins. A hard break copies as a line break, but keeps its
+  // paragraph one block when a whole line is selected.
+  TDisplayTextJoin = (None, Space, Tab, HardBreak, LineBreak, BlankLine);
 
   IDisplayItem = interface
     ['{4F8C2D16-A93B-4E75-8C02-D51B9E3A7F64}']
