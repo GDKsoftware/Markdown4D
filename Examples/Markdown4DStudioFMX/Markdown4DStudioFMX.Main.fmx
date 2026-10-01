@@ -40,6 +40,7 @@ object Markdown4DStudioFMXForm: TMarkdown4DStudioFMXForm
       Size.PlatformDefault = False
       TextPrompt = 'Find'
       OnKeyDown = HandleFindEditKeyDown
+      OnApplyStyleLookup = HandleInputApplyStyle
     end
   end
   object rctFindBar: TRectangle
@@ -65,6 +66,7 @@ object Markdown4DStudioFMXForm: TMarkdown4DStudioFMXForm
       TextPrompt = 'Find in editor'
       OnChangeTracking = HandleEditorFindChange
       OnKeyDown = HandleEditorFindKeyDown
+      OnApplyStyleLookup = HandleInputApplyStyle
     end
     object edtEditorReplace: TEdit
       Touch.InteractiveGestures = [LongTap, DoubleTap]
@@ -79,6 +81,7 @@ object Markdown4DStudioFMXForm: TMarkdown4DStudioFMXForm
       Size.Height = 20.000000000000000000
       Size.PlatformDefault = False
       TextPrompt = 'Replace with'
+      OnApplyStyleLookup = HandleInputApplyStyle
     end
     object btnReplace: TButton
       Align = Left

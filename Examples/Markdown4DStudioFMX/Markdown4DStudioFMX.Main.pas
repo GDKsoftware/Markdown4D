@@ -89,6 +89,7 @@ type
     procedure HandleTocChange(Sender: TObject);
     procedure HandleTick(Sender: TObject);
     procedure HandleTocListApplyStyle(Sender: TObject);
+    procedure HandleInputApplyStyle(Sender: TObject);
   private
     var
       FTabStrip: TPadFmxTabStrip;
@@ -288,6 +289,10 @@ type
     procedure ApplyChromeColors;
     procedure ApplyTocItemColors;
     procedure StyleTocBackground;
+    procedure ApplyInputColors;
+    procedure StyleInput(const Input: TEdit);
+    procedure StyleInputBackground(const Input: TEdit);
+    function InputBacking(const StyleBackground: TControl): TRectangle;
     procedure SaveSession;
     class function BuildSampleMarkdown: string;
 
@@ -1955,6 +1960,7 @@ begin
   ApplyTocItemColors;
 
   ApplyChromeColors;
+  ApplyInputColors;
 end;
 
 procedure TMarkdown4DStudioFMXForm.ApplyChromeColors;
@@ -2010,6 +2016,11 @@ begin
   StyleTocBackground;
 end;
 
+procedure TMarkdown4DStudioFMXForm.HandleInputApplyStyle(Sender: TObject);
+begin
+  StyleInput(Sender as TEdit);
+end;
+
 procedure TMarkdown4DStudioFMXForm.StyleTocBackground;
 begin
   // Recolor the list-box background directly. Relying only on OnApplyStyleLookup
@@ -2024,6 +2035,69 @@ begin
   end
   else if Background is TControl then
     TControl(Background).Opacity := 0;
+end;
+
+procedure TMarkdown4DStudioFMXForm.ApplyInputColors;
+begin
+  const Inputs: TArray<TEdit> = [edtFind, edtEditorFind, edtEditorReplace];
+
+  for var Input in Inputs do
+  begin
+    StyleInput(Input);
+  end;
+end;
+
+procedure TMarkdown4DStudioFMXForm.StyleInput(const Input: TEdit);
+begin
+  if FDarkThemeActive then
+  begin
+    Input.StyledSettings := Input.StyledSettings - [TStyledSetting.FontColor];
+    Input.TextSettings.FontColor := FChromeTextColor;
+    Input.Caret.Color := FChromeTextColor;
+  end
+  else
+  begin
+    Input.StyledSettings := Input.StyledSettings + [TStyledSetting.FontColor];
+    Input.Caret.Color := TAlphaColors.Null;
+  end;
+
+  StyleInputBackground(Input);
+end;
+
+// The default Windows style draws an edit from a bitmap that takes no colour, so
+// the dark theme hides it behind a plain rectangle; the light theme keeps it.
+procedure TMarkdown4DStudioFMXForm.StyleInputBackground(const Input: TEdit);
+begin
+  const StyleBackground = Input.FindStyleResource('background');
+  if not (StyleBackground is TControl) then
+    Exit;
+
+  const Backing = InputBacking(TControl(StyleBackground));
+  Backing.Visible := FDarkThemeActive;
+
+  if FDarkThemeActive then
+    TControl(StyleBackground).Opacity := 0
+  else
+    TControl(StyleBackground).Opacity := 1;
+end;
+
+function TMarkdown4DStudioFMXForm.InputBacking(const StyleBackground: TControl): TRectangle;
+begin
+  const Existing = StyleBackground.Parent.FindStyleResource(InputBackingStyleName);
+  if Existing is TRectangle then
+  begin
+    Result := TRectangle(Existing);
+    Exit;
+  end;
+
+  Result := TRectangle.Create(nil);
+  Result.StyleName := InputBackingStyleName;
+  Result.Align := TAlignLayout.Contents;
+  Result.HitTest := False;
+  Result.Fill.Color := InputDarkColor;
+  Result.Stroke.Color := SeparatorDarkColor;
+  Result.Parent := StyleBackground.Parent;
+  Result.Index := StyleBackground.Index;
 end;
 
 procedure TMarkdown4DStudioFMXForm.SaveSession;
