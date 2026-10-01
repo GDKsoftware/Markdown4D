@@ -171,6 +171,9 @@
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.ContextMenu.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.Model.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.Clicks.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.AutoScroll.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.AutoScroll.Icon.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.AutoScroll.Cursors.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.ScrollBar.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.Shared.pas"/>
         <BuildConfiguration Include="Base">

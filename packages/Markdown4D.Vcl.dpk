@@ -41,6 +41,7 @@ contains
   Markdown4D.Vcl.ImageDecoder in '..\Source\Vcl\Markdown4D.Vcl.ImageDecoder.pas',
   Markdown4D.Vcl.ScrollBarTheme in '..\Source\Vcl\Markdown4D.Vcl.ScrollBarTheme.pas',
   Markdown4D.Vcl.Viewer in '..\Source\Vcl\Markdown4D.Vcl.Viewer.pas',
+  Markdown4D.Vcl.AutoScroll in '..\Source\Vcl\Markdown4D.Vcl.AutoScroll.pas',
   Markdown4D.Vcl.Editor in '..\Source\Vcl\Markdown4D.Vcl.Editor.pas',
   Markdown4D.Vcl.MathFont in '..\Source\Vcl\Markdown4D.Vcl.MathFont.pas';
 

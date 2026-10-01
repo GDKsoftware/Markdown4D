@@ -510,6 +510,7 @@ same.
 | `Text` | `string` | The whole markdown document as one value |
 | `ThemePreset` | `TMarkdownThemePreset` | `Light` / `Dark`, editable in the Object Inspector |
 | `Images` | `TMarkdownViewerImageSettings` | How image destinations are resolved and fetched (see below) |
+| `AutoScroll` | `Boolean` | Middle-click autoscroll: the content scrolls faster the further the pointer is from where it was pressed, until the next click, key or wheel turn (default `True`) |
 
 ### Public members
 
@@ -619,6 +620,7 @@ control lives in `Markdown4D.Vcl.Editor`, the FMX control in
 | `Text` | `string` | The markdown source |
 | `ThemePreset` | `TMarkdownThemePreset` | `Light` / `Dark` |
 | `ShowLineNumbers` | `Boolean` | Gutter line numbers (default `False`) |
+| `AutoScroll` | `Boolean` | Middle-click autoscroll, as in the viewer. Default `True`, except in the FMX editor on Linux, where the middle button pastes the primary selection |
 
 ### Public members
 

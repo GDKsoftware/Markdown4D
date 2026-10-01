@@ -27,6 +27,8 @@ uses
   Markdown4D.Viewer.Lifetime,
   Markdown4D.Viewer.ScrollBar,
   Markdown4D.Fmx.Painter,
+  Markdown4D.AutoScroll,
+  Markdown4D.Fmx.AutoScroll,
   Markdown4D.Fmx.Viewer;
 
 type
@@ -34,9 +36,16 @@ type
   // source line now at the top. Hosts use it to keep an outline/ToC in sync.
   TMarkdownSyncScrollEvent = procedure(Sender: TObject; const SourceLine: Integer) of object;
 
-  TMarkdownEditor = class(TControl)
+  TMarkdownEditor = class(TControl, IMarkdownAutoScrollTarget)
   private
     const
+      {$IFDEF LINUX}
+      // On Linux the middle button pastes the primary selection, which an
+      // editor must keep; the viewer has nothing to paste into.
+      DefaultAutoScroll = False;
+      {$ELSE}
+      DefaultAutoScroll = True;
+      {$ENDIF}
       DefaultControlWidth = 400;
       DefaultControlHeight = 300;
       SelectionFillColor = TLayoutColor($402F81F7);
@@ -89,6 +98,7 @@ type
       FUpdatingPreview: Boolean;
       FSync: TMarkdownEditorSync;
       FSyncScroll: Boolean;
+      FAutoScroller: TMarkdownFmxAutoScroller;
       FSyncing: Boolean;
       FSyncedLayoutCount: Integer;
       FRowModel: TMarkdownEditorRows;
@@ -159,6 +169,12 @@ type
     procedure SetScrollOffset(const Value: Single);
     procedure ScrollCaretIntoView;
     procedure RedrawContent;
+    function GetAutoScrollEnabled: Boolean;
+    procedure PaintAutoScrollOrigin;
+    procedure SetAutoScrollEnabled(const Value: Boolean);
+    function CanAutoScroll: Boolean;
+    procedure AutoScrollBy(const Delta: Single);
+    procedure AutoScrollChanged;
     procedure RevealSelection;
     procedure RefreshAfterEdit;
     procedure RestartCaretBlink;
@@ -256,6 +272,9 @@ type
     // SyncScroll is on, two-way scroll synchronisation between the panes.
     property Preview: TMarkdownViewer read FPreview write SetPreview;
     property SyncScroll: Boolean read FSyncScroll write FSyncScroll default True;
+    // A middle click scrolls the text by the distance of the pointer from
+    // where it was pressed, until the next click, key or wheel turn.
+    property AutoScroll: Boolean read GetAutoScrollEnabled write SetAutoScrollEnabled default DefaultAutoScroll;
     property Align;
     property Anchors;
     property Cursor;
@@ -334,6 +353,7 @@ end;
 
 destructor TMarkdownEditor.Destroy;
 begin
+  FAutoScroller.Free;
   FLifetime.Shutdown;
   FPreview := nil;
   if FPreviewTimer <> nil then
@@ -391,6 +411,9 @@ begin
   FAutoScrollTimer.Enabled := False;
   FAutoScrollTimer.Interval := AutoScrollIntervalMilliseconds;
   FAutoScrollTimer.OnTimer := HandleAutoScrollTimer;
+
+  FAutoScroller := TMarkdownFmxAutoScroller.Create(Self, Self);
+  FAutoScroller.Enabled := DefaultAutoScroll;
 end;
 
 procedure TMarkdownEditor.ExecuteCommand(const Command: TEditorCommand);
@@ -881,6 +904,16 @@ begin
   const DrawCaret = IsFocused and FCaretVisible;
   RenderContent(Canvas, Width, Height, FScrollOffset, DrawCaret);
   DrawScrollBar;
+  PaintAutoScrollOrigin;
+end;
+
+procedure TMarkdownEditor.PaintAutoScrollOrigin;
+begin
+  if not FAutoScroller.IsActive then
+    Exit;
+
+  const Painter: IPainter = TMarkdownFmxPainter.Create(Canvas);
+  FAutoScroller.PaintOrigin(Painter, FTheme.BackgroundColor, FTheme.TextColor);
 end;
 
 procedure TMarkdownEditor.EnsureDesignSample;
@@ -1573,6 +1606,8 @@ end;
 
 procedure TMarkdownEditor.DoExit;
 begin
+  FAutoScroller.Stop;
+
   inherited DoExit;
 
   if FCaretTimer <> nil then
@@ -1581,9 +1616,37 @@ begin
   RedrawContent;
 end;
 
+function TMarkdownEditor.GetAutoScrollEnabled: Boolean;
+begin
+  Result := FAutoScroller.Enabled;
+end;
+
+procedure TMarkdownEditor.SetAutoScrollEnabled(const Value: Boolean);
+begin
+  FAutoScroller.Enabled := Value;
+end;
+
+function TMarkdownEditor.CanAutoScroll: Boolean;
+begin
+  Result := (MaxScrollOffset > 0);
+end;
+
+procedure TMarkdownEditor.AutoScrollBy(const Delta: Single);
+begin
+  SetScrollOffset(FScrollOffset + Delta);
+end;
+
+procedure TMarkdownEditor.AutoScrollChanged;
+begin
+  RedrawContent;
+end;
+
 procedure TMarkdownEditor.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Single);
 begin
   inherited MouseDown(Button, Shift, X, Y);
+
+  if FAutoScroller.TryHandlePress(Button, X, Y) then
+    Exit;
 
   if Button = TMouseButton.mbRight then
   begin
@@ -1667,6 +1730,12 @@ procedure TMarkdownEditor.MouseMove(Shift: TShiftState; X, Y: Single);
 begin
   inherited MouseMove(Shift, X, Y);
 
+  if FAutoScroller.IsActive then
+  begin
+    FAutoScroller.HandleMove(X, Y);
+    Exit;
+  end;
+
   if FDraggingScrollBar then
   begin
     DragScrollBarTo(Y);
@@ -1689,6 +1758,12 @@ end;
 procedure TMarkdownEditor.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Single);
 begin
   inherited MouseUp(Button, Shift, X, Y);
+
+  if Button = TMouseButton.mbMiddle then
+  begin
+    FAutoScroller.HandleMiddleUp;
+    Exit;
+  end;
 
   if Button <> TMouseButton.mbLeft then
     Exit;
@@ -1773,6 +1848,13 @@ end;
 
 procedure TMarkdownEditor.MouseWheel(Shift: TShiftState; WheelDelta: Integer; var Handled: Boolean);
 begin
+  if FAutoScroller.IsActive then
+  begin
+    FAutoScroller.Stop;
+    Handled := True;
+    Exit;
+  end;
+
   inherited MouseWheel(Shift, WheelDelta, Handled);
   if Handled then
     Exit;
@@ -1784,6 +1866,14 @@ end;
 
 procedure TMarkdownEditor.KeyDown(var Key: Word; var KeyChar: WideChar; Shift: TShiftState);
 begin
+  if FAutoScroller.IsActive then
+  begin
+    FAutoScroller.Stop;
+    Key := 0;
+    KeyChar := #0;
+    Exit;
+  end;
+
   inherited KeyDown(Key, KeyChar, Shift);
 
   if HandleKey(Key, Shift) then
