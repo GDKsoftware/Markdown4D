@@ -21,9 +21,11 @@ type
 
   // What stands between a text run and the text before it when a selection is
   // copied as plain text. The order matters: of two joins that meet, the later
-  // in this list wins. A hard break copies as a line break, but keeps its
-  // paragraph one block when a whole line is selected.
-  TDisplayTextJoin = (None, Space, Tab, HardBreak, LineBreak, BlankLine);
+  // in this list wins. None means the layout did not say; Adjacent means the
+  // run follows the text before it with nothing in between. A hard break
+  // copies as a line break, but keeps its paragraph one block when a whole
+  // line is selected.
+  TDisplayTextJoin = (None, Adjacent, Space, Tab, HardBreak, LineBreak, BlankLine);
 
   IDisplayItem = interface
     ['{4F8C2D16-A93B-4E75-8C02-D51B9E3A7F64}']

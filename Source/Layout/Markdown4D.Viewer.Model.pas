@@ -535,8 +535,9 @@ end;
 // same line, as a change of formatting in the middle of a word does.
 class function TMarkdownViewerModel.ContinuesWord(const Run, Before: IDisplayTextRun): Boolean;
 begin
-  const IsDirectlyAfter = ((Run.Join = TDisplayTextJoin.None) and
-                           SameValue(Run.Bounds.Top, Before.Bounds.Top, LineTopEpsilon));
+  const IsDirectlyAfter = ((Run.Join = TDisplayTextJoin.Adjacent) or
+                           ((Run.Join = TDisplayTextJoin.None) and
+                            SameValue(Run.Bounds.Top, Before.Bounds.Top, LineTopEpsilon)));
   const BothAreText = ((Run.Role = TDisplayTextRunRole.Text) and (Before.Role = TDisplayTextRunRole.Text));
   const MeetAtWordCharacters = ((Run.Text <> '') and (Before.Text <> '') and
                                 (CharacterClassOf(Run.Text[1]) = TCharacterClass.WordCharacter) and
@@ -547,8 +548,8 @@ end;
 
 class function TMarkdownViewerModel.ContinuesLine(const Run, Before: IDisplayTextRun): Boolean;
 begin
-  const StaysOnLine = (Run.Join in [TDisplayTextJoin.None, TDisplayTextJoin.Space, TDisplayTextJoin.Tab,
-                                    TDisplayTextJoin.HardBreak]);
+  const StaysOnLine = (Run.Join in [TDisplayTextJoin.None, TDisplayTextJoin.Adjacent, TDisplayTextJoin.Space,
+                                    TDisplayTextJoin.Tab, TDisplayTextJoin.HardBreak]);
   const NeitherIsMarker = ((Run.Role <> TDisplayTextRunRole.Marker) and (Before.Role <> TDisplayTextRunRole.Marker));
 
   Result := StaysOnLine and NeitherIsMarker;
@@ -721,6 +722,7 @@ begin
 
   case Run.Join of
     TDisplayTextJoin.None      : Result := FallbackSeparator(Run, StartsBlock, PreviousTop);
+    TDisplayTextJoin.Adjacent  : Result := '';
     TDisplayTextJoin.Space     : Result := CopiedSpace;
     TDisplayTextJoin.Tab       : Result := CopiedTab;
     TDisplayTextJoin.HardBreak,

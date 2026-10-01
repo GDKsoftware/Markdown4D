@@ -19,6 +19,7 @@ type
       DefaultHeight = 200.0;
       SmallHeight = 100.0;
       WrapWidthCharacters = 12;
+      SmallerCodeFontSize = 14.0;
       BaseCharWidth = 10.0;
       BaseLineHeight = 22.4;
       BlockSpacingValue = 16.0;
@@ -82,6 +83,10 @@ type
     [TestCase('HeadingAndParagraph', '# Title'#10'Body~Title'#13#10#13#10'Body', '~', False)]
     [TestCase('TwoHeadings', '# One'#10'## Two~One'#13#10#13#10'Two', '~', False)]
     [TestCase('TwoLists', '- one'#10#10'1. two~'#$2022' one'#13#10#13#10'1. two', '~', False)]
+    [TestCase('InlineCode', 'Ein Satz mit `Code` und **fett** hier.~Ein Satz mit Code und fett hier.', '~', False)]
+    [TestCase('InlineCodeInQuote', '> Zitat mit `Code`.~Zitat mit Code.', '~', False)]
+    [TestCase('SecondBlockOfListItem', '- one'#10#10'  two~'#$2022' one'#13#10#13#10'  two', '~', False)]
+    [TestCase('TextAfterNestedList', '- one'#10#10'  - two'#10#10'  three~'#$2022' one'#13#10#13#10'  '#$2022' two'#13#10#13#10'  three', '~', False)]
     procedure SelectAll_BlockWithSeveralLines_KeepsLinesMarkersAndCells(const Markdown, Expected: string);
 
     [Test]
@@ -102,6 +107,14 @@ type
     [TestCase('CodeLine', '```'#10'code 1'#10'code 2'#10'```~300~18~35~code 2', '~', False)]
     procedure SelectLineAt_Point_SelectsLineOrBlockUnderPointer(const Markdown: string; const Width, X, Y: Single;
       const Expected: string);
+
+    [Test]
+    procedure SelectAll_CodeSpanInSmallerFont_CopiesSingleSpaces;
+
+    [Test]
+    [TestCase('BracketBeforeCodeSpan', 'gross (`OnDblClick` des Frames)~gross (OnDblClick des Frames)', '~', False)]
+    [TestCase('WordWiderThanLine', 'Donaudampfschiff fahrt~Donaudampfschiff fahrt', '~', False)]
+    procedure SelectAll_LineWrapsWithoutSpace_CopiesNoSpace(const Markdown, Expected: string);
 
     [Test]
     procedure SetSelectionExtent_AfterWordSelection_ExtendsByWholeWords;
@@ -386,6 +399,31 @@ begin
   const Selected = FModel.SelectLineAt(TLayoutPointF.Create(X, Y));
 
   Assert.IsTrue(Selected);
+  Assert.AreEqual(Expected, FModel.SelectedText);
+end;
+
+// A smaller code font sits lower on the shared baseline, so its run starts
+// below the text around it while it is still on the same line.
+procedure TMarkdownViewerModelTests.SelectAll_CodeSpanInSmallerFont_CopiesSingleSpaces;
+begin
+  FTheme.CodeFont := TMarkdownFontStyle.Create(FTheme.CodeFont.FamilyName, SmallerCodeFontSize);
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'Mit `Code` und **fett**.';
+
+  FModel.SelectAll;
+
+  Assert.AreEqual('Mit Code und fett.', FModel.SelectedText);
+end;
+
+// The line wraps where the source has no space: between a bracket and the code
+// span after it, or inside a word too wide for the line.
+procedure TMarkdownViewerModelTests.SelectAll_LineWrapsWithoutSpace_CopiesNoSpace(const Markdown, Expected: string);
+begin
+  FModel.SetViewport(WrapWidthCharacters * BaseCharWidth, DefaultHeight);
+  FModel.Text := Markdown;
+
+  FModel.SelectAll;
+
   Assert.AreEqual(Expected, FModel.SelectedText);
 end;
 
