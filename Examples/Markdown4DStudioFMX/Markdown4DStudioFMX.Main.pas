@@ -17,6 +17,7 @@ uses
   FMX.ListBox,
   FMX.Menus,
   FMX.Edit,
+  FMX.Controls.Presentation,
   FMX.Objects,
   FMX.Dialogs,
   Markdown4D.Toc,
@@ -40,10 +41,56 @@ uses
 
 type
   TMarkdown4DStudioFMXForm = class(TForm, IPadEditorView, IPadShell)
+    rctTitleBar: TRectangle;
+    rctToolbar: TRectangle;
+    edtFind: TEdit;
+    rctFindBar: TRectangle;
+    edtEditorFind: TEdit;
+    edtEditorReplace: TEdit;
+    btnReplace: TButton;
+    btnReplaceAll: TButton;
+    lblFindCount: TLabel;
+    rctStatus: TRectangle;
+    lblPos: TLabel;
+    lblWords: TLabel;
+    layToc: TLayout;
+    txtTocHeader: TText;
+    lstToc: TListBox;
+    splToc: TSplitter;
+    mdEditor: TMarkdownEditor;
+    splMain: TSplitter;
+    mdPreview: TMarkdownViewer;
+    rctHint: TRectangle;
+    txtHint: TText;
+    rctPalette: TRectangle;
+    edtPalette: TEdit;
+    lstPalette: TListBox;
+    tmrTick: TTimer;
+    dlgOpen: TOpenDialog;
+    dlgSave: TSaveDialog;
+    dlgSaveHtml: TSaveDialog;
+    procedure HandleTitleBarMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState;
+      X, Y: Single);
+    procedure HandleTitleBarDblClick(Sender: TObject);
+    procedure HandleSplitterMouseUp(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Single);
+    procedure HandleTocSplitterMouseUp(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Single);
+    procedure HandleEditorFindKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar; Shift: TShiftState);
+    procedure HandleEditorFindChange(Sender: TObject);
+    procedure HandleReplaceClick(Sender: TObject);
+    procedure HandleReplaceAllClick(Sender: TObject);
+    procedure HandlePaletteChange(Sender: TObject);
+    procedure HandlePaletteDblClick(Sender: TObject);
+    procedure HandleFindEditKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar; Shift: TShiftState);
+    procedure HandleEditorChange(Sender: TObject);
+    procedure HandleSyncScroll(Sender: TObject; const SourceLine: Integer);
+    procedure HandlePreviewLinkClick(const Sender: TObject; const Url: string);
+    procedure HandleTocChange(Sender: TObject);
+    procedure HandleTick(Sender: TObject);
+    procedure HandleTocListApplyStyle(Sender: TObject);
   private
     var
-      FToolbar: TRectangle;
-      FTitleBar: TRectangle;
       FTabStrip: TPadFmxTabStrip;
       FMinButton: TRectangle;
       FMaxButton: TRectangle;
@@ -51,16 +98,6 @@ type
       FMaxGlyph: TText;
       FCaptionGlyphs: TArray<TText>;
       FFrameInstalled: Boolean;
-      FStatusBar: TRectangle;
-      FStatusPositionLabel: TLabel;
-      FStatusWordsLabel: TLabel;
-      FTocPanel: TLayout;
-      FTocHeader: TText;
-      FTocList: TListBox;
-      FTocSplitter: TSplitter;
-      FEditor: TMarkdownEditor;
-      FMainSplitter: TSplitter;
-      FPreview: TMarkdownViewer;
       FNewButton: TRectangle;
       FOpenButton: TRectangle;
       FSaveButton: TRectangle;
@@ -90,28 +127,12 @@ type
       FTocFill: TAlphaColor;
       FTocTextColor: TAlphaColor;
       FChromeTextColor: TAlphaColor;
-      FFindEdit: TEdit;
       FRecentMenu: TPopupMenu;
-      FOpenDialog: TOpenDialog;
-      FSaveDialog: TSaveDialog;
-      FHtmlSaveDialog: TSaveDialog;
-      FTickTimer: TTimer;
       FLightTheme: TMarkdownTheme;
       FDarkTheme: TMarkdownTheme;
       FDarkThemeActive: Boolean;
       FController: TPadController;
       FTocFollowing: Boolean;
-      FFindBar: TRectangle;
-      FEditorFindEdit: TEdit;
-      FEditorFindCount: TLabel;
-      FEditorReplaceEdit: TEdit;
-      FReplaceButton: TButton;
-      FReplaceAllButton: TButton;
-      FHintRect: TRectangle;
-      FHintText: TText;
-      FPalette: TRectangle;
-      FPaletteEdit: TEdit;
-      FPaletteList: TListBox;
       FViewMode: TPadViewMode;
       FSplitEditorWidth: Single;
       FZenActive: Boolean;
@@ -169,9 +190,6 @@ type
       const Handler: TNotifyEvent): TRectangle;
     procedure LayoutTitleBar;
     procedure UpdateMaxRestoreGlyph;
-    procedure HandleTitleBarMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState;
-      X, Y: Single);
-    procedure HandleTitleBarDblClick(Sender: TObject);
     procedure HandleMinimizeClick(Sender: TObject);
     procedure HandleMaximizeClick(Sender: TObject);
     procedure HandleCloseButtonClick(Sender: TObject);
@@ -181,15 +199,8 @@ type
     procedure HandleTabCloseRequest(Sender: TObject; const Index: Integer);
     procedure HandleTabAdd(Sender: TObject);
     procedure HandleTabReorder(Sender: TObject; const FromIndex, ToIndex: Integer);
-    procedure BuildStatusBar;
-    procedure BuildTocPanel;
-    procedure BuildEditorAndPreview;
-    procedure BuildTimer;
-    procedure BuildFindBar;
-    procedure BuildHint;
     procedure ShowHintFor(const Control: TControl);
     procedure HideHint;
-    procedure BuildPalette;
     procedure BuildCommandRegistry;
     function BuildCommandActions: TPadCommandActions;
     procedure RestoreSession;
@@ -207,26 +218,16 @@ type
     procedure ApplyViewMode;
     function AvailableSplitWidth: Single;
     procedure ApplySplitEditorWidth(const DesiredWidth: Single);
-    procedure HandleSplitterMouseUp(Sender: TObject; Button: TMouseButton;
-      Shift: TShiftState; X, Y: Single);
-    procedure HandleTocSplitterMouseUp(Sender: TObject; Button: TMouseButton;
-      Shift: TShiftState; X, Y: Single);
     procedure ShowFindBar;
     procedure ShowReplaceBar;
     procedure CloseFindBar;
     procedure FindInEditor;
     procedure UpdateFindCount;
-    procedure HandleEditorFindKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar; Shift: TShiftState);
-    procedure HandleEditorFindChange(Sender: TObject);
-    procedure HandleReplaceClick(Sender: TObject);
-    procedure HandleReplaceAllClick(Sender: TObject);
     procedure ShowPalette;
     procedure ClosePalette;
     procedure RefreshPaletteList;
     procedure PaletteMoveSelection(const Delta: Integer);
     procedure ExecuteSelectedCommand;
-    procedure HandlePaletteChange(Sender: TObject);
-    procedure HandlePaletteDblClick(Sender: TObject);
     procedure ToggleZen;
     procedure EnterZen;
     procedure ExitZen;
@@ -257,13 +258,7 @@ type
     procedure HandleZenClick(Sender: TObject);
     procedure HandleCommandsClick(Sender: TObject);
     procedure HandleFindClick(Sender: TObject);
-    procedure HandleFindEditKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar; Shift: TShiftState);
-    procedure HandleEditorChange(Sender: TObject);
-    procedure HandleSyncScroll(Sender: TObject; const SourceLine: Integer);
-    procedure HandlePreviewLinkClick(const Sender: TObject; const Url: string);
     function ActiveDocumentFolder: string;
-    procedure HandleTocChange(Sender: TObject);
-    procedure HandleTick(Sender: TObject);
     function GetEditorText: string;
     procedure SetEditorText(const Value: string);
     function MergeEditorText(const Value: string): Boolean;
@@ -293,7 +288,6 @@ type
     procedure ApplyChromeColors;
     procedure ApplyTocItemColors;
     procedure StyleTocBackground;
-    procedure HandleTocListApplyStyle(Sender: TObject);
     procedure SaveSession;
     class function BuildSampleMarkdown: string;
 
@@ -312,6 +306,8 @@ var
   Markdown4DStudioFMXForm: TMarkdown4DStudioFMXForm;
 
 implementation
+
+{$R *.fmx}
 
 uses
   System.SysUtils,
@@ -340,46 +336,22 @@ uses
 
 constructor TMarkdown4DStudioFMXForm.Create(Owner: TComponent);
 begin
-  inherited CreateNew(Owner);
+  // The editor raises OnSyncScroll while the .fmx is still being read, so the
+  // controller must exist before inherited Create loads it.
+  FLightTheme := TMarkdownTheme.CreateLight;
+  FDarkTheme := TMarkdownTheme.CreateDark;
+  FController := TPadController.Create(Self, Self, SessionFileName);
+
+  inherited Create(Owner);
 
   TChartBlockOverride.RegisterOverride;
   TMermaidBlockOverride.RegisterOverride;
-
-  Caption := WindowCaption;
-  ClientWidth := InitialClientWidth;
-  ClientHeight := InitialClientHeight;
-  Position := TFormPosition.ScreenCenter;
-  BorderStyle := TFmxFormBorderStyle.None;
-
-  FLightTheme := TMarkdownTheme.CreateLight;
-  FDarkTheme := TMarkdownTheme.CreateDark;
-
-  FController := TPadController.Create(Self, Self, SessionFileName);
-
-  FOpenDialog := TOpenDialog.Create(Self);
-  FOpenDialog.Filter := MarkdownFilter;
-  FSaveDialog := TSaveDialog.Create(Self);
-  FSaveDialog.Filter := MarkdownFilter;
-  FSaveDialog.DefaultExt := DefaultExtension;
-  FHtmlSaveDialog := TSaveDialog.Create(Self);
-  FHtmlSaveDialog.Filter := HtmlFilter;
-  FHtmlSaveDialog.DefaultExt := HtmlExtension;
 
   FIconFontName := ResolveIconFontName;
 
   BuildTitleBar;
   BuildToolbar;
-  BuildFindBar;
-  BuildStatusBar;
-  BuildTocPanel;
-  BuildEditorAndPreview;
-  BuildTimer;
-  BuildPalette;
-  BuildHint;
   BuildCommandRegistry;
-
-  FEditor.AttachPreview(FPreview);
-  FEditor.OnSyncScroll := HandleSyncScroll;
 
   FViewMode := TPadViewMode.Split;
   FSplitEditorWidth := (InitialClientWidth - TocPanelWidth) / 2;
@@ -398,10 +370,12 @@ destructor TMarkdown4DStudioFMXForm.Destroy;
 begin
   TPadSingleInstance.CloseChannel;
 
-  if FEditor <> nil then
-    FEditor.DetachPreview;
+  if mdEditor <> nil then
+    mdEditor.DetachPreview;
 
-  SaveSession;
+  // A form whose .fmx failed to load is destroyed before the controller exists.
+  if FController <> nil then
+    SaveSession;
 
   inherited Destroy;
 
@@ -415,19 +389,12 @@ begin
   // Preview only mode hides the editor, and focusing a control that is not
   // visible raises. Every path that returns focus to the editor goes through
   // here so none of them can.
-  if FEditor.CanFocus then
-    FEditor.SetFocus;
+  if mdEditor.CanFocus then
+    mdEditor.SetFocus;
 end;
 
 procedure TMarkdown4DStudioFMXForm.BuildToolbar;
 begin
-  FToolbar := TRectangle.Create(Self);
-  FToolbar.Parent := Self;
-  FToolbar.Align := TAlignLayout.Top;
-  FToolbar.Height := ToolbarHeight;
-  FToolbar.Stroke.Kind := TBrushKind.None;
-  FToolbar.Fill.Kind := TBrushKind.Solid;
-
   FCommandsButton := AddIconButton(GlyphCommands, HintCommands, HandleCommandsClick);
   FZenButton := AddIconButton(GlyphZen, HintZen, HandleZenClick);
   FTocButton := AddIconButton(GlyphToc, HintToc, HandleTocClick);
@@ -458,16 +425,6 @@ begin
   FSaveButton := AddIconButton(GlyphSave, HintSave, HandleSaveClick);
   FOpenButton := AddIconButton(GlyphOpen, HintOpen, HandleOpenClick);
   FNewButton := AddIconButton(GlyphNew, HintNew, HandleNewClick);
-
-  FFindEdit := TEdit.Create(Self);
-  FFindEdit.Parent := FToolbar;
-  FFindEdit.Align := TAlignLayout.Right;
-  FFindEdit.Margins.Top := ControlMargin;
-  FFindEdit.Margins.Right := ControlMargin;
-  FFindEdit.Margins.Bottom := ControlMargin;
-  FFindEdit.Width := FindEditWidth;
-  FFindEdit.TextPrompt := FindButtonCaption;
-  FFindEdit.OnKeyDown := HandleFindEditKeyDown;
 
   FFindButton := AddIconButton(GlyphFind, HintFind, HandleFindClick);
   FFindButton.Align := TAlignLayout.Right;
@@ -508,7 +465,7 @@ begin
   const VerticalMargin = (ToolbarHeight - IconButtonSize) / 2;
 
   Result := TRectangle.Create(Self);
-  Result.Parent := FToolbar;
+  Result.Parent := rctToolbar;
   Result.Align := TAlignLayout.Left;
   Result.Width := IconButtonSize;
   Result.Margins.Left := 2;
@@ -545,7 +502,7 @@ begin
   const VerticalMargin = ControlMargin + 2;
 
   const Separator = TRectangle.Create(Self);
-  Separator.Parent := FToolbar;
+  Separator.Parent := rctToolbar;
   Separator.Align := TAlignLayout.Left;
   Separator.Width := SeparatorWidth;
   Separator.Margins.Left := ControlMargin;
@@ -600,16 +557,6 @@ end;
 
 procedure TMarkdown4DStudioFMXForm.BuildTitleBar;
 begin
-  FTitleBar := TRectangle.Create(Self);
-  FTitleBar.Parent := Self;
-  FTitleBar.Align := TAlignLayout.Top;
-  FTitleBar.Height := TitleBarHeight;
-  FTitleBar.Stroke.Kind := TBrushKind.None;
-  FTitleBar.Fill.Kind := TBrushKind.Solid;
-  FTitleBar.HitTest := True;
-  FTitleBar.OnMouseDown := HandleTitleBarMouseDown;
-  FTitleBar.OnDblClick := HandleTitleBarDblClick;
-
   // Caption buttons are right-aligned; create close first so it sits furthest right.
   FCloseButton := AddCaptionButton(GlyphClose, HintCloseWindow, HandleCloseButtonClick);
   FCloseButton.OnMouseEnter := HandleCloseMouseEnter;
@@ -620,7 +567,7 @@ begin
   FMinButton := AddCaptionButton(GlyphMinimize, HintMinimize, HandleMinimizeClick);
 
   FTabStrip := TPadFmxTabStrip.Create(Self);
-  FTabStrip.Parent := FTitleBar;
+  FTabStrip.Parent := rctTitleBar;
   FTabStrip.Align := TAlignLayout.Left;
   FTabStrip.Margins.Left := TitleBarLeftInset;
   FTabStrip.GlyphFontName := FIconFontName;
@@ -634,7 +581,7 @@ function TMarkdown4DStudioFMXForm.AddCaptionButton(const Glyph: string; const Hi
   const Handler: TNotifyEvent): TRectangle;
 begin
   Result := TRectangle.Create(Self);
-  Result.Parent := FTitleBar;
+  Result.Parent := rctTitleBar;
   Result.Align := TAlignLayout.Right;
   Result.Width := CaptionButtonWidth;
   Result.Stroke.Kind := TBrushKind.None;
@@ -662,11 +609,11 @@ end;
 
 procedure TMarkdown4DStudioFMXForm.LayoutTitleBar;
 begin
-  if (FTitleBar = nil) or (FTabStrip = nil) then
+  if (rctTitleBar = nil) or (FTabStrip = nil) then
     Exit;
 
   const CaptionButtonsWidth = 3 * CaptionButtonWidth;
-  var Available := Round(FTitleBar.Width) - TitleBarLeftInset - CaptionButtonsWidth;
+  var Available := Round(rctTitleBar.Width) - TitleBarLeftInset - CaptionButtonsWidth;
   if Available < TPadTabLayout.MinTabWidth then
     Available := TPadTabLayout.MinTabWidth;
 
@@ -753,223 +700,37 @@ begin
   RebuildTabs;
 end;
 
-procedure TMarkdown4DStudioFMXForm.BuildStatusBar;
-begin
-  FStatusBar := TRectangle.Create(Self);
-  FStatusBar.Parent := Self;
-  FStatusBar.Align := TAlignLayout.Bottom;
-  FStatusBar.Height := StatusBarHeight;
-  FStatusBar.Stroke.Kind := TBrushKind.None;
-  FStatusBar.Fill.Kind := TBrushKind.Solid;
-
-  FStatusPositionLabel := TLabel.Create(Self);
-  FStatusPositionLabel.Parent := FStatusBar;
-  FStatusPositionLabel.Align := TAlignLayout.Left;
-  FStatusPositionLabel.Margins.Left := ControlMargin;
-  FStatusPositionLabel.Width := StatusLabelWidth;
-
-  FStatusWordsLabel := TLabel.Create(Self);
-  FStatusWordsLabel.Parent := FStatusBar;
-  FStatusWordsLabel.Align := TAlignLayout.Left;
-  FStatusWordsLabel.Margins.Left := ControlMargin;
-  FStatusWordsLabel.Width := StatusLabelWidth;
-end;
-
-procedure TMarkdown4DStudioFMXForm.BuildTocPanel;
-begin
-  FTocPanel := TLayout.Create(Self);
-  FTocPanel.Parent := Self;
-  FTocPanel.Align := TAlignLayout.Left;
-  FTocPanel.Width := TocPanelWidth;
-
-  FTocHeader := TText.Create(Self);
-  FTocHeader.Parent := FTocPanel;
-  FTocHeader.Align := TAlignLayout.Top;
-  FTocHeader.Height := TocHeaderHeight;
-  FTocHeader.Margins.Left := ControlMargin;
-  FTocHeader.HorzTextAlign := TTextAlign.Leading;
-  FTocHeader.Text := TocHeaderCaption;
-
-  FTocList := TListBox.Create(Self);
-  FTocList.Parent := FTocPanel;
-  FTocList.Align := TAlignLayout.Client;
-  FTocList.OnChange := HandleTocChange;
-  FTocList.OnApplyStyleLookup := HandleTocListApplyStyle;
-
-  FTocSplitter := TSplitter.Create(Self);
-  FTocSplitter.Parent := Self;
-  FTocSplitter.Align := TAlignLayout.Left;
-  FTocSplitter.Width := SplitterWidth;
-  FTocSplitter.OnMouseUp := HandleTocSplitterMouseUp;
-end;
-
-procedure TMarkdown4DStudioFMXForm.BuildEditorAndPreview;
-begin
-  FEditor := TMarkdownEditor.Create(Self);
-  FEditor.Parent := Self;
-  FEditor.Align := TAlignLayout.Left;
-  FEditor.Width := (InitialClientWidth - TocPanelWidth) / 2;
-  FEditor.ShowLineNumbers := True;
-  FEditor.OnChange := HandleEditorChange;
-
-  FMainSplitter := TSplitter.Create(Self);
-  FMainSplitter.Parent := Self;
-  FMainSplitter.Align := TAlignLayout.Left;
-  FMainSplitter.Width := SplitterWidth;
-  // FMX splitters have no moved event, so a finished drag is caught here.
-  FMainSplitter.OnMouseUp := HandleSplitterMouseUp;
-
-  FPreview := TMarkdownViewer.Create(Self);
-  FPreview.Parent := Self;
-  FPreview.Align := TAlignLayout.Client;
-  FPreview.OnLinkClick := HandlePreviewLinkClick;
-end;
-
-procedure TMarkdown4DStudioFMXForm.BuildTimer;
-begin
-  FTickTimer := TTimer.Create(Self);
-  FTickTimer.Interval := TickIntervalMilliseconds;
-  FTickTimer.OnTimer := HandleTick;
-  FTickTimer.Enabled := True;
-end;
-
-procedure TMarkdown4DStudioFMXForm.BuildFindBar;
-begin
-  FFindBar := TRectangle.Create(Self);
-  FFindBar.Parent := Self;
-  FFindBar.Align := TAlignLayout.Top;
-  FFindBar.Height := FindBarHeight;
-  FFindBar.Visible := False;
-  FFindBar.Stroke.Kind := TBrushKind.None;
-  FFindBar.Fill.Kind := TBrushKind.Solid;
-
-  FEditorFindEdit := TEdit.Create(Self);
-  FEditorFindEdit.Parent := FFindBar;
-  FEditorFindEdit.Align := TAlignLayout.Left;
-  FEditorFindEdit.Margins.Left := ControlMargin;
-  FEditorFindEdit.Margins.Top := ControlMargin;
-  FEditorFindEdit.Margins.Bottom := ControlMargin;
-  FEditorFindEdit.Width := FindBarEditWidth;
-  FEditorFindEdit.TextPrompt := FindHintCaption;
-  FEditorFindEdit.OnKeyDown := HandleEditorFindKeyDown;
-  FEditorFindEdit.OnChangeTracking := HandleEditorFindChange;
-
-  FEditorReplaceEdit := TEdit.Create(Self);
-  FEditorReplaceEdit.Parent := FFindBar;
-  FEditorReplaceEdit.Align := TAlignLayout.Left;
-  FEditorReplaceEdit.Margins.Left := ControlMargin;
-  FEditorReplaceEdit.Margins.Top := ControlMargin;
-  FEditorReplaceEdit.Margins.Bottom := ControlMargin;
-  FEditorReplaceEdit.Width := FindBarEditWidth;
-  FEditorReplaceEdit.TextPrompt := ReplaceHintCaption;
-
-  FReplaceButton := TButton.Create(Self);
-  FReplaceButton.Parent := FFindBar;
-  FReplaceButton.Align := TAlignLayout.Left;
-  FReplaceButton.Margins.Left := ControlMargin;
-  FReplaceButton.Margins.Top := ControlMargin;
-  FReplaceButton.Margins.Bottom := ControlMargin;
-  FReplaceButton.Width := ReplaceButtonWidth;
-  FReplaceButton.Text := ReplaceButtonCaption;
-  FReplaceButton.OnClick := HandleReplaceClick;
-
-  FReplaceAllButton := TButton.Create(Self);
-  FReplaceAllButton.Parent := FFindBar;
-  FReplaceAllButton.Align := TAlignLayout.Left;
-  FReplaceAllButton.Margins.Left := ControlMargin;
-  FReplaceAllButton.Margins.Top := ControlMargin;
-  FReplaceAllButton.Margins.Bottom := ControlMargin;
-  FReplaceAllButton.Width := ReplaceAllButtonWidth;
-  FReplaceAllButton.Text := ReplaceAllButtonCaption;
-  FReplaceAllButton.OnClick := HandleReplaceAllClick;
-
-  FEditorFindCount := TLabel.Create(Self);
-  FEditorFindCount.Parent := FFindBar;
-  FEditorFindCount.Align := TAlignLayout.Right;
-  FEditorFindCount.Margins.Right := ControlMargin;
-  FEditorFindCount.Width := StatusLabelWidth;
-  FEditorFindCount.TextSettings.HorzAlign := TTextAlign.Trailing;
-end;
-
-procedure TMarkdown4DStudioFMXForm.BuildHint;
-begin
-  // FMX does not reliably show native control hints on this window, so draw a
-  // small tooltip ourselves on hover.
-  FHintRect := TRectangle.Create(Self);
-  FHintRect.Parent := Self;
-  FHintRect.Visible := False;
-  FHintRect.HitTest := False;
-  FHintRect.XRadius := HintCornerRadius;
-  FHintRect.YRadius := HintCornerRadius;
-  FHintRect.Stroke.Kind := TBrushKind.None;
-  FHintRect.Fill.Kind := TBrushKind.Solid;
-  FHintRect.Fill.Color := HintBackColor;
-  FHintRect.Height := HintHeight;
-
-  FHintText := TText.Create(Self);
-  FHintText.Parent := FHintRect;
-  FHintText.Align := TAlignLayout.Client;
-  FHintText.HitTest := False;
-  FHintText.Margins.Left := HintHorizontalPadding;
-  FHintText.Margins.Right := HintHorizontalPadding;
-  FHintText.HorzTextAlign := TTextAlign.Center;
-  FHintText.VertTextAlign := TTextAlign.Center;
-  FHintText.Color := HintTextColor;
-end;
-
 procedure TMarkdown4DStudioFMXForm.ShowHintFor(const Control: TControl);
 begin
-  if (FHintRect = nil) or (Control = nil) or (Control.Hint = '') then
+  if (rctHint = nil) or (Control = nil) or (Control.Hint = '') then
     Exit;
 
-  FHintText.Text := Control.Hint;
+  txtHint.Text := Control.Hint;
 
   const MeasureCanvas = TCanvasManager.MeasureCanvas;
-  MeasureCanvas.Font.Assign(FHintText.Font);
+  MeasureCanvas.Font.Assign(txtHint.Font);
   const TextWidth = MeasureCanvas.TextWidth(Control.Hint);
-  FHintRect.Width := TextWidth + 2 * HintHorizontalPadding;
+  rctHint.Width := TextWidth + 2 * HintHorizontalPadding;
 
   // Position just below the hovered control, in form coordinates, clamped to the
   // right edge so long hints never run off-screen.
   const Anchor = Control.LocalToAbsolute(TPointF.Create(0, Control.Height + HintGap));
   var Left := Anchor.X;
-  if Left + FHintRect.Width > ClientWidth - HintGap then
-    Left := ClientWidth - HintGap - FHintRect.Width;
+  if Left + rctHint.Width > ClientWidth - HintGap then
+    Left := ClientWidth - HintGap - rctHint.Width;
   if Left < HintGap then
     Left := HintGap;
 
-  FHintRect.Position.X := Left;
-  FHintRect.Position.Y := Anchor.Y;
-  FHintRect.BringToFront;
-  FHintRect.Visible := True;
+  rctHint.Position.X := Left;
+  rctHint.Position.Y := Anchor.Y;
+  rctHint.BringToFront;
+  rctHint.Visible := True;
 end;
 
 procedure TMarkdown4DStudioFMXForm.HideHint;
 begin
-  if FHintRect <> nil then
-    FHintRect.Visible := False;
-end;
-
-procedure TMarkdown4DStudioFMXForm.BuildPalette;
-begin
-  FPalette := TRectangle.Create(Self);
-  FPalette.Parent := Self;
-  FPalette.Visible := False;
-  FPalette.Width := PaletteWidth;
-  FPalette.Height := PaletteEditHeight + PaletteListHeight;
-  FPalette.Position.Y := PaletteTop;
-
-  FPaletteEdit := TEdit.Create(Self);
-  FPaletteEdit.Parent := FPalette;
-  FPaletteEdit.Align := TAlignLayout.Top;
-  FPaletteEdit.Height := PaletteEditHeight;
-  FPaletteEdit.TextPrompt := PaletteHintCaption;
-  FPaletteEdit.OnChangeTracking := HandlePaletteChange;
-
-  FPaletteList := TListBox.Create(Self);
-  FPaletteList.Parent := FPalette;
-  FPaletteList.Align := TAlignLayout.Client;
-  FPaletteList.OnDblClick := HandlePaletteDblClick;
+  if rctHint <> nil then
+    rctHint.Visible := False;
 end;
 
 procedure TMarkdown4DStudioFMXForm.BuildCommandRegistry;
@@ -1001,12 +762,12 @@ begin
   Result.ShowFind := procedure begin ShowFindBar; end;
   Result.ShowReplace := procedure begin ShowReplaceBar; end;
   Result.FindInPreview := procedure begin ExecuteFind; end;
-  Result.Undo := procedure begin FEditor.Undo; FocusEditor; end;
-  Result.Redo := procedure begin FEditor.Redo; FocusEditor; end;
-  Result.SelectAll := procedure begin FEditor.SelectAll; FocusEditor; end;
-  Result.Indent := procedure begin FEditor.Indent; FocusEditor; end;
-  Result.Outdent := procedure begin FEditor.Outdent; FocusEditor; end;
-  Result.DeleteWordLeft := procedure begin FEditor.DeleteWordLeft; FocusEditor; end;
+  Result.Undo := procedure begin mdEditor.Undo; FocusEditor; end;
+  Result.Redo := procedure begin mdEditor.Redo; FocusEditor; end;
+  Result.SelectAll := procedure begin mdEditor.SelectAll; FocusEditor; end;
+  Result.Indent := procedure begin mdEditor.Indent; FocusEditor; end;
+  Result.Outdent := procedure begin mdEditor.Outdent; FocusEditor; end;
+  Result.DeleteWordLeft := procedure begin mdEditor.DeleteWordLeft; FocusEditor; end;
   Result.ExecuteFormat :=
     procedure(const Command: TEditorCommand)
     begin
@@ -1038,7 +799,7 @@ end;
 // editor used on its own, without a form like this one, keeps its own keys.
 function TMarkdown4DStudioFMXForm.HandleFormKey(const Key: Word; const Shift: TShiftState): Boolean;
 begin
-  if FPalette.Visible then
+  if rctPalette.Visible then
   begin
     Result := TryHandlePaletteKey(Key, Shift);
     Exit;
@@ -1173,7 +934,7 @@ begin
       ToggleZen;
     vkF3:
       begin
-        if not FFindBar.Visible then
+        if not rctFindBar.Visible then
         begin
           Result := False;
           Exit;
@@ -1183,7 +944,7 @@ begin
       end;
     vkEscape:
       begin
-        if FFindBar.Visible then
+        if rctFindBar.Visible then
           CloseFindBar
         else if FZenActive then
           ExitZen
@@ -1206,7 +967,7 @@ end;
 procedure TMarkdown4DStudioFMXForm.ExecuteFormatCommand(const Command: TEditorCommand);
 begin
   AdoptPreviewSelection;
-  FEditor.ExecuteCommand(Command);
+  mdEditor.ExecuteCommand(Command);
   FocusEditor;
 end;
 
@@ -1219,7 +980,7 @@ begin
   if not IsPreviewOnly then
     Exit;
 
-  FEditor.TryAdoptPreviewSelection;
+  mdEditor.TryAdoptPreviewSelection;
 end;
 
 procedure TMarkdown4DStudioFMXForm.DoShow;
@@ -1252,10 +1013,10 @@ begin
   else if FViewMode = TPadViewMode.Split then
     // A narrower window must take room from the editor rather than from the
     // preview, which would otherwise be squeezed to nothing.
-    ApplySplitEditorWidth(FEditor.Width);
+    ApplySplitEditorWidth(mdEditor.Width);
 
-  if (FPalette <> nil) and FPalette.Visible then
-    FPalette.Position.X := (ClientWidth - FPalette.Width) / 2;
+  if (rctPalette <> nil) and rctPalette.Visible then
+    rctPalette.Position.X := (ClientWidth - rctPalette.Width) / 2;
 end;
 
 procedure TMarkdown4DStudioFMXForm.SetViewMode(const Mode: TPadViewMode);
@@ -1264,7 +1025,7 @@ begin
     ExitZen;
 
   if FViewMode = TPadViewMode.Split then
-    FSplitEditorWidth := FEditor.Width;
+    FSplitEditorWidth := mdEditor.Width;
 
   FViewMode := Mode;
 
@@ -1274,12 +1035,12 @@ end;
 function TMarkdown4DStudioFMXForm.AvailableSplitWidth: Single;
 begin
   // What the editor and preview actually have to share.
-  Result := ClientWidth - FMainSplitter.Width;
+  Result := ClientWidth - splMain.Width;
 
-  if FTocPanel.Visible then
-    Result := Result - FTocPanel.Width;
-  if FTocSplitter.Visible then
-    Result := Result - FTocSplitter.Width;
+  if layToc.Visible then
+    Result := Result - layToc.Width;
+  if splToc.Visible then
+    Result := Result - splToc.Width;
 end;
 
 procedure TMarkdown4DStudioFMXForm.ApplySplitEditorWidth(const DesiredWidth: Single);
@@ -1290,18 +1051,18 @@ begin
 
   // The contents pane gives way first, so the two halves keep their minimum for
   // as long as the window allows.
-  if FTocPanel.Visible then
-    FTocPanel.Width := TPadSplitLayout.ClampSidePanelWidth(Round(FTocPanel.Width),
-      Round(ClientWidth), Round(FTocSplitter.Width + FMainSplitter.Width),
+  if layToc.Visible then
+    layToc.Width := TPadSplitLayout.ClampSidePanelWidth(Round(layToc.Width),
+      Round(ClientWidth), Round(splToc.Width + splMain.Width),
       MinPaneWidth, MinTocPanelWidth);
 
   const Available = Round(AvailableSplitWidth);
 
   // Re-stated on every width change, because a splitter told to honour a
   // minimum the window cannot give lets a drag collapse the other pane.
-  FMainSplitter.MinSize := TPadSplitLayout.EffectiveMinPaneWidth(Available, MinPaneWidth);
+  splMain.MinSize := TPadSplitLayout.EffectiveMinPaneWidth(Available, MinPaneWidth);
 
-  FEditor.Width := TPadSplitLayout.ClampEditorWidth(Round(DesiredWidth), Available,
+  mdEditor.Width := TPadSplitLayout.ClampEditorWidth(Round(DesiredWidth), Available,
     MinPaneWidth);
 end;
 
@@ -1311,8 +1072,8 @@ begin
   // A drag is the user stating a preference, so remember it. It still has to
   // pass the clamp, because on a narrow window the splitter cannot enforce a
   // minimum the window is too small to give.
-  ApplySplitEditorWidth(FEditor.Width);
-  FSplitEditorWidth := FEditor.Width;
+  ApplySplitEditorWidth(mdEditor.Width);
+  FSplitEditorWidth := mdEditor.Width;
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleTocSplitterMouseUp(Sender: TObject;
@@ -1324,7 +1085,7 @@ begin
   if FZenActive or (FViewMode <> TPadViewMode.Split) then
     Exit;
 
-  ApplySplitEditorWidth(FEditor.Width);
+  ApplySplitEditorWidth(mdEditor.Width);
 end;
 
 procedure TMarkdown4DStudioFMXForm.ApplyViewMode;
@@ -1332,24 +1093,24 @@ begin
   case FViewMode of
     TPadViewMode.Split:
       begin
-        FEditor.Visible := True;
-        FEditor.Align := TAlignLayout.Left;
+        mdEditor.Visible := True;
+        mdEditor.Align := TAlignLayout.Left;
         ApplySplitEditorWidth(FSplitEditorWidth);
-        FMainSplitter.Visible := True;
-        FPreview.Visible := True;
+        splMain.Visible := True;
+        mdPreview.Visible := True;
       end;
     TPadViewMode.EditorOnly:
       begin
-        FMainSplitter.Visible := False;
-        FPreview.Visible := False;
-        FEditor.Visible := True;
-        FEditor.Align := TAlignLayout.Client;
+        splMain.Visible := False;
+        mdPreview.Visible := False;
+        mdEditor.Visible := True;
+        mdEditor.Align := TAlignLayout.Client;
       end;
     TPadViewMode.PreviewOnly:
       begin
-        FEditor.Visible := False;
-        FMainSplitter.Visible := False;
-        FPreview.Visible := True;
+        mdEditor.Visible := False;
+        splMain.Visible := False;
+        mdPreview.Visible := True;
       end;
   else
     raise ENotSupportedException.CreateFmt('Unsupported view mode: %d', [Ord(FViewMode)]);
@@ -1360,14 +1121,14 @@ end;
 
 procedure TMarkdown4DStudioFMXForm.ShowFindBar;
 begin
-  FFindBar.Visible := True;
+  rctFindBar.Visible := True;
 
-  const Sel = FEditor.SelectedText;
+  const Sel = mdEditor.SelectedText;
   if Sel <> '' then
-    FEditorFindEdit.Text := Sel;
+    edtEditorFind.Text := Sel;
 
-  FEditorFindEdit.SetFocus;
-  FEditorFindEdit.SelectAll;
+  edtEditorFind.SetFocus;
+  edtEditorFind.SelectAll;
 
   UpdateFindCount;
 end;
@@ -1376,14 +1137,14 @@ procedure TMarkdown4DStudioFMXForm.ShowReplaceBar;
 begin
   ShowFindBar;
 
-  FEditorReplaceEdit.SetFocus;
-  FEditorReplaceEdit.SelectAll;
+  edtEditorReplace.SetFocus;
+  edtEditorReplace.SelectAll;
 end;
 
 procedure TMarkdown4DStudioFMXForm.CloseFindBar;
 begin
-  FFindBar.Visible := False;
-  FEditor.ClearHighlights;
+  rctFindBar.Visible := False;
+  mdEditor.ClearHighlights;
 
   FocusEditor;
 end;
@@ -1416,39 +1177,39 @@ procedure TMarkdown4DStudioFMXForm.ShowPalette;
 begin
   FController.RebuildPaletteCommands;
 
-  FPaletteEdit.Text := '';
+  edtPalette.Text := '';
 
   RefreshPaletteList;
 
-  FPalette.Position.X := (ClientWidth - FPalette.Width) / 2;
-  FPalette.Position.Y := PaletteTop;
-  FPalette.BringToFront;
-  FPalette.Visible := True;
+  rctPalette.Position.X := (ClientWidth - rctPalette.Width) / 2;
+  rctPalette.Position.Y := PaletteTop;
+  rctPalette.BringToFront;
+  rctPalette.Visible := True;
 
-  FPaletteEdit.SetFocus;
+  edtPalette.SetFocus;
 end;
 
 procedure TMarkdown4DStudioFMXForm.ClosePalette;
 begin
-  FPalette.Visible := False;
+  rctPalette.Visible := False;
 
   FocusEditor;
 end;
 
 procedure TMarkdown4DStudioFMXForm.RefreshPaletteList;
 begin
-  FController.RefreshMatches(FPaletteEdit.Text);
+  FController.RefreshMatches(edtPalette.Text);
 
-  FPaletteList.BeginUpdate;
+  lstPalette.BeginUpdate;
   try
-    FPaletteList.Clear;
+    lstPalette.Clear;
 
     for var Index := 0 to High(FPaletteMatches) do
     begin
       const Command = FPaletteMatches[Index].Command;
 
-      var Item := TListBoxItem.Create(FPaletteList);
-      Item.Parent := FPaletteList;
+      var Item := TListBoxItem.Create(lstPalette);
+      Item.Parent := lstPalette;
       Item.Text := Command.Name;
       Item.Height := PaletteRowHeight;
 
@@ -1466,13 +1227,13 @@ begin
       end;
     end;
   finally
-    FPaletteList.EndUpdate;
+    lstPalette.EndUpdate;
   end;
 
-  if FPaletteList.Count > 0 then
-    FPaletteList.ItemIndex := 0
+  if lstPalette.Count > 0 then
+    lstPalette.ItemIndex := 0
   else
-    FPaletteList.ItemIndex := -1;
+    lstPalette.ItemIndex := -1;
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandlePaletteDblClick(Sender: TObject);
@@ -1482,16 +1243,16 @@ end;
 
 procedure TMarkdown4DStudioFMXForm.PaletteMoveSelection(const Delta: Integer);
 begin
-  if FPaletteList.Count = 0 then
+  if lstPalette.Count = 0 then
     Exit;
 
-  const NewIndex = EnsureRange(FPaletteList.ItemIndex + Delta, 0, FPaletteList.Count - 1);
-  FPaletteList.ItemIndex := NewIndex;
+  const NewIndex = EnsureRange(lstPalette.ItemIndex + Delta, 0, lstPalette.Count - 1);
+  lstPalette.ItemIndex := NewIndex;
 end;
 
 procedure TMarkdown4DStudioFMXForm.ExecuteSelectedCommand;
 begin
-  const Index = FPaletteList.ItemIndex;
+  const Index = lstPalette.ItemIndex;
   if (Index < 0) or (Index >= FController.PaletteMatchCount) then
     Exit;
 
@@ -1504,8 +1265,8 @@ procedure TMarkdown4DStudioFMXForm.HandlePaletteChange(Sender: TObject);
 begin
   RefreshPaletteList;
 
-  if FPaletteList.Count > 0 then
-    FPaletteList.ItemIndex := 0;
+  if lstPalette.Count > 0 then
+    lstPalette.ItemIndex := 0;
 end;
 
 procedure TMarkdown4DStudioFMXForm.ToggleZen;
@@ -1518,26 +1279,26 @@ end;
 
 procedure TMarkdown4DStudioFMXForm.EnterZen;
 begin
-  if FPalette.Visible then
+  if rctPalette.Visible then
     ClosePalette;
 
-  FZenFindWasVisible := FFindBar.Visible;
-  FZenTocWasVisible := FTocPanel.Visible;
+  FZenFindWasVisible := rctFindBar.Visible;
+  FZenTocWasVisible := layToc.Visible;
   FPreZenViewMode := FViewMode;
 
-  FToolbar.Visible := False;
+  rctToolbar.Visible := False;
   FTabStrip.Visible := False;
-  FTocPanel.Visible := False;
-  FTocSplitter.Visible := False;
-  FStatusBar.Visible := False;
-  FFindBar.Visible := False;
+  layToc.Visible := False;
+  splToc.Visible := False;
+  rctStatus.Visible := False;
+  rctFindBar.Visible := False;
 
   // Keep the current view mode so zen mirrors what the user is doing: preview-only
   // becomes a distraction-free rendering, editor-only a distraction-free editor.
   // Split has no single column to center, so it collapses to editor-only.
   if FViewMode = TPadViewMode.Split then
   begin
-    FSplitEditorWidth := FEditor.Width;
+    FSplitEditorWidth := mdEditor.Width;
     FViewMode := TPadViewMode.EditorOnly;
   end;
   ApplyViewMode;
@@ -1561,12 +1322,12 @@ begin
   FreeAndNil(FZenLeftPad);
   FreeAndNil(FZenRightPad);
 
-  FToolbar.Visible := True;
+  rctToolbar.Visible := True;
   FTabStrip.Visible := True;
-  FStatusBar.Visible := True;
-  FTocPanel.Visible := FZenTocWasVisible;
-  FTocSplitter.Visible := FZenTocWasVisible;
-  FFindBar.Visible := FZenFindWasVisible;
+  rctStatus.Visible := True;
+  layToc.Visible := FZenTocWasVisible;
+  splToc.Visible := FZenTocWasVisible;
+  rctFindBar.Visible := FZenFindWasVisible;
 
   FViewMode := FPreZenViewMode;
   ApplyViewMode;
@@ -1704,11 +1465,11 @@ end;
 function TMarkdown4DStudioFMXForm.PromptExportHtml(const SuggestedName: string; out FileName: string): Boolean;
 begin
   if SuggestedName <> '' then
-    FHtmlSaveDialog.FileName := SuggestedName;
+    dlgSaveHtml.FileName := SuggestedName;
 
-  Result := FHtmlSaveDialog.Execute;
+  Result := dlgSaveHtml.Execute;
   if Result then
-    FileName := FHtmlSaveDialog.FileName;
+    FileName := dlgSaveHtml.FileName;
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleCopyHtmlClick(Sender: TObject);
@@ -1791,13 +1552,13 @@ end;
 
 procedure TMarkdown4DStudioFMXForm.ToggleTocPane;
 begin
-  const ShowToc = not FTocPanel.Visible;
-  FTocPanel.Visible := ShowToc;
-  FTocSplitter.Visible := ShowToc;
+  const ShowToc = not layToc.Visible;
+  layToc.Visible := ShowToc;
+  splToc.Visible := ShowToc;
 
   // Showing the contents pane takes the same room the two halves share.
   if (not FZenActive) and (FViewMode = TPadViewMode.Split) then
-    ApplySplitEditorWidth(FEditor.Width);
+    ApplySplitEditorWidth(mdEditor.Width);
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleFindClick(Sender: TObject);
@@ -1869,7 +1630,7 @@ begin
   if FTocFollowing then
     Exit;
 
-  const Index = FTocList.ItemIndex;
+  const Index = lstToc.ItemIndex;
   if (Index < 0) or (Index >= FController.TocEntryCount) then
     Exit;
 
@@ -1885,9 +1646,9 @@ begin
   // the outline so the resulting sync callback does not fight the selection.
   FTocFollowing := True;
   try
-    FEditor.CaretPosition := FEditor.SourceLineStartOffset(SourceLine);
-    FEditor.ScrollToSourceLine(SourceLine);
-    FTocList.ItemIndex := Index;
+    mdEditor.CaretPosition := mdEditor.SourceLineStartOffset(SourceLine);
+    mdEditor.ScrollToSourceLine(SourceLine);
+    lstToc.ItemIndex := Index;
   finally
     FTocFollowing := False;
   end;
@@ -1902,62 +1663,62 @@ end;
 
 function TMarkdown4DStudioFMXForm.GetEditorText: string;
 begin
-  Result := FEditor.Text;
+  Result := mdEditor.Text;
 end;
 
 procedure TMarkdown4DStudioFMXForm.SetEditorText(const Value: string);
 begin
-  FEditor.Text := Value;
+  mdEditor.Text := Value;
 end;
 
 function TMarkdown4DStudioFMXForm.MergeEditorText(const Value: string): Boolean;
 begin
-  Result := FEditor.MergeText(Value);
+  Result := mdEditor.MergeText(Value);
 end;
 
 function TMarkdown4DStudioFMXForm.GetEditorCaret: Integer;
 begin
-  Result := FEditor.CaretPosition;
+  Result := mdEditor.CaretPosition;
 end;
 
 procedure TMarkdown4DStudioFMXForm.SetEditorCaret(const Value: Integer);
 begin
-  FEditor.CaretPosition := Value;
+  mdEditor.CaretPosition := Value;
 end;
 
 function TMarkdown4DStudioFMXForm.GetPreviewScrollOffset: Single;
 begin
-  Result := FPreview.ScrollOffset;
+  Result := mdPreview.ScrollOffset;
 end;
 
 procedure TMarkdown4DStudioFMXForm.SetPreviewScrollOffset(const Value: Single);
 begin
-  FPreview.ScrollOffset := Value;
+  mdPreview.ScrollOffset := Value;
 end;
 
 function TMarkdown4DStudioFMXForm.FirstVisibleSourceLine: Integer;
 begin
-  Result := FEditor.FirstVisibleSourceLine;
+  Result := mdEditor.FirstVisibleSourceLine;
 end;
 
 procedure TMarkdown4DStudioFMXForm.ScrollToSourceLine(const LineIndex: Integer);
 begin
-  FEditor.ScrollToSourceLine(LineIndex);
+  mdEditor.ScrollToSourceLine(LineIndex);
 end;
 
 function TMarkdown4DStudioFMXForm.SaveEditState: IMarkdownEditorState;
 begin
-  Result := FEditor.SaveEditState;
+  Result := mdEditor.SaveEditState;
 end;
 
 procedure TMarkdown4DStudioFMXForm.LoadEditState(const State: IMarkdownEditorState);
 begin
-  FEditor.LoadEditState(State);
+  mdEditor.LoadEditState(State);
 end;
 
 procedure TMarkdown4DStudioFMXForm.FlushPreview;
 begin
-  FEditor.FlushPreview;
+  mdEditor.FlushPreview;
 end;
 
 procedure TMarkdown4DStudioFMXForm.BeginSwap;
@@ -2016,21 +1777,21 @@ end;
 
 procedure TMarkdown4DStudioFMXForm.SetStatus(const PositionText, WordsText: string);
 begin
-  FStatusPositionLabel.Text := PositionText;
-  FStatusWordsLabel.Text := WordsText;
+  lblPos.Text := PositionText;
+  lblWords.Text := WordsText;
 end;
 
 procedure TMarkdown4DStudioFMXForm.SetTocCaptions(const Captions: TArray<string>);
 begin
   FTocFollowing := True;
-  FTocList.Items.BeginUpdate;
+  lstToc.Items.BeginUpdate;
   try
-    FTocList.Items.Clear;
+    lstToc.Items.Clear;
 
     for var Caption in Captions do
-      FTocList.Items.Add(Caption);
+      lstToc.Items.Add(Caption);
   finally
-    FTocList.Items.EndUpdate;
+    lstToc.Items.EndUpdate;
     FTocFollowing := False;
   end;
 
@@ -2039,12 +1800,12 @@ end;
 
 procedure TMarkdown4DStudioFMXForm.SetActiveTocIndex(const Index: Integer);
 begin
-  if Index = FTocList.ItemIndex then
+  if Index = lstToc.ItemIndex then
     Exit;
 
   FTocFollowing := True;
   try
-    FTocList.ItemIndex := Index;
+    lstToc.ItemIndex := Index;
   finally
     FTocFollowing := False;
   end;
@@ -2052,12 +1813,12 @@ end;
 
 function TMarkdown4DStudioFMXForm.EditorFindNeedle: string;
 begin
-  Result := FEditorFindEdit.Text;
+  Result := edtEditorFind.Text;
 end;
 
 function TMarkdown4DStudioFMXForm.EditorReplaceValue: string;
 begin
-  Result := FEditorReplaceEdit.Text;
+  Result := edtEditorReplace.Text;
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleReplaceClick(Sender: TObject);
@@ -2072,42 +1833,42 @@ end;
 
 procedure TMarkdown4DStudioFMXForm.EditorHighlightMatches(const Needle: string);
 begin
-  FEditor.HighlightMatches(Needle);
+  mdEditor.HighlightMatches(Needle);
 end;
 
 function TMarkdown4DStudioFMXForm.EditorReplaceCurrent(const Needle, Replacement: string): Boolean;
 begin
-  Result := FEditor.ReplaceCurrent(Needle, Replacement, Default(TMarkdownFindOptions));
+  Result := mdEditor.ReplaceCurrent(Needle, Replacement, Default(TMarkdownFindOptions));
 end;
 
 function TMarkdown4DStudioFMXForm.EditorReplaceAll(const Needle, Replacement: string): Integer;
 begin
-  Result := FEditor.ReplaceAll(Needle, Replacement, Default(TMarkdownFindOptions));
+  Result := mdEditor.ReplaceAll(Needle, Replacement, Default(TMarkdownFindOptions));
 end;
 
 function TMarkdown4DStudioFMXForm.PreviewFindNeedle: string;
 begin
-  Result := FFindEdit.Text;
+  Result := edtFind.Text;
 end;
 
 procedure TMarkdown4DStudioFMXForm.SetFindCount(const Value: string);
 begin
-  FEditorFindCount.Text := Value;
+  lblFindCount.Text := Value;
 end;
 
 procedure TMarkdown4DStudioFMXForm.EditorFindNext(const Needle: string);
 begin
-  FEditor.FindNext(Needle);
+  mdEditor.FindNext(Needle);
 end;
 
 function TMarkdown4DStudioFMXForm.EditorFindMatchCount(const Needle: string): Integer;
 begin
-  Result := FEditor.FindMatchCount(Needle);
+  Result := mdEditor.FindMatchCount(Needle);
 end;
 
 procedure TMarkdown4DStudioFMXForm.PreviewFindText(const Needle: string);
 begin
-  FPreview.FindText(Needle);
+  mdPreview.FindText(Needle);
 end;
 
 function TMarkdown4DStudioFMXForm.ConfirmCloseDocument(const DocName: string): TPadCloseChoice;
@@ -2144,8 +1905,8 @@ begin
 
   if FDarkThemeActive then
   begin
-    FEditor.Theme := FDarkTheme;
-    FPreview.Theme := FDarkTheme;
+    mdEditor.Theme := FDarkTheme;
+    mdPreview.Theme := FDarkTheme;
 
     FToolbarFill := ToolbarDarkColor;
     FHoverColor := HoverDarkColor;
@@ -2155,8 +1916,8 @@ begin
   end
   else
   begin
-    FEditor.Theme := FLightTheme;
-    FPreview.Theme := FLightTheme;
+    mdEditor.Theme := FLightTheme;
+    mdPreview.Theme := FLightTheme;
 
     FToolbarFill := ToolbarLightColor;
     FHoverColor := HoverLightColor;
@@ -2170,7 +1931,7 @@ begin
   Fill.Color := FToolbarFill;
   Fill.Kind := TBrushKind.Solid;
 
-  FToolbar.Fill.Color := FToolbarFill;
+  rctToolbar.Fill.Color := FToolbarFill;
 
   for var Button in FIconButtons do
   begin
@@ -2187,9 +1948,9 @@ begin
     Separator.Fill.Color := SeparatorColor;
   end;
 
-  FTocHeader.Color := IconColor;
-  FTocList.NeedStyleLookup;
-  FTocList.ApplyStyleLookup;
+  txtTocHeader.Color := IconColor;
+  lstToc.NeedStyleLookup;
+  lstToc.ApplyStyleLookup;
   StyleTocBackground;
   ApplyTocItemColors;
 
@@ -2198,10 +1959,10 @@ end;
 
 procedure TMarkdown4DStudioFMXForm.ApplyChromeColors;
 begin
-  FStatusBar.Fill.Color := FToolbarFill;
-  FFindBar.Fill.Color := FToolbarFill;
+  rctStatus.Fill.Color := FToolbarFill;
+  rctFindBar.Fill.Color := FToolbarFill;
 
-  FTitleBar.Fill.Color := FToolbarFill;
+  rctTitleBar.Fill.Color := FToolbarFill;
   FMinButton.Fill.Color := FToolbarFill;
   FMaxButton.Fill.Color := FToolbarFill;
   FCloseButton.Fill.Color := FToolbarFill;
@@ -2225,7 +1986,7 @@ begin
   FTabStrip.GlyphColor := FChromeTextColor;
   FTabStrip.Repaint;
 
-  const Labels: TArray<TLabel> = [FStatusPositionLabel, FStatusWordsLabel, FEditorFindCount];
+  const Labels: TArray<TLabel> = [lblPos, lblWords, lblFindCount];
 
   for var LabelControl in Labels do
   begin
@@ -2236,9 +1997,9 @@ end;
 
 procedure TMarkdown4DStudioFMXForm.ApplyTocItemColors;
 begin
-  for var Index := 0 to FTocList.Count - 1 do
+  for var Index := 0 to lstToc.Count - 1 do
   begin
-    const Item = FTocList.ListItems[Index];
+    const Item = lstToc.ListItems[Index];
     Item.StyledSettings := Item.StyledSettings - [TStyledSetting.FontColor];
     Item.TextSettings.FontColor := FTocTextColor;
   end;
@@ -2254,7 +2015,7 @@ begin
   // Recolor the list-box background directly. Relying only on OnApplyStyleLookup
   // is unreliable: the event does not always re-fire when the theme is toggled at
   // runtime, which left the Contents panel white in dark mode.
-  const Background = FTocList.FindStyleResource('background');
+  const Background = lstToc.FindStyleResource('background');
   if Background is TRectangle then
   begin
     TRectangle(Background).Fill.Kind := TBrushKind.Solid;
@@ -2331,19 +2092,19 @@ end;
 
 function TMarkdown4DStudioFMXForm.PromptOpenFile(out FileName: string): Boolean;
 begin
-  Result := FOpenDialog.Execute;
+  Result := dlgOpen.Execute;
   if Result then
-    FileName := FOpenDialog.FileName;
+    FileName := dlgOpen.FileName;
 end;
 
 function TMarkdown4DStudioFMXForm.PromptSaveFile(const SuggestedName: string; out FileName: string): Boolean;
 begin
   if SuggestedName <> '' then
-    FSaveDialog.FileName := SuggestedName;
+    dlgSave.FileName := SuggestedName;
 
-  Result := FSaveDialog.Execute;
+  Result := dlgSave.Execute;
   if Result then
-    FileName := FSaveDialog.FileName;
+    FileName := dlgSave.FileName;
 end;
 
 function TMarkdown4DStudioFMXForm.ConfirmClose: TPadCloseChoice;

@@ -17,7 +17,7 @@ uses
   Markdown4DStudio.LinkPolicy in '..\Shared\Markdown4DStudio.LinkPolicy.pas',
   Markdown4DStudio.CommandSet in '..\Shared\Markdown4DStudio.CommandSet.pas',
   Markdown4DStudio.SessionSync in '..\Shared\Markdown4DStudio.SessionSync.pas',
-  Markdown4DStudioFMX.Main in 'Markdown4DStudioFMX.Main.pas',
+  Markdown4DStudioFMX.Main in 'Markdown4DStudioFMX.Main.pas' {Markdown4DStudioFMXForm},
   Markdown4DStudio.Defines in '..\Shared\Markdown4DStudio.Defines.pas',
   Markdown4DStudio.Text in '..\Shared\Markdown4DStudio.Text.pas',
   Markdown4DStudio.Outline in '..\Shared\Markdown4DStudio.Outline.pas',

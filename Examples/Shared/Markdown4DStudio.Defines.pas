@@ -54,12 +54,10 @@ const
   HintCommands = 'All commands (Ctrl+K)';
 
   // Layout metrics identical to both frameworks
-  InitialClientHeight = 760;
   TitleBarHeight = 40;
   TitleBarLeftInset = 8;
   IconButtonSize = 32;
   SeparatorWidth = 1;
-  FindEditWidth = 160;
   TocPanelWidth = 240;
   // Neither half of the split view may be squeezed below this, whether by a
   // remembered width, a window resize or a splitter drag.
@@ -67,13 +65,8 @@ const
   // The contents pane gives way first to protect those two, but never below
   // this; past that point the two halves share what is left between them.
   MinTocPanelWidth = 120;
-  TickIntervalMilliseconds = 100;
-  FindBarHeight = 32;
-  FindBarEditWidth = 240;
-  PaletteWidth = 560;
   PaletteTop = 80;
   PaletteRowHeight = 22;
-  PaletteVisibleRows = 10;
   ZenMaxTextWidth = 820;
 
   // Single-instance hand-off channels, one per studio flavour
@@ -81,9 +74,6 @@ const
   StudioInstanceChannelFmx = 'Markdown4DStudioFMX.Instance';
 
   // Captions, filters and format strings
-  TocHeaderCaption = 'Contents';
-  FindButtonCaption = 'Find';
-  MarkdownFilter = 'Markdown files (*.md)|*.md|All files (*.*)|*.*';
   DefaultExtension = 'md';
   ModifiedMarker = ' *';
   ConflictMarker = ' (!)';
@@ -104,14 +94,6 @@ const
   SingleMatchCaption = '1 match';
   NoMatchCaption = 'No matches';
   EmptyFindCaption = '';
-  FindHintCaption = 'Find in editor';
-  ReplaceHintCaption = 'Replace with';
-  ReplaceButtonCaption = 'Replace';
-  ReplaceAllButtonCaption = 'Replace All';
-  PaletteHintCaption = 'Type a command';
-  ExportButtonCaption = 'Export';
-  CopyHtmlButtonCaption = 'Copy HTML';
-  HtmlFilter = 'HTML files (*.html)|*.html|All files (*.*)|*.*';
   HtmlExtension = 'html';
 
   // Command palette entries: display name + shortcut label

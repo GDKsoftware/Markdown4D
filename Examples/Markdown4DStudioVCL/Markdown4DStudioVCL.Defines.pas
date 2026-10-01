@@ -18,8 +18,6 @@ const
   CaptionButtonsReserve = 160;
   DwmCaptionColorAttribute = 35;
   StatusBarHeight = 22;
-  StatusLabelWidth = 160;
-  StatusLabelLeftMargin = 8;
   ButtonSpacing = 4;
   IconGlyphSize = 14;
   ViewModeGroupIndex = 1; // TSpeedButton group for the mutually exclusive view mode buttons
@@ -41,8 +39,6 @@ const
   SessionFileName = 'Markdown4DStudio.Vcl.json';
   CloseUnsavedPrompt = 'Save changes before closing this document?';
   PaletteTextMargin = 8;
-  ReplaceButtonWidth = 90;
-  ReplaceAllButtonWidth = 110;
 
 implementation
 

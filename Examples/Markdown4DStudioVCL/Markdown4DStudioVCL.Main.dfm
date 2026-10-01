@@ -40,6 +40,17 @@ object Markdown4DStudioVCLForm: TMarkdown4DStudioVCLForm
     ShowCaption = False
     TabOrder = 0
     ExplicitWidth = 1198
+    object edtFind: TEdit
+      AlignWithMargins = True
+      Left = 1036
+      Top = 4
+      Width = 160
+      Height = 28
+      Align = alRight
+      TabOrder = 0
+      TextHint = 'Find'
+      OnKeyPress = HandleFindEditKeyPress
+    end
   end
   object pnlFind: TPanel
     Left = 0
@@ -77,6 +88,35 @@ object Markdown4DStudioVCLForm: TMarkdown4DStudioVCLForm
       ExplicitLeft = 4
       ExplicitTop = 4
       ExplicitHeight = 24
+    end
+    object edtEditorReplace: TEdit
+      Left = 240
+      Top = 0
+      Width = 240
+      Height = 32
+      Align = alLeft
+      TabOrder = 1
+      TextHint = 'Replace with'
+    end
+    object btnReplace: TButton
+      Left = 480
+      Top = 0
+      Width = 90
+      Height = 32
+      Align = alLeft
+      Caption = 'Replace'
+      TabOrder = 2
+      OnClick = HandleReplaceClick
+    end
+    object btnReplaceAll: TButton
+      Left = 570
+      Top = 0
+      Width = 110
+      Height = 32
+      Align = alLeft
+      Caption = 'Replace All'
+      TabOrder = 3
+      OnClick = HandleReplaceAllClick
     end
   end
   object pnlStatus: TPanel
@@ -184,6 +224,40 @@ object Markdown4DStudioVCLForm: TMarkdown4DStudioVCLForm
     TabOrder = 6
     TabStop = True
     OnLinkClick = HandlePreviewLinkClick
+  end
+  object pnlPalette: TPanel
+    Left = 320
+    Top = 80
+    Width = 560
+    Height = 243
+    BevelKind = bkFlat
+    BevelOuter = bvNone
+    ShowCaption = False
+    TabOrder = 7
+    Visible = False
+    object edtPalette: TEdit
+      Left = 0
+      Top = 0
+      Width = 556
+      Height = 23
+      Align = alTop
+      TabOrder = 0
+      TextHint = 'Type a command'
+      OnChange = HandlePaletteChange
+    end
+    object lstPalette: TListBox
+      Left = 0
+      Top = 23
+      Width = 556
+      Height = 216
+      Style = lbOwnerDrawFixed
+      Align = alClient
+      BorderStyle = bsNone
+      ItemHeight = 22
+      TabOrder = 1
+      OnDblClick = HandlePaletteDblClick
+      OnDrawItem = HandlePaletteDrawItem
+    end
   end
   object dlgOpen: TOpenDialog
     Filter = 'Markdown files (*.md)|*.md|All files (*.*)|*.*'

@@ -112,7 +112,10 @@ $(PostBuildEvent)]]></PostBuildEvent>
         <DCCReference Include="..\Shared\Markdown4DStudio.LinkPolicy.pas"/>
         <DCCReference Include="..\Shared\Markdown4DStudio.CommandSet.pas"/>
         <DCCReference Include="..\Shared\Markdown4DStudio.SessionSync.pas"/>
-        <DCCReference Include="Markdown4DStudioFMX.Main.pas"/>
+        <DCCReference Include="Markdown4DStudioFMX.Main.pas">
+            <Form>Markdown4DStudioFMXForm</Form>
+            <FormType>fmx</FormType>
+        </DCCReference>
         <DCCReference Include="..\Shared\Markdown4DStudio.Defines.pas"/>
         <DCCReference Include="..\Shared\Markdown4DStudio.Text.pas"/>
         <DCCReference Include="..\Shared\Markdown4DStudio.Outline.pas"/>
