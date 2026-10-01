@@ -19,6 +19,7 @@ uses
   Markdown4D.Layout.DisplayList,
   Markdown4D.Theme,
   Markdown4D.Viewer.Model,
+  Markdown4D.Viewer.Clicks,
   Markdown4D.Viewer.ContextMenu,
   Markdown4D.Viewer.ImageDownloader,
   Markdown4D.Viewer.ImageSettings,
@@ -77,6 +78,7 @@ type
       FFlushTimer: TTimer;
       FCopyFeedbackTimer: TTimer;
       FSelecting: Boolean;
+      FClickCounter: TMarkdownClickCounter;
       FDraggingScrollBar: Boolean;
       FScrollBarGrabDelta: Single;
       FLastMousePoint: TPointF;
@@ -117,6 +119,7 @@ type
     function PointOnCopyButton(const Point: TLayoutPointF): Boolean;
     procedure ClearCodeHover;
     procedure CopyCodeToClipboard(const Text: string);
+    procedure SelectForPress(const Point: TLayoutPointF; const X, Y: Single; const IsDoubleClick: Boolean);
     procedure HandleCopyFeedbackTimer(Sender: TObject);
     procedure DrawCopyButton(const Painter: IPainter);
     procedure PopupContextMenu(const X, Y: Single);
@@ -599,8 +602,24 @@ begin
 
   FPressedLinkUrl := '';
   FSelecting := True;
-  FModel.SetSelectionAnchor(Point);
+  SelectForPress(Point, X, Y, ssDouble in Shift);
   RedrawContent;
+end;
+
+// The platform reports the double click by its own settings. FMX offers no
+// way to read those, so a third click is counted with Windows' defaults.
+procedure TMarkdownViewer.SelectForPress(const Point: TLayoutPointF; const X, Y: Single;
+  const IsDoubleClick: Boolean);
+begin
+  const ClickCount = FClickCounter.RegisterPress(TThread.GetTickCount64, X, Y, IsDoubleClick,
+    TMarkdownClickCounter.DefaultIntervalMilliseconds, TMarkdownClickCounter.DefaultTolerance);
+
+  if ClickCount = TMarkdownClickCounter.TripleClick then
+    FModel.SelectLineAt(Point)
+  else if ClickCount = TMarkdownClickCounter.DoubleClick then
+    FModel.SelectWordAt(Point)
+  else
+    FModel.SetSelectionAnchor(Point);
 end;
 
 procedure TMarkdownViewer.MouseMove(Shift: TShiftState; X, Y: Single);

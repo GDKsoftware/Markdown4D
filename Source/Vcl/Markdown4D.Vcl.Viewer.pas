@@ -20,6 +20,7 @@ uses
   Markdown4D.Layout.DisplayList,
   Markdown4D.Theme,
   Markdown4D.Viewer.Model,
+  Markdown4D.Viewer.Clicks,
   Markdown4D.Viewer.ContextMenu,
   Markdown4D.Viewer.ImageDownloader,
   Markdown4D.Viewer.ImageSettings,
@@ -78,6 +79,7 @@ type
       FFlushTimer: TTimer;
       FLoadedImages: TObjectDictionary<string, TGraphic>;
       FSelecting: Boolean;
+      FClickCounter: TMarkdownClickCounter;
       FLastMousePoint: TPoint;
       FHasLastMousePoint: Boolean;
       FCodeHoverActive: Boolean;
@@ -126,6 +128,7 @@ type
     function PointOnCopyButton(const Point: TLayoutPointF): Boolean;
     procedure ClearCodeHover;
     procedure CopyCodeToClipboard(const Text: string);
+    procedure SelectForPress(const Point: TLayoutPointF; const X, Y: Integer; const IsDoubleClick: Boolean);
     procedure HandleCopyFeedbackTimer(Sender: TObject);
     procedure DrawCopyButton(const Painter: IPainter);
     procedure ShowContextMenu(const X, Y: Integer);
@@ -595,8 +598,25 @@ begin
 
   FPressedLinkUrl := '';
   FSelecting := True;
-  FModel.SetSelectionAnchor(Point);
+  SelectForPress(Point, X, Y, ssDouble in Shift);
   Invalidate;
+end;
+
+// Windows reports a double click but not a third one; the counter takes the
+// user's double-click time and distance to recognise it.
+procedure TMarkdownViewer.SelectForPress(const Point: TLayoutPointF; const X, Y: Integer;
+  const IsDoubleClick: Boolean);
+begin
+  const Tolerance = Max(GetSystemMetrics(SM_CXDOUBLECLK), GetSystemMetrics(SM_CYDOUBLECLK)) / 2;
+  const ClickCount = FClickCounter.RegisterPress(GetTickCount64, X, Y, IsDoubleClick, GetDoubleClickTime,
+    Tolerance);
+
+  if ClickCount = TMarkdownClickCounter.TripleClick then
+    FModel.SelectLineAt(Point)
+  else if ClickCount = TMarkdownClickCounter.DoubleClick then
+    FModel.SelectWordAt(Point)
+  else
+    FModel.SetSelectionAnchor(Point);
 end;
 
 procedure TMarkdownViewer.MouseMove(Shift: TShiftState; X, Y: Integer);
