@@ -26,6 +26,8 @@ uses
   Markdown4D.Editor.Highlighter,
   Markdown4D.Editor.Sync,
   Markdown4D.Viewer.Lifetime,
+  Markdown4D.AutoScroll,
+  Markdown4D.Vcl.AutoScroll,
   Markdown4D.Vcl.Painter,
   Markdown4D.Vcl.Viewer;
 
@@ -34,7 +36,7 @@ type
   // source line now at the top. Hosts use it to keep an outline/ToC in sync.
   TMarkdownSyncScrollEvent = procedure(Sender: TObject; const SourceLine: Integer) of object;
 
-  TMarkdownEditor = class(TCustomControl)
+  TMarkdownEditor = class(TCustomControl, IMarkdownAutoScrollTarget)
   private
     const
       // How long an editor waits for another process to let go of the
@@ -85,6 +87,8 @@ type
       FUpdatingPreview: Boolean;
       FSync: TMarkdownEditorSync;
       FSyncScroll: Boolean;
+      FAutoScroller: TMarkdownVclAutoScroller;
+      FAutoScrollRemainder: Single;
       FSyncing: Boolean;
       FSyncedLayoutCount: Integer;
       FRowModel: TMarkdownEditorRows;
@@ -178,6 +182,13 @@ type
     procedure WMGetDlgCode(var Message: TWMGetDlgCode); message WM_GETDLGCODE;
     procedure WMSetFocus(var Message: TWMSetFocus); message WM_SETFOCUS;
     procedure WMKillFocus(var Message: TWMKillFocus); message WM_KILLFOCUS;
+    procedure WMCaptureChanged(var Message: TMessage); message WM_CAPTURECHANGED;
+    function GetAutoScroll: Boolean;
+    procedure PaintAutoScrollOrigin;
+    procedure SetAutoScroll(const Value: Boolean);
+    function CanAutoScroll: Boolean;
+    procedure AutoScrollBy(const Delta: Single);
+    procedure AutoScrollChanged;
 
   protected
     procedure Notification(AComponent: TComponent; Operation: TOperation); override;
@@ -191,6 +202,7 @@ type
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
     function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean; override;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
+    procedure DoContextPopup(MousePos: TPoint; var Handled: Boolean); override;
     function ApplyKeyStroke(const Stroke: TEditorKeyStroke): Boolean;
     procedure KeyPress(var Key: Char); override;
 
@@ -258,6 +270,9 @@ type
     // SyncScroll is on, two-way scroll synchronisation between the panes.
     property Preview: TMarkdownViewer read FPreview write SetPreview;
     property SyncScroll: Boolean read FSyncScroll write FSyncScroll default True;
+    // A middle click scrolls the text by the distance of the pointer from
+    // where it was pressed, until the next click, key or wheel turn.
+    property AutoScroll: Boolean read GetAutoScroll write SetAutoScroll default True;
     property Align;
     property Anchors;
     property Constraints;
@@ -339,6 +354,8 @@ begin
   FAutoScrollTimer.Interval := AutoScrollIntervalMilliseconds;
   FAutoScrollTimer.OnTimer := HandleAutoScrollTimer;
 
+  FAutoScroller := TMarkdownVclAutoScroller.Create(Self, Self);
+
   RebuildRows;
 end;
 
@@ -349,6 +366,7 @@ end;
 
 destructor TMarkdownEditor.Destroy;
 begin
+  FAutoScroller.Free;
   FLifetime.Shutdown;
   FPreview := nil;
   if FPreviewTimer <> nil then
@@ -841,7 +859,17 @@ begin
   EnsureDesignSample;
   EnsureBufferSize;
   RenderContent(FBuffer.Canvas, Max(1, ClientWidth), Max(1, ClientHeight), CurrentPPI, FScrollOffset);
+  PaintAutoScrollOrigin;
   Canvas.Draw(0, 0, FBuffer);
+end;
+
+procedure TMarkdownEditor.PaintAutoScrollOrigin;
+begin
+  if not FAutoScroller.IsActive then
+    Exit;
+
+  const Painter: IPainter = TMarkdownVclPainter.Create(FBuffer.Canvas, CurrentPPI);
+  FAutoScroller.PaintOrigin(Painter, FTheme.BackgroundColor, FTheme.TextColor);
 end;
 
 procedure TMarkdownEditor.EnsureDesignSample;
@@ -1585,6 +1613,9 @@ procedure TMarkdownEditor.MouseDown(Button: TMouseButton; Shift: TShiftState; X,
 begin
   inherited MouseDown(Button, Shift, X, Y);
 
+  if FAutoScroller.TryHandlePress(Button, X, Y) then
+    Exit;
+
   if Button = TMouseButton.mbRight then
   begin
     if CanFocus then
@@ -1660,6 +1691,12 @@ procedure TMarkdownEditor.MouseMove(Shift: TShiftState; X, Y: Integer);
 begin
   inherited MouseMove(Shift, X, Y);
 
+  if FAutoScroller.IsActive then
+  begin
+    FAutoScroller.HandleMove(X, Y);
+    Exit;
+  end;
+
   if FDragPending or FDraggingSelection then
   begin
     UpdateSelectionDrag(X, Y);
@@ -1676,6 +1713,12 @@ end;
 procedure TMarkdownEditor.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 begin
   inherited MouseUp(Button, Shift, X, Y);
+
+  if Button = TMouseButton.mbMiddle then
+  begin
+    FAutoScroller.HandleMiddleUp;
+    Exit;
+  end;
 
   if Button <> TMouseButton.mbLeft then
     Exit;
@@ -1748,6 +1791,13 @@ end;
 
 function TMarkdownEditor.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean;
 begin
+  if FAutoScroller.IsActive then
+  begin
+    FAutoScroller.Stop;
+    Result := True;
+    Exit;
+  end;
+
   const Notches = WheelDelta / WHEEL_DELTA;
   SetScrollOffset(FScrollOffset - Round(Notches * WheelLinesPerNotch * LineHeightPx));
   Result := True;
@@ -1755,6 +1805,13 @@ end;
 
 procedure TMarkdownEditor.KeyDown(var Key: Word; Shift: TShiftState);
 begin
+  if FAutoScroller.IsActive then
+  begin
+    FAutoScroller.Stop;
+    Key := 0;
+    Exit;
+  end;
+
   inherited KeyDown(Key, Shift);
 
   if not ApplyKeyStroke(TMarkdownEditorKeymap.Resolve(Key, Shift)) then
@@ -1881,7 +1938,62 @@ procedure TMarkdownEditor.WMKillFocus(var Message: TWMKillFocus);
 begin
   inherited;
 
+  FAutoScroller.Stop;
   Winapi.Windows.DestroyCaret;
+  Invalidate;
+end;
+
+// Another window taking the mouse ends autoscroll; releasing it ourselves on
+// stop arrives here too and finds nothing left to stop.
+procedure TMarkdownEditor.WMCaptureChanged(var Message: TMessage);
+begin
+  inherited;
+
+  if HWND(Message.LParam) <> Handle then
+    FAutoScroller.Stop;
+end;
+
+procedure TMarkdownEditor.DoContextPopup(MousePos: TPoint; var Handled: Boolean);
+begin
+  if FAutoScroller.TakeSuppressedMenu then
+  begin
+    Handled := True;
+    Exit;
+  end;
+
+  inherited DoContextPopup(MousePos, Handled);
+end;
+
+function TMarkdownEditor.GetAutoScroll: Boolean;
+begin
+  Result := FAutoScroller.Enabled;
+end;
+
+procedure TMarkdownEditor.SetAutoScroll(const Value: Boolean);
+begin
+  FAutoScroller.Enabled := Value;
+end;
+
+function TMarkdownEditor.CanAutoScroll: Boolean;
+begin
+  Result := (MaxScrollOffset > 0);
+end;
+
+// The editor scrolls by whole pixels; the part of a step below one pixel is
+// kept for the next, or a slow scroll would never move.
+procedure TMarkdownEditor.AutoScrollBy(const Delta: Single);
+begin
+  const Total = FAutoScrollRemainder + Delta;
+  const WholePixels = Trunc(Total);
+  FAutoScrollRemainder := Total - WholePixels;
+
+  if WholePixels <> 0 then
+    SetScrollOffset(FScrollOffset + WholePixels);
+end;
+
+procedure TMarkdownEditor.AutoScrollChanged;
+begin
+  FAutoScrollRemainder := 0;
   Invalidate;
 end;
 

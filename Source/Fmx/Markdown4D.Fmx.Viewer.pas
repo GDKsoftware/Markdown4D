@@ -20,6 +20,8 @@ uses
   Markdown4D.Theme,
   Markdown4D.Viewer.Model,
   Markdown4D.Viewer.Clicks,
+  Markdown4D.AutoScroll,
+  Markdown4D.Fmx.AutoScroll,
   Markdown4D.Viewer.ContextMenu,
   Markdown4D.Viewer.ImageDownloader,
   Markdown4D.Viewer.ImageSettings,
@@ -46,7 +48,7 @@ type
   TMarkdownRemoteImageEvent = procedure(const Sender: TObject; const Url: string;
     var Allow: Boolean) of object;
 
-  TMarkdownViewer = class(TControl)
+  TMarkdownViewer = class(TControl, IMarkdownAutoScrollTarget)
   private
     const
       DefaultControlWidth = 300;
@@ -79,6 +81,7 @@ type
       FCopyFeedbackTimer: TTimer;
       FSelecting: Boolean;
       FClickCounter: TMarkdownClickCounter;
+      FAutoScroller: TMarkdownFmxAutoScroller;
       FDraggingScrollBar: Boolean;
       FScrollBarGrabDelta: Single;
       FLastMousePoint: TPointF;
@@ -120,6 +123,11 @@ type
     procedure ClearCodeHover;
     procedure CopyCodeToClipboard(const Text: string);
     procedure SelectForPress(const Point: TLayoutPointF; const X, Y: Single; const IsDoubleClick: Boolean);
+    function GetAutoScroll: Boolean;
+    procedure SetAutoScroll(const Value: Boolean);
+    function CanAutoScroll: Boolean;
+    procedure AutoScrollBy(const Delta: Single);
+    procedure AutoScrollChanged;
     procedure HandleCopyFeedbackTimer(Sender: TObject);
     procedure DrawCopyButton(const Painter: IPainter);
     procedure PopupContextMenu(const X, Y: Single);
@@ -159,6 +167,7 @@ type
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Single); override;
     procedure MouseWheel(Shift: TShiftState; WheelDelta: Integer; var Handled: Boolean); override;
     procedure DoMouseLeave; override;
+    procedure DoExit; override;
     procedure KeyDown(var Key: Word; var KeyChar: WideChar; Shift: TShiftState); override;
 
   public
@@ -190,6 +199,9 @@ type
     property ThemePreset: TMarkdownThemePreset read FThemePreset write SetThemePreset
       default TMarkdownThemePreset.Light;
     property Images: TMarkdownViewerImageSettings read FImages write SetImages;
+    // A middle click scrolls the content by the distance of the pointer from
+    // where it was pressed, until the next click, key or wheel turn.
+    property AutoScroll: Boolean read GetAutoScroll write SetAutoScroll default True;
     property Align;
     property Anchors;
     property Cursor;
@@ -288,10 +300,13 @@ begin
   FCopyFeedbackTimer.Enabled := False;
   FCopyFeedbackTimer.Interval := CopyFeedbackMilliseconds;
   FCopyFeedbackTimer.OnTimer := HandleCopyFeedbackTimer;
+
+  FAutoScroller := TMarkdownFmxAutoScroller.Create(Self, Self);
 end;
 
 destructor TMarkdownViewer.Destroy;
 begin
+  FAutoScroller.Free;
   FLifetime.Shutdown;
   FImageDownloader.Free;
   FRequestedImageSources.Free;
@@ -521,6 +536,7 @@ begin
   end;
 
   DrawScrollBar(PainterLifetime);
+  FAutoScroller.PaintOrigin(PainterLifetime, FTheme.BackgroundColor, FTheme.TextColor);
 end;
 
 procedure TMarkdownViewer.EnsureDesignSample;
@@ -564,6 +580,9 @@ end;
 procedure TMarkdownViewer.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Single);
 begin
   inherited MouseDown(Button, Shift, X, Y);
+
+  if FAutoScroller.TryHandlePress(Button, X, Y) then
+    Exit;
 
   if Button = TMouseButton.mbRight then
   begin
@@ -629,6 +648,12 @@ begin
   FLastMousePoint := TPointF.Create(X, Y);
   FHasLastMousePoint := True;
 
+  if FAutoScroller.IsActive then
+  begin
+    FAutoScroller.HandleMove(X, Y);
+    Exit;
+  end;
+
   if FDraggingScrollBar then
   begin
     DragScrollBarTo(Y);
@@ -665,6 +690,12 @@ procedure TMarkdownViewer.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y
 begin
   inherited MouseUp(Button, Shift, X, Y);
 
+  if Button = TMouseButton.mbMiddle then
+  begin
+    FAutoScroller.HandleMiddleUp;
+    Exit;
+  end;
+
   if Button <> TMouseButton.mbLeft then
     Exit;
 
@@ -694,6 +725,13 @@ end;
 
 procedure TMarkdownViewer.MouseWheel(Shift: TShiftState; WheelDelta: Integer; var Handled: Boolean);
 begin
+  if FAutoScroller.IsActive then
+  begin
+    FAutoScroller.Stop;
+    Handled := True;
+    Exit;
+  end;
+
   inherited MouseWheel(Shift, WheelDelta, Handled);
   if Handled then
     Exit;
@@ -721,6 +759,14 @@ end;
 
 procedure TMarkdownViewer.KeyDown(var Key: Word; var KeyChar: WideChar; Shift: TShiftState);
 begin
+  if FAutoScroller.IsActive then
+  begin
+    FAutoScroller.Stop;
+    Key := 0;
+    KeyChar := #0;
+    Exit;
+  end;
+
   inherited KeyDown(Key, KeyChar, Shift);
 
   if HandleKey(Key, Shift) then
@@ -772,6 +818,38 @@ begin
     Exit;
 
   SetScrollPosition(FModel.DisplayList.Height);
+end;
+
+procedure TMarkdownViewer.DoExit;
+begin
+  FAutoScroller.Stop;
+
+  inherited DoExit;
+end;
+
+function TMarkdownViewer.GetAutoScroll: Boolean;
+begin
+  Result := FAutoScroller.Enabled;
+end;
+
+procedure TMarkdownViewer.SetAutoScroll(const Value: Boolean);
+begin
+  FAutoScroller.Enabled := Value;
+end;
+
+function TMarkdownViewer.CanAutoScroll: Boolean;
+begin
+  Result := (ContentHeight > Height);
+end;
+
+procedure TMarkdownViewer.AutoScrollBy(const Delta: Single);
+begin
+  SetScrollPosition(FModel.ScrollOffset + Delta);
+end;
+
+procedure TMarkdownViewer.AutoScrollChanged;
+begin
+  RedrawContent;
 end;
 
 procedure TMarkdownViewer.SetScrollPosition(const Value: Single);

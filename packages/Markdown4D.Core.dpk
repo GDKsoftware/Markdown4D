@@ -121,6 +121,9 @@ contains
   Markdown4D.Viewer.ContextMenu in '..\Source\Layout\Markdown4D.Viewer.ContextMenu.pas',
   Markdown4D.Viewer.Model in '..\Source\Layout\Markdown4D.Viewer.Model.pas',
   Markdown4D.Viewer.Clicks in '..\Source\Layout\Markdown4D.Viewer.Clicks.pas',
+  Markdown4D.AutoScroll in '..\Source\Layout\Markdown4D.AutoScroll.pas',
+  Markdown4D.AutoScroll.Icon in '..\Source\Layout\Markdown4D.AutoScroll.Icon.pas',
+  Markdown4D.AutoScroll.Cursors in '..\Source\Layout\Markdown4D.AutoScroll.Cursors.pas',
   Markdown4D.Viewer.ScrollBar in '..\Source\Layout\Markdown4D.Viewer.ScrollBar.pas',
   Markdown4D.Viewer.Shared in '..\Source\Layout\Markdown4D.Viewer.Shared.pas';
 end.
