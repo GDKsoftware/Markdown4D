@@ -46,6 +46,9 @@ type
       DefaultFlushIntervalMilliseconds = 100;
       BottomEpsilon = 0.5;
       LineTopEpsilon = 0.5;
+      CopiedIndentWidth = 2;
+      CopiedSpace = ' ';
+      CopiedTab = #9;
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
@@ -77,6 +80,10 @@ type
     function SelectedCharacterRange(const Run: IDisplayTextRun; const ItemIndex: Integer;
       const StartPosition, EndPosition: TTextPosition; out CharFrom, CharTo: Integer): Boolean;
     function BlockIndexOfItem(const ItemIndex: Integer): Integer;
+    class function SeparatorBefore(const Run: IDisplayTextRun; const StartsBlock: Boolean;
+      const PreviousTop: Single): string; static;
+    class function FallbackSeparator(const Run: IDisplayTextRun; const StartsBlock: Boolean;
+      const PreviousTop: Single): string; static;
     function TryFindSelectionEdges(out FirstRun, LastRun: IDisplayTextRun;
                                    out FirstCharacter, LastCharacter: Integer): Boolean;
     function PrefixWidth(const Run: IDisplayTextRun; const CharacterCount: Integer): Single;
@@ -403,19 +410,47 @@ begin
     const Segment = Copy(Run.Text, CharFrom + 1, CharTo - CharFrom);
     const BlockIndex = BlockIndexOfItem(Index);
 
-    if not HasPrevious then
-      Result := Segment
-    else if BlockIndex <> PreviousBlock then
-      Result := Result + sLineBreak + Segment
-    else if not SameValue(Run.Bounds.Top, PreviousTop, LineTopEpsilon) then
-      Result := Result + ' ' + Segment
-    else
-      Result := Result + Segment;
+    if HasPrevious then
+      Result := Result + SeparatorBefore(Run, BlockIndex <> PreviousBlock, PreviousTop);
+
+    Result := Result + Segment;
 
     HasPrevious := True;
     PreviousTop := Run.Bounds.Top;
     PreviousBlock := BlockIndex;
   end;
+end;
+
+// A run the layout gave a join copies with that join. One without, drawn by an
+// extension for instance, falls back on where it sits: a new block starts a
+// new line, a new line within a block is a space.
+class function TMarkdownViewerModel.SeparatorBefore(const Run: IDisplayTextRun; const StartsBlock: Boolean;
+  const PreviousTop: Single): string;
+begin
+  const Indent = StringOfChar(CopiedSpace, Run.IndentLevel * CopiedIndentWidth);
+
+  case Run.Join of
+    TDisplayTextJoin.None      : Result := FallbackSeparator(Run, StartsBlock, PreviousTop);
+    TDisplayTextJoin.Space     : Result := CopiedSpace;
+    TDisplayTextJoin.Tab       : Result := CopiedTab;
+    TDisplayTextJoin.LineBreak : Result := sLineBreak + Indent;
+    TDisplayTextJoin.BlankLine : Result := sLineBreak + sLineBreak + Indent;
+  else
+    raise EMarkdownError.CreateFmt('Unhandled text join: %d', [Ord(Run.Join)]);
+  end;
+end;
+
+class function TMarkdownViewerModel.FallbackSeparator(const Run: IDisplayTextRun; const StartsBlock: Boolean;
+  const PreviousTop: Single): string;
+begin
+  const StartsLine = not SameValue(Run.Bounds.Top, PreviousTop, LineTopEpsilon);
+
+  if StartsBlock then
+    Result := sLineBreak
+  else if StartsLine then
+    Result := CopiedSpace
+  else
+    Result := '';
 end;
 
 function TMarkdownViewerModel.TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean;

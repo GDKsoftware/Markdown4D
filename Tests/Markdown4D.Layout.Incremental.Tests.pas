@@ -36,6 +36,9 @@ type
       EditedHeadingSource = FirstParagraph + ' grown considerably longer so it wraps' + ParagraphSeparator + '# ' +
         HeadingText;
       ThirdPrefix = 'third';
+      ListItemText = 'item';
+      ListOnlySource = '- ' + ListItemText;
+      IntroThenListSource = 'intro' + ParagraphSeparator + '- ' + ListItemText;
       LayoutWidth = 200.0;
       SingleTolerance = 0.05;
     class function CreateTestTheme: TMarkdownTheme;
@@ -68,6 +71,9 @@ type
 
     [Test]
     procedure UpdateLayout_ChangedParagraphBeforeHeading_CollapsesSpacingToLarger;
+
+    [Test]
+    procedure UpdateLayout_BlockInsertedBefore_ReusedBlockKeepsItsJoin;
   end;
 
 implementation
@@ -153,6 +159,15 @@ begin
   const Heading = FindRunByPrefix(TextRunsOf(Updated), HeadingText);
   Assert.IsNotNull(Heading);
   AssertSingle(Paragraph.Top + Paragraph.Height + HeadingSpacingAboveValue, Heading.Bounds.Top);
+end;
+
+procedure TMarkdownLayoutIncrementalTests.UpdateLayout_BlockInsertedBefore_ReusedBlockKeepsItsJoin;
+begin
+  const Updated = UpdateSource(ListOnlySource, IntroThenListSource, TLayoutBlockRange.Create(0, 0, 1));
+
+  const Item = Updated.BlockInfos[1];
+  const Marker = Updated.Items[Item.FirstItemIndex] as IDisplayTextRun;
+  Assert.AreEqual<TDisplayTextJoin>(TDisplayTextJoin.BlankLine, Marker.Join);
 end;
 
 class function TMarkdownLayoutIncrementalTests.CreateTestTheme: TMarkdownTheme;
