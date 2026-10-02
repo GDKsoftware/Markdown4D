@@ -60,6 +60,21 @@ type
 
     [Test]
     procedure ContainsEmoji_TextWithEmoji_ReturnsTrue;
+
+    [Test]
+    [TestCase('PlainText', 'ab~111', '~', False)]
+    [TestCase('SurrogatePair', 'a'#$D83D#$DE04'b~11011', '~', False)]
+    [TestCase('JoinerSequence', #$D83D#$DC69#$200D#$D83D#$DCBB'~100001', '~', False)]
+    [TestCase('TwoFlags', #$D83C#$DDF3#$D83C#$DDF1#$D83C#$DDF3#$D83C#$DDF1'~100010001', '~', False)]
+    [TestCase('Keycap', '#'#$FE0F#$20E3'~1001', '~', False)]
+    [TestCase('VariationSelector', #$2600#$FE0F'~101', '~', False)]
+    [TestCase('SkinTone', #$D83D#$DC4D#$D83C#$DFFD'~10001', '~', False)]
+    [TestCase('JoinerAfterSelector', #$2764#$FE0F#$200D#$D83D#$DD25'~100001', '~', False)]
+    [TestCase('DevanagariJoiner', #$0915#$094D#$200D#$0937'~11111', '~', False)]
+    procedure IsClusterBoundary_EveryCodeUnitCount_AllowsOnlyWholeCharacters(const Text, Expected: string);
+
+    [Test]
+    procedure NextClusterBoundary_BeforeEmoji_SkipsWholeSurrogatePair;
   end;
 
 implementation
@@ -175,6 +190,30 @@ begin
   const HasEmoji = TEmojiSegments.ContainsEmoji(Format('Regel met %s en %s', [SmileEmoji, RocketEmoji]));
 
   Assert.IsTrue(HasEmoji);
+end;
+
+procedure TEmojiSegmentsTests.IsClusterBoundary_EveryCodeUnitCount_AllowsOnlyWholeCharacters(const Text,
+  Expected: string);
+begin
+  var Actual := '';
+  for var CodeUnitCount := 0 to Length(Text) do
+  begin
+    if TEmojiSegments.IsClusterBoundary(Text, CodeUnitCount) then
+      Actual := Actual + '1'
+    else
+      Actual := Actual + '0';
+  end;
+
+  Assert.AreEqual(Expected, Actual);
+end;
+
+procedure TEmojiSegmentsTests.NextClusterBoundary_BeforeEmoji_SkipsWholeSurrogatePair;
+begin
+  const Text = Format('a%sb', [SmileEmoji]);
+
+  const Boundary = TEmojiSegments.NextClusterBoundary(Text, 1);
+
+  Assert.AreEqual(3, Boundary);
 end;
 
 end.

@@ -207,11 +207,16 @@ begin
   var Left := TopLeft.X;
   for var Segment in TEmojiSegments.Split(Text) do
   begin
+    var ColorWidth: Single;
     const IsDrawnInColor = Segment.IsEmoji and
-      ColorEmoji.TryDraw(FCanvas.Handle, Left, BaselineY, Segment.Text, PixelSize, Color);
-    if not IsDrawnInColor then
-      DrawGdiText(Left, BaselineY, Segment.Text, Font, Color);
+      ColorEmoji.TryDraw(FCanvas.Handle, Left, BaselineY, Segment.Text, PixelSize, Color, ColorWidth);
+    if IsDrawnInColor then
+    begin
+      Left := Left + ColorWidth;
+      Continue;
+    end;
 
+    DrawGdiText(Left, BaselineY, Segment.Text, Font, Color);
     Left := Left + MeasureSegmentWidth(Segment, Font);
   end;
 end;

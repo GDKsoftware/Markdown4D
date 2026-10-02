@@ -24,6 +24,7 @@ type
       SecondLineY = 30.0;
       MissY = 300.0;
       ContentPaddingValue = 16.0;
+      TextWithSmileEmoji = 'a'#$D83D#$DE04'b';
     class function CreateTestTheme: TMarkdownTheme;
     class function LayoutMarkdown(const Source: string; const AvailableWidth: Single): IMarkdownDisplayList;
     class function LayoutMarkdownWithPadding(const Source: string;
@@ -48,6 +49,12 @@ type
 
     [Test]
     procedure TryFindTextPosition_PointOutsideContent_ReturnsFalse;
+
+    [Test]
+    [TestCase('LeftOfEmojiMiddle', '19,1')]
+    [TestCase('EmojiMiddle', '20,1')]
+    [TestCase('RightOfEmojiMiddle', '21,3')]
+    procedure TryFindTextPosition_PointOnEmoji_NeverSplitsSurrogatePair(const X: Single; const Expected: Integer);
   end;
 
 implementation
@@ -144,6 +151,21 @@ begin
   var Link: IMarkdownLink;
   const FoundLink = TMarkdownHitTester.TryFindLink(DisplayList, MissPoint, Link);
   Assert.IsFalse(FoundLink);
+end;
+
+procedure TMarkdownLayoutHitTestTests.TryFindTextPosition_PointOnEmoji_NeverSplitsSurrogatePair(const X: Single;
+  const Expected: Integer);
+begin
+  const DisplayList = LayoutMarkdown(TextWithSmileEmoji, DefaultWidth);
+  const Measurer = CreateMeasurer;
+
+  var Hit: TMarkdownTextHit;
+  const Found = TMarkdownHitTester.TryFindTextPosition(DisplayList, TLayoutPointF.Create(X, FirstLineY),
+    Measurer, Hit);
+
+  Assert.IsTrue(Found);
+  Assert.AreEqual(TextWithSmileEmoji, Hit.Run.Text);
+  Assert.AreEqual(Expected, Hit.CharacterIndex);
 end;
 
 class function TMarkdownLayoutHitTestTests.CreateTestTheme: TMarkdownTheme;

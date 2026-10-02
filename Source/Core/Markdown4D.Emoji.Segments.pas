@@ -24,6 +24,11 @@ type
       FirstEmojiHighSurrogate = #$D83C;
       LastEmojiHighSurrogate = #$D83E;
       TagHighSurrogate = #$DB40;
+      ModifierAndIndicatorHighSurrogate = #$D83C;
+      FirstSkinToneLowSurrogate = #$DFFB;
+      LastSkinToneLowSurrogate = #$DFFF;
+      FirstRegionalIndicatorLowSurrogate = #$DDE6;
+      LastRegionalIndicatorLowSurrogate = #$DDFF;
     class function CreateSegment(const Text: string; const Start, Count: Integer;
       const IsEmoji: Boolean): TEmojiSegment; static;
     class function IsEmojiAt(const Text: string; const Index: Integer;
@@ -32,10 +37,20 @@ type
     class function IsPresentationMarkAt(const Text: string; const Index: Integer): Boolean; static;
     class function IsEmojiPresentation(const Character: Char): Boolean; static;
     class function CodeUnitCountAt(const Text: string; const Index: Integer): Integer; static;
+    class function CodePointStartBefore(const Text: string; const Index: Integer): Integer; static;
+    class function IsExtendingMarkAt(const Text: string; const Index: Integer): Boolean; static;
+    class function IsEmojiOrMarkAt(const Text: string; const Index: Integer): Boolean; static;
+    class function IsJoinerInsideEmoji(const Text: string; const JoinerIndex: Integer): Boolean; static;
+    class function IsPairedLowSurrogateAt(const Text: string; const Index: Integer;
+      const HighSurrogate, FirstLow, LastLow: Char): Boolean; static;
+    class function IsRegionalIndicatorAt(const Text: string; const Index: Integer): Boolean; static;
+    class function CompletesRegionalIndicatorPair(const Text: string; const Index: Integer): Boolean; static;
 
   public
     class function ContainsEmoji(const Text: string): Boolean; static;
     class function Split(const Text: string): TArray<TEmojiSegment>; static;
+    class function IsClusterBoundary(const Text: string; const CodeUnitCount: Integer): Boolean; static;
+    class function NextClusterBoundary(const Text: string; const CodeUnitCount: Integer): Integer; static;
   end;
 
 implementation
@@ -83,6 +98,42 @@ begin
   const HasTail = (SegmentStart <= Length(Text));
   if HasTail then
     Result := Result + [CreateSegment(Text, SegmentStart, Length(Text) - SegmentStart + 1, IsSegmentEmoji)];
+end;
+
+// Whether a caret may stand after the first CodeUnitCount code units: never
+// inside a surrogate pair, never before a presentation mark, skin tone or tag,
+// never on either side of a joiner inside an emoji, and never between the two
+// regional indicators of a flag.
+class function TEmojiSegments.IsClusterBoundary(const Text: string; const CodeUnitCount: Integer): Boolean;
+begin
+  const IsTextEdge = (CodeUnitCount <= 0) or (CodeUnitCount >= Length(Text));
+  if IsTextEdge then
+    Exit(True);
+
+  const BeforeIndex = CodeUnitCount;
+  const AfterIndex  = CodeUnitCount + 1;
+
+  const SplitsSurrogatePair = (Text[BeforeIndex].IsHighSurrogate and Text[AfterIndex].IsLowSurrogate);
+  if SplitsSurrogatePair then
+    Exit(False);
+
+  if IsExtendingMarkAt(Text, AfterIndex) then
+    Exit(False);
+
+  if Text[AfterIndex] = ZeroWidthJoiner then
+    Exit(not IsJoinerInsideEmoji(Text, AfterIndex));
+
+  if Text[BeforeIndex] = ZeroWidthJoiner then
+    Exit(not IsJoinerInsideEmoji(Text, BeforeIndex));
+
+  Result := not CompletesRegionalIndicatorPair(Text, AfterIndex);
+end;
+
+class function TEmojiSegments.NextClusterBoundary(const Text: string; const CodeUnitCount: Integer): Integer;
+begin
+  Result := CodeUnitCount + 1;
+  while not IsClusterBoundary(Text, Result) do
+    Inc(Result);
 end;
 
 class function TEmojiSegments.CreateSegment(const Text: string; const Start, Count: Integer;
@@ -153,6 +204,68 @@ begin
     Result := 2
   else
     Result := 1;
+end;
+
+class function TEmojiSegments.CodePointStartBefore(const Text: string; const Index: Integer): Integer;
+begin
+  const IsAfterSurrogatePair = (Index > 2) and Text[Index - 1].IsLowSurrogate and Text[Index - 2].IsHighSurrogate;
+  if IsAfterSurrogatePair then
+    Result := Index - 2
+  else
+    Result := Index - 1;
+end;
+
+class function TEmojiSegments.IsExtendingMarkAt(const Text: string; const Index: Integer): Boolean;
+begin
+  const IsSkinTone = IsPairedLowSurrogateAt(Text, Index, ModifierAndIndicatorHighSurrogate,
+    FirstSkinToneLowSurrogate, LastSkinToneLowSurrogate);
+  const IsTag = (Text[Index] = TagHighSurrogate) and (CodeUnitCountAt(Text, Index) = 2);
+  Result := IsPresentationMarkAt(Text, Index) or IsSkinTone or IsTag;
+end;
+
+class function TEmojiSegments.IsEmojiOrMarkAt(const Text: string; const Index: Integer): Boolean;
+begin
+  Result := IsPresentationMarkAt(Text, Index) or IsEmojiAt(Text, Index, False, False);
+end;
+
+class function TEmojiSegments.IsJoinerInsideEmoji(const Text: string; const JoinerIndex: Integer): Boolean;
+begin
+  if JoinerIndex <= 1 then
+    Exit(False);
+
+  const PreviousStart = CodePointStartBefore(Text, JoinerIndex);
+  Result := IsEmojiOrMarkAt(Text, PreviousStart);
+end;
+
+class function TEmojiSegments.IsPairedLowSurrogateAt(const Text: string; const Index: Integer;
+  const HighSurrogate, FirstLow, LastLow: Char): Boolean;
+begin
+  const HasPair = (Index < Length(Text)) and (Text[Index] = HighSurrogate);
+  Result := HasPair and (Text[Index + 1] >= FirstLow) and (Text[Index + 1] <= LastLow);
+end;
+
+class function TEmojiSegments.IsRegionalIndicatorAt(const Text: string; const Index: Integer): Boolean;
+begin
+  Result := IsPairedLowSurrogateAt(Text, Index, ModifierAndIndicatorHighSurrogate,
+    FirstRegionalIndicatorLowSurrogate, LastRegionalIndicatorLowSurrogate);
+end;
+
+// Regional indicators pair up from the start of their run, so an indicator
+// completes a flag when an odd number of indicators directly precede it.
+class function TEmojiSegments.CompletesRegionalIndicatorPair(const Text: string; const Index: Integer): Boolean;
+begin
+  if not IsRegionalIndicatorAt(Text, Index) then
+    Exit(False);
+
+  var PrecedingCount := 0;
+  var Position := Index - 2;
+  while (Position >= 1) and IsRegionalIndicatorAt(Text, Position) do
+  begin
+    Inc(PrecedingCount);
+    Dec(Position, 2);
+  end;
+
+  Result := Odd(PrecedingCount);
 end;
 
 end.

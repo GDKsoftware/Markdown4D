@@ -96,8 +96,17 @@ type
     [TestCase('OnPunctuation', 'one, two~35~,', '~', False)]
     [TestCase('WithUnderscoreAndDigit', 'call foo_bar2 now~80~foo_bar2', '~', False)]
     [TestCase('AcrossStyledRuns', '**Mark**down~60~Markdown', '~', False)]
+    [TestCase('OnFirstHalfOfEmoji', 'a:smile:b~15~'#$D83D#$DE04, '~', False)]
+    [TestCase('OnSecondHalfOfEmoji', 'a:smile:b~25~'#$D83D#$DE04, '~', False)]
     procedure SelectWordAt_PointInFirstLine_SelectsWordUnderPointer(const Markdown: string; const X: Single;
       const Expected: string);
+
+    [Test]
+    [TestCase('EndRightOfEmojiMiddle', '1~21~a'#$D83D#$DE04, '~', False)]
+    [TestCase('EndOnEmojiMiddle', '1~20~a', '~', False)]
+    [TestCase('StartLeftOfEmojiMiddle', '19~40~'#$D83D#$DE04'b', '~', False)]
+    [TestCase('StartRightOfEmojiMiddle', '21~40~b', '~', False)]
+    procedure Selection_EdgeOnEmoji_CopiesNoHalfCharacter(const AnchorX, ExtentX: Single; const Expected: string);
 
     [Test]
     [TestCase('WrappedParagraph', 'alpha beta gamma~120~10~33~alpha beta gamma', '~', False)]
@@ -433,6 +442,17 @@ begin
   const Selected = FModel.SelectWordAt(TLayoutPointF.Create(X, FirstLineY));
 
   Assert.IsTrue(Selected);
+  Assert.AreEqual(Expected, FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.Selection_EdgeOnEmoji_CopiesNoHalfCharacter(const AnchorX, ExtentX: Single;
+  const Expected: string);
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'a:smile:b';
+
+  SelectFromTo(AnchorX, FirstLineY, ExtentX, FirstLineY);
+
   Assert.AreEqual(Expected, FModel.SelectedText);
 end;
 

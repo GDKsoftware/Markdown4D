@@ -30,7 +30,8 @@ type
 implementation
 
 uses
-  System.SysUtils;
+  System.SysUtils,
+  Markdown4D.Emoji.Segments;
 
 class function TMarkdownHitTester.TryFindLink(const DisplayList: IMarkdownDisplayList; const Point: TLayoutPointF;
   out Link: IMarkdownLink): Boolean;
@@ -92,6 +93,9 @@ begin
 
   for var CharCount := 1 to Length(Run.Text) do
   begin
+    if not TEmojiSegments.IsClusterBoundary(Run.Text, CharCount) then
+      Continue;
+
     const Prefix = Copy(Run.Text, 1, CharCount);
     const PrefixSize = Measurer.MeasureText(Prefix, Run.Font);
     const BoundaryX = PrefixSize.Width;

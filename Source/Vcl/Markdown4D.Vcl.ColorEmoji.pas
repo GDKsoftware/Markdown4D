@@ -36,6 +36,7 @@ type
     var
       FTextFormats: TDictionary<Integer, IDWriteTextFormat>;
       FRenderTarget: ID2D1DCRenderTarget;
+      FBrush: ID2D1SolidColorBrush;
     class function TryGetDrawFactory(out Factory: ID2D1Factory): Boolean; static;
     class function TryGetWriteFactory(out Factory: IDWriteFactory): Boolean; static;
     class function TryGetBaseline(const Layout: IDWriteTextLayout; out Baseline: Single): Boolean; static;
@@ -49,15 +50,18 @@ type
     function TryRenderInto(const MemoryDC: HDC; const BufferRect: TRect; const Layout: IDWriteTextLayout;
       const Origin: TD2D1Point2F; const Color: TLayoutColor): Boolean;
     function TryGetRenderTarget(out RenderTarget: ID2D1DCRenderTarget): Boolean;
+    function TryGetBrush(const RenderTarget: ID2D1DCRenderTarget; const Color: TLayoutColor;
+      out Brush: ID2D1SolidColorBrush): Boolean;
 
   public
     constructor Create;
     destructor Destroy; override;
     // Advance width of Text at PixelSize (the em height in device pixels).
     function TryMeasure(const Text: string; const PixelSize: Integer; out Width: Single): Boolean;
-    // Draws Text with its baseline start at (Left, BaselineY) on TargetDC.
+    // Draws Text with its baseline start at (Left, BaselineY) on TargetDC and
+    // returns the advance width it measured, the same value TryMeasure gives.
     function TryDraw(const TargetDC: HDC; const Left, BaselineY: Single; const Text: string;
-      const PixelSize: Integer; const Color: TLayoutColor): Boolean;
+      const PixelSize: Integer; const Color: TLayoutColor; out Width: Single): Boolean;
   end;
 
 implementation
@@ -140,6 +144,7 @@ end;
 
 destructor TMarkdownVclColorEmojiRenderer.Destroy;
 begin
+  FBrush := nil;
   FRenderTarget := nil;
   FTextFormats.Free;
 
@@ -162,8 +167,10 @@ begin
 end;
 
 function TMarkdownVclColorEmojiRenderer.TryDraw(const TargetDC: HDC; const Left, BaselineY: Single;
-  const Text: string; const PixelSize: Integer; const Color: TLayoutColor): Boolean;
+  const Text: string; const PixelSize: Integer; const Color: TLayoutColor; out Width: Single): Boolean;
 begin
+  Width := 0;
+
   var Layout: IDWriteTextLayout;
   var Metrics: TDwriteTextMetrics;
   var Baseline: Single;
@@ -181,6 +188,8 @@ begin
   const Origin = D2D1PointF(Left - BufferLeft, Top - BufferTop);
 
   Result := TryDrawThroughBuffer(TargetDC, Bounds, Layout, Origin, Color);
+  if Result then
+    Width := Metrics.widthIncludingTrailingWhitespace;
 end;
 
 function TMarkdownVclColorEmojiRenderer.TryCreateLayout(const Text: string; const PixelSize: Integer;
@@ -267,7 +276,7 @@ begin
     Exit(False);
 
   var Brush: ID2D1SolidColorBrush;
-  if Failed(RenderTarget.CreateSolidColorBrush(ToBrushColor(Color), nil, Brush)) then
+  if not TryGetBrush(RenderTarget, Color, Brush) then
     Exit(False);
 
   RenderTarget.BeginDraw;
@@ -278,7 +287,10 @@ begin
 
   // A lost device makes EndDraw fail; the next call starts with a fresh target.
   if not Result then
+  begin
+    FBrush := nil;
     FRenderTarget := nil;
+  end;
 end;
 
 function TMarkdownVclColorEmojiRenderer.TryGetRenderTarget(out RenderTarget: ID2D1DCRenderTarget): Boolean;
@@ -297,6 +309,25 @@ begin
   Result := Succeeded(Factory.CreateDCRenderTarget(Properties, RenderTarget));
   if Result then
     FRenderTarget := RenderTarget;
+end;
+
+// A brush belongs to the render target that made it, so it lives and dies with
+// FRenderTarget; between draws only its colour changes.
+function TMarkdownVclColorEmojiRenderer.TryGetBrush(const RenderTarget: ID2D1DCRenderTarget;
+  const Color: TLayoutColor; out Brush: ID2D1SolidColorBrush): Boolean;
+begin
+  const BrushColor = ToBrushColor(Color);
+
+  Brush := FBrush;
+  if Brush <> nil then
+  begin
+    Brush.SetColor(BrushColor);
+    Exit(True);
+  end;
+
+  Result := Succeeded(RenderTarget.CreateSolidColorBrush(BrushColor, nil, Brush));
+  if Result then
+    FBrush := Brush;
 end;
 
 end.
