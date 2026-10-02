@@ -4,7 +4,20 @@ interface
 
 type
   TEmojiShortcodes = class
+  private
+    const
+      Delimiter = ':';
+      DelimiterWidth = 1;
+    class function ScanNameEnd(const Source: string; const NameStart, Limit: Integer): Integer; static;
+    class function IsNameChar(const Value: Char): Boolean; static;
+
   public
+    // Reads a shortcode such as :smile: that starts at Source[Index] and ends
+    // before Limit. Parser and source mapper share it so both agree on what
+    // became an emoji. Consumed counts the source characters including both
+    // colons.
+    class function TryDecodeAt(const Source: string; const Index, Limit: Integer;
+                               out Decoded: string; out Consumed: Integer): Boolean;
     class function TryDecode(const Name: string; out Decoded: string): Boolean;
     class function Count: Integer;
     class function NameAt(const Index: Integer): string;
@@ -13,7 +26,8 @@ type
 implementation
 
 uses
-  System.SysUtils;
+  System.SysUtils,
+  System.Math;
 
 type
   TEmojiMapping = record
@@ -1918,6 +1932,58 @@ const
     (Name: 'zombie'; Value: #$D83E#$DDDF),
     (Name: 'zombie_man'; Value: #$D83E#$DDDF#$200D#$2642#$FE0F),
     (Name: 'zombie_woman'; Value: #$D83E#$DDDF#$200D#$2640#$FE0F));
+
+class function TEmojiShortcodes.TryDecodeAt(const Source: string; const Index, Limit: Integer;
+  out Decoded: string; out Consumed: Integer): Boolean;
+begin
+  Decoded := '';
+  Consumed := 0;
+
+  const IsOpening = (Index >= 1) and (Index < Limit) and (Index <= Length(Source)) and
+    (Source[Index] = Delimiter);
+  if not IsOpening then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  const NameStart = Index + DelimiterWidth;
+  const NameEnd = ScanNameEnd(Source, NameStart, Limit);
+
+  const HasName = (NameEnd > NameStart);
+  const HasClose = (NameEnd < Limit) and (NameEnd <= Length(Source)) and (Source[NameEnd] = Delimiter);
+  if not (HasName and HasClose) then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  const Name = Copy(Source, NameStart, NameEnd - NameStart);
+  if not TryDecode(Name, Decoded) then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  Consumed := NameEnd + DelimiterWidth - Index;
+  Result := True;
+end;
+
+class function TEmojiShortcodes.ScanNameEnd(const Source: string; const NameStart, Limit: Integer): Integer;
+begin
+  const Last = Min(Limit - 1, Length(Source));
+
+  Result := NameStart;
+  while (Result <= Last) and IsNameChar(Source[Result]) do
+  begin
+    Inc(Result);
+  end;
+end;
+
+class function TEmojiShortcodes.IsNameChar(const Value: Char): Boolean;
+begin
+  Result := CharInSet(Value, ['a'..'z', 'A'..'Z', '0'..'9', '_', '+', '-']);
+end;
 
 class function TEmojiShortcodes.TryDecode(const Name: string; out Decoded: string): Boolean;
 begin

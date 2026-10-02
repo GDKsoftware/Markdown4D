@@ -22,8 +22,9 @@ This guide walks three worked examples, all built purely on the public API:
 
 Emoji shortcodes (`TGfmEmojiExtension`, unit `Markdown4D.Extensions.Gfm`) are
 registered by default by `UseGfm`: a known GitHub shortcode such as `:smile:`
-renders as its emoji character, and an unknown code such as `:zzz:` or
-`:octocat:` stays literal. CommonMark leaves all shortcodes untouched.
+renders as its emoji character, and an unknown code such as `:octocat:` stays
+literal. `:zzz:` is excluded on purpose and stays literal, although GitHub
+renders it as an emoji. CommonMark leaves all shortcodes untouched.
 
 > Every registration point takes an integer
 > priority. Use the named constants on `TMarkdownPriorities` (unit

@@ -97,8 +97,6 @@ type
       StrongDelimiterCount = 2;
       CollapsedLabelLength = 2;
       TaskMarkerLength = 3;
-      EmojiShortcodeDelimiter = ':';
-      NoEmojiShortcodeClose = 0;
       RuleOfThreeDivisor = 3;
       OpenersBottomBucketsPerChar = 6;
       MaxMathDelimiterLength = 2;
@@ -163,8 +161,6 @@ type
     procedure CloseBracketsAfterLink(const IsImage: Boolean);
     function TryParseTaskListMarker: Boolean;
     function TryParseEmojiShortcode: Boolean;
-    function ScanEmojiShortcodeClose(const NameStart: Integer): Integer;
-    class function IsEmojiShortcodeChar(const Value: Char): Boolean;
     function TryParseWwwAutolink: Boolean;
     function TryParseUrlAutolink: Boolean;
     function TryParseEmailAutolink: Boolean;
@@ -986,49 +982,20 @@ end;
 
 function TInlineParser.TryParseEmojiShortcode: Boolean;
 begin
-  const CloseIndex = ScanEmojiShortcodeClose(FIndex + 1);
-  const HasClose = (CloseIndex <> NoEmojiShortcodeClose);
-  if not HasClose then
-  begin
-    Result := False;
-    Exit;
-  end;
-
-  const Name = Copy(FContent, FIndex + 1, CloseIndex - FIndex - 1);
+  const PastEnd = Length(FContent) + 1;
 
   var Decoded: string;
-  if not TEmojiShortcodes.TryDecode(Name, Decoded) then
+  var Consumed: Integer;
+  if not TEmojiShortcodes.TryDecodeAt(FContent, FIndex, PastEnd, Decoded, Consumed) then
   begin
     Result := False;
     Exit;
   end;
 
-  BufferText(Decoded, FIndex, CloseIndex + 1);
-  FIndex := CloseIndex + 1;
+  BufferText(Decoded, FIndex, FIndex + Consumed);
+  FIndex := FIndex + Consumed;
 
   Result := True;
-end;
-
-function TInlineParser.ScanEmojiShortcodeClose(const NameStart: Integer): Integer;
-begin
-  var ScanIndex := NameStart;
-
-  while (ScanIndex <= Length(FContent)) and IsEmojiShortcodeChar(FContent[ScanIndex]) do
-  begin
-    Inc(ScanIndex);
-  end;
-
-  const HasName = (ScanIndex > NameStart);
-  const HasClose = (ScanIndex <= Length(FContent)) and (FContent[ScanIndex] = EmojiShortcodeDelimiter);
-  if HasName and HasClose then
-    Result := ScanIndex
-  else
-    Result := NoEmojiShortcodeClose;
-end;
-
-class function TInlineParser.IsEmojiShortcodeChar(const Value: Char): Boolean;
-begin
-  Result := IsAsciiAlphaNumeric(Value) or CharInSet(Value, [Underscore, '+', '-']);
 end;
 
 function TInlineParser.TryParseWwwAutolink: Boolean;

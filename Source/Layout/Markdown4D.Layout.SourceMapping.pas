@@ -20,11 +20,13 @@ type
   private
     type
       // One step through the source: the characters it reads and the ones it
-      // writes, which differ for an escape and for an entity.
+      // writes, which differ for an escape, an entity and an emoji shortcode.
       TSourceStep = record
         SourceWidth: Integer;
         LiteralWidth: Integer;
       end;
+    const
+      EmojiShortcodeOpener = ':';
     class function IsTakenWhole(const Node: IMarkdownNode): Boolean; static;
     class function IsSegmentInside(const Source: string; const Segment: TMarkdownSegment): Boolean; static;
     class function OffsetInLiteral(const Source: string; const Segment: TMarkdownSegment;
@@ -45,6 +47,7 @@ implementation
 
 uses
   Markdown4D.Defines,
+  Markdown4D.Emoji.Shortcodes,
   Markdown4D.Text.Unescape;
 
 class function TMarkdownSourceMapper.TryMapLiteralOffset(const Source: string; const Node: IMarkdownNode;
@@ -97,8 +100,9 @@ begin
 end;
 
 // Replays the source of the node until it has produced LiteralOffset
-// characters. An escape or an entity spells one character with several, so the
-// two only run in step as long as neither appears.
+// characters. An escape, an entity or an emoji shortcode spells its output with
+// a different number of characters, so the two only run in step as long as
+// none of them appears.
 class function TMarkdownSourceMapper.OffsetInLiteral(const Source: string; const Segment: TMarkdownSegment;
   const LiteralOffset: Integer): Integer;
 begin
@@ -131,11 +135,21 @@ begin
     Exit;
   end;
 
-  if Current <> Ampersand then
-    Exit;
-
   var Decoded: string;
   var Consumed: Integer;
+
+  if Current = EmojiShortcodeOpener then
+  begin
+    if TEmojiShortcodes.TryDecodeAt(Source, Index, Limit, Decoded, Consumed) then
+    begin
+      Result.SourceWidth  := Consumed;
+      Result.LiteralWidth := Length(Decoded);
+    end;
+    Exit;
+  end;
+
+  if Current <> Ampersand then
+    Exit;
 
   const IsEntity = TMarkdownUnescape.TryDecodeEntityAt(Source, Index, Decoded, Consumed) and
     (Index + Consumed <= Limit);

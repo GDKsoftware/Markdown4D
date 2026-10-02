@@ -5,7 +5,8 @@ unit Markdown4D.Extensions.Emoji.Tests;
 interface
 
 uses
-  DUnitX.TestFramework;
+  DUnitX.TestFramework,
+  Markdown4D.Layout.SourceMapping;
 
 type
   [TestFixture]
@@ -95,6 +96,33 @@ type
 
     [Test]
     procedure Table_IsStrictlyOrdinallySorted;
+
+    [Test]
+    [TestCase('Shortcode', 'a :smile: b,3,True,7')]
+    [TestCase('UnknownName', 'a :zzz: b,3,False,0')]
+    [TestCase('NoClosingColon', ':smile,1,False,0')]
+    [TestCase('NotAtColon', 'smile:,1,False,0')]
+    procedure TryDecodeAt_Source_ReturnsConsumedWidth(const Source: string; const Index: Integer;
+                                                      const Expected: Boolean; const ExpectedConsumed: Integer);
+
+    [Test]
+    procedure TryDecodeAt_CloseBeyondLimit_ReturnsFalse;
+  end;
+
+  [TestFixture]
+  TEmojiSourceMappingTests = class
+  public
+    [Test]
+    [TestCase('BeforeEmoji', 'a :smile: b,1,0,2')]
+    [TestCase('EmojiStart', 'a :smile: b,2,0,3')]
+    [TestCase('EmojiEnd', 'a :smile: b,4,1,10')]
+    [TestCase('CharacterAfterEmoji', 'a :smile: b,5,0,11')]
+    [TestCase('UnknownBeforeKnown', ':zzz:smile: b,7,0,13')]
+    [TestCase('TwoShortcodes', ':smile::rocket: b,5,0,17')]
+    procedure TryMapLiteralOffset_TextWithShortcode_SkipsWholeShortcode(const Source: string;
+                                                                         const LiteralOffset: Integer;
+                                                                         const Edge: TMarkdownSourceEdge;
+                                                                         const Expected: Integer);
   end;
 
 implementation
@@ -264,6 +292,47 @@ begin
 
     Assert.IsTrue(IsAscending, FailureMessage);
   end;
+end;
+
+procedure TEmojiShortcodesTests.TryDecodeAt_Source_ReturnsConsumedWidth(const Source: string; const Index: Integer;
+  const Expected: Boolean; const ExpectedConsumed: Integer);
+begin
+  const PastEnd = Source.Length + 1;
+  var Decoded: string;
+  var Consumed: Integer;
+
+  const Found = TEmojiShortcodes.TryDecodeAt(Source, Index, PastEnd, Decoded, Consumed);
+
+  Assert.AreEqual(Expected, Found);
+  Assert.AreEqual(ExpectedConsumed, Consumed);
+end;
+
+procedure TEmojiShortcodesTests.TryDecodeAt_CloseBeyondLimit_ReturnsFalse;
+begin
+  const Source = ':smile:';
+  const LimitBeforeClose = Source.Length;
+  var Decoded: string;
+  var Consumed: Integer;
+
+  const Found = TEmojiShortcodes.TryDecodeAt(Source, 1, LimitBeforeClose, Decoded, Consumed);
+
+  Assert.IsFalse(Found);
+  Assert.AreEqual('', Decoded);
+end;
+
+procedure TEmojiSourceMappingTests.TryMapLiteralOffset_TextWithShortcode_SkipsWholeShortcode(const Source: string;
+  const LiteralOffset: Integer; const Edge: TMarkdownSourceEdge; const Expected: Integer);
+begin
+  const Document = TMarkdown.Parse(Source, TMarkdownDialect.Gfm);
+  const Paragraph = Document.Children[0];
+  Assert.AreEqual(1, Paragraph.ChildCount, 'The paragraph should hold a single text node');
+  const Text = Paragraph.Children[0];
+
+  var Offset: Integer;
+  const IsMapped = TMarkdownSourceMapper.TryMapLiteralOffset(Source, Text, LiteralOffset, Edge, Offset);
+
+  Assert.IsTrue(IsMapped, 'The text node should map back to the source');
+  Assert.AreEqual(Expected, Offset);
 end;
 
 end.
