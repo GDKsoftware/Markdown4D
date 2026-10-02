@@ -34,6 +34,7 @@ type
     FActions: TPadCommandActions;
     FPaletteMatches: TArray<TPadCommandMatch>;
     FTocEntries: TArray<IMarkdownTocEntry>;
+    FPreviewLayoutCount: Integer;
     procedure UpdateTitle;
     procedure UpdateStatusBar;
     procedure DoFileChanged(const Document: IPadDocument);
@@ -44,6 +45,7 @@ type
     function ResolveDiskConflict(const FileName: string): Boolean;
     procedure RememberPosition(const Document: IPadDocument);
     procedure ApplyRememberedPosition(const Document: IPadDocument);
+    procedure ShowPreviewFindCount;
     class function MatchCountCaption(const Total: Integer): string; static;
   public
     constructor Create(const Editor: IPadEditorView; const Shell: IPadShell;
@@ -485,6 +487,10 @@ begin
   if FMapDirty then
     RebuildSyncAndToc;
 
+  const PreviewLaidOutAgain = (FEditor.PreviewLayoutCount <> FPreviewLayoutCount);
+  if PreviewLaidOutAgain then
+    ShowPreviewFindCount;
+
   UpdateStatusBar;
 
   FWatcher.Poll;
@@ -581,7 +587,8 @@ end;
 procedure TPadController.ExecuteFindPrevious;
 begin
   const Needle = FShell.PreviewFindNeedle;
-  if Needle = '' then
+  const IsSearching = (Needle <> '');
+  if not IsSearching then
     Exit;
 
   FEditor.PreviewFindPrevious(Needle);
@@ -590,24 +597,37 @@ end;
 procedure TPadController.UpdatePreviewFindCount;
 begin
   const Needle = FShell.PreviewFindNeedle;
-
   FEditor.PreviewHighlightMatches(Needle);
 
-  if Needle = '' then
+  ShowPreviewFindCount;
+end;
+
+// The marks follow every relayout of the preview by themselves; the count
+// next to the find box is refreshed here, on a new needle and from Tick.
+procedure TPadController.ShowPreviewFindCount;
+begin
+  FPreviewLayoutCount := FEditor.PreviewLayoutCount;
+
+  const IsSearching = (FShell.PreviewFindNeedle <> '');
+  if not IsSearching then
   begin
     FShell.SetPreviewFindCount(EmptyFindCaption);
     Exit;
   end;
 
-  const Total = FEditor.PreviewFindMatchCount(Needle);
-  FShell.SetPreviewFindCount(MatchCountCaption(Total));
+  const Total = FEditor.PreviewHighlightCount;
+  const Caption = MatchCountCaption(Total);
+  FShell.SetPreviewFindCount(Caption);
 end;
 
 class function TPadController.MatchCountCaption(const Total: Integer): string;
 begin
-  if Total = 0 then
+  const HasNone = (Total = 0);
+  const HasOne = (Total = 1);
+
+  if HasNone then
     Result := NoMatchCaption
-  else if Total = 1 then
+  else if HasOne then
     Result := SingleMatchCaption
   else
     Result := Format(MatchCountFormat, [Total]);

@@ -521,8 +521,8 @@ same.
 | `LoadFromFile(const FileName)` / `LoadFromStream(const Stream)` | Load a document |
 | `FindText(const Needle): Boolean` | Select the next match and scroll it into view; a repeated search moves on to the following match and wraps to the first after the last |
 | `FindPrevious(const Needle): Boolean` | The same walk backwards; wraps to the last match before the first |
-| `FindMatchCount(const Needle): Integer` | How often the needle occurs in the rendered text |
-| `HighlightMatches(const Needle)` / `ClearHighlights` | Mark every match, apart from the selection; the marks follow the document as it changes, and an empty needle clears them |
+| `FindMatchCount(const Needle): Integer` | How many matches a walk with `FindText` visits; a formula counts once |
+| `HighlightMatches(const Needle)` / `ClearHighlights` | Mark every match, independently of the selection; the marks follow the document as it changes, an empty needle clears them, and a formula is marked once |
 | `HighlightCount: Integer` | How many matches are marked |
 | `CopySelectionToClipboard` | Copy the current selection |
 | `SelectAll` | Select the whole document |

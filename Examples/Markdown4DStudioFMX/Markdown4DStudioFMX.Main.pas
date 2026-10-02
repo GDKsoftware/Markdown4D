@@ -282,8 +282,9 @@ type
     function EditorReplaceAll(const Needle, Replacement: string): Integer;
     procedure PreviewFindText(const Needle: string);
     procedure PreviewFindPrevious(const Needle: string);
-    function PreviewFindMatchCount(const Needle: string): Integer;
     procedure PreviewHighlightMatches(const Needle: string);
+    function PreviewHighlightCount: Integer;
+    function PreviewLayoutCount: Integer;
     procedure BeginSwap;
     procedure EndSwap;
     procedure SwitchToDocument(const Index: Integer);
@@ -291,6 +292,7 @@ type
     procedure RebuildSyncAndToc;
     procedure UpdateActiveTocEntry(const SourceLine: Integer);
     procedure ExecuteFind;
+    procedure ExecuteFindPrevious;
     procedure ApplyTheme;
     procedure ApplyChromeColors;
     procedure ApplyTocItemColors;
@@ -1587,7 +1589,7 @@ begin
   KeyChar := #0;
 
   if ssShift in Shift then
-    FController.ExecuteFindPrevious
+    ExecuteFindPrevious
   else
     ExecuteFind;
 end;
@@ -1780,6 +1782,11 @@ begin
   FController.ExecuteFind;
 end;
 
+procedure TMarkdown4DStudioFMXForm.ExecuteFindPrevious;
+begin
+  FController.ExecuteFindPrevious;
+end;
+
 procedure TMarkdown4DStudioFMXForm.FindInEditor;
 begin
   FController.FindInEditor;
@@ -1901,14 +1908,19 @@ begin
   mdPreview.FindPrevious(Needle);
 end;
 
-function TMarkdown4DStudioFMXForm.PreviewFindMatchCount(const Needle: string): Integer;
-begin
-  Result := mdPreview.FindMatchCount(Needle);
-end;
-
 procedure TMarkdown4DStudioFMXForm.PreviewHighlightMatches(const Needle: string);
 begin
   mdPreview.HighlightMatches(Needle);
+end;
+
+function TMarkdown4DStudioFMXForm.PreviewHighlightCount: Integer;
+begin
+  Result := mdPreview.HighlightCount;
+end;
+
+function TMarkdown4DStudioFMXForm.PreviewLayoutCount: Integer;
+begin
+  Result := mdPreview.LayoutCount;
 end;
 
 function TMarkdown4DStudioFMXForm.ConfirmCloseDocument(const DocName: string): TPadCloseChoice;

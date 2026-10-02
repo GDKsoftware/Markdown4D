@@ -243,8 +243,9 @@ type
     function EditorReplaceAll(const Needle, Replacement: string): Integer;
     procedure PreviewFindText(const Needle: string);
     procedure PreviewFindPrevious(const Needle: string);
-    function PreviewFindMatchCount(const Needle: string): Integer;
     procedure PreviewHighlightMatches(const Needle: string);
+    function PreviewHighlightCount: Integer;
+    function PreviewLayoutCount: Integer;
     procedure BeginSwap;
     procedure EndSwap;
     procedure SwitchToDocument(const Index: Integer);
@@ -266,6 +267,7 @@ type
     procedure RebuildSyncAndToc;
     procedure UpdateActiveTocEntry(const SourceLine: Integer);
     procedure ExecuteFind;
+    procedure ExecuteFindPrevious;
     procedure BuildCommandRegistry;
     function BuildCommandActions: TPadCommandActions;
     procedure SetViewMode(const Mode: TPadViewMode);
@@ -997,7 +999,7 @@ begin
   // is read from the keyboard.
   const IsShiftDown = (GetKeyState(VK_SHIFT) < 0);
   if IsShiftDown then
-    FController.ExecuteFindPrevious
+    ExecuteFindPrevious
   else
     ExecuteFind;
 end;
@@ -1610,6 +1612,11 @@ begin
   FController.ExecuteFind;
 end;
 
+procedure TMarkdown4DStudioVCLForm.ExecuteFindPrevious;
+begin
+  FController.ExecuteFindPrevious;
+end;
+
 procedure TMarkdown4DStudioVCLForm.SetDocumentTitle(const Name: string);
 begin
   Caption := Format(TitleFormat, [WindowCaption, Name]);
@@ -1710,14 +1717,19 @@ begin
   mdPreview.FindPrevious(Needle);
 end;
 
-function TMarkdown4DStudioVCLForm.PreviewFindMatchCount(const Needle: string): Integer;
-begin
-  Result := mdPreview.FindMatchCount(Needle);
-end;
-
 procedure TMarkdown4DStudioVCLForm.PreviewHighlightMatches(const Needle: string);
 begin
   mdPreview.HighlightMatches(Needle);
+end;
+
+function TMarkdown4DStudioVCLForm.PreviewHighlightCount: Integer;
+begin
+  Result := mdPreview.HighlightCount;
+end;
+
+function TMarkdown4DStudioVCLForm.PreviewLayoutCount: Integer;
+begin
+  Result := mdPreview.LayoutCount;
 end;
 
 function TMarkdown4DStudioVCLForm.ConfirmCloseDocument(const DocName: string): TPadCloseChoice;

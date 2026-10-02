@@ -25,6 +25,7 @@ type
     FHighlightedNeedle: string;
     FPreviewHighlightedNeedle: string;
     FPreviewPreviousNeedle: string;
+    FPreviewLayoutCount: Integer;
     function GetEditorText: string;
     procedure SetEditorText(const Value: string);
     function MergeEditorText(const Value: string): Boolean;
@@ -44,8 +45,9 @@ type
     function EditorReplaceAll(const Needle, Replacement: string): Integer;
     procedure PreviewFindText(const Needle: string);
     procedure PreviewFindPrevious(const Needle: string);
-    function PreviewFindMatchCount(const Needle: string): Integer;
     procedure PreviewHighlightMatches(const Needle: string);
+    function PreviewHighlightCount: Integer;
+    function PreviewLayoutCount: Integer;
     procedure BeginSwap;
     procedure EndSwap;
 
@@ -56,6 +58,7 @@ type
     property HighlightedNeedle: string read FHighlightedNeedle;
     property PreviewHighlightedNeedle: string read FPreviewHighlightedNeedle;
     property PreviewPreviousNeedle: string read FPreviewPreviousNeedle;
+    property PreviewLayouts: Integer read FPreviewLayoutCount write FPreviewLayoutCount;
     property VisibleLine: Integer read FFirstVisibleSourceLine write FFirstVisibleSourceLine;
   end;
 
@@ -176,6 +179,9 @@ type
 
     [Test]
     procedure PreviewFindPrevious_SearchesBackwards;
+
+    [Test]
+    procedure Tick_PreviewLaidOutAgain_RecountsPreviewMatches;
 
     [Test]
     procedure Replace_ReplacesTheSelectedMatch;
@@ -319,16 +325,21 @@ begin
   FPreviewPreviousNeedle := Needle;
 end;
 
-// The preview shows the same text as the editor, so the editor model counts
-// for both.
-function TFakeEditorView.PreviewFindMatchCount(const Needle: string): Integer;
-begin
-  Result := FModel.FindMatchCount(Needle);
-end;
-
 procedure TFakeEditorView.PreviewHighlightMatches(const Needle: string);
 begin
   FPreviewHighlightedNeedle := Needle;
+end;
+
+// The preview shows the same text as the editor, so the editor model counts
+// the marks the preview would show.
+function TFakeEditorView.PreviewHighlightCount: Integer;
+begin
+  Result := FModel.FindMatchCount(FPreviewHighlightedNeedle);
+end;
+
+function TFakeEditorView.PreviewLayoutCount: Integer;
+begin
+  Result := FPreviewLayoutCount;
 end;
 
 procedure TFakeEditorView.BeginSwap;
@@ -689,6 +700,19 @@ begin
   FController.ExecuteFindPrevious;
 
   Assert.AreEqual('line', FEditorView.PreviewPreviousNeedle);
+end;
+
+procedure TPadControllerTests.Tick_PreviewLaidOutAgain_RecountsPreviewMatches;
+begin
+  OpenSampleFile;
+  FShell.PreviewNeedle := 'line';
+  FController.UpdatePreviewFindCount;
+
+  FView.EditorText := ExternalText;
+  FEditorView.PreviewLayouts := FEditorView.PreviewLayouts + 1;
+  FController.Tick;
+
+  Assert.AreEqual('4 matches', FShell.PreviewFindCount);
 end;
 
 procedure TPadControllerTests.Replace_ReplacesTheSelectedMatch;

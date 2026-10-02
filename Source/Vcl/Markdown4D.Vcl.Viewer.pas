@@ -183,8 +183,8 @@ type
     procedure LoadFromFile(const FileName: string);
     procedure LoadFromStream(const Stream: TStream);
     procedure AppendMarkdown(const Markdown: string);
-    // Select the next match and scroll to it; a repeated search moves on
-    // and wraps to the first match after the last. FindPrevious walks back.
+    // Select the next match and scroll it into view; a repeated search moves
+    // on and wraps to the first match after the last. FindPrevious walks back.
     function FindText(const Needle: string): Boolean;
     function FindPrevious(const Needle: string): Boolean;
     function FindMatchCount(const Needle: string): Integer;
@@ -404,7 +404,7 @@ end;
 function TMarkdownViewer.FindText(const Needle: string): Boolean;
 begin
   var Match: TMarkdownFoundRange;
-  Result := FModel.SelectNextMatch(Needle, Match);
+  Result := FModel.TrySelectNextMatch(Needle, Match);
   if Result then
     ScrollToMatch(Match);
 end;
@@ -412,21 +412,23 @@ end;
 function TMarkdownViewer.FindPrevious(const Needle: string): Boolean;
 begin
   var Match: TMarkdownFoundRange;
-  Result := FModel.SelectPreviousMatch(Needle, Match);
+  Result := FModel.TrySelectPreviousMatch(Needle, Match);
   if Result then
     ScrollToMatch(Match);
 end;
 
 procedure TMarkdownViewer.ScrollToMatch(const Match: TMarkdownFoundRange);
 begin
-  const MatchItem = FModel.DisplayList.Items[Match.ItemIndex];
-  SetScrollPosition(MatchItem.Bounds.Top);
+  var Offset: Single;
+  if FModel.TryGetScrollTarget(Match, Offset) then
+    SetScrollPosition(Offset)
+  else
+    Invalidate;
 end;
 
 function TMarkdownViewer.FindMatchCount(const Needle: string): Integer;
 begin
-  const Matches = FModel.FindText(Needle);
-  Result := Length(Matches);
+  Result := FModel.MatchCount(Needle);
 end;
 
 procedure TMarkdownViewer.HighlightMatches(const Needle: string);
@@ -613,7 +615,7 @@ begin
     const Viewport = TLayoutRectF.Create(0, ScrollY, ClientWidth, ScrollY + ClientHeight);
     TMarkdownDisplayListRenderer.Render(FModel.DisplayList, PainterLifetime, Viewport, FTheme.BackgroundColor);
 
-    for var MatchRect in FModel.HighlightRects do
+    for var MatchRect in FModel.HighlightRectsWithin(Viewport) do
     begin
       PainterLifetime.FillRect(MatchRect, MatchFillColor);
     end;

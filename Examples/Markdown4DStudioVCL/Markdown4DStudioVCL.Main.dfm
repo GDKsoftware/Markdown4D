@@ -56,11 +56,10 @@ object Markdown4DStudioVCLForm: TMarkdown4DStudioVCLForm
       AlignWithMargins = True
       Left = 1020
       Top = 3
-      Width = 10
+      Width = 3
       Height = 30
       Margins.Right = 6
       Align = alRight
-      Caption = 'lblPreviewFindCount'
       Layout = tlCenter
     end
   end

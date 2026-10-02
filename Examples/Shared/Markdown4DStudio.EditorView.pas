@@ -40,8 +40,11 @@ type
     function EditorReplaceAll(const Needle, Replacement: string): Integer;
     procedure PreviewFindText(const Needle: string);
     procedure PreviewFindPrevious(const Needle: string);
-    function PreviewFindMatchCount(const Needle: string): Integer;
     procedure PreviewHighlightMatches(const Needle: string);
+    function PreviewHighlightCount: Integer;
+    // Advances every time the preview is laid out again, which is when its
+    // marks may have changed.
+    function PreviewLayoutCount: Integer;
     // Brackets the incoming-document load so the form suppresses its own change
     // handling while the editor and preview are repopulated.
     procedure BeginSwap;

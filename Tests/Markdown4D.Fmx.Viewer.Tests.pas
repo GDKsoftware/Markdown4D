@@ -22,6 +22,11 @@ type
       ControlHeight = 200.0;
       SampleMarkdown = '# Title'#10#10'Body paragraph with enough words to wrap onto a second line.';
       ImageMarkdown = '![alt](img.png)';
+      RepeatedWordMarkdown = 'Alpha beta alpha';
+      RepeatedWord = 'alpha';
+      SecondParagraph = 'Paragraph 01';
+      TallParagraphCount = 40;
+      LastParagraph = 'Paragraph 39';
       ClipTestViewerWidth = 300.0;
       ClipTestViewerHeight = 80.0;
       ClipTestSelectionStartX = 5.0;
@@ -57,6 +62,21 @@ type
 
     [Test]
     procedure NewViewer_HasEmptySelectedText;
+
+    [Test]
+    procedure FindText_RepeatedSearch_SelectsNextMatch;
+
+    [Test]
+    procedure FindPrevious_NoSelection_SelectsLastMatch;
+
+    [Test]
+    procedure FindText_MatchInView_KeepsScrollPosition;
+
+    [Test]
+    procedure FindText_MatchBelowView_ScrollsToMatch;
+
+    [Test]
+    procedure HighlightMatches_SeveralMatches_CountsEveryMatch;
 
     [Test]
     procedure SetText_BuildsDocumentAtControlWidth;
@@ -98,7 +118,8 @@ type
 implementation
 
 uses
-  System.SysUtils;
+  System.SysUtils,
+  Markdown4D.Tests.Pipeline.Helpers;
 
 type
   // Widens MouseDown/MouseMove/MouseUp from protected to accessible-in-unit, so a
@@ -124,6 +145,55 @@ end;
 procedure TMarkdownFmxViewerTests.NewViewer_HasEmptySelectedText;
 begin
   Assert.AreEqual('', FViewer.SelectedText);
+end;
+
+procedure TMarkdownFmxViewerTests.FindText_RepeatedSearch_SelectsNextMatch;
+begin
+  FViewer.Text := RepeatedWordMarkdown;
+
+  FViewer.FindText(RepeatedWord);
+  Assert.AreEqual('Alpha', FViewer.SelectedText);
+
+  FViewer.FindText(RepeatedWord);
+  Assert.AreEqual('alpha', FViewer.SelectedText);
+end;
+
+procedure TMarkdownFmxViewerTests.FindPrevious_NoSelection_SelectsLastMatch;
+begin
+  FViewer.Text := RepeatedWordMarkdown;
+
+  const Found = FViewer.FindPrevious(RepeatedWord);
+
+  Assert.IsTrue(Found);
+  Assert.AreEqual('alpha', FViewer.SelectedText);
+end;
+
+procedure TMarkdownFmxViewerTests.FindText_MatchInView_KeepsScrollPosition;
+begin
+  FViewer.Text := TMarkdownTestPipelineHelpers.ManyParagraphs(TallParagraphCount);
+
+  FViewer.FindText(SecondParagraph);
+
+  Assert.AreEqual(0.0, Double(FViewer.ScrollOffset), 0.01);
+end;
+
+procedure TMarkdownFmxViewerTests.FindText_MatchBelowView_ScrollsToMatch;
+begin
+  FViewer.Text := TMarkdownTestPipelineHelpers.ManyParagraphs(TallParagraphCount);
+
+  FViewer.FindText(LastParagraph);
+
+  Assert.IsTrue(FViewer.ScrollOffset > 0, 'A match below the viewport should be scrolled into view');
+end;
+
+procedure TMarkdownFmxViewerTests.HighlightMatches_SeveralMatches_CountsEveryMatch;
+begin
+  FViewer.Text := RepeatedWordMarkdown;
+
+  FViewer.HighlightMatches(RepeatedWord);
+
+  Assert.AreEqual(2, FViewer.HighlightCount);
+  Assert.AreEqual(2, FViewer.FindMatchCount(RepeatedWord));
 end;
 
 procedure TMarkdownFmxViewerTests.SetText_BuildsDocumentAtControlWidth;
