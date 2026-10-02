@@ -39,8 +39,18 @@ object Markdown4DStudioFMXForm: TMarkdown4DStudioFMXForm
       Size.Height = 26.000000000000000000
       Size.PlatformDefault = False
       TextPrompt = 'Find'
+      OnChangeTracking = HandlePreviewFindChange
       OnKeyDown = HandleFindEditKeyDown
       OnApplyStyleLookup = HandleInputApplyStyle
+    end
+    object lblPreviewFindCount: TLabel
+      Align = Right
+      Margins.Right = 6.000000000000000000
+      Position.X = 898.000000000000000000
+      Size.Width = 110.000000000000000000
+      Size.Height = 38.000000000000000000
+      Size.PlatformDefault = False
+      TextSettings.HorzAlign = Trailing
     end
   end
   object rctFindBar: TRectangle

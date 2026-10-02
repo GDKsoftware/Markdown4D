@@ -58,6 +58,7 @@ type
     edtEditorFind: TEdit;
     lblFindCount: TLabel;
     edtFind: TEdit;
+    lblPreviewFindCount: TLabel;
     edtEditorReplace: TEdit;
     btnReplace: TButton;
     btnReplaceAll: TButton;
@@ -74,6 +75,7 @@ type
     procedure HandleTick(Sender: TObject);
     procedure HandleEditorFindChange(Sender: TObject);
     procedure HandleFindEditKeyPress(Sender: TObject; var Key: Char);
+    procedure HandlePreviewFindChange(Sender: TObject);
     procedure HandleReplaceClick(Sender: TObject);
     procedure HandleReplaceAllClick(Sender: TObject);
     procedure HandlePaletteChange(Sender: TObject);
@@ -153,6 +155,7 @@ type
     function EditorReplaceValue: string;
     function PreviewFindNeedle: string;
     procedure SetFindCount(const Value: string);
+    procedure SetPreviewFindCount(const Value: string);
     function SampleMarkdown: string;
     function DarkThemeActive: Boolean;
     function EffectiveViewMode: TPadViewMode;
@@ -239,6 +242,9 @@ type
     function EditorReplaceCurrent(const Needle, Replacement: string): Boolean;
     function EditorReplaceAll(const Needle, Replacement: string): Integer;
     procedure PreviewFindText(const Needle: string);
+    procedure PreviewFindPrevious(const Needle: string);
+    function PreviewFindMatchCount(const Needle: string): Integer;
+    procedure PreviewHighlightMatches(const Needle: string);
     procedure BeginSwap;
     procedure EndSwap;
     procedure SwitchToDocument(const Index: Integer);
@@ -384,6 +390,7 @@ end;
 procedure TMarkdown4DStudioVCLForm.ConfigureControls;
 begin
   lblFindCount.Caption := EmptyFindCaption;
+  lblPreviewFindCount.Caption := EmptyFindCaption;
 
   splMain.OnMoved := HandleSplitterMoved;
   splToc.OnMoved := HandleTocSplitterMoved;
@@ -985,7 +992,19 @@ begin
     Exit;
 
   Key := #0;
-  ExecuteFind;
+
+  // Return and Shift+Return arrive as the same character, so the Shift state
+  // is read from the keyboard.
+  const IsShiftDown = (GetKeyState(VK_SHIFT) < 0);
+  if IsShiftDown then
+    FController.ExecuteFindPrevious
+  else
+    ExecuteFind;
+end;
+
+procedure TMarkdown4DStudioVCLForm.HandlePreviewFindChange(Sender: TObject);
+begin
+  FController.UpdatePreviewFindCount;
 end;
 
 procedure TMarkdown4DStudioVCLForm.BuildTitleBar;
@@ -1555,6 +1574,7 @@ begin
   pnlStatus.Color := Chrome.ToolbarColor;
   lblPos.Font.Color := Chrome.IconColor;
   lblWords.Font.Color := Chrome.IconColor;
+  lblPreviewFindCount.Font.Color := Chrome.IconColor;
 
   pnlFind.Color := Chrome.ToolbarColor;
   lblFindCount.Font.Color := Chrome.IconColor;
@@ -1665,6 +1685,11 @@ begin
   lblFindCount.Caption := Value;
 end;
 
+procedure TMarkdown4DStudioVCLForm.SetPreviewFindCount(const Value: string);
+begin
+  lblPreviewFindCount.Caption := Value;
+end;
+
 procedure TMarkdown4DStudioVCLForm.EditorFindNext(const Needle: string);
 begin
   mdEditor.FindNext(Needle);
@@ -1678,6 +1703,21 @@ end;
 procedure TMarkdown4DStudioVCLForm.PreviewFindText(const Needle: string);
 begin
   mdPreview.FindText(Needle);
+end;
+
+procedure TMarkdown4DStudioVCLForm.PreviewFindPrevious(const Needle: string);
+begin
+  mdPreview.FindPrevious(Needle);
+end;
+
+function TMarkdown4DStudioVCLForm.PreviewFindMatchCount(const Needle: string): Integer;
+begin
+  Result := mdPreview.FindMatchCount(Needle);
+end;
+
+procedure TMarkdown4DStudioVCLForm.PreviewHighlightMatches(const Needle: string);
+begin
+  mdPreview.HighlightMatches(Needle);
 end;
 
 function TMarkdown4DStudioVCLForm.ConfirmCloseDocument(const DocName: string): TPadCloseChoice;

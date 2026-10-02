@@ -39,6 +39,9 @@ type
     function EditorReplaceCurrent(const Needle, Replacement: string): Boolean;
     function EditorReplaceAll(const Needle, Replacement: string): Integer;
     procedure PreviewFindText(const Needle: string);
+    procedure PreviewFindPrevious(const Needle: string);
+    function PreviewFindMatchCount(const Needle: string): Integer;
+    procedure PreviewHighlightMatches(const Needle: string);
     // Brackets the incoming-document load so the form suppresses its own change
     // handling while the editor and preview are repopulated.
     procedure BeginSwap;

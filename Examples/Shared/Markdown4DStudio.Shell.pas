@@ -37,6 +37,7 @@ type
     function EditorReplaceValue: string;
     function PreviewFindNeedle: string;
     procedure SetFindCount(const Value: string);
+    procedure SetPreviewFindCount(const Value: string);
 
     // Per-app / per-framework values the controller reads.
     function SampleMarkdown: string;

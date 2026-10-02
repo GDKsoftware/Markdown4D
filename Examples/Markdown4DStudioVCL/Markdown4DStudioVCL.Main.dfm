@@ -49,7 +49,19 @@ object Markdown4DStudioVCLForm: TMarkdown4DStudioVCLForm
       Align = alRight
       TabOrder = 0
       TextHint = 'Find'
+      OnChange = HandlePreviewFindChange
       OnKeyPress = HandleFindEditKeyPress
+    end
+    object lblPreviewFindCount: TLabel
+      AlignWithMargins = True
+      Left = 1020
+      Top = 3
+      Width = 10
+      Height = 30
+      Margins.Right = 6
+      Align = alRight
+      Caption = 'lblPreviewFindCount'
+      Layout = tlCenter
     end
   end
   object pnlFind: TPanel

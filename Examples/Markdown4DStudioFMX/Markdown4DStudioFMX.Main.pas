@@ -44,6 +44,7 @@ type
     rctTitleBar: TRectangle;
     rctToolbar: TRectangle;
     edtFind: TEdit;
+    lblPreviewFindCount: TLabel;
     rctFindBar: TRectangle;
     edtEditorFind: TEdit;
     edtEditorReplace: TEdit;
@@ -83,6 +84,7 @@ type
     procedure HandlePaletteChange(Sender: TObject);
     procedure HandlePaletteDblClick(Sender: TObject);
     procedure HandleFindEditKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar; Shift: TShiftState);
+    procedure HandlePreviewFindChange(Sender: TObject);
     procedure HandleEditorChange(Sender: TObject);
     procedure HandleSyncScroll(Sender: TObject; const SourceLine: Integer);
     procedure HandlePreviewLinkClick(const Sender: TObject; const Url: string);
@@ -163,6 +165,7 @@ type
     function EditorReplaceValue: string;
     function PreviewFindNeedle: string;
     procedure SetFindCount(const Value: string);
+    procedure SetPreviewFindCount(const Value: string);
     function SampleMarkdown: string;
     function DarkThemeActive: Boolean;
     function EffectiveViewMode: TPadViewMode;
@@ -278,6 +281,9 @@ type
     function EditorReplaceCurrent(const Needle, Replacement: string): Boolean;
     function EditorReplaceAll(const Needle, Replacement: string): Integer;
     procedure PreviewFindText(const Needle: string);
+    procedure PreviewFindPrevious(const Needle: string);
+    function PreviewFindMatchCount(const Needle: string): Integer;
+    procedure PreviewHighlightMatches(const Needle: string);
     procedure BeginSwap;
     procedure EndSwap;
     procedure SwitchToDocument(const Index: Integer);
@@ -1579,7 +1585,16 @@ begin
 
   Key := 0;
   KeyChar := #0;
-  ExecuteFind;
+
+  if ssShift in Shift then
+    FController.ExecuteFindPrevious
+  else
+    ExecuteFind;
+end;
+
+procedure TMarkdown4DStudioFMXForm.HandlePreviewFindChange(Sender: TObject);
+begin
+  FController.UpdatePreviewFindCount;
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleEditorChange(Sender: TObject);
@@ -1861,6 +1876,11 @@ begin
   lblFindCount.Text := Value;
 end;
 
+procedure TMarkdown4DStudioFMXForm.SetPreviewFindCount(const Value: string);
+begin
+  lblPreviewFindCount.Text := Value;
+end;
+
 procedure TMarkdown4DStudioFMXForm.EditorFindNext(const Needle: string);
 begin
   mdEditor.FindNext(Needle);
@@ -1874,6 +1894,21 @@ end;
 procedure TMarkdown4DStudioFMXForm.PreviewFindText(const Needle: string);
 begin
   mdPreview.FindText(Needle);
+end;
+
+procedure TMarkdown4DStudioFMXForm.PreviewFindPrevious(const Needle: string);
+begin
+  mdPreview.FindPrevious(Needle);
+end;
+
+function TMarkdown4DStudioFMXForm.PreviewFindMatchCount(const Needle: string): Integer;
+begin
+  Result := mdPreview.FindMatchCount(Needle);
+end;
+
+procedure TMarkdown4DStudioFMXForm.PreviewHighlightMatches(const Needle: string);
+begin
+  mdPreview.HighlightMatches(Needle);
 end;
 
 function TMarkdown4DStudioFMXForm.ConfirmCloseDocument(const DocName: string): TPadCloseChoice;
@@ -1992,7 +2027,7 @@ begin
   FTabStrip.GlyphColor := FChromeTextColor;
   FTabStrip.Repaint;
 
-  const Labels: TArray<TLabel> = [lblPos, lblWords, lblFindCount];
+  const Labels: TArray<TLabel> = [lblPos, lblWords, lblFindCount, lblPreviewFindCount];
 
   for var LabelControl in Labels do
   begin

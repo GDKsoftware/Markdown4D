@@ -44,6 +44,7 @@ type
     function ResolveDiskConflict(const FileName: string): Boolean;
     procedure RememberPosition(const Document: IPadDocument);
     procedure ApplyRememberedPosition(const Document: IPadDocument);
+    class function MatchCountCaption(const Total: Integer): string; static;
   public
     constructor Create(const Editor: IPadEditorView; const Shell: IPadShell;
       const SessionFileName: string);
@@ -86,6 +87,8 @@ type
     procedure ReplaceAllInEditor;
     procedure UpdateFindCount;
     procedure ExecuteFind;
+    procedure ExecuteFindPrevious;
+    procedure UpdatePreviewFindCount;
     procedure ExportHtml;
     procedure CopyHtml;
     function QueryClose: Boolean;
@@ -563,13 +566,7 @@ begin
   end;
 
   const Total = FEditor.EditorFindMatchCount(Needle);
-
-  if Total = 0 then
-    FShell.SetFindCount(NoMatchCaption)
-  else if Total = 1 then
-    FShell.SetFindCount(SingleMatchCaption)
-  else
-    FShell.SetFindCount(Format(MatchCountFormat, [Total]));
+  FShell.SetFindCount(MatchCountCaption(Total));
 end;
 
 procedure TPadController.ExecuteFind;
@@ -579,6 +576,41 @@ begin
     Exit;
 
   FEditor.PreviewFindText(Needle);
+end;
+
+procedure TPadController.ExecuteFindPrevious;
+begin
+  const Needle = FShell.PreviewFindNeedle;
+  if Needle = '' then
+    Exit;
+
+  FEditor.PreviewFindPrevious(Needle);
+end;
+
+procedure TPadController.UpdatePreviewFindCount;
+begin
+  const Needle = FShell.PreviewFindNeedle;
+
+  FEditor.PreviewHighlightMatches(Needle);
+
+  if Needle = '' then
+  begin
+    FShell.SetPreviewFindCount(EmptyFindCaption);
+    Exit;
+  end;
+
+  const Total = FEditor.PreviewFindMatchCount(Needle);
+  FShell.SetPreviewFindCount(MatchCountCaption(Total));
+end;
+
+class function TPadController.MatchCountCaption(const Total: Integer): string;
+begin
+  if Total = 0 then
+    Result := NoMatchCaption
+  else if Total = 1 then
+    Result := SingleMatchCaption
+  else
+    Result := Format(MatchCountFormat, [Total]);
 end;
 
 procedure TPadController.ExportHtml;
