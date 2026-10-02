@@ -99,6 +99,12 @@ type
     procedure FindText_SearchesFormulaSourceNotGlyphs;
 
     [Test]
+    procedure TrySelectNextMatch_InsideFormula_SelectsWholeFormula;
+
+    [Test]
+    procedure HighlightMatches_InsideFormula_MarksWholeFormulaOnce;
+
+    [Test]
     procedure SelectAll_CopiesFormulaAsMarkdown;
 
     [Test]
@@ -332,6 +338,35 @@ begin
 
   Assert.AreEqual(1, Integer(Length(FModel.FindText('\pi'))), 'the LaTeX source is searchable');
   Assert.AreEqual(0, Integer(Length(FModel.FindText(#$03C0))), 'the drawn glyph is not');
+end;
+
+procedure TMathViewerTests.TrySelectNextMatch_InsideFormula_SelectsWholeFormula;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'area $\pi r^2$ done';
+
+  var Match: TMarkdownFoundRange;
+  const Found = FModel.TrySelectNextMatch('r^2', Match);
+
+  Assert.IsTrue(Found);
+  Assert.AreEqual('$\pi r^2$', FModel.SelectedText, 'a formula is selected whole or not at all');
+end;
+
+procedure TMathViewerTests.HighlightMatches_InsideFormula_MarksWholeFormulaOnce;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'sum $x + x$ done';
+
+  FModel.HighlightMatches('x');
+
+  Assert.AreEqual(1, FModel.HighlightCount, 'two hits in one formula mark it once');
+  Assert.AreEqual(1, FModel.MatchCount('x'), 'and count as one stop');
+
+  const WholeDocument = TLayoutRectF.Create(0, 0, DefaultWidth, FModel.DisplayList.Height);
+  const Marks = FModel.HighlightRectsWithin(WholeDocument);
+  const Mark = Marks[0];
+  const HasWidth = (Mark.Width > 0);
+  Assert.IsTrue(HasWidth, 'the mark covers the formula');
 end;
 
 procedure TMathViewerTests.SelectAll_CopiesFormulaAsMarkdown;

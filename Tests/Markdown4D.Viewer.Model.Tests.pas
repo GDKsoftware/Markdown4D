@@ -43,6 +43,7 @@ type
     class procedure AssertSingle(const Expected, Actual: Single);
     procedure SelectFromTo(const AnchorX, AnchorY, ExtentX, ExtentY: Single);
     procedure LoadImageDocument;
+    function AllHighlightRects: TArray<TLayoutRectF>;
 
   public
     [Setup]
@@ -184,6 +185,51 @@ type
 
     [Test]
     procedure FindText_NonAsciiNeedle_KeepsSourceOffsets;
+
+    [Test]
+    procedure TrySelectNextMatch_FirstSearch_SelectsFirstMatch;
+
+    [Test]
+    procedure TrySelectNextMatch_RepeatedSearch_SelectsNextMatch;
+
+    [Test]
+    procedure TrySelectNextMatch_AfterLastMatch_WrapsToFirstMatch;
+
+    [Test]
+    procedure TrySelectNextMatch_SelectionInsideDocument_SelectsMatchAfterSelection;
+
+    [Test]
+    procedure TrySelectNextMatch_NoMatch_ReturnsFalseAndKeepsSelection;
+
+    [Test]
+    procedure TrySelectNextMatch_AfterClick_SelectsMatchAfterCaret;
+
+    [Test]
+    procedure TrySelectNextMatch_CaretAtMatchStart_SelectsThatMatch;
+
+    [Test]
+    procedure TrySelectPreviousMatch_AfterClick_SelectsMatchBeforeCaret;
+
+    [Test]
+    procedure TrySelectPreviousMatch_NoSelection_SelectsLastMatch;
+
+    [Test]
+    procedure TrySelectPreviousMatch_AfterNextMatch_SelectsMatchBefore;
+
+    [Test]
+    procedure HighlightMatches_SeveralMatches_ReturnsRectPerMatch;
+
+    [Test]
+    procedure HighlightMatches_EmptyNeedle_HighlightsNothing;
+
+    [Test]
+    procedure HighlightMatches_TextChanges_FollowsNewText;
+
+    [Test]
+    procedure ClearHighlights_AfterHighlight_RemovesRects;
+
+    [Test]
+    procedure HighlightRectsWithin_Viewport_ReturnsOnlyVisibleMarks;
 
     [Test]
     procedure CodeBlockRegions_Empty_WhenNoCode;
@@ -723,6 +769,200 @@ begin
   Assert.AreEqual(LowerWord, Copy(Run.Text, Ranges[0].StartCharacter, Ranges[0].CharacterCount));
 end;
 
+procedure TMarkdownViewerModelTests.TrySelectNextMatch_FirstSearch_SelectsFirstMatch;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'Alpha beta alpha';
+
+  var Match: TMarkdownFoundRange;
+  const Found = FModel.TrySelectNextMatch('alpha', Match);
+
+  Assert.IsTrue(Found);
+  Assert.AreEqual(1, Match.StartCharacter);
+  Assert.AreEqual('Alpha', FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectNextMatch_RepeatedSearch_SelectsNextMatch;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'Alpha beta alpha';
+
+  var Match: TMarkdownFoundRange;
+  FModel.TrySelectNextMatch('alpha', Match);
+  FModel.TrySelectNextMatch('alpha', Match);
+
+  Assert.AreEqual(12, Match.StartCharacter);
+  Assert.AreEqual('alpha', FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectNextMatch_AfterLastMatch_WrapsToFirstMatch;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'one'#10#10'gone';
+
+  var Match: TMarkdownFoundRange;
+  FModel.TrySelectNextMatch('one', Match);
+  const FirstItemIndex = Match.ItemIndex;
+  FModel.TrySelectNextMatch('one', Match);
+  FModel.TrySelectNextMatch('one', Match);
+
+  Assert.AreEqual(FirstItemIndex, Match.ItemIndex);
+  Assert.AreEqual(1, Match.StartCharacter);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectNextMatch_SelectionInsideDocument_SelectsMatchAfterSelection;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'alpha beta alpha';
+  FModel.SelectWordAt(TLayoutPointF.Create(75, FirstLineY));
+
+  var Match: TMarkdownFoundRange;
+  FModel.TrySelectNextMatch('alpha', Match);
+
+  Assert.AreEqual(12, Match.StartCharacter);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectNextMatch_NoMatch_ReturnsFalseAndKeepsSelection;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'alpha beta';
+
+  var Match: TMarkdownFoundRange;
+  FModel.TrySelectNextMatch('beta', Match);
+  const Found = FModel.TrySelectNextMatch('zulu', Match);
+
+  Assert.IsFalse(Found);
+  Assert.AreEqual('beta', FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectNextMatch_AfterClick_SelectsMatchAfterCaret;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'alpha beta alpha';
+  FModel.SetSelectionAnchor(TLayoutPointF.Create(75, FirstLineY));
+
+  var Match: TMarkdownFoundRange;
+  FModel.TrySelectNextMatch('alpha', Match);
+
+  Assert.AreEqual(12, Match.StartCharacter);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectNextMatch_CaretAtMatchStart_SelectsThatMatch;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'alpha beta alpha';
+  FModel.SetSelectionAnchor(TLayoutPointF.Create(110, FirstLineY));
+
+  var Match: TMarkdownFoundRange;
+  FModel.TrySelectNextMatch('alpha', Match);
+
+  Assert.AreEqual(12, Match.StartCharacter);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectPreviousMatch_AfterClick_SelectsMatchBeforeCaret;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'alpha beta alpha';
+  FModel.SetSelectionAnchor(TLayoutPointF.Create(75, FirstLineY));
+
+  var Match: TMarkdownFoundRange;
+  FModel.TrySelectPreviousMatch('alpha', Match);
+
+  Assert.AreEqual(1, Match.StartCharacter);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectPreviousMatch_NoSelection_SelectsLastMatch;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'Alpha beta alpha';
+
+  var Match: TMarkdownFoundRange;
+  const Found = FModel.TrySelectPreviousMatch('alpha', Match);
+
+  Assert.IsTrue(Found);
+  Assert.AreEqual(12, Match.StartCharacter);
+  Assert.AreEqual('alpha', FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectPreviousMatch_AfterNextMatch_SelectsMatchBefore;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'Alpha beta alpha';
+
+  var Match: TMarkdownFoundRange;
+  FModel.TrySelectNextMatch('alpha', Match);
+  FModel.TrySelectNextMatch('alpha', Match);
+  FModel.TrySelectPreviousMatch('alpha', Match);
+
+  Assert.AreEqual(1, Match.StartCharacter);
+  Assert.AreEqual('Alpha', FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.HighlightMatches_SeveralMatches_ReturnsRectPerMatch;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'alpha beta alpha';
+
+  FModel.HighlightMatches('alpha');
+
+  const Rects = AllHighlightRects;
+  Assert.AreEqual(2, FModel.HighlightCount);
+  Assert.AreEqual(2, Integer(Length(Rects)));
+  AssertSingle(Rects[0].Top, Rects[1].Top);
+  AssertSingle(Rects[0].Width, Rects[1].Width);
+  const IsSecondToTheRight = (Rects[1].Left >= Rects[0].Right);
+  Assert.IsTrue(IsSecondToTheRight);
+end;
+
+procedure TMarkdownViewerModelTests.HighlightMatches_EmptyNeedle_HighlightsNothing;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'alpha beta alpha';
+
+  FModel.HighlightMatches('');
+
+  Assert.AreEqual(0, FModel.HighlightCount);
+  Assert.AreEqual(0, Integer(Length(AllHighlightRects)));
+end;
+
+procedure TMarkdownViewerModelTests.HighlightMatches_TextChanges_FollowsNewText;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'alpha';
+  FModel.HighlightMatches('alpha');
+
+  FModel.Text := 'alpha beta alpha gamma alpha';
+
+  Assert.AreEqual(3, FModel.HighlightCount);
+end;
+
+procedure TMarkdownViewerModelTests.ClearHighlights_AfterHighlight_RemovesRects;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'alpha beta alpha';
+  FModel.HighlightMatches('alpha');
+
+  FModel.ClearHighlights;
+  FModel.Text := 'alpha again';
+
+  Assert.AreEqual(0, FModel.HighlightCount);
+  Assert.AreEqual(0, Integer(Length(AllHighlightRects)));
+end;
+
+procedure TMarkdownViewerModelTests.HighlightRectsWithin_Viewport_ReturnsOnlyVisibleMarks;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := BuildTallMarkdown + #10#10'needle';
+  FModel.HighlightMatches('Paragraph');
+
+  const FirstRect = AllHighlightRects[0];
+  const Viewport = TLayoutRectF.Create(0, FirstRect.Top, DefaultWidth, FirstRect.Bottom);
+  const Visible = FModel.HighlightRectsWithin(Viewport);
+
+  Assert.AreEqual(1, Integer(Length(Visible)));
+  AssertSingle(FirstRect.Top, Visible[0].Top);
+end;
+
 procedure TMarkdownViewerModelTests.CodeBlockRegions_Empty_WhenNoCode;
 begin
   FModel.SetViewport(DefaultWidth, DefaultHeight);
@@ -822,6 +1062,12 @@ begin
       Result := Result + #10#10;
     Result := Result + Format('paragraph%d', [Index]);
   end;
+end;
+
+function TMarkdownViewerModelTests.AllHighlightRects: TArray<TLayoutRectF>;
+begin
+  const WholeDocument = TLayoutRectF.Create(0, 0, DefaultWidth, FModel.DisplayList.Height);
+  Result := FModel.HighlightRectsWithin(WholeDocument);
 end;
 
 class procedure TMarkdownViewerModelTests.AssertSingle(const Expected, Actual: Single);

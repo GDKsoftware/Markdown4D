@@ -25,6 +25,10 @@ type
       HostHeight = 120;
       ShortMarkdown = 'one line';
       ParagraphCount = 40;
+      RepeatedWordMarkdown = 'Alpha beta alpha';
+      RepeatedWord = 'alpha';
+      LastParagraph = 'Paragraph 39';
+      SecondParagraph = 'Paragraph 01';
     var
       FHostForm: TForm;
     function NewHostedViewer: TTestableVclViewer;
@@ -44,6 +48,21 @@ type
 
     [Test]
     procedure Keyboard_ArrowDown_ScrollsOverflowingContent;
+
+    [Test]
+    procedure FindText_RepeatedSearch_SelectsNextMatch;
+
+    [Test]
+    procedure FindPrevious_NoSelection_SelectsLastMatch;
+
+    [Test]
+    procedure FindText_MatchInView_KeepsScrollPosition;
+
+    [Test]
+    procedure FindText_MatchBelowView_ScrollsToMatch;
+
+    [Test]
+    procedure HighlightMatches_SeveralMatches_CountsEveryMatch;
   end;
 
 implementation
@@ -120,6 +139,60 @@ begin
   Viewer.SimulateKeyDown(VK_DOWN, []);
 
   Assert.IsTrue(Viewer.ScrollOffset > 0, 'The down arrow should scroll a viewer whose content overflows');
+end;
+
+procedure TMarkdownVclViewerTests.FindText_RepeatedSearch_SelectsNextMatch;
+begin
+  const Viewer = NewHostedViewer;
+  Viewer.Text := RepeatedWordMarkdown;
+
+  Viewer.FindText(RepeatedWord);
+  Assert.AreEqual('Alpha', Viewer.SelectedText);
+
+  Viewer.FindText(RepeatedWord);
+  Assert.AreEqual('alpha', Viewer.SelectedText);
+end;
+
+procedure TMarkdownVclViewerTests.FindPrevious_NoSelection_SelectsLastMatch;
+begin
+  const Viewer = NewHostedViewer;
+  Viewer.Text := RepeatedWordMarkdown;
+
+  const Found = Viewer.FindPrevious(RepeatedWord);
+
+  Assert.IsTrue(Found);
+  Assert.AreEqual('alpha', Viewer.SelectedText);
+end;
+
+procedure TMarkdownVclViewerTests.FindText_MatchInView_KeepsScrollPosition;
+begin
+  const Viewer = NewHostedViewer;
+  Viewer.Text := TMarkdownTestPipelineHelpers.ManyParagraphs(ParagraphCount);
+
+  Viewer.FindText(SecondParagraph);
+
+  Assert.AreEqual(0.0, Double(Viewer.ScrollOffset), 0.01);
+end;
+
+procedure TMarkdownVclViewerTests.FindText_MatchBelowView_ScrollsToMatch;
+begin
+  const Viewer = NewHostedViewer;
+  Viewer.Text := TMarkdownTestPipelineHelpers.ManyParagraphs(ParagraphCount);
+
+  Viewer.FindText(LastParagraph);
+
+  Assert.IsTrue(Viewer.ScrollOffset > 0, 'A match below the viewport should be scrolled into view');
+end;
+
+procedure TMarkdownVclViewerTests.HighlightMatches_SeveralMatches_CountsEveryMatch;
+begin
+  const Viewer = NewHostedViewer;
+  Viewer.Text := RepeatedWordMarkdown;
+
+  Viewer.HighlightMatches(RepeatedWord);
+
+  Assert.AreEqual(2, Viewer.HighlightCount);
+  Assert.AreEqual(2, Viewer.FindMatchCount(RepeatedWord));
 end;
 
 end.

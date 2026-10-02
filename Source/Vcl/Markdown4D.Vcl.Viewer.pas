@@ -54,6 +54,7 @@ type
       DefaultControlWidth = 300;
       DefaultControlHeight = 200;
       SelectionFillColor = TLayoutColor($402F81F7);
+      MatchFillColor = TLayoutColor($55E3B341);
       CopyButtonWidth = 54;
       CopyButtonHeight = 22;
       CopyButtonMargin = 6;
@@ -120,6 +121,7 @@ type
     procedure EnsureBufferSize;
     procedure ScrollToBottom;
     procedure SetScrollPosition(const Value: Single);
+    procedure ScrollToMatch(const Match: TMarkdownFoundRange);
     procedure UpdateScrollBar;
     function LineScrollAmount: Integer;
     function ContentPointOf(const X, Y: Integer): TLayoutPointF;
@@ -181,7 +183,16 @@ type
     procedure LoadFromFile(const FileName: string);
     procedure LoadFromStream(const Stream: TStream);
     procedure AppendMarkdown(const Markdown: string);
+    // Select the next match and scroll it into view; a repeated search moves
+    // on and wraps to the first match after the last. FindPrevious walks back.
     function FindText(const Needle: string): Boolean;
+    function FindPrevious(const Needle: string): Boolean;
+    function FindMatchCount(const Needle: string): Integer;
+    // Mark every match until ClearHighlights or an empty needle; the marks
+    // follow the document as it changes.
+    procedure HighlightMatches(const Needle: string);
+    procedure ClearHighlights;
+    function HighlightCount: Integer;
     procedure CopySelectionToClipboard;
     procedure SelectAll;
     procedure ClearSelection;
@@ -392,13 +403,49 @@ end;
 
 function TMarkdownViewer.FindText(const Needle: string): Boolean;
 begin
-  const Ranges = FModel.FindText(Needle);
-  Result := Length(Ranges) > 0;
-  if not Result then
-    Exit;
+  var Match: TMarkdownFoundRange;
+  Result := FModel.TrySelectNextMatch(Needle, Match);
+  if Result then
+    ScrollToMatch(Match);
+end;
 
-  const FirstMatch = FModel.DisplayList.Items[Ranges[0].ItemIndex];
-  SetScrollPosition(FirstMatch.Bounds.Top);
+function TMarkdownViewer.FindPrevious(const Needle: string): Boolean;
+begin
+  var Match: TMarkdownFoundRange;
+  Result := FModel.TrySelectPreviousMatch(Needle, Match);
+  if Result then
+    ScrollToMatch(Match);
+end;
+
+procedure TMarkdownViewer.ScrollToMatch(const Match: TMarkdownFoundRange);
+begin
+  var Offset: Single;
+  if FModel.TryGetScrollTarget(Match, Offset) then
+    SetScrollPosition(Offset)
+  else
+    Invalidate;
+end;
+
+function TMarkdownViewer.FindMatchCount(const Needle: string): Integer;
+begin
+  Result := FModel.MatchCount(Needle);
+end;
+
+procedure TMarkdownViewer.HighlightMatches(const Needle: string);
+begin
+  FModel.HighlightMatches(Needle);
+  Invalidate;
+end;
+
+procedure TMarkdownViewer.ClearHighlights;
+begin
+  FModel.ClearHighlights;
+  Invalidate;
+end;
+
+function TMarkdownViewer.HighlightCount: Integer;
+begin
+  Result := FModel.HighlightCount;
 end;
 
 procedure TMarkdownViewer.CopySelectionToClipboard;
@@ -567,6 +614,11 @@ begin
   try
     const Viewport = TLayoutRectF.Create(0, ScrollY, ClientWidth, ScrollY + ClientHeight);
     TMarkdownDisplayListRenderer.Render(FModel.DisplayList, PainterLifetime, Viewport, FTheme.BackgroundColor);
+
+    for var MatchRect in FModel.HighlightRectsWithin(Viewport) do
+    begin
+      PainterLifetime.FillRect(MatchRect, MatchFillColor);
+    end;
 
     for var SelectionRect in FModel.SelectionRects do
     begin

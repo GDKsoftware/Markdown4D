@@ -23,6 +23,9 @@ type
     FFlushCount: Integer;
     FSwapDepth: Integer;
     FHighlightedNeedle: string;
+    FPreviewHighlightedNeedle: string;
+    FPreviewPreviousNeedle: string;
+    FPreviewLayoutCount: Integer;
     function GetEditorText: string;
     procedure SetEditorText(const Value: string);
     function MergeEditorText(const Value: string): Boolean;
@@ -41,6 +44,10 @@ type
     function EditorReplaceCurrent(const Needle, Replacement: string): Boolean;
     function EditorReplaceAll(const Needle, Replacement: string): Integer;
     procedure PreviewFindText(const Needle: string);
+    procedure PreviewFindPrevious(const Needle: string);
+    procedure PreviewHighlightMatches(const Needle: string);
+    function PreviewHighlightCount: Integer;
+    function PreviewLayoutCount: Integer;
     procedure BeginSwap;
     procedure EndSwap;
 
@@ -49,6 +56,9 @@ type
     destructor Destroy; override;
     property FlushCount: Integer read FFlushCount;
     property HighlightedNeedle: string read FHighlightedNeedle;
+    property PreviewHighlightedNeedle: string read FPreviewHighlightedNeedle;
+    property PreviewPreviousNeedle: string read FPreviewPreviousNeedle;
+    property PreviewLayouts: Integer read FPreviewLayoutCount write FPreviewLayoutCount;
     property VisibleLine: Integer read FFirstVisibleSourceLine write FFirstVisibleSourceLine;
   end;
 
@@ -64,6 +74,8 @@ type
     FOpenErrorCount: Integer;
     FFindNeedle: string;
     FReplaceValue: string;
+    FPreviewNeedle: string;
+    FPreviewFindCount: string;
     FCloseChoice: TPadCloseChoice;
     procedure RebuildTabs;
     procedure SetDocumentTitle(const Name: string);
@@ -75,6 +87,7 @@ type
     function EditorReplaceValue: string;
     function PreviewFindNeedle: string;
     procedure SetFindCount(const Value: string);
+    procedure SetPreviewFindCount(const Value: string);
     function SampleMarkdown: string;
     function DarkThemeActive: Boolean;
     function EffectiveViewMode: TPadViewMode;
@@ -100,6 +113,8 @@ type
     property CloseChoice: TPadCloseChoice read FCloseChoice write FCloseChoice;
     property FindNeedle: string read FFindNeedle write FFindNeedle;
     property ReplaceValue: string read FReplaceValue write FReplaceValue;
+    property PreviewNeedle: string read FPreviewNeedle write FPreviewNeedle;
+    property PreviewFindCount: string read FPreviewFindCount;
   end;
 
   [TestFixture]
@@ -155,6 +170,18 @@ type
 
     [Test]
     procedure Find_HighlightsEveryMatch;
+
+    [Test]
+    procedure PreviewFind_HighlightsEveryMatchAndCountsThem;
+
+    [Test]
+    procedure PreviewFind_EmptyNeedle_ClearsHighlightsAndCount;
+
+    [Test]
+    procedure PreviewFindPrevious_SearchesBackwards;
+
+    [Test]
+    procedure Tick_PreviewLaidOutAgain_RecountsPreviewMatches;
 
     [Test]
     procedure Replace_ReplacesTheSelectedMatch;
@@ -293,6 +320,28 @@ begin
   // The preview is not part of these tests.
 end;
 
+procedure TFakeEditorView.PreviewFindPrevious(const Needle: string);
+begin
+  FPreviewPreviousNeedle := Needle;
+end;
+
+procedure TFakeEditorView.PreviewHighlightMatches(const Needle: string);
+begin
+  FPreviewHighlightedNeedle := Needle;
+end;
+
+// The preview shows the same text as the editor, so the editor model counts
+// the marks the preview would show.
+function TFakeEditorView.PreviewHighlightCount: Integer;
+begin
+  Result := FModel.FindMatchCount(FPreviewHighlightedNeedle);
+end;
+
+function TFakeEditorView.PreviewLayoutCount: Integer;
+begin
+  Result := FPreviewLayoutCount;
+end;
+
 procedure TFakeEditorView.BeginSwap;
 begin
   Inc(FSwapDepth);
@@ -353,12 +402,17 @@ end;
 
 function TFakeShell.PreviewFindNeedle: string;
 begin
-  Result := '';
+  Result := FPreviewNeedle;
 end;
 
 procedure TFakeShell.SetFindCount(const Value: string);
 begin
   // The find label is not asserted on.
+end;
+
+procedure TFakeShell.SetPreviewFindCount(const Value: string);
+begin
+  FPreviewFindCount := Value;
 end;
 
 function TFakeShell.SampleMarkdown: string;
@@ -612,6 +666,53 @@ begin
   FController.UpdateFindCount;
 
   Assert.AreEqual('line', FEditorView.HighlightedNeedle);
+end;
+
+procedure TPadControllerTests.PreviewFind_HighlightsEveryMatchAndCountsThem;
+begin
+  OpenSampleFile;
+  FShell.PreviewNeedle := 'line';
+
+  FController.UpdatePreviewFindCount;
+
+  Assert.AreEqual('line', FEditorView.PreviewHighlightedNeedle);
+  Assert.AreEqual('3 matches', FShell.PreviewFindCount);
+end;
+
+procedure TPadControllerTests.PreviewFind_EmptyNeedle_ClearsHighlightsAndCount;
+begin
+  OpenSampleFile;
+  FShell.PreviewNeedle := 'line';
+  FController.UpdatePreviewFindCount;
+
+  FShell.PreviewNeedle := '';
+  FController.UpdatePreviewFindCount;
+
+  Assert.AreEqual('', FEditorView.PreviewHighlightedNeedle);
+  Assert.AreEqual('', FShell.PreviewFindCount);
+end;
+
+procedure TPadControllerTests.PreviewFindPrevious_SearchesBackwards;
+begin
+  OpenSampleFile;
+  FShell.PreviewNeedle := 'line';
+
+  FController.ExecuteFindPrevious;
+
+  Assert.AreEqual('line', FEditorView.PreviewPreviousNeedle);
+end;
+
+procedure TPadControllerTests.Tick_PreviewLaidOutAgain_RecountsPreviewMatches;
+begin
+  OpenSampleFile;
+  FShell.PreviewNeedle := 'line';
+  FController.UpdatePreviewFindCount;
+
+  FView.EditorText := ExternalText;
+  FEditorView.PreviewLayouts := FEditorView.PreviewLayouts + 1;
+  FController.Tick;
+
+  Assert.AreEqual('4 matches', FShell.PreviewFindCount);
 end;
 
 procedure TPadControllerTests.Replace_ReplacesTheSelectedMatch;
