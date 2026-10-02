@@ -186,6 +186,21 @@ type
     procedure FindText_NonAsciiNeedle_KeepsSourceOffsets;
 
     [Test]
+    procedure SelectNextMatch_FirstSearch_SelectsFirstMatch;
+
+    [Test]
+    procedure SelectNextMatch_RepeatedSearch_SelectsNextMatch;
+
+    [Test]
+    procedure SelectNextMatch_AfterLastMatch_WrapsToFirstMatch;
+
+    [Test]
+    procedure SelectNextMatch_SelectionInsideDocument_SelectsMatchAfterSelection;
+
+    [Test]
+    procedure SelectNextMatch_NoMatch_ReturnsFalseAndKeepsSelection;
+
+    [Test]
     procedure CodeBlockRegions_Empty_WhenNoCode;
 
     [Test]
@@ -721,6 +736,72 @@ begin
   var Run: IDisplayTextRun;
   Assert.IsTrue(Supports(FModel.DisplayList.Items[Ranges[0].ItemIndex], IDisplayTextRun, Run));
   Assert.AreEqual(LowerWord, Copy(Run.Text, Ranges[0].StartCharacter, Ranges[0].CharacterCount));
+end;
+
+procedure TMarkdownViewerModelTests.SelectNextMatch_FirstSearch_SelectsFirstMatch;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'Alpha beta alpha';
+
+  var Match: TMarkdownFoundRange;
+  const Found = FModel.SelectNextMatch('alpha', Match);
+
+  Assert.IsTrue(Found);
+  Assert.AreEqual(1, Match.StartCharacter);
+  Assert.AreEqual('Alpha', FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.SelectNextMatch_RepeatedSearch_SelectsNextMatch;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'Alpha beta alpha';
+
+  var Match: TMarkdownFoundRange;
+  FModel.SelectNextMatch('alpha', Match);
+  FModel.SelectNextMatch('alpha', Match);
+
+  Assert.AreEqual(12, Match.StartCharacter);
+  Assert.AreEqual('alpha', FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.SelectNextMatch_AfterLastMatch_WrapsToFirstMatch;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'one'#10#10'gone';
+
+  var Match: TMarkdownFoundRange;
+  FModel.SelectNextMatch('one', Match);
+  const FirstItemIndex = Match.ItemIndex;
+  FModel.SelectNextMatch('one', Match);
+  FModel.SelectNextMatch('one', Match);
+
+  Assert.AreEqual(FirstItemIndex, Match.ItemIndex);
+  Assert.AreEqual(1, Match.StartCharacter);
+end;
+
+procedure TMarkdownViewerModelTests.SelectNextMatch_SelectionInsideDocument_SelectsMatchAfterSelection;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'alpha beta alpha';
+  FModel.SelectWordAt(TLayoutPointF.Create(75, FirstLineY));
+
+  var Match: TMarkdownFoundRange;
+  FModel.SelectNextMatch('alpha', Match);
+
+  Assert.AreEqual(12, Match.StartCharacter);
+end;
+
+procedure TMarkdownViewerModelTests.SelectNextMatch_NoMatch_ReturnsFalseAndKeepsSelection;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'alpha beta';
+
+  var Match: TMarkdownFoundRange;
+  FModel.SelectNextMatch('beta', Match);
+  const Found = FModel.SelectNextMatch('zulu', Match);
+
+  Assert.IsFalse(Found);
+  Assert.AreEqual('beta', FModel.SelectedText);
 end;
 
 procedure TMarkdownViewerModelTests.CodeBlockRegions_Empty_WhenNoCode;

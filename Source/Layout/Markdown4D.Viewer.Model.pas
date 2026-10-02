@@ -98,6 +98,8 @@ type
     class function ContinuesLine(const Run, Before: IDisplayTextRun): Boolean; static;
     class function CharacterClassOf(const Character: Char): TCharacterClass; static;
     class function CaseInsensitiveIndexOf(const Needle, Haystack: string; const StartIndex: Integer): Integer; static;
+    function NextMatchAfterSelection(const Matches: TArray<TMarkdownFoundRange>): TMarkdownFoundRange;
+    class function RangeOfMatch(const Match: TMarkdownFoundRange): TTextRange; static;
     function NormalizeSelection: TTextRange;
     class function ComparePositions(const Left, Right: TTextPosition): Integer;
     function SelectedCharacterRange(const Run: IDisplayTextRun; const ItemIndex: Integer;
@@ -157,6 +159,11 @@ type
     function ImageSlotState(const Source: string): TMarkdownImageSlotState;
     function TryGetImageSize(const Source: string; out Size: TLayoutSizeF): Boolean;
     function FindText(const Needle: string): TArray<TMarkdownFoundRange>;
+    // Select the first match after the start of the current selection, or the
+    // first match in the document when there is none or the last match is
+    // already behind it, so a repeated search walks through every match.
+    // False when the needle does not occur; the selection is then left as is.
+    function SelectNextMatch(const Needle: string; out Match: TMarkdownFoundRange): Boolean;
     function CodeBlockRegions: TArray<TMarkdownCodeBlockRegion>;
     function TryGetCodeBlockAt(const Point: TLayoutPointF; out Region: TMarkdownCodeBlockRegion): Boolean;
     property Text: string read GetText write SetText;
@@ -927,6 +934,52 @@ begin
       Found := CaseInsensitiveIndexOf(Needle, RunText, Offset);
     end;
   end;
+end;
+
+function TMarkdownViewerModel.SelectNextMatch(const Needle: string; out Match: TMarkdownFoundRange): Boolean;
+begin
+  Match := Default(TMarkdownFoundRange);
+
+  const Matches = FindText(Needle);
+  Result := (Length(Matches) > 0);
+  if not Result then
+    Exit;
+
+  Match := NextMatchAfterSelection(Matches);
+
+  const Range = RangeOfMatch(Match);
+  FSelectionUnit := TSelectionUnit.Character;
+  FAnchor := Range.StartPosition;
+  FExtent := Range.EndPosition;
+  FSelectionActive := True;
+end;
+
+function TMarkdownViewerModel.NextMatchAfterSelection(const Matches: TArray<TMarkdownFoundRange>): TMarkdownFoundRange;
+begin
+  Result := Matches[0];
+  if not HasSelection then
+    Exit;
+
+  const Selection = NormalizeSelection;
+
+  for var Candidate in Matches do
+  begin
+    const CandidateRange = RangeOfMatch(Candidate);
+    const IsAfterSelectionStart = (ComparePositions(CandidateRange.StartPosition, Selection.StartPosition) > 0);
+    if IsAfterSelectionStart then
+    begin
+      Result := Candidate;
+      Exit;
+    end;
+  end;
+end;
+
+class function TMarkdownViewerModel.RangeOfMatch(const Match: TMarkdownFoundRange): TTextRange;
+begin
+  Result.StartPosition.ItemIndex := Match.ItemIndex;
+  Result.StartPosition.CharacterIndex := Match.StartCharacter - 1;
+  Result.EndPosition.ItemIndex := Match.ItemIndex;
+  Result.EndPosition.CharacterIndex := Result.StartPosition.CharacterIndex + Match.CharacterCount;
 end;
 
 function TMarkdownViewerModel.TryGetCodeBlockAt(const Point: TLayoutPointF;

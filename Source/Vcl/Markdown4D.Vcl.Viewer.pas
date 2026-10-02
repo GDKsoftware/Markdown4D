@@ -392,13 +392,13 @@ end;
 
 function TMarkdownViewer.FindText(const Needle: string): Boolean;
 begin
-  const Ranges = FModel.FindText(Needle);
-  Result := Length(Ranges) > 0;
+  var Match: TMarkdownFoundRange;
+  Result := FModel.SelectNextMatch(Needle, Match);
   if not Result then
     Exit;
 
-  const FirstMatch = FModel.DisplayList.Items[Ranges[0].ItemIndex];
-  SetScrollPosition(FirstMatch.Bounds.Top);
+  const MatchItem = FModel.DisplayList.Items[Match.ItemIndex];
+  SetScrollPosition(MatchItem.Bounds.Top);
 end;
 
 procedure TMarkdownViewer.CopySelectionToClipboard;
