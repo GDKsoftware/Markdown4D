@@ -55,6 +55,7 @@ contains
   Markdown4D.Highlighter.TokenBuilder in '..\Source\Core\Markdown4D.Highlighter.TokenBuilder.pas',
   Markdown4D.Highlighter.Xml in '..\Source\Core\Markdown4D.Highlighter.Xml.pas',
   Markdown4D.Html.Entities in '..\Source\Core\Markdown4D.Html.Entities.pas',
+  Markdown4D.Emoji.Shortcodes in '..\Source\Core\Markdown4D.Emoji.Shortcodes.pas',
   Markdown4D.Html.Subset in '..\Source\Core\Markdown4D.Html.Subset.pas',
   Markdown4D.Parser.Blocks in '..\Source\Core\Markdown4D.Parser.Blocks.pas',
   Markdown4D.Parser.HtmlBlocks in '..\Source\Core\Markdown4D.Parser.HtmlBlocks.pas',

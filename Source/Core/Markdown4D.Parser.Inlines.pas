@@ -97,6 +97,8 @@ type
       StrongDelimiterCount = 2;
       CollapsedLabelLength = 2;
       TaskMarkerLength = 3;
+      EmojiShortcodeDelimiter = ':';
+      NoEmojiShortcodeClose = 0;
       RuleOfThreeDivisor = 3;
       OpenersBottomBucketsPerChar = 6;
       MaxMathDelimiterLength = 2;
@@ -160,6 +162,9 @@ type
     procedure EmitLink(const Opener: TInlineBracket; const Destination, Title: string);
     procedure CloseBracketsAfterLink(const IsImage: Boolean);
     function TryParseTaskListMarker: Boolean;
+    function TryParseEmojiShortcode: Boolean;
+    function ScanEmojiShortcodeClose(const NameStart: Integer): Integer;
+    class function IsEmojiShortcodeChar(const Value: Char): Boolean;
     function TryParseWwwAutolink: Boolean;
     function TryParseUrlAutolink: Boolean;
     function TryParseEmailAutolink: Boolean;
@@ -253,12 +258,13 @@ type
     function TryParse(const Context: IMarkdownInlineParserContext): Boolean;
   end;
 
-  TGfmInlineKind = (TaskListMarker, WwwAutolink, UrlAutolink, EmailAutolink);
+  TGfmInlineKind = (TaskListMarker, WwwAutolink, UrlAutolink, EmailAutolink, EmojiShortcode);
 
   TGfmInlineParser = class(TInterfacedObject, IMarkdownInlineParser)
   private
     const
-      Names: array[TGfmInlineKind] of string = ('tasklistmarker', 'wwwautolink', 'urlautolink', 'emailautolink');
+      Names: array[TGfmInlineKind] of string = ('tasklistmarker', 'wwwautolink', 'urlautolink', 'emailautolink',
+        'emojishortcode');
     var
       FKind: TGfmInlineKind;
 
@@ -277,7 +283,11 @@ implementation
 uses
   System.Character,
   System.Math,
-  Markdown4D.Text.Unescape;
+  Markdown4D.Text.Unescape,
+  Markdown4D.Emoji.Shortcodes;
+
+const
+  UnhandledInlineKindMessage = 'Unhandled inline kind: %d';
 
 constructor TInlineChainNode.Create(const Value: IMarkdownNode);
 begin
@@ -972,6 +982,53 @@ begin
   FIndex := TaskMarkerLength + 1;
 
   Result := True;
+end;
+
+function TInlineParser.TryParseEmojiShortcode: Boolean;
+begin
+  const CloseIndex = ScanEmojiShortcodeClose(FIndex + 1);
+  const HasClose = (CloseIndex <> NoEmojiShortcodeClose);
+  if not HasClose then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  const Name = Copy(FContent, FIndex + 1, CloseIndex - FIndex - 1);
+
+  var Decoded: string;
+  if not TEmojiShortcodes.TryDecode(Name, Decoded) then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  BufferText(Decoded, FIndex, CloseIndex + 1);
+  FIndex := CloseIndex + 1;
+
+  Result := True;
+end;
+
+function TInlineParser.ScanEmojiShortcodeClose(const NameStart: Integer): Integer;
+begin
+  var ScanIndex := NameStart;
+
+  while (ScanIndex <= Length(FContent)) and IsEmojiShortcodeChar(FContent[ScanIndex]) do
+  begin
+    Inc(ScanIndex);
+  end;
+
+  const HasName = (ScanIndex > NameStart);
+  const HasClose = (ScanIndex <= Length(FContent)) and (FContent[ScanIndex] = EmojiShortcodeDelimiter);
+  if HasName and HasClose then
+    Result := ScanIndex
+  else
+    Result := NoEmojiShortcodeClose;
+end;
+
+class function TInlineParser.IsEmojiShortcodeChar(const Value: Char): Boolean;
+begin
+  Result := IsAsciiAlphaNumeric(Value) or CharInSet(Value, [Underscore, '+', '-']);
 end;
 
 function TInlineParser.TryParseWwwAutolink: Boolean;
@@ -1960,7 +2017,7 @@ begin
     TCommonMarkInlineKind.LinkCloser:
       Engine.HandleCloseBracket;
   else
-    raise EMarkdownError.CreateFmt('Unhandled inline kind: %d', [Ord(FKind)]);
+    raise EMarkdownError.CreateFmt(UnhandledInlineKindMessage, [Ord(FKind)]);
   end;
 
   Result := True;
@@ -2001,8 +2058,12 @@ begin
       Result := Engine.TryParseWwwAutolink;
     TGfmInlineKind.UrlAutolink:
       Result := Engine.TryParseUrlAutolink;
+    TGfmInlineKind.EmailAutolink:
+      Result := Engine.TryParseEmailAutolink;
+    TGfmInlineKind.EmojiShortcode:
+      Result := Engine.TryParseEmojiShortcode;
   else
-    Result := Engine.TryParseEmailAutolink;
+    raise EMarkdownError.CreateFmt(UnhandledInlineKindMessage, [Ord(FKind)]);
   end;
 end;
 

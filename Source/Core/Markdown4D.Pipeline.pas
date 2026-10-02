@@ -251,6 +251,7 @@ begin
     Use(TGfmStrikethroughExtension.Create);
     Use(TGfmAutolinkExtension.Create);
     Use(TGfmTagFilterExtension.Create);
+    Use(TGfmEmojiExtension.Create);
     Use(TMathExtension.Create);
     Use(TAlertExtension.Create);
     FGfmRegistered := True;

@@ -20,6 +20,11 @@ This guide walks three worked examples, all built purely on the public API:
 - the shipped chart and mermaid extensions, the bundled references that
   follow the same shape at full scale.
 
+Emoji shortcodes (`TGfmEmojiExtension`, unit `Markdown4D.Extensions.Gfm`) are
+registered by default by `UseGfm`: a known GitHub shortcode such as `:smile:`
+renders as its emoji character, and an unknown code such as `:zzz:` or
+`:octocat:` stays literal. CommonMark leaves all shortcodes untouched.
+
 > Every registration point takes an integer
 > priority. Use the named constants on `TMarkdownPriorities` (unit
 > `Markdown4D.Extensions.Interfaces`) instead of bare numbers: `Highest`, `High`,
