@@ -80,6 +80,7 @@
         <DCCReference Include="Markdown4D.Color.Names.Tests.pas"/>
         <DCCReference Include="Markdown4D.Extensions.Alerts.Tests.pas"/>
         <DCCReference Include="Markdown4D.Extensions.Emoji.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Emoji.Segments.Tests.pas"/>
         <DCCReference Include="Markdown4D.Math.Layout.Tests.pas"/>
         <DCCReference Include="Markdown4D.Math.Integration.Tests.pas"/>
         <DCCReference Include="Markdown4D.Writer.RoundTrip.Tests.pas"/>
@@ -118,6 +119,7 @@
         <DCCReference Include="Markdown4D.Vcl.Viewer.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.ScrollBarTheme.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Image.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Vcl.ColorEmoji.Tests.pas"/>
         <DCCReference Include="Markdown4D.Tests.Pipeline.Helpers.pas"/>
         <DCCReference Include="Markdown4D.Tests.Vcl.BitmapHelpers.pas"/>
         <DCCReference Include="Markdown4D.Charts.Corpus.pas"/>

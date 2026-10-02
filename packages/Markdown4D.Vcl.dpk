@@ -37,6 +37,7 @@ requires
   Markdown4D.Core;
 
 contains
+  Markdown4D.Vcl.ColorEmoji in '..\Source\Vcl\Markdown4D.Vcl.ColorEmoji.pas',
   Markdown4D.Vcl.Painter in '..\Source\Vcl\Markdown4D.Vcl.Painter.pas',
   Markdown4D.Vcl.ImageDecoder in '..\Source\Vcl\Markdown4D.Vcl.ImageDecoder.pas',
   Markdown4D.Vcl.ScrollBarTheme in '..\Source\Vcl\Markdown4D.Vcl.ScrollBarTheme.pas',

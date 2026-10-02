@@ -25,6 +25,10 @@ registered by default by `UseGfm`: a known GitHub shortcode such as `:smile:`
 renders as its emoji character, and an unknown code such as `:octocat:` stays
 literal. `:zzz:` is excluded on purpose and stays literal, although GitHub
 renders it as an emoji. CommonMark leaves all shortcodes untouched.
+The VCL viewer draws emoji in colour: `TMarkdownVclPainter` hands the emoji
+parts of a text run (split by `TEmojiSegments`, unit `Markdown4D.Emoji.Segments`)
+to DirectWrite and keeps GDI for the rest of the text. Without DirectWrite it
+falls back to the monochrome GDI glyph.
 
 > Every registration point takes an integer
 > priority. Use the named constants on `TMarkdownPriorities` (unit

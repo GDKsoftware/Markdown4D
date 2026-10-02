@@ -10,9 +10,11 @@ uses
   System.Generics.Collections,
   Winapi.Windows,
   Vcl.Graphics,
+  Markdown4D.Emoji.Segments,
   Markdown4D.Image.Rasterizer,
   Markdown4D.Layout.Defaults,
-  Markdown4D.Layout.Interfaces;
+  Markdown4D.Layout.Interfaces,
+  Markdown4D.Vcl.ColorEmoji;
 
 type
   TMarkdownVclImageResolver = reference to function(const Source: string): TGraphic;
@@ -39,6 +41,14 @@ type
       FHasAppliedFont: Boolean;
       FImageResolver: TMarkdownVclImageResolver;
       FBrokenImageQuery: TMarkdownVclBrokenImageQuery;
+      FColorEmoji: TMarkdownVclColorEmojiRenderer;
+    function MeasureSegmentedWidth(const Text: string; const Font: TMarkdownFontStyle): Single;
+    function MeasureSegmentWidth(const Segment: TEmojiSegment; const Font: TMarkdownFontStyle): Single;
+    procedure DrawSegmentedRun(const TopLeft: TLayoutPointF; const Text: string; const Font: TMarkdownFontStyle;
+      const Color: TLayoutColor);
+    procedure DrawGdiText(const Left, BaselineY: Single; const Text: string; const Font: TMarkdownFontStyle;
+      const Color: TLayoutColor);
+    function ColorEmoji: TMarkdownVclColorEmojiRenderer;
     procedure ApplyFont(const Font: TMarkdownFontStyle);
     function FontKey(const Font: TMarkdownFontStyle): string;
     function FontPixelHeight(const Font: TMarkdownFontStyle): Integer;
@@ -111,6 +121,7 @@ end;
 
 destructor TMarkdownVclPainter.Destroy;
 begin
+  FColorEmoji.Free;
   FMetricsCache.Free;
   FFamilyCache.Free;
   FSavedStates.Free;
@@ -120,11 +131,44 @@ end;
 
 function TMarkdownVclPainter.MeasureText(const Text: string; const Font: TMarkdownFontStyle): TLayoutSizeF;
 begin
-  ApplyFont(Font);
-
-  const Extent = FCanvas.TextExtent(Text);
   const Metrics = TextMetricsOf(Font);
-  Result := TLayoutSizeF.Create(Extent.cx, Metrics.tmHeight + Metrics.tmExternalLeading);
+  const Height = Metrics.tmHeight + Metrics.tmExternalLeading;
+
+  if TEmojiSegments.ContainsEmoji(Text) then
+  begin
+    Result := TLayoutSizeF.Create(MeasureSegmentedWidth(Text, Font), Height);
+    Exit;
+  end;
+
+  ApplyFont(Font);
+  const Extent = FCanvas.TextExtent(Text);
+  Result := TLayoutSizeF.Create(Extent.cx, Height);
+end;
+
+function TMarkdownVclPainter.MeasureSegmentedWidth(const Text: string; const Font: TMarkdownFontStyle): Single;
+begin
+  Result := 0;
+  for var Segment in TEmojiSegments.Split(Text) do
+  begin
+    Result := Result + MeasureSegmentWidth(Segment, Font);
+  end;
+end;
+
+// An emoji part is measured by the engine that draws it, so the advance the
+// layout reserves matches the colour glyph; GDI measures it when DirectWrite
+// is unavailable and GDI draws it as well.
+function TMarkdownVclPainter.MeasureSegmentWidth(const Segment: TEmojiSegment; const Font: TMarkdownFontStyle): Single;
+begin
+  if Segment.IsEmoji then
+  begin
+    const PixelSize = Abs(FontPixelHeight(Font));
+    var EmojiWidth: Single;
+    if ColorEmoji.TryMeasure(Segment.Text, PixelSize, EmojiWidth) then
+      Exit(EmojiWidth);
+  end;
+
+  ApplyFont(Font);
+  Result := FCanvas.TextExtent(Segment.Text).cx;
 end;
 
 function TMarkdownVclPainter.LineHeight(const Font: TMarkdownFontStyle): Single;
@@ -141,17 +185,58 @@ end;
 procedure TMarkdownVclPainter.DrawTextRun(const TopLeft: TLayoutPointF; const Text: string;
   const Font: TMarkdownFontStyle; const Color: TLayoutColor);
 begin
+  if TEmojiSegments.ContainsEmoji(Text) then
+  begin
+    DrawSegmentedRun(TopLeft, Text, Font, Color);
+    Exit;
+  end;
+
+  const BaselineY = TopLeft.Y + TextMetricsOf(Font).tmAscent;
+  DrawGdiText(TopLeft.X, BaselineY, Text, Font, Color);
+end;
+
+// GDI draws a colour font in one colour, so the emoji parts of the run go
+// through DirectWrite and the text around them keeps its GDI rendering. Every
+// part advances by the width MeasureText reported for it.
+procedure TMarkdownVclPainter.DrawSegmentedRun(const TopLeft: TLayoutPointF; const Text: string;
+  const Font: TMarkdownFontStyle; const Color: TLayoutColor);
+begin
+  const BaselineY = TopLeft.Y + TextMetricsOf(Font).tmAscent;
+  const PixelSize = Abs(FontPixelHeight(Font));
+
+  var Left := TopLeft.X;
+  for var Segment in TEmojiSegments.Split(Text) do
+  begin
+    const IsDrawnInColor = Segment.IsEmoji and
+      ColorEmoji.TryDraw(FCanvas.Handle, Left, BaselineY, Segment.Text, PixelSize, Color);
+    if not IsDrawnInColor then
+      DrawGdiText(Left, BaselineY, Segment.Text, Font, Color);
+
+    Left := Left + MeasureSegmentWidth(Segment, Font);
+  end;
+end;
+
+procedure TMarkdownVclPainter.DrawGdiText(const Left, BaselineY: Single; const Text: string;
+  const Font: TMarkdownFontStyle; const Color: TLayoutColor);
+begin
   ApplyFont(Font);
   FCanvas.Font.Color := ToVclColor(Color);
   FCanvas.Brush.Style := bsClear;
 
-  const BaselineY = TopLeft.Y + TextMetricsOf(Font).tmAscent;
   const Handle = FCanvas.Handle;
   const PreviousAlign = GetTextAlign(Handle);
   SetTextAlign(Handle, TA_LEFT or TA_BASELINE);
   SetBkMode(Handle, TRANSPARENT);
-  ExtTextOut(Handle, Round(TopLeft.X), Round(BaselineY), 0, nil, PChar(Text), Length(Text), nil);
+  ExtTextOut(Handle, Round(Left), Round(BaselineY), 0, nil, PChar(Text), Length(Text), nil);
   SetTextAlign(Handle, PreviousAlign);
+end;
+
+function TMarkdownVclPainter.ColorEmoji: TMarkdownVclColorEmojiRenderer;
+begin
+  if FColorEmoji = nil then
+    FColorEmoji := TMarkdownVclColorEmojiRenderer.Create;
+
+  Result := FColorEmoji;
 end;
 
 procedure TMarkdownVclPainter.FillRect(const Bounds: TLayoutRectF; const Color: TLayoutColor);
