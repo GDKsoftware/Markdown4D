@@ -272,6 +272,9 @@ type
     function HighlightCount: Integer;
     function FindMatchCount(const Needle: string): Integer; overload;
     function FindMatchCount(const Needle: string; const Options: TMarkdownFindOptions): Integer; overload;
+    // Which match the selection is, counted from 0, for a "3 of 12"; -1 when
+    // the selection is not a match.
+    function FindMatchIndex(const Needle: string; const Options: TMarkdownFindOptions): Integer;
     function FindNext(const Needle: string): Boolean; overload;
     function FindNext(const Needle: string; const Options: TMarkdownFindOptions): Boolean; overload;
     function FindPrevious(const Needle: string; const Options: TMarkdownFindOptions): Boolean;
@@ -807,6 +810,11 @@ end;
 function TMarkdownEditor.FindMatchCount(const Needle: string; const Options: TMarkdownFindOptions): Integer;
 begin
   Result := FModel.FindMatchCount(Needle, Options);
+end;
+
+function TMarkdownEditor.FindMatchIndex(const Needle: string; const Options: TMarkdownFindOptions): Integer;
+begin
+  Result := FModel.FindMatchIndex(Needle, Options);
 end;
 
 function TMarkdownEditor.FindNext(const Needle: string): Boolean;

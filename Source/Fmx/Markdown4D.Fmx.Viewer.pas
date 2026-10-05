@@ -19,6 +19,7 @@ uses
   Markdown4D.Layout.DisplayList,
   Markdown4D.Theme,
   Markdown4D.Viewer.Model,
+  Markdown4D.Layout.TextSearch,
   Markdown4D.Viewer.Clicks,
   Markdown4D.Layout.ResizePacer,
   Markdown4D.Layout.Pointer,
@@ -198,12 +199,19 @@ type
     procedure AppendMarkdown(const Markdown: string);
     // Select the next match and scroll it into view; a repeated search moves
     // on and wraps to the first match after the last. FindPrevious walks back.
-    function FindText(const Needle: string): Boolean;
-    function FindPrevious(const Needle: string): Boolean;
-    function FindMatchCount(const Needle: string): Integer;
+    function FindText(const Needle: string): Boolean; overload;
+    function FindText(const Needle: string; const Options: TMarkdownFindOptions): Boolean; overload;
+    function FindPrevious(const Needle: string): Boolean; overload;
+    function FindPrevious(const Needle: string; const Options: TMarkdownFindOptions): Boolean; overload;
+    function FindMatchCount(const Needle: string): Integer; overload;
+    function FindMatchCount(const Needle: string; const Options: TMarkdownFindOptions): Integer; overload;
+    // Which match the selection is, counted from 0, for a "3 of 12"; -1 when
+    // the selection is not a match.
+    function FindMatchIndex(const Needle: string; const Options: TMarkdownFindOptions): Integer;
     // Mark every match until ClearHighlights or an empty needle; the marks
     // follow the document as it changes.
-    procedure HighlightMatches(const Needle: string);
+    procedure HighlightMatches(const Needle: string); overload;
+    procedure HighlightMatches(const Needle: string; const Options: TMarkdownFindOptions); overload;
     procedure ClearHighlights;
     function HighlightCount: Integer;
     procedure CopySelectionToClipboard;
@@ -468,16 +476,26 @@ end;
 
 function TMarkdownViewer.FindText(const Needle: string): Boolean;
 begin
+  Result := FindText(Needle, Default(TMarkdownFindOptions));
+end;
+
+function TMarkdownViewer.FindText(const Needle: string; const Options: TMarkdownFindOptions): Boolean;
+begin
   var Match: TMarkdownFoundRange;
-  Result := FModel.TrySelectNextMatch(Needle, Match);
+  Result := FModel.TrySelectNextMatch(Needle, Options, Match);
   if Result then
     ScrollToMatch(Match);
 end;
 
 function TMarkdownViewer.FindPrevious(const Needle: string): Boolean;
 begin
+  Result := FindPrevious(Needle, Default(TMarkdownFindOptions));
+end;
+
+function TMarkdownViewer.FindPrevious(const Needle: string; const Options: TMarkdownFindOptions): Boolean;
+begin
   var Match: TMarkdownFoundRange;
-  Result := FModel.TrySelectPreviousMatch(Needle, Match);
+  Result := FModel.TrySelectPreviousMatch(Needle, Options, Match);
   if Result then
     ScrollToMatch(Match);
 end;
@@ -493,12 +511,27 @@ end;
 
 function TMarkdownViewer.FindMatchCount(const Needle: string): Integer;
 begin
-  Result := FModel.MatchCount(Needle);
+  Result := FindMatchCount(Needle, Default(TMarkdownFindOptions));
+end;
+
+function TMarkdownViewer.FindMatchCount(const Needle: string; const Options: TMarkdownFindOptions): Integer;
+begin
+  Result := FModel.MatchCount(Needle, Options);
+end;
+
+function TMarkdownViewer.FindMatchIndex(const Needle: string; const Options: TMarkdownFindOptions): Integer;
+begin
+  Result := FModel.MatchIndex(Needle, Options);
 end;
 
 procedure TMarkdownViewer.HighlightMatches(const Needle: string);
 begin
-  FModel.HighlightMatches(Needle);
+  HighlightMatches(Needle, Default(TMarkdownFindOptions));
+end;
+
+procedure TMarkdownViewer.HighlightMatches(const Needle: string; const Options: TMarkdownFindOptions);
+begin
+  FModel.HighlightMatches(Needle, Options);
   RedrawContent;
 end;
 

@@ -520,10 +520,11 @@ same.
 | `Theme: TMarkdownTheme` | Assign a fully customised theme at run time (the control takes ownership) |
 | `AppendMarkdown(const Markdown: string)` | Append text and repaint; thread-safe, debounced |
 | `LoadFromFile(const FileName)` / `LoadFromStream(const Stream)` | Load a document |
-| `FindText(const Needle): Boolean` | Select the next match and scroll it into view; a repeated search moves on to the following match and wraps to the first after the last |
-| `FindPrevious(const Needle): Boolean` | The same walk backwards; wraps to the last match before the first |
-| `FindMatchCount(const Needle): Integer` | How many matches a walk with `FindText` visits; a formula counts once |
-| `HighlightMatches(const Needle)` / `ClearHighlights` | Mark every match, independently of the selection; the marks follow the document as it changes, an empty needle clears them, and a formula is marked once |
+| `FindText(const Needle[; const Options]): Boolean` | Select the next match and scroll it to the middle of the view when it is out of sight; a repeated search moves on to the following match and wraps to the first after the last. `TMarkdownFindOptions` (unit `Markdown4D.Layout.TextSearch`) adds `MatchCase` and `WholeWord`, as in the editor |
+| `FindPrevious(const Needle[; const Options]): Boolean` | The same walk backwards; wraps to the last match before the first |
+| `FindMatchCount(const Needle[; const Options]): Integer` | How many matches a walk with `FindText` visits; a formula counts once |
+| `FindMatchIndex(const Needle; const Options): Integer` | Which of those matches the selection is, counted from 0, for a "3 of 12"; -1 when the selection is not a match |
+| `HighlightMatches(const Needle[; const Options])` / `ClearHighlights` | Mark every match, independently of the selection; the marks follow the document as it changes, an empty needle clears them, and a formula is marked once |
 | `HighlightCount: Integer` | How many matches are marked |
 | `CopySelectionToClipboard` | Copy the current selection |
 | `SelectAll` | Select the whole document |

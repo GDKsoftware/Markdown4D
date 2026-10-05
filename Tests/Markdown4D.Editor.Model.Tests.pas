@@ -247,6 +247,13 @@ type
     procedure FindMatchCount_WholeWord_IgnoresPartialMatches;
 
     [Test]
+    [TestCase('SecondMatchSelected', '8,3,1')]
+    [TestCase('FirstMatchSelected', '0,3,0')]
+    [TestCase('OtherTextSelected', '4,3,-1')]
+    [TestCase('BareCaret', '0,0,-1')]
+    procedure FindMatchIndex_Selection_ReturnsIndexOfSelectedMatch(const Start, Length, Expected: Integer);
+
+    [Test]
     procedure FindNext_MatchCase_SkipsWrongCase;
 
     [Test]
@@ -945,6 +952,17 @@ procedure TMarkdownEditorModelTests.FindMatchCount_WholeWord_IgnoresPartialMatch
 begin
   FModel.LoadText('cat category cat');
   Assert.AreEqual(2, FModel.FindMatchCount('cat', TMarkdownFindOptions.Create(False, True)));
+end;
+
+procedure TMarkdownEditorModelTests.FindMatchIndex_Selection_ReturnsIndexOfSelectedMatch(const Start, Length,
+  Expected: Integer);
+begin
+  FModel.LoadText('cat dog cat cat');
+  FModel.SetSelection(Start, Length);
+
+  const Actual = FModel.FindMatchIndex('cat', Default(TMarkdownFindOptions));
+
+  Assert.AreEqual(Expected, Actual);
 end;
 
 procedure TMarkdownEditorModelTests.FindNext_MatchCase_SkipsWrongCase;
