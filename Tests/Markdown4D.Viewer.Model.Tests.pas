@@ -36,6 +36,9 @@ type
       FirstLineY = 10.0;
       SecondLineY = 33.0;
       ThirdLineY = 55.0;
+      // A surrogate pair and a ZWJ sequence, between two letters; the fake
+      // measurer gives every UTF-16 unit the same width.
+      EmojiLines: array[0..1] of string = ('a'#$D83D#$DE04'b', 'a'#$D83D#$DC69#$200D#$D83D#$DCBB'b');
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
@@ -268,6 +271,22 @@ type
 
     [Test]
     procedure SetText_FailingDocumentProcessor_ReportsExtensionError;
+
+    [Test]
+    [TestCase('SmileBeforeMiddle', '0,19,1')]
+    [TestCase('SmileAfterMiddle', '0,21,3')]
+    [TestCase('ZwjSequenceBeforeMiddle', '1,30,1')]
+    [TestCase('ZwjSequenceAfterMiddle', '1,40,6')]
+    procedure Selection_DragIntoEmoji_SelectsWholeEmojiOrNone(const LineIndex: Integer;
+                                                              const ExtentX: Single;
+                                                              const ExpectedLength: Integer);
+
+    [Test]
+    [TestCase('Smile', '0,25,1,2')]
+    [TestCase('ZwjSequence', '1,35,1,5')]
+    procedure SelectWordAt_OnEmoji_SelectsWholeEmoji(const LineIndex: Integer;
+                                                     const X: Single;
+                                                     const EmojiStart, EmojiLength: Integer);
   end;
 
 implementation
@@ -1161,6 +1180,31 @@ end;
 class procedure TMarkdownViewerModelTests.AssertSingle(const Expected, Actual: Single);
 begin
   Assert.AreEqual(Double(Expected), Double(Actual), SingleTolerance);
+end;
+
+procedure TMarkdownViewerModelTests.Selection_DragIntoEmoji_SelectsWholeEmojiOrNone(const LineIndex: Integer;
+  const ExtentX: Single; const ExpectedLength: Integer);
+begin
+  const Line = EmojiLines[LineIndex];
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := Line;
+
+  SelectFromTo(1, FirstLineY, ExtentX, FirstLineY);
+
+  Assert.AreEqual(Copy(Line, 1, ExpectedLength), FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.SelectWordAt_OnEmoji_SelectsWholeEmoji(const LineIndex: Integer;
+  const X: Single; const EmojiStart, EmojiLength: Integer);
+begin
+  const Line = EmojiLines[LineIndex];
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := Line;
+
+  const Selected = FModel.SelectWordAt(TLayoutPointF.Create(X, FirstLineY));
+
+  Assert.IsTrue(Selected);
+  Assert.AreEqual(Copy(Line, EmojiStart + 1, EmojiLength), FModel.SelectedText);
 end;
 
 procedure TMarkdownViewerModelTests.SelectFromTo(const AnchorX, AnchorY, ExtentX, ExtentY: Single);

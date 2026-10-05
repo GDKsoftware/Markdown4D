@@ -30,9 +30,21 @@ type
       ScrollOffset = 200;
       DrawLeft = 10.0;
       DrawTop = 10.0;
+      WhiteColor = $FFFFFF;
+      RasterBytesPerPixel = 4;
+      RasterBlueOffset = 0;
+      RasterGreenOffset = 1;
+      RasterRedOffset = 2;
+      // The em size in pixels of the 32 pt test font at 96 dpi.
+      ProbeEmSize = 42.0;
+      NoColourEmojiMessage = 'This machine draws no colour emoji (no Direct2D or no Segoe UI Emoji colour ' +
+                             'layers); the GDI fallback drew the emoji, the colour check is skipped';
     class function TestFont: TMarkdownFontStyle;
     class function ColouredPixelCount(const Bitmap: TBitmap): Integer;
+    class function InkedPixelCount(const Bitmap: TBitmap): Integer;
     class function IsColoured(const Color: TColor): Boolean;
+    class function IsColouredRgb(const Red, Green, Blue: Integer): Boolean;
+    class function CanDrawColourEmoji: Boolean;
     class function CreateWhiteBuffer: TBitmap;
 
   public
@@ -55,6 +67,7 @@ uses
   System.SysUtils,
   Winapi.Windows,
   Markdown4D.Tests.Vcl.BitmapHelpers,
+  Markdown4D.Vcl.ColorText,
   Markdown4D.Vcl.Painter;
 
 procedure TMarkdownVclEmojiTests.DrawTextRun_Emoji_PaintsColouredPixels;
@@ -63,6 +76,10 @@ begin
   try
     var Painter: IPainter := TMarkdownVclPainter.Create(Bitmap.Canvas);
     Painter.DrawTextRun(TLayoutPointF.Create(DrawLeft, DrawTop), Smile, TestFont, TextColor);
+
+    Assert.IsTrue(InkedPixelCount(Bitmap) > 0, 'Expected the emoji drawn inside the buffer');
+    if not CanDrawColourEmoji then
+      Assert.Pass(NoColourEmojiMessage);
 
     const Coloured = ColouredPixelCount(Bitmap);
     Assert.IsTrue(Coloured >= MinimumColouredPixels,
@@ -86,6 +103,10 @@ begin
     finally
       SetWindowOrgEx(Bitmap.Canvas.Handle, 0, 0, nil);
     end;
+
+    Assert.IsTrue(InkedPixelCount(Bitmap) > 0, 'Expected the emoji drawn inside the scrolled buffer');
+    if not CanDrawColourEmoji then
+      Assert.Pass(NoColourEmojiMessage);
 
     const Coloured = ColouredPixelCount(Bitmap);
     Assert.IsTrue(Coloured >= MinimumColouredPixels,
@@ -154,13 +175,63 @@ begin
   end;
 end;
 
+class function TMarkdownVclEmojiTests.InkedPixelCount(const Bitmap: Vcl.Graphics.TBitmap): Integer;
+begin
+  Result := 0;
+
+  for var YIndex := 0 to Bitmap.Height - 1 do
+  begin
+    for var XIndex := 0 to Bitmap.Width - 1 do
+    begin
+      const IsInked = (ColorToRGB(Bitmap.Canvas.Pixels[XIndex, YIndex]) <> WhiteColor);
+      if IsInked then
+        Inc(Result);
+    end;
+  end;
+end;
+
 class function TMarkdownVclEmojiTests.IsColoured(const Color: TColor): Boolean;
 begin
   const Pixel = ColorToRGB(Color);
   const Red = Pixel and $FF;
   const Green = (Pixel shr 8) and $FF;
   const Blue = (Pixel shr 16) and $FF;
+  Result := IsColouredRgb(Red, Green, Blue);
+end;
+
+class function TMarkdownVclEmojiTests.IsColouredRgb(const Red, Green, Blue: Integer): Boolean;
+begin
   Result := (Red >= FaceRedFloor) and (Green >= FaceGreenFloor) and (Blue <= FaceBlueCeiling);
+end;
+
+// Whether this machine can draw the emoji in colour at all: Direct2D present
+// and an emoji font with colour layers. Build servers without them fall back
+// to GDI, which is intended behaviour, not a failure.
+class function TMarkdownVclEmojiTests.CanDrawColourEmoji: Boolean;
+begin
+  const ColorText = TMarkdownVclColorText.Create;
+  try
+    var Image: TMarkdownVclColorTextImage;
+    if not ColorText.TryRender(Smile, ProbeEmSize, TextColor, Image) then
+      Exit(False);
+
+    const Pixels = Image.Raster.Pixels;
+    var Coloured := 0;
+    var Offset := 0;
+    while Offset < Length(Pixels) do
+    begin
+      const IsPixelColoured = IsColouredRgb(Pixels[Offset + RasterRedOffset],
+                                            Pixels[Offset + RasterGreenOffset],
+                                            Pixels[Offset + RasterBlueOffset]);
+      if IsPixelColoured then
+        Inc(Coloured);
+      Offset := Offset + RasterBytesPerPixel;
+    end;
+
+    Result := (Coloured >= MinimumColouredPixels);
+  finally
+    ColorText.Free;
+  end;
 end;
 
 end.

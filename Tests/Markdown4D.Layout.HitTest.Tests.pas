@@ -48,6 +48,13 @@ type
 
     [Test]
     procedure TryFindTextPosition_PointOutsideContent_ReturnsFalse;
+
+    [Test]
+    [TestCase('BeforeMiddle', '19,1')]
+    [TestCase('OnMiddle', '20,1')]
+    [TestCase('AfterMiddle', '21,3')]
+    procedure TryFindTextPosition_PointOnEmoji_NeverSplitsSurrogatePair(const X: Single;
+                                                                        const Expected: Integer);
   end;
 
 implementation
@@ -144,6 +151,22 @@ begin
   var Link: IMarkdownLink;
   const FoundLink = TMarkdownHitTester.TryFindLink(DisplayList, MissPoint, Link);
   Assert.IsFalse(FoundLink);
+end;
+
+// The fake measurer gives each UTF-16 unit the same width, so the middle of the
+// emoji is the boundary between its two surrogate halves.
+procedure TMarkdownLayoutHitTestTests.TryFindTextPosition_PointOnEmoji_NeverSplitsSurrogatePair(const X: Single;
+  const Expected: Integer);
+begin
+  const DisplayList = LayoutMarkdown('a'#$D83D#$DE04'b', DefaultWidth);
+  const Measurer = CreateMeasurer;
+
+  var Hit: TMarkdownTextHit;
+  const Found = TMarkdownHitTester.TryFindTextPosition(DisplayList, TLayoutPointF.Create(X, FirstLineY), Measurer,
+    Hit);
+
+  Assert.IsTrue(Found);
+  Assert.AreEqual(Expected, Hit.CharacterIndex);
 end;
 
 class function TMarkdownLayoutHitTestTests.CreateTestTheme: TMarkdownTheme;

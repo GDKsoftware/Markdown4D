@@ -62,8 +62,6 @@ type
       CopyButtonMargin = 6;
       CopyButtonFontSize = 12;
       CopyButtonStrokeWidth = 1.0;
-      CopyLabel = 'Copy';
-      CopiedLabel = 'Copied';
       CopyFeedbackMilliseconds = 1200;
       MenuSeparatorCaption = '-';
     var
@@ -250,6 +248,7 @@ implementation
 
 uses
   Markdown4D.Math.Font,
+  Markdown4D.Consts,
   Markdown4D.DesignSample,
   System.Math,
   System.UITypes,
@@ -516,6 +515,7 @@ begin
     var Entry := TMenuItem.Create(FContextMenu);
     Entry.Caption := Item.Caption;
     Entry.Enabled := Item.Enabled;
+    Entry.ShortCut := Item.ShortCut;
     Entry.Tag := Ord(Item.Command);
     Entry.OnClick := HandleContextItemClick;
     FContextMenu.Items.Add(Entry);
@@ -1135,9 +1135,9 @@ end;
 
 procedure TMarkdownViewer.DrawCopyButton(const Painter: IPainter);
 begin
-  var Caption := CopyLabel;
+  var Caption := CopyCodeCaption;
   if FCopyFeedback then
-    Caption := CopiedLabel;
+    Caption := CopiedCodeCaption;
 
   const Font = TMarkdownFontStyle.Create(FTheme.BaseFont.FamilyName, CopyButtonFontSize);
 

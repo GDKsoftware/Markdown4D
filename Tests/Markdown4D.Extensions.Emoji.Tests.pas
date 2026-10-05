@@ -84,6 +84,9 @@ type
     procedure Parse_Shortcode_TextNodeSegmentCoversShortcode;
 
     [Test]
+    procedure ToMarkdown_Shortcode_WritesEmojiCharacter;
+
+    [Test]
     procedure TEmojiShortcodes_Table_IsSortedOrdinalAndUnique;
 
     [Test]
@@ -262,16 +265,33 @@ begin
   Assert.AreEqual(Paragraph(Source), Actual);
 end;
 
+// The emphasis gives the shortcode a text node of its own, behind text that
+// shifts its offset away from the start of the source.
 procedure TMarkdownEmojiTests.Parse_Shortcode_TextNodeSegmentCoversShortcode;
 begin
-  const Source = ':smile:';
+  const Source = 'ab *:smile:*';
+  const ExpectedStartOffset = 5;
+  const ExpectedLength = Length(':smile:');
 
   const Document = TMarkdown.Parse(Source, TMarkdownDialect.Gfm);
-  const Text = FindFirst(Document, TMarkdownNodeKind.Text);
+  const Emphasis = FindFirst(Document, TMarkdownNodeKind.Emphasis);
+  Assert.IsNotNull(Emphasis, 'Emphasis node was not found');
+  const Text = FindFirst(Emphasis, TMarkdownNodeKind.Text);
 
   Assert.IsNotNull(Text, 'Text node was not found');
   Assert.AreEqual(Smile, (Text as IMarkdownText).Literal);
-  Assert.AreEqual(Source, Copy(Source, Text.Segment.StartOffset, Text.Segment.Length));
+  Assert.AreEqual(ExpectedStartOffset, Text.Segment.StartOffset, 'Start offset');
+  Assert.AreEqual(ExpectedLength, Text.Segment.Length, 'Length');
+end;
+
+procedure TMarkdownEmojiTests.ToMarkdown_Shortcode_WritesEmojiCharacter;
+begin
+  const Expected = Format('Hallo %s', [Smile]);
+  const Document = TMarkdown.Parse('Hallo :smile:', TMarkdownDialect.Gfm);
+
+  const Actual = TMarkdown.ToMarkdown(Document);
+
+  Assert.AreEqual(Expected, TrimRight(Actual));
 end;
 
 procedure TMarkdownEmojiTests.TEmojiShortcodes_Table_IsSortedOrdinalAndUnique;

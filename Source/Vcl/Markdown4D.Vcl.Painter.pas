@@ -133,9 +133,16 @@ end;
 function TMarkdownVclPainter.MeasureText(const Text: string; const Font: TMarkdownFontStyle): TLayoutSizeF;
 begin
   var Width := 0.0;
-  for var Run in TMarkdownEmojiRuns.Split(Text) do
+  if TMarkdownEmojiRuns.HasEmojiCandidate(Text) then
   begin
-    Width := Width + RunWidth(Run, Font);
+    for var Run in TMarkdownEmojiRuns.Split(Text) do
+    begin
+      Width := Width + RunWidth(Run, Font);
+    end;
+  end
+  else
+  begin
+    Width := GdiTextWidth(Text, Font);
   end;
 
   const Metrics = TextMetricsOf(Font);
@@ -182,6 +189,12 @@ procedure TMarkdownVclPainter.DrawTextRun(const TopLeft: TLayoutPointF; const Te
   const Font: TMarkdownFontStyle; const Color: TLayoutColor);
 begin
   const BaselineY = TopLeft.Y + TextMetricsOf(Font).tmAscent;
+  if not TMarkdownEmojiRuns.HasEmojiCandidate(Text) then
+  begin
+    DrawGdiText(TopLeft.X, BaselineY, Text, Font, Color);
+    Exit;
+  end;
+
   const Runs = TMarkdownEmojiRuns.Split(Text);
   const IsSplit = (Length(Runs) > 1);
 

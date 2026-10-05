@@ -48,7 +48,8 @@ implementation
 
 uses
   System.SysUtils,
-  Markdown4D.Ast;
+  Markdown4D.Ast,
+  Markdown4D.Consts;
 
 type
   TMarkdownAlert = class(TInterfacedObject, IMarkdownAlert)
@@ -92,11 +93,11 @@ end;
 function TMarkdownAlertKindHelper.Title: string;
 begin
   case Self of
-    TMarkdownAlertKind.Note      : Result := 'Note';
-    TMarkdownAlertKind.Tip       : Result := 'Tip';
-    TMarkdownAlertKind.Important : Result := 'Important';
-    TMarkdownAlertKind.Warning   : Result := 'Warning';
-    TMarkdownAlertKind.Caution   : Result := 'Caution';
+    TMarkdownAlertKind.Note      : Result := NoteAlertTitle;
+    TMarkdownAlertKind.Tip       : Result := TipAlertTitle;
+    TMarkdownAlertKind.Important : Result := ImportantAlertTitle;
+    TMarkdownAlertKind.Warning   : Result := WarningAlertTitle;
+    TMarkdownAlertKind.Caution   : Result := CautionAlertTitle;
   else
     raise ENotSupportedException.CreateFmt(TMarkdownAlerts.UnsupportedKindMessage, [Ord(Self)]);
   end;

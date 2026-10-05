@@ -225,6 +225,7 @@ uses
   Markdown4D,
   Markdown4D.Defines,
   Markdown4D.Layout.BlockOverride,
+  Markdown4D.Layout.EmojiRuns,
   Markdown4D.Layout.Engine,
   Markdown4D.Layout.SourceMapping;
 
@@ -433,7 +434,7 @@ begin
   const CharacterClass = CharacterClassOf(Run.Text[Position.CharacterIndex + 1]);
   if CharacterClass = TCharacterClass.Other then
   begin
-    Result.EndPosition.CharacterIndex := Position.CharacterIndex + 1;
+    Result.EndPosition.CharacterIndex := TMarkdownEmojiRuns.NextCharacterBoundary(Run.Text, Position.CharacterIndex);
     Exit;
   end;
 
@@ -1367,6 +1368,10 @@ begin
   Result := 0;
   for var Count := 1 to Length(Run.Text) - 1 do
   begin
+    const IsBoundary = TMarkdownEmojiRuns.IsCharacterBoundary(Run.Text, Count);
+    if not IsBoundary then
+      Continue;
+
     const IsPastCharacter = (PrefixWidth(Run, Count) <= LocalX);
     if not IsPastCharacter then
       Exit;
@@ -1408,6 +1413,10 @@ begin
 
   for var Count := 1 to Length(Run.Text) do
   begin
+    const IsBoundary = TMarkdownEmojiRuns.IsCharacterBoundary(Run.Text, Count);
+    if not IsBoundary then
+      Continue;
+
     const Distance = Abs(LocalX - PrefixWidth(Run, Count));
     if Distance < BestDistance then
     begin

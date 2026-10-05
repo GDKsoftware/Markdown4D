@@ -32,6 +32,10 @@ type
       LastTag = $E007F;
       FirstPictographic = $1F000;
       LastPictographic = $1FAFF;
+      FirstRegionalIndicator = $1F1E6;
+      LastRegionalIndicator = $1F1FF;
+      FirstSkinTone = $1F3FB;
+      LastSkinTone = $1F3FF;
       // The BMP code points whose default presentation is emoji (Unicode
       // Emoji_Presentation property); every other BMP symbol is text unless an
       // emoji presentation selector follows it.
@@ -48,10 +52,23 @@ type
       const IsPreviousEmoji: Boolean): Boolean;
     class function IsEmojiBase(const Value: Cardinal): Boolean;
     class function IsSequenceComponent(const Value: Cardinal): Boolean;
-    class function HasEmojiCandidate(const Text: string): Boolean;
+    class function CodePointAt(const Text: string; const Index: Integer): Cardinal;
+    class function CodePointBefore(const Text: string; const Index: Integer): Cardinal;
+    class function IsAttachedToPrevious(const Value: Cardinal): Boolean;
+    class function IsRegionalIndicator(const Value: Cardinal): Boolean;
+    class function RegionalIndicatorsBefore(const Text: string; const Count: Integer): Integer;
 
   public
+    // A cheap check without allocation: False means Split returns the whole
+    // text as one plain run.
+    class function HasEmojiCandidate(const Text: string): Boolean;
     class function Split(const Text: string): TArray<TMarkdownEmojiRun>;
+    // True when a caret or selection edge may sit after the first Count
+    // characters of Text: never between the halves of a surrogate pair and
+    // never inside an emoji sequence (selectors, skin tones, keycaps, tags,
+    // ZWJ joins and flag pairs).
+    class function IsCharacterBoundary(const Text: string; const Count: Integer): Boolean;
+    class function NextCharacterBoundary(const Text: string; const Count: Integer): Integer;
   end;
 
 implementation
@@ -189,6 +206,82 @@ begin
             (Value = CombiningKeycap) or
             (Value = ZeroWidthJoiner) or
             IsTag;
+end;
+
+class function TMarkdownEmojiRuns.IsCharacterBoundary(const Text: string; const Count: Integer): Boolean;
+begin
+  const IsAtEdge = ((Count <= 0) or (Count >= Length(Text)));
+  if IsAtEdge then
+    Exit(True);
+
+  const SplitsSurrogatePair = (Text[Count].IsHighSurrogate and Text[Count + 1].IsLowSurrogate);
+  if SplitsSurrogatePair then
+    Exit(False);
+
+  const Previous = CodePointBefore(Text, Count);
+  const Next = CodePointAt(Text, Count + 1);
+  const SplitsSequence = (IsAttachedToPrevious(Next) or (Previous = ZeroWidthJoiner));
+  if SplitsSequence then
+    Exit(False);
+
+  const SplitsFlag = (IsRegionalIndicator(Previous) and
+                      IsRegionalIndicator(Next) and
+                      Odd(RegionalIndicatorsBefore(Text, Count)));
+  Result := not SplitsFlag;
+end;
+
+class function TMarkdownEmojiRuns.NextCharacterBoundary(const Text: string; const Count: Integer): Integer;
+begin
+  Result := Count + 1;
+  while not IsCharacterBoundary(Text, Result) do
+  begin
+    Inc(Result);
+  end;
+end;
+
+class function TMarkdownEmojiRuns.CodePointAt(const Text: string; const Index: Integer): Cardinal;
+begin
+  const IsPair = (Text[Index].IsHighSurrogate and (Index < Length(Text)) and Text[Index + 1].IsLowSurrogate);
+  if IsPair then
+    Exit(Cardinal(Char.ConvertToUtf32(Text[Index], Text[Index + 1])));
+
+  Result := Ord(Text[Index]);
+end;
+
+class function TMarkdownEmojiRuns.CodePointBefore(const Text: string; const Index: Integer): Cardinal;
+begin
+  const IsPair = (Text[Index].IsLowSurrogate and (Index > 1) and Text[Index - 1].IsHighSurrogate);
+  if IsPair then
+    Exit(Cardinal(Char.ConvertToUtf32(Text[Index - 1], Text[Index])));
+
+  Result := Ord(Text[Index]);
+end;
+
+class function TMarkdownEmojiRuns.IsAttachedToPrevious(const Value: Cardinal): Boolean;
+begin
+  const IsSkinTone = ((Value >= FirstSkinTone) and (Value <= LastSkinTone));
+  Result := IsSequenceComponent(Value) or
+            (Value = TextPresentationSelector) or
+            IsSkinTone;
+end;
+
+class function TMarkdownEmojiRuns.IsRegionalIndicator(const Value: Cardinal): Boolean;
+begin
+  Result := (Value >= FirstRegionalIndicator) and (Value <= LastRegionalIndicator);
+end;
+
+// Flags are pairs of regional indicators; an odd count before a boundary means
+// it falls inside a pair.
+class function TMarkdownEmojiRuns.RegionalIndicatorsBefore(const Text: string; const Count: Integer): Integer;
+begin
+  Result := 0;
+
+  var Index := Count;
+  while (Index > 1) and IsRegionalIndicator(CodePointBefore(Text, Index)) do
+  begin
+    Inc(Result);
+    Index := Index - 2;
+  end;
 end;
 
 end.

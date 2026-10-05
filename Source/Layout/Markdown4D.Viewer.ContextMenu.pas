@@ -9,6 +9,7 @@ unit Markdown4D.Viewer.ContextMenu;
 interface
 
 uses
+  System.Classes,
   Markdown4D.Viewer.Model;
 
 type
@@ -20,8 +21,10 @@ type
     Enabled: Boolean;
     // A separator is drawn above this item when the host builds the menu.
     StartsGroup: Boolean;
+    // Shown beside the caption; the control handles the key itself.
+    ShortCut: TShortCut;
     class function Create(const Command: TViewerContextCommand; const Caption: string;
-      const Enabled, StartsGroup: Boolean): TViewerContextItem; static;
+      const Enabled, StartsGroup: Boolean; const ShortCut: TShortCut): TViewerContextItem; static;
   end;
 
   TMarkdownViewerContextMenu = record
@@ -34,24 +37,30 @@ type
 
 implementation
 
+uses
+  System.UITypes,
+  Markdown4D.Consts;
+
 const
-  CopyCaption = 'Copy';
-  SelectAllCaption = 'Select All';
+  CopyShortCut = scCtrl or vkC;
+  SelectAllShortCut = scCtrl or vkA;
 
 class function TViewerContextItem.Create(const Command: TViewerContextCommand; const Caption: string;
-  const Enabled, StartsGroup: Boolean): TViewerContextItem;
+  const Enabled, StartsGroup: Boolean; const ShortCut: TShortCut): TViewerContextItem;
 begin
   Result.Command := Command;
   Result.Caption := Caption;
   Result.Enabled := Enabled;
   Result.StartsGroup := StartsGroup;
+  Result.ShortCut := ShortCut;
 end;
 
 class function TMarkdownViewerContextMenu.Build(const Model: TMarkdownViewerModel): TArray<TViewerContextItem>;
 begin
   Result := [
-    TViewerContextItem.Create(TViewerContextCommand.Copy, CopyCaption, Model.HasSelection, False),
-    TViewerContextItem.Create(TViewerContextCommand.SelectAll, SelectAllCaption, Model.HasSelectableText, True)
+    TViewerContextItem.Create(TViewerContextCommand.Copy, CopyMenuCaption, Model.HasSelection, False, CopyShortCut),
+    TViewerContextItem.Create(TViewerContextCommand.SelectAll, SelectAllMenuCaption, Model.HasSelectableText, True,
+      SelectAllShortCut)
   ];
 end;
 

@@ -36,12 +36,20 @@ type
       GlyphMargin = 2;
       ColorChannelScale = 255.0;
       WidthKeyFormat = '%.2f|%s';
+      ImageKeyFormat = '%.2f|%.8x|%s';
+      MaxCachedImages = 1024;
     var
       FWriteFactory: IDWriteFactory;
       FDrawFactory: ID2D1Factory;
+      FTarget: ID2D1DCRenderTarget;
       FFormats: TDictionary<Single, IDWriteTextFormat>;
       FWidths: TDictionary<string, Single>;
+      FImages: TDictionary<string, TMarkdownVclColorTextImage>;
     function IsAvailable: Boolean;
+    function TryRenderUncached(const Text: string; const EmSize: Single; const Color: TLayoutColor;
+      out Image: TMarkdownVclColorTextImage): Boolean;
+    procedure CacheImage(const Key: string; const Image: TMarkdownVclColorTextImage);
+    function TryGetTarget(out Target: ID2D1DCRenderTarget): Boolean;
     function TryGetFormat(const EmSize: Single; out TextFormat: IDWriteTextFormat): Boolean;
     function TryCreateLayout(const Text: string; const EmSize: Single; out Layout: IDWriteTextLayout): Boolean;
     function TryGetBaseline(const Layout: IDWriteTextLayout; out Baseline: Single): Boolean;
@@ -73,6 +81,7 @@ begin
 
   FFormats := TDictionary<Single, IDWriteTextFormat>.Create;
   FWidths := TDictionary<string, Single>.Create;
+  FImages := TDictionary<string, TMarkdownVclColorTextImage>.Create;
 
   var WriteFactory: IUnknown;
   if Succeeded(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, IDWriteFactory, WriteFactory)) then
@@ -84,6 +93,7 @@ end;
 
 destructor TMarkdownVclColorText.Destroy;
 begin
+  FImages.Free;
   FWidths.Free;
   FFormats.Free;
 
@@ -114,8 +124,31 @@ begin
   Result := True;
 end;
 
+// A paint draws the same emoji again on every scroll step, so each rendered
+// stretch is kept per size, colour and text.
 function TMarkdownVclColorText.TryRender(const Text: string; const EmSize: Single; const Color: TLayoutColor;
   out Image: TMarkdownVclColorTextImage): Boolean;
+begin
+  const Key = Format(ImageKeyFormat, [EmSize, Color, Text]);
+  if FImages.TryGetValue(Key, Image) then
+    Exit(True);
+
+  Result := TryRenderUncached(Text, EmSize, Color, Image);
+  if Result then
+    CacheImage(Key, Image);
+end;
+
+procedure TMarkdownVclColorText.CacheImage(const Key: string; const Image: TMarkdownVclColorTextImage);
+begin
+  const IsFull = (FImages.Count >= MaxCachedImages);
+  if IsFull then
+    FImages.Clear;
+
+  FImages.Add(Key, Image);
+end;
+
+function TMarkdownVclColorText.TryRenderUncached(const Text: string; const EmSize: Single;
+  const Color: TLayoutColor; out Image: TMarkdownVclColorTextImage): Boolean;
 begin
   Image := Default(TMarkdownVclColorTextImage);
 
@@ -222,12 +255,8 @@ end;
 function TMarkdownVclColorText.TryDrawOnDC(const DC: HDC; const Width, Height: Integer;
   const Layout: IDWriteTextLayout; const Color: TLayoutColor): Boolean;
 begin
-  const PixelFormat = D2D1PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED);
-  const Properties = D2D1RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT, PixelFormat, DevicePixelsPerInch,
-    DevicePixelsPerInch);
-
   var Target: ID2D1DCRenderTarget;
-  if not Succeeded(FDrawFactory.CreateDCRenderTarget(Properties, Target)) then
+  if not TryGetTarget(Target) then
     Exit(False);
 
   const Bounds = TRect.Create(0, 0, Width, Height);
@@ -243,6 +272,25 @@ begin
   Target.Clear(D2D1ColorF(0, 0, 0, 0));
   Target.DrawTextLayout(D2D1PointF(GlyphMargin, GlyphMargin), Layout, Brush, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT);
   Result := Succeeded(Target.EndDraw);
+  if not Result then
+    FTarget := nil;
+end;
+
+// One DC render target serves every stretch; BindDC points it at the next
+// buffer. A failed draw drops it so the next one starts with a fresh target.
+function TMarkdownVclColorText.TryGetTarget(out Target: ID2D1DCRenderTarget): Boolean;
+begin
+  if not Assigned(FTarget) then
+  begin
+    const PixelFormat = D2D1PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED);
+    const Properties = D2D1RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT, PixelFormat, DevicePixelsPerInch,
+      DevicePixelsPerInch);
+    if not Succeeded(FDrawFactory.CreateDCRenderTarget(Properties, FTarget)) then
+      FTarget := nil;
+  end;
+
+  Target := FTarget;
+  Result := Assigned(Target);
 end;
 
 class function TMarkdownVclColorText.BitmapInfoOf(const Width, Height: Integer): TBitmapInfo;

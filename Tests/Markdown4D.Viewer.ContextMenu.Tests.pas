@@ -50,11 +50,18 @@ type
 
     [Test]
     procedure Execute_Copy_IsLeftToTheHost;
+
+    [Test]
+    [TestCase('Copy', 'Copy,67')]
+    [TestCase('SelectAll', 'SelectAll,65')]
+    procedure Build_Item_ShowsTheCtrlShortcutTheViewerHandles(const Command: TViewerContextCommand;
+                                                              const KeyCode: Integer);
   end;
 
 implementation
 
 uses
+  System.Classes,
   Markdown4D.Layout.FakeMeasurer;
 
 procedure TMarkdownViewerContextMenuTests.Setup;
@@ -136,6 +143,16 @@ begin
 
   Assert.IsFalse(TMarkdownViewerContextMenu.Execute(FModel, TViewerContextCommand.Copy));
   Assert.AreEqual('alpha', FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerContextMenuTests.Build_Item_ShowsTheCtrlShortcutTheViewerHandles(
+  const Command: TViewerContextCommand; const KeyCode: Integer);
+begin
+  const Expected = (scCtrl or KeyCode);
+
+  const Actual = ItemFor(Command).ShortCut;
+
+  Assert.AreEqual(Integer(Expected), Integer(Actual));
 end;
 
 end.
