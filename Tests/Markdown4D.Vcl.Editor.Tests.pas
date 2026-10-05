@@ -10,6 +10,7 @@ uses
   Vcl.Forms,
   DUnitX.TestFramework,
   Markdown4D.Editor.Model,
+  Markdown4D.Theme,
   Markdown4D.Vcl.Viewer,
   Markdown4D.Vcl.Editor;
 
@@ -24,7 +25,7 @@ type
     procedure SimulateMouseUp(const X, Y: Integer; const Shift: TShiftState);
     procedure SimulateKeyDown(const Key: Word; const Shift: TShiftState);
     procedure SimulateKeyChar(const Ch: Char);
-    function SimulateWheel(const WheelDelta: Integer): Boolean;
+    function SimulateWheel(const WheelDelta: Integer; const Shift: TShiftState = []): Boolean;
     procedure SimulateVScroll(const ScrollCode: Word);
     procedure SimulateSetFocus;
     procedure SimulateKillFocus;
@@ -69,12 +70,14 @@ type
       FHostForm: TForm;
       FFormKeyCount: Integer;
       FAutoScrollChangeCount: Integer;
+      FZoomChangeCount: Integer;
       FClickCount: Integer;
       FDoubleClickCount: Integer;
     function NewHostedEditor(const ControlHeight: Integer): TTestableVclEditor;
     function NewEditorOnPreviewingForm: TTestableVclEditor;
     procedure RecordFormKey(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure RecordAutoScrollChange(Sender: TObject);
+    procedure RecordZoomChange(Sender: TObject);
     function NewClickRecordingEditor: TTestableVclEditor;
     procedure RecordClick(Sender: TObject);
     procedure RecordDoubleClick(Sender: TObject);
@@ -87,6 +90,23 @@ type
     class function TryGetClipboardText(out Value: string): Boolean; static;
 
   public
+    [Test]
+    procedure CtrlWheel_Up_ZoomsInOneLevel;
+
+    [Test]
+    [TestCase('MainKeyboard', '187')]
+    [TestCase('NumericKeypad', '107')]
+    procedure Keyboard_CtrlPlus_ZoomsInOneLevel(const Key: Word);
+
+    [Test]
+    procedure Keyboard_CtrlZero_ResetsZoom;
+
+    [Test]
+    procedure Zoom_Double_LaysOutAsDoubleCodeFont;
+
+    [Test]
+    procedure Zoom_Changed_RaisesOnZoomChange;
+
     [Setup]
     procedure Setup;
 
@@ -337,9 +357,9 @@ begin
   KeyPress(Value);
 end;
 
-function TTestableVclEditor.SimulateWheel(const WheelDelta: Integer): Boolean;
+function TTestableVclEditor.SimulateWheel(const WheelDelta: Integer; const Shift: TShiftState): Boolean;
 begin
-  Result := DoMouseWheel([], WheelDelta, TPoint.Create(0, 0));
+  Result := DoMouseWheel(Shift, WheelDelta, TPoint.Create(0, 0));
 end;
 
 procedure TTestableVclEditor.SimulateVScroll(const ScrollCode: Word);
@@ -417,6 +437,7 @@ begin
 
   FFormKeyCount := 0;
   FAutoScrollChangeCount := 0;
+  FZoomChangeCount := 0;
   FClickCount := 0;
   FDoubleClickCount := 0;
 end;
@@ -1381,6 +1402,83 @@ begin
   Editor.SimulateMiddlePress;
 
   Assert.IsTrue(Editor.IsAutoScrolling);
+end;
+
+procedure TMarkdownVclEditorTests.CtrlWheel_Up_ZoomsInOneLevel;
+begin
+  const Editor = NewHostedEditor(ShortHostHeight);
+  Editor.Text := 'alpha';
+
+  const Handled = Editor.SimulateWheel(WHEEL_DELTA, [ssCtrl]);
+
+  Assert.IsTrue(Handled);
+  Assert.AreEqual(110, Editor.Zoom);
+end;
+
+procedure TMarkdownVclEditorTests.Keyboard_CtrlPlus_ZoomsInOneLevel(const Key: Word);
+begin
+  const Editor = NewHostedEditor(ShortHostHeight);
+  Editor.Text := 'alpha';
+
+  Editor.SimulateKeyDown(Key, [ssCtrl]);
+
+  Assert.AreEqual(110, Editor.Zoom);
+  Assert.AreEqual('alpha', Editor.Text);
+end;
+
+procedure TMarkdownVclEditorTests.Keyboard_CtrlZero_ResetsZoom;
+begin
+  const Editor = NewHostedEditor(ShortHostHeight);
+  Editor.Text := 'alpha';
+  Editor.Zoom := 200;
+
+  Editor.SimulateKeyDown(Ord('0'), [ssCtrl]);
+
+  Assert.AreEqual(100, Editor.Zoom);
+end;
+
+// Font heights round to whole pixels, so twice the zoom is compared with twice
+// the font rather than with twice the height.
+procedure TMarkdownVclEditorTests.Zoom_Double_LaysOutAsDoubleCodeFont;
+const
+  LineCount = 40;
+begin
+  const Editor = NewHostedEditor(ShortHostHeight);
+  Editor.Text := ManyLines(LineCount);
+  Editor.Zoom := 200;
+  const ZoomedHeight = ContentHeightOf(Editor);
+
+  const LargeTheme = TMarkdownTheme.CreateLight;
+  try
+    var LargeFont := LargeTheme.CodeFont;
+    LargeFont.Size := 2 * LargeFont.Size;
+    LargeTheme.CodeFont := LargeFont;
+    Editor.Zoom := 100;
+    Editor.Theme := LargeTheme;
+    const LargeFontHeight = ContentHeightOf(Editor);
+    Editor.ThemePreset := TMarkdownThemePreset.Light;
+
+    Assert.AreEqual(LargeFontHeight, ZoomedHeight);
+  finally
+    LargeTheme.Free;
+  end;
+end;
+
+procedure TMarkdownVclEditorTests.Zoom_Changed_RaisesOnZoomChange;
+begin
+  const Editor = NewHostedEditor(ShortHostHeight);
+  Editor.Text := 'alpha';
+  Editor.OnZoomChange := RecordZoomChange;
+
+  Editor.Zoom := 150;
+  Editor.Zoom := 150;
+
+  Assert.AreEqual(1, FZoomChangeCount);
+end;
+
+procedure TMarkdownVclEditorTests.RecordZoomChange(Sender: TObject);
+begin
+  Inc(FZoomChangeCount);
 end;
 
 procedure TMarkdownVclEditorTests.AutoScrollChange_StartAndStop_RaisedForBoth;

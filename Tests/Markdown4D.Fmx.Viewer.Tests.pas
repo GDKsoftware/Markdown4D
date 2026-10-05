@@ -35,6 +35,7 @@ type
       ClipTestSelectionBottomY = 40.0;
       ClipTestBandHeight = 60;
       WheelNotchDown = -120;
+      WheelNotchUp = 120;
       KeyboardMarkdown = 'alpha beta';
       ClickMarkdown = 'alpha';
       LinkMarkdown = '[alpha](https://example.com)';
@@ -56,6 +57,7 @@ type
       FExternalTheme: TMarkdownTheme;
       FReportedSender: TObject;
       FAutoScrollChangeCount: Integer;
+      FZoomChangeCount: Integer;
       FClickCount: Integer;
       FDoubleClickCount: Integer;
       FLinkClickCount: Integer;
@@ -64,6 +66,7 @@ type
     procedure StartAutoScroll;
     function PressDialogKey(const Key: Word): Word;
     procedure RecordAutoScrollChange(Sender: TObject);
+    procedure RecordZoomChange(Sender: TObject);
     procedure ShowClickMarkdown(const Markdown: string);
     function FirstTextRunCenter: TPointF;
     procedure PressAt(const Point: TPointF; const Shift: TShiftState);
@@ -127,6 +130,20 @@ type
 
     [Test]
     procedure Keyboard_CtrlA_SelectsWholeDocument;
+
+    [Test]
+    procedure CtrlWheel_Up_ZoomsInOneLevel;
+
+    [Test]
+    [TestCase('MainKeyboard', '187')]
+    [TestCase('NumericKeypad', '107')]
+    procedure Keyboard_CtrlPlus_ZoomsInOneLevel(const Key: Word);
+
+    [Test]
+    procedure Keyboard_CtrlZero_ResetsZoom;
+
+    [Test]
+    procedure Zoom_Changed_RaisesOnZoomChange;
 
     [Test]
     procedure Keyboard_ArrowDown_ScrollsOverflowingContent;
@@ -194,6 +211,7 @@ begin
   FExternalTheme := nil;
 
   FAutoScrollChangeCount := 0;
+  FZoomChangeCount := 0;
   FClickCount := 0;
   FDoubleClickCount := 0;
   FLinkClickCount := 0;
@@ -383,6 +401,47 @@ begin
   TMarkdownViewerAccess(FViewer).KeyDown(PressedKey, PressedChar, Shift);
 end;
 
+procedure TMarkdownFmxViewerTests.CtrlWheel_Up_ZoomsInOneLevel;
+begin
+  FViewer.Text := KeyboardMarkdown;
+
+  var Handled := False;
+  TMarkdownViewerAccess(FViewer).MouseWheel([ssCtrl], WheelNotchUp, Handled);
+
+  Assert.IsTrue(Handled);
+  Assert.AreEqual(110, FViewer.Zoom);
+end;
+
+procedure TMarkdownFmxViewerTests.Keyboard_CtrlPlus_ZoomsInOneLevel(const Key: Word);
+begin
+  FViewer.Text := KeyboardMarkdown;
+
+  PressKey(Key, [ssCtrl]);
+
+  Assert.AreEqual(110, FViewer.Zoom);
+end;
+
+procedure TMarkdownFmxViewerTests.Keyboard_CtrlZero_ResetsZoom;
+begin
+  FViewer.Text := KeyboardMarkdown;
+  FViewer.Zoom := 200;
+
+  PressKey(vk0, [ssCtrl]);
+
+  Assert.AreEqual(100, FViewer.Zoom);
+end;
+
+procedure TMarkdownFmxViewerTests.Zoom_Changed_RaisesOnZoomChange;
+begin
+  FViewer.Text := KeyboardMarkdown;
+  FViewer.OnZoomChange := RecordZoomChange;
+
+  FViewer.Zoom := 150;
+  FViewer.Zoom := 150;
+
+  Assert.AreEqual(1, FZoomChangeCount);
+end;
+
 procedure TMarkdownFmxViewerTests.Keyboard_CtrlA_SelectsWholeDocument;
 begin
   FViewer.Text := KeyboardMarkdown;
@@ -516,6 +575,11 @@ end;
 procedure TMarkdownFmxViewerTests.RecordAutoScrollChange(Sender: TObject);
 begin
   Inc(FAutoScrollChangeCount);
+end;
+
+procedure TMarkdownFmxViewerTests.RecordZoomChange(Sender: TObject);
+begin
+  Inc(FZoomChangeCount);
 end;
 
 procedure TMarkdownFmxViewerTests.Click_InText_RaisesOnClickOnce;

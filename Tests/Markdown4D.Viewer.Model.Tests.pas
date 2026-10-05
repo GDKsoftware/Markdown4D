@@ -10,6 +10,7 @@ uses
   Markdown4D.Layout.Interfaces,
   Markdown4D.Theme,
   Markdown4D.Layout.TextSearch,
+  Markdown4D.Layout.Zoom,
   Markdown4D.Viewer.Model;
 
 type
@@ -257,6 +258,27 @@ type
 
     [Test]
     procedure TryGetScrollTarget_MatchBelowViewport_CentresIt;
+
+    [Test]
+    procedure Zoom_NewModel_IsDefault;
+
+    [Test]
+    procedure SetZoom_Double_DoublesLineHeight;
+
+    [Test]
+    procedure SetZoom_Double_DoublesSpaceBetweenBlocks;
+
+    [Test]
+    procedure SetZoom_Double_LeavesAssignedThemeUnchanged;
+
+    [Test]
+    procedure SetZoom_Double_DoublesLoadedImage;
+
+    [Test]
+    procedure SetZoom_OutOfRange_IsClamped;
+
+    [Test]
+    procedure SetZoom_Double_KeepsTopLineAtTop;
 
     [Test]
     procedure HighlightMatches_SeveralMatches_ReturnsRectPerMatch;
@@ -1080,6 +1102,85 @@ begin
   const MatchTop = 5 * (BaseLineHeight + BlockSpacingValue);
   Assert.IsTrue(ShouldScroll);
   AssertSingle(MatchTop - (SmallHeight - BaseLineHeight) / 2, Offset);
+end;
+
+procedure TMarkdownViewerModelTests.Zoom_NewModel_IsDefault;
+begin
+  Assert.AreEqual(TMarkdownZoom.DefaultPercent, FModel.Zoom);
+end;
+
+procedure TMarkdownViewerModelTests.SetZoom_Double_DoublesLineHeight;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'alpha';
+
+  FModel.Zoom := 200;
+
+  AssertSingle(2 * BaseLineHeight, FModel.DisplayList.Height);
+end;
+
+procedure TMarkdownViewerModelTests.SetZoom_Double_DoublesSpaceBetweenBlocks;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'one'#10#10'two';
+
+  FModel.Zoom := 200;
+
+  const Matches = FModel.FindText('two');
+  const Run = FModel.DisplayList.Items[Matches[0].ItemIndex];
+  AssertSingle(2 * (BaseLineHeight + BlockSpacingValue), Run.Bounds.Top);
+end;
+
+procedure TMarkdownViewerModelTests.SetZoom_Double_LeavesAssignedThemeUnchanged;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'alpha';
+  const SizeBefore = FTheme.BaseFont.Size;
+
+  FModel.Zoom := 200;
+
+  AssertSingle(SizeBefore, FTheme.BaseFont.Size);
+end;
+
+procedure TMarkdownViewerModelTests.SetZoom_Double_DoublesLoadedImage;
+const
+  WideWidth = 1000.0;
+begin
+  FModel.SetViewport(WideWidth, DefaultHeight);
+  FModel.Text := ImageMarkdown;
+  FModel.NotifyImageArrived(ImageSource, TLayoutSizeF.Create(LoadedImageWidth, LoadedImageHeight));
+
+  FModel.Zoom := 200;
+
+  var ImageWidth := 0.0;
+  for var Index := 0 to FModel.DisplayList.ItemCount - 1 do
+  begin
+    var Image: IDisplayImage;
+    if Supports(FModel.DisplayList.Items[Index], IDisplayImage, Image) then
+      ImageWidth := Image.Bounds.Width;
+  end;
+  AssertSingle(2 * LoadedImageWidth, ImageWidth);
+end;
+
+procedure TMarkdownViewerModelTests.SetZoom_OutOfRange_IsClamped;
+const
+  FarTooLarge = 1000;
+begin
+  FModel.Zoom := FarTooLarge;
+
+  Assert.AreEqual(TMarkdownZoom.MaximumPercent, FModel.Zoom);
+end;
+
+procedure TMarkdownViewerModelTests.SetZoom_Double_KeepsTopLineAtTop;
+begin
+  FModel.SetViewport(DefaultWidth, SmallHeight);
+  FModel.Text := BuildTallMarkdown;
+  const ParagraphPitch = BaseLineHeight + BlockSpacingValue;
+  FModel.ScrollOffset := 5 * ParagraphPitch;
+
+  FModel.Zoom := 200;
+
+  AssertSingle(2 * 5 * ParagraphPitch, FModel.ScrollOffset);
 end;
 
 procedure TMarkdownViewerModelTests.HighlightMatches_SeveralMatches_ReturnsRectPerMatch;

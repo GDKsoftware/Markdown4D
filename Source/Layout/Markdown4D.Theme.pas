@@ -221,6 +221,8 @@ type
       FChartPalette: TArray<TLayoutColor>;
       FTokenColors: TTokenColorArray;
     class function PaletteFrom(const Colors: array of TLayoutColor): TArray<TLayoutColor>;
+    class function ScaledFont(const Font: TMarkdownFontStyle; const Factor: Single): TMarkdownFontStyle; static;
+    procedure ScaleBy(const Factor: Single);
     function HeadingFontsToJson: TJSONArray;
     class function SpacingsToJson(const Spacings: THeadingSpacingArray): TJSONArray;
     function PaletteToJson: TJSONArray;
@@ -268,6 +270,9 @@ type
     class function CreateDark: TMarkdownTheme;
     class function CreatePreset(const Preset: TMarkdownThemePreset): TMarkdownTheme;
     constructor Create;
+    // A copy with every font and every length multiplied by Factor, for a
+    // zoomed view; the colours stay. The caller owns the copy.
+    function Scaled(const Factor: Single): TMarkdownTheme;
     function SaveToJson: string;
     procedure LoadFromJson(const Json: string);
     property BaseFont: TMarkdownFontStyle read FBaseFont write FBaseFont;
@@ -427,6 +432,54 @@ begin
   begin
     Result[Index] := Colors[Index];
   end;
+end;
+
+function TMarkdownTheme.Scaled(const Factor: Single): TMarkdownTheme;
+begin
+  Result := TMarkdownTheme.Create;
+  try
+    Result.LoadFromJson(SaveToJson);
+    Result.ScaleBy(Factor);
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+procedure TMarkdownTheme.ScaleBy(const Factor: Single);
+begin
+  FBaseFont := ScaledFont(FBaseFont, Factor);
+  FCodeFont := ScaledFont(FCodeFont, Factor);
+  FMathFont := ScaledFont(FMathFont, Factor);
+
+  for var Level := MinHeadingLevel to MaxHeadingLevel do
+  begin
+    FHeadingFonts[Level]         := ScaledFont(FHeadingFonts[Level], Factor);
+    FHeadingSpacingsAbove[Level] := FHeadingSpacingsAbove[Level] * Factor;
+    FHeadingSpacingsBelow[Level] := FHeadingSpacingsBelow[Level] * Factor;
+  end;
+
+  FBlockSpacing           := FBlockSpacing * Factor;
+  FListIndent             := FListIndent * Factor;
+  FListMarkerWidth        := FListMarkerWidth * Factor;
+  FBlockQuoteBarWidth     := FBlockQuoteBarWidth * Factor;
+  FBlockQuoteInset        := FBlockQuoteInset * Factor;
+  FCodePadding            := FCodePadding * Factor;
+  FTableCellPadding       := FTableCellPadding * Factor;
+  FTableMinColumnWidth    := FTableMinColumnWidth * Factor;
+  FTableMaxColumnWidth    := FTableMaxColumnWidth * Factor;
+  FImagePlaceholderWidth  := FImagePlaceholderWidth * Factor;
+  FImagePlaceholderHeight := FImagePlaceholderHeight * Factor;
+  FCheckboxSize           := FCheckboxSize * Factor;
+  FThematicBreakThickness := FThematicBreakThickness * Factor;
+  FThematicBreakSpacing   := FThematicBreakSpacing * Factor;
+  FContentPadding         := FContentPadding * Factor;
+end;
+
+class function TMarkdownTheme.ScaledFont(const Font: TMarkdownFontStyle; const Factor: Single): TMarkdownFontStyle;
+begin
+  Result := Font;
+  Result.Size := Font.Size * Factor;
 end;
 
 function TMarkdownTheme.SaveToJson: string;

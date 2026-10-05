@@ -22,6 +22,7 @@ uses
   Markdown4D.Layout.TextSearch,
   Markdown4D.Viewer.Clicks,
   Markdown4D.Layout.ResizePacer,
+  Markdown4D.Layout.Zoom,
   Markdown4D.Layout.Pointer,
   Markdown4D.AutoScroll,
   Markdown4D.Fmx.AutoScroll,
@@ -108,6 +109,10 @@ type
       FOnRemoteImageRequest: TMarkdownRemoteImageEvent;
       FOnScroll: TNotifyEvent;
       FOnAutoScrollChange: TNotifyEvent;
+      FOnZoomChange: TNotifyEvent;
+      FZoomTimer: TTimer;
+      FZoomPacer: TMarkdownResizePacer;
+      FPendingZoom: Integer;
       FOnExtensionError: TMarkdownExtensionErrorEvent;
     procedure CreateFlushTimer;
     procedure CreateResizeTimer;
@@ -120,6 +125,11 @@ type
     procedure ApplyViewport;
     procedure ApplyViewportNow;
     procedure HandleResizeTimer(Sender: TObject);
+    procedure CreateZoomTimer;
+    procedure StepZoom(const Percent: Integer);
+    procedure ApplyZoomNow;
+    procedure HandleZoomTimer(Sender: TObject);
+    function TryHandleZoomKey(const Key: Word): Boolean;
     procedure ScrollToBottom;
     procedure SetScrollPosition(const Value: Single);
     procedure ScrollToMatch(const Match: TMarkdownFoundRange);
@@ -142,6 +152,8 @@ type
     procedure RaiseClick(const Kind: TMarkdownClickKind);
     function GetAutoScroll: Boolean;
     function GetIsAutoScrolling: Boolean;
+    function GetZoom: Integer;
+    procedure SetZoom(const Value: Integer);
     procedure SetAutoScroll(const Value: Boolean);
     function CanAutoScroll: Boolean;
     procedure AutoScrollBy(const Delta: Single);
@@ -217,6 +229,9 @@ type
     procedure CopySelectionToClipboard;
     procedure SelectAll;
     procedure ClearSelection;
+    procedure ZoomIn;
+    procedure ZoomOut;
+    procedure ResetZoom;
     // Answers the stretch of markdown the selection in the preview was
     // rendered from, so an editor can put its own selection on those same
     // characters before a formatting command runs.
@@ -267,6 +282,10 @@ type
     property OnMouseMove;
     property OnMouseUp;
     property OnAutoScrollChange: TNotifyEvent read FOnAutoScrollChange write FOnAutoScrollChange;
+    // In percent: every font, spacing and image grows with it. Ctrl+wheel and
+    // Ctrl+Plus/Minus step through the levels browsers use, Ctrl+0 resets it.
+    property Zoom: Integer read GetZoom write SetZoom default TMarkdownZoom.DefaultPercent;
+    property OnZoomChange: TNotifyEvent read FOnZoomChange write FOnZoomChange;
     property OnExtensionError: TMarkdownExtensionErrorEvent read FOnExtensionError write FOnExtensionError;
   end;
 
@@ -320,7 +339,9 @@ begin
 
   CreateFlushTimer;
   CreateResizeTimer;
+  CreateZoomTimer;
   CreateCopyFeedbackTimer;
+  FPendingZoom := TMarkdownZoom.DefaultPercent;
 
   TMarkdownViewerShared.RegisterDefaultHighlighters;
   ApplyViewportNow;
@@ -348,6 +369,18 @@ begin
   FResizeTimer.Enabled := False;
   FResizeTimer.Interval := TMarkdownResizePacer.SettleMilliseconds;
   FResizeTimer.OnTimer := HandleResizeTimer;
+end;
+
+procedure TMarkdownViewer.CreateZoomTimer;
+begin
+  var TimerService: IFMXTimerService;
+  if not TPlatformServices.Current.SupportsPlatformService(IFMXTimerService, TimerService) then
+    Exit;
+
+  FZoomTimer := TTimer.Create(Self);
+  FZoomTimer.Enabled := False;
+  FZoomTimer.Interval := TMarkdownResizePacer.SettleMilliseconds;
+  FZoomTimer.OnTimer := HandleZoomTimer;
 end;
 
 procedure TMarkdownViewer.CreateCopyFeedbackTimer;
@@ -926,6 +959,17 @@ begin
     Exit;
   end;
 
+  if ssCtrl in Shift then
+  begin
+    if WheelDelta > 0 then
+      ZoomIn
+    else
+      ZoomOut;
+
+    Handled := True;
+    Exit;
+  end;
+
   inherited MouseWheel(Shift, WheelDelta, Handled);
   if Handled then
     Exit;
@@ -996,7 +1040,7 @@ begin
       vkC:
         CopySelectionToClipboard;
     else
-      Result := False;
+      Result := TryHandleZoomKey(Key);
     end;
 
     Exit;
@@ -1038,6 +1082,85 @@ end;
 function TMarkdownViewer.GetAutoScroll: Boolean;
 begin
   Result := FAutoScroller.Enabled;
+end;
+
+function TMarkdownViewer.GetZoom: Integer;
+begin
+  Result := FPendingZoom;
+end;
+
+procedure TMarkdownViewer.SetZoom(const Value: Integer);
+begin
+  FPendingZoom := TMarkdownZoom.Clamp(Value);
+  ApplyZoomNow;
+end;
+
+procedure TMarkdownViewer.ZoomIn;
+begin
+  StepZoom(TMarkdownZoom.StepIn(FPendingZoom));
+end;
+
+procedure TMarkdownViewer.ZoomOut;
+begin
+  StepZoom(TMarkdownZoom.StepOut(FPendingZoom));
+end;
+
+procedure TMarkdownViewer.ResetZoom;
+begin
+  StepZoom(TMarkdownZoom.DefaultPercent);
+end;
+
+// A slow document waits until the wheel rests, so turning it several notches
+// lays the document out once. Without a timer service every step lays out.
+procedure TMarkdownViewer.StepZoom(const Percent: Integer);
+begin
+  FPendingZoom := TMarkdownZoom.Clamp(Percent);
+
+  const ReflowsNow = ((FZoomTimer = nil) or
+                      FZoomPacer.TryReflowNow(TThread.GetTickCount64, FModel.LastLayoutMilliseconds));
+  if ReflowsNow then
+  begin
+    ApplyZoomNow;
+    Exit;
+  end;
+
+  FZoomTimer.Enabled := False;
+  FZoomTimer.Enabled := True;
+end;
+
+procedure TMarkdownViewer.ApplyZoomNow;
+begin
+  if FZoomTimer <> nil then
+    FZoomTimer.Enabled := False;
+
+  const IsChange = (FModel.Zoom <> FPendingZoom);
+  if not IsChange then
+    Exit;
+
+  FModel.Zoom := FPendingZoom;
+  RedrawContent;
+
+  if Assigned(FOnZoomChange) then
+    FOnZoomChange(Self);
+end;
+
+procedure TMarkdownViewer.HandleZoomTimer(Sender: TObject);
+begin
+  if FZoomPacer.TryFlush(TThread.GetTickCount64, False) then
+    ApplyZoomNow;
+end;
+
+function TMarkdownViewer.TryHandleZoomKey(const Key: Word): Boolean;
+begin
+  Result := True;
+
+  case TMarkdownZoom.ActionOfKey(Key) of
+    TMarkdownZoomAction.StepIn  : ZoomIn;
+    TMarkdownZoomAction.StepOut : ZoomOut;
+    TMarkdownZoomAction.Reset   : ResetZoom;
+  else
+    Result := False;
+  end;
 end;
 
 function TMarkdownViewer.GetIsAutoScrolling: Boolean;

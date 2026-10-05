@@ -98,6 +98,7 @@
         <DCCReference Include="Markdown4D.Layout.MeasureCache.Tests.pas"/>
         <DCCReference Include="Markdown4D.Layout.ResizePacer.Tests.pas"/>
         <DCCReference Include="Markdown4D.Layout.TextAnchor.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Layout.Zoom.Tests.pas"/>
         <DCCReference Include="Markdown4D.Editor.PreviewPacer.Tests.pas"/>
         <DCCReference Include="Markdown4D.Layout.Renderer.Tests.pas"/>
         <DCCReference Include="Markdown4D.Theme.Tests.pas"/>

@@ -90,7 +90,14 @@ type
       FImageSlots: TDictionary<string, TImageSlot>;
       FImageSlotOrder: TList<string>;
       FOnExtensionError: TMarkdownExtensionErrorEvent;
+      FZoom: Integer;
+      FZoomedTheme: TMarkdownTheme;
     procedure Relayout;
+    function ZoomFactor: Single;
+    function LayoutTheme: TMarkdownTheme;
+    procedure RefreshZoomedTheme;
+    function TryCaptureTopLine(out TopLine: TMarkdownTextAnchor; out Inset: Single): Boolean;
+    procedure ScrollToTopLine(const TopLine: TMarkdownTextAnchor; const Inset: Single);
     function TryCaptureSelection(out Selection: TSelectionAnchors): Boolean;
     function TryRestoreSelection(const Selection: TSelectionAnchors): Boolean;
     procedure RegisterImageSlots;
@@ -151,6 +158,7 @@ type
     function GetFlushIntervalMilliseconds: Cardinal;
     procedure SetFlushIntervalMilliseconds(const Value: Cardinal);
     function GetScrollOffset: Single;
+    procedure SetZoom(const Value: Integer);
     procedure SetScrollOffset(const Value: Single);
 
   public
@@ -235,6 +243,9 @@ type
     property ShouldAutoFollow: Boolean read GetShouldAutoFollow;
     property FlushIntervalMilliseconds: Cardinal read GetFlushIntervalMilliseconds write SetFlushIntervalMilliseconds;
     property ScrollOffset: Single read GetScrollOffset write SetScrollOffset;
+    // In percent. Every font, length and image of the theme grows with it;
+    // the line at the top of the view stays there.
+    property Zoom: Integer read FZoom write SetZoom;
     property OnExtensionError: TMarkdownExtensionErrorEvent read FOnExtensionError write FOnExtensionError;
   end;
 
@@ -248,7 +259,8 @@ uses
   Markdown4D.Defines,
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Layout.Engine,
-  Markdown4D.Layout.SourceMapping;
+  Markdown4D.Layout.SourceMapping,
+  Markdown4D.Layout.Zoom;
 
 class function TMarkdownFoundRange.Create(const ItemIndex, StartCharacter,
   CharacterCount: Integer): TMarkdownFoundRange;
@@ -272,12 +284,14 @@ begin
   FTheme := Theme;
   FMeasurer := Measurer;
   FFlushIntervalMilliseconds := DefaultFlushIntervalMilliseconds;
+  FZoom := TMarkdownZoom.DefaultPercent;
   FImageSlots := TDictionary<string, TImageSlot>.Create;
   FImageSlotOrder := TList<string>.Create;
 end;
 
 destructor TMarkdownViewerModel.Destroy;
 begin
+  FZoomedTheme.Free;
   FImageSlotOrder.Free;
   FImageSlots.Free;
 
@@ -929,7 +943,7 @@ begin
   var Slot: TImageSlot;
   Result := FImageSlots.TryGetValue(Source, Slot) and (Slot.State = TMarkdownImageSlotState.Loaded);
   if Result then
-    Size := Slot.Size;
+    Size := TLayoutSizeF.Create(Slot.Size.Width * ZoomFactor, Slot.Size.Height * ZoomFactor);
 end;
 
 procedure TMarkdownViewerModel.ExtensionFailed(const Extension: string; const Error: Exception);
@@ -1314,8 +1328,10 @@ begin
   const Watch = TStopwatch.StartNew;
   const Document = TMarkdown.Parse(FText, TMarkdownDialect.Gfm);
   TLayoutDocumentProcessorRegistry.Process(Document, Self);
+  RefreshZoomedTheme;
 
-  FDisplayList := TMarkdownLayoutEngine.LayoutDocument(Document, FViewportWidth, FTheme, FMeasurer, Self, Self);
+  FDisplayList := TMarkdownLayoutEngine.LayoutDocument(Document, FViewportWidth, LayoutTheme, FMeasurer, Self,
+                                                       Self);
   FLastLayoutMilliseconds := Watch.ElapsedMilliseconds;
   Inc(FLayoutCount);
 
@@ -1652,6 +1668,96 @@ end;
 function TMarkdownViewerModel.GetScrollOffset: Single;
 begin
   Result := FScrollOffset;
+end;
+
+procedure TMarkdownViewerModel.SetZoom(const Value: Integer);
+begin
+  const Percent = TMarkdownZoom.Clamp(Value);
+  if Percent = FZoom then
+    Exit;
+
+  const PreviousFactor = ZoomFactor;
+  var TopLine: TMarkdownTextAnchor;
+  var Inset: Single;
+  const HasTopLine = TryCaptureTopLine(TopLine, Inset);
+
+  FZoom := Percent;
+  RefreshLayout;
+
+  if HasTopLine then
+    ScrollToTopLine(TopLine, Inset * ZoomFactor / PreviousFactor);
+end;
+
+function TMarkdownViewerModel.ZoomFactor: Single;
+begin
+  Result := FZoom / TMarkdownZoom.DefaultPercent;
+end;
+
+function TMarkdownViewerModel.LayoutTheme: TMarkdownTheme;
+begin
+  Result := FTheme;
+  if FZoomedTheme <> nil then
+    Result := FZoomedTheme;
+end;
+
+// Scaled again before every layout, so a change the application made to its
+// theme reaches the zoomed copy too.
+procedure TMarkdownViewerModel.RefreshZoomedTheme;
+begin
+  FreeAndNil(FZoomedTheme);
+
+  const IsZoomed = (FZoom <> TMarkdownZoom.DefaultPercent);
+  if IsZoomed then
+    FZoomedTheme := FTheme.Scaled(ZoomFactor);
+end;
+
+// The first line that still shows at the top of the view, and how far the
+// view is scrolled past its top.
+function TMarkdownViewerModel.TryCaptureTopLine(out TopLine: TMarkdownTextAnchor; out Inset: Single): Boolean;
+begin
+  TopLine := Default(TMarkdownTextAnchor);
+  Inset := 0;
+  Result := False;
+  if FDisplayList = nil then
+    Exit;
+
+  const Anchors = TMarkdownTextAnchors.Create(FDisplayList);
+  try
+    for var Index := 0 to FDisplayList.ItemCount - 1 do
+    begin
+      var Run: IDisplayTextRun;
+      if not TrySelectableRun(Index, Run) then
+        Continue;
+
+      const IsAboveView = (Run.Bounds.Bottom <= FScrollOffset);
+      if IsAboveView then
+        Continue;
+
+      var Position: TTextPosition;
+      Position.ItemIndex := Index;
+      Position.CharacterIndex := 0;
+      Inset := FScrollOffset - Run.Bounds.Top;
+      Result := Anchors.TryAnchorOf(Position, TopLine);
+      Exit;
+    end;
+  finally
+    Anchors.Free;
+  end;
+end;
+
+procedure TMarkdownViewerModel.ScrollToTopLine(const TopLine: TMarkdownTextAnchor; const Inset: Single);
+begin
+  const Anchors = TMarkdownTextAnchors.Create(FDisplayList);
+  try
+    var Position: TTextPosition;
+    if not Anchors.TryPositionOf(TopLine, Position) then
+      Exit;
+
+    const Run = FDisplayList.Items[Position.ItemIndex];
+    SetScrollOffset(Run.Bounds.Top + Inset);
+  finally
+    Anchors.Free;
+  end;
 end;
 
 procedure TMarkdownViewerModel.SetScrollOffset(const Value: Single);
