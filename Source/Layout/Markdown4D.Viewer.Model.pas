@@ -10,6 +10,7 @@ uses
   Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.DisplayList,
+  Markdown4D.Layout.TextAnchor,
   Markdown4D.Theme;
 
 type
@@ -36,10 +37,7 @@ type
   TMarkdownViewerModel = class(TNoRefCountObject, IMarkdownImageSizeProvider, IMarkdownExtensionErrorSink)
   private
     type
-      TTextPosition = record
-        ItemIndex: Integer;
-        CharacterIndex: Integer;
-      end;
+      TTextPosition = TMarkdownTextPosition;
       TImageSlot = record
         State: TMarkdownImageSlotState;
         Size: TLayoutSizeF;
@@ -48,22 +46,11 @@ type
         StartPosition: TTextPosition;
         EndPosition: TTextPosition;
       end;
-      // A text position that outlives the display list: the node it falls in,
-      // counted in reading order, and the offset into that node's literal. The
-      // kind and the start of the node tell whether a new layout still has the
-      // same node at that count; its end moves while text streams in.
-      TSourcePosition = record
-        NodeOrdinal: Integer;
-        NodeKind: TMarkdownNodeKind;
-        NodeStart: Integer;
-        LiteralOffset: Integer;
-      end;
-      TSourceSelection = record
-        IsActive: Boolean;
-        Anchor: TSourcePosition;
-        Extent: TSourcePosition;
-        UnitStart: TSourcePosition;
-        UnitEnd: TSourcePosition;
+      TSelectionAnchors = record
+        Anchor: TMarkdownTextAnchor;
+        Extent: TMarkdownTextAnchor;
+        UnitStart: TMarkdownTextAnchor;
+        UnitEnd: TMarkdownTextAnchor;
       end;
       // What a press and a drag select by: characters after a single click,
       // whole words after a double click, whole lines after a triple click.
@@ -102,16 +89,8 @@ type
       FImageSlotOrder: TList<string>;
       FOnExtensionError: TMarkdownExtensionErrorEvent;
     procedure Relayout;
-    function CaptureSelection: TSourceSelection;
-    procedure RestoreSelection(const Selection: TSourceSelection);
-    function TrySourcePositionOf(const NodeStarts: TArray<Integer>; const Position: TTextPosition;
-                                 out Source: TSourcePosition): Boolean;
-    function TryTextPositionOf(const NodeStarts: TArray<Integer>; const Source: TSourcePosition;
-                               out Position: TTextPosition): Boolean;
-    function NodeStartIndexes: TArray<Integer>;
-    class function NodeOrdinalOf(const NodeStarts: TArray<Integer>; const ItemIndex: Integer): Integer; static;
-    function PositionInNode(const FirstIndex, LiteralOffset: Integer): TTextPosition;
-    class function IsSameNode(const Node: IMarkdownNode; const Source: TSourcePosition): Boolean; static;
+    function TryCaptureSelection(out Selection: TSelectionAnchors): Boolean;
+    function TryRestoreSelection(const Selection: TSelectionAnchors): Boolean;
     procedure RegisterImageSlots;
     function TryFindTextRunBounds(out FirstIndex, LastIndex: Integer): Boolean;
     function TryResolvePosition(const Point: TLayoutPointF; out Position: TTextPosition): Boolean;
@@ -1294,7 +1273,8 @@ begin
   if FViewportWidth <= 0 then
     Exit;
 
-  const Selection = CaptureSelection;
+  var Selection: TSelectionAnchors;
+  const CanKeepSelection = TryCaptureSelection(Selection);
   const Watch = TStopwatch.StartNew;
   const Document = TMarkdown.Parse(FText, TMarkdownDialect.Gfm);
   TLayoutDocumentProcessorRegistry.Process(Document, Self);
@@ -1302,150 +1282,70 @@ begin
   FDisplayList := TMarkdownLayoutEngine.LayoutDocument(Document, FViewportWidth, FTheme, FMeasurer, Self, Self);
   FLastLayoutMilliseconds := Watch.ElapsedMilliseconds;
   Inc(FLayoutCount);
-  RestoreSelection(Selection);
+
+  // A selection whose text the new layout no longer has is dropped, rather
+  // than drawn over whatever text now sits at its old place.
+  const IsSelectionKept = CanKeepSelection and TryRestoreSelection(Selection);
+  if not IsSelectionKept then
+    ClearSelection;
+
   RegisterImageSlots;
   RefreshHighlights;
 end;
 
-function TMarkdownViewerModel.CaptureSelection: TSourceSelection;
+function TMarkdownViewerModel.TryCaptureSelection(out Selection: TSelectionAnchors): Boolean;
 begin
-  Result := Default(TSourceSelection);
+  Selection := Default(TSelectionAnchors);
+  Result := False;
   if not HasCaret then
     Exit;
 
-  const NodeStarts = NodeStartIndexes;
-  const HasUnitRange = (FSelectionUnit <> TSelectionUnit.Character);
-  Result.IsActive := TrySourcePositionOf(NodeStarts, FAnchor, Result.Anchor) and
-                     TrySourcePositionOf(NodeStarts, FExtent, Result.Extent) and
-                     ((not HasUnitRange) or
-                      (TrySourcePositionOf(NodeStarts, FUnitRange.StartPosition, Result.UnitStart) and
-                       TrySourcePositionOf(NodeStarts, FUnitRange.EndPosition, Result.UnitEnd)));
-end;
-
-// A selection whose text the new layout no longer has is dropped, rather than
-// drawn over whatever text now sits at its old place.
-procedure TMarkdownViewerModel.RestoreSelection(const Selection: TSourceSelection);
-begin
-  const NodeStarts = NodeStartIndexes;
-  const HasUnitRange = (FSelectionUnit <> TSelectionUnit.Character);
-  const IsRestored = Selection.IsActive and
-                     TryTextPositionOf(NodeStarts, Selection.Anchor, FAnchor) and
-                     TryTextPositionOf(NodeStarts, Selection.Extent, FExtent) and
-                     ((not HasUnitRange) or
-                      (TryTextPositionOf(NodeStarts, Selection.UnitStart, FUnitRange.StartPosition) and
-                       TryTextPositionOf(NodeStarts, Selection.UnitEnd, FUnitRange.EndPosition)));
-  if not IsRestored then
-    ClearSelection;
-end;
-
-function TMarkdownViewerModel.TrySourcePositionOf(const NodeStarts: TArray<Integer>; const Position: TTextPosition;
-  out Source: TSourcePosition): Boolean;
-begin
-  Source := Default(TSourcePosition);
-
-  var Run: IDisplayTextRun;
-  Result := TrySelectableRun(Position.ItemIndex, Run) and Assigned(Run.SourceNode);
-  if not Result then
-    Exit;
-
-  Source.NodeOrdinal := NodeOrdinalOf(NodeStarts, Position.ItemIndex);
-  Source.NodeKind := Run.SourceNode.Kind;
-  Source.NodeStart := Run.SourceNode.Segment.StartOffset;
-  Source.LiteralOffset := Run.StartOffset + Position.CharacterIndex;
-end;
-
-function TMarkdownViewerModel.TryTextPositionOf(const NodeStarts: TArray<Integer>; const Source: TSourcePosition;
-  out Position: TTextPosition): Boolean;
-begin
-  Position := Default(TTextPosition);
-
-  Result := (Source.NodeOrdinal < Length(NodeStarts));
-  if not Result then
-    Exit;
-
-  const FirstIndex = NodeStarts[Source.NodeOrdinal];
-  var Run: IDisplayTextRun;
-  TrySelectableRun(FirstIndex, Run);
-  Result := IsSameNode(Run.SourceNode, Source);
-  if Result then
-    Position := PositionInNode(FirstIndex, Source.LiteralOffset);
-end;
-
-// The index of the first run of every node, in reading order. Runs that wrap
-// one node over several lines follow each other, so a node counts once
-// however many runs it takes.
-function TMarkdownViewerModel.NodeStartIndexes: TArray<Integer>;
-begin
-  const Starts = TList<Integer>.Create;
+  const Anchors = TMarkdownTextAnchors.Create(FDisplayList);
   try
-    var Previous: IMarkdownNode := nil;
+    if not Anchors.TryAnchorOf(FAnchor, Selection.Anchor) then
+      Exit;
+    if not Anchors.TryAnchorOf(FExtent, Selection.Extent) then
+      Exit;
 
-    for var Index := 0 to FDisplayList.ItemCount - 1 do
+    const HasUnitRange = (FSelectionUnit <> TSelectionUnit.Character);
+    if HasUnitRange then
     begin
-      var Run: IDisplayTextRun;
-      if not TrySelectableRun(Index, Run) then
-        Continue;
-
-      const IsNextNode = (Run.SourceNode <> Previous);
-      if IsNextNode then
-      begin
-        Starts.Add(Index);
-        Previous := Run.SourceNode;
-      end;
+      if not Anchors.TryAnchorOf(FUnitRange.StartPosition, Selection.UnitStart) then
+        Exit;
+      if not Anchors.TryAnchorOf(FUnitRange.EndPosition, Selection.UnitEnd) then
+        Exit;
     end;
 
-    Result := Starts.ToArray;
+    Result := True;
   finally
-    Starts.Free;
+    Anchors.Free;
   end;
 end;
 
-class function TMarkdownViewerModel.NodeOrdinalOf(const NodeStarts: TArray<Integer>; const ItemIndex: Integer): Integer;
+function TMarkdownViewerModel.TryRestoreSelection(const Selection: TSelectionAnchors): Boolean;
 begin
-  Result := -1;
+  Result := False;
 
-  for var Start in NodeStarts do
-  begin
-    const IsPastItem = (Start > ItemIndex);
-    if IsPastItem then
-      Break;
+  const Anchors = TMarkdownTextAnchors.Create(FDisplayList);
+  try
+    if not Anchors.TryPositionOf(Selection.Anchor, FAnchor) then
+      Exit;
+    if not Anchors.TryPositionOf(Selection.Extent, FExtent) then
+      Exit;
 
-    Inc(Result);
+    const HasUnitRange = (FSelectionUnit <> TSelectionUnit.Character);
+    if HasUnitRange then
+    begin
+      if not Anchors.TryPositionOf(Selection.UnitStart, FUnitRange.StartPosition) then
+        Exit;
+      if not Anchors.TryPositionOf(Selection.UnitEnd, FUnitRange.EndPosition) then
+        Exit;
+    end;
+
+    Result := True;
+  finally
+    Anchors.Free;
   end;
-end;
-
-// The space a line wraps at belongs to no run, so an offset on it lands at the
-// start of the run on the next line.
-function TMarkdownViewerModel.PositionInNode(const FirstIndex, LiteralOffset: Integer): TTextPosition;
-begin
-  var Run: IDisplayTextRun;
-  TrySelectableRun(FirstIndex, Run);
-  Result.ItemIndex := FirstIndex;
-
-  for var Index := FirstIndex to FDisplayList.ItemCount - 1 do
-  begin
-    var Candidate: IDisplayTextRun;
-    if not TrySelectableRun(Index, Candidate) then
-      Continue;
-
-    const IsOtherNode = (Candidate.SourceNode <> Run.SourceNode);
-    if IsOtherNode then
-      Break;
-
-    Run := Candidate;
-    Result.ItemIndex := Index;
-    const RunEnd = Run.StartOffset + Length(Run.Text);
-    const IsWithinRun = (LiteralOffset <= RunEnd);
-    if IsWithinRun then
-      Break;
-  end;
-
-  Result.CharacterIndex := EnsureRange(LiteralOffset - Run.StartOffset, 0, Length(Run.Text));
-end;
-
-class function TMarkdownViewerModel.IsSameNode(const Node: IMarkdownNode; const Source: TSourcePosition): Boolean;
-begin
-  Result := (Node.Kind = Source.NodeKind) and (Node.Segment.StartOffset = Source.NodeStart);
 end;
 
 procedure TMarkdownViewerModel.RegisterImageSlots;
@@ -1551,12 +1451,9 @@ begin
   end;
 end;
 
-// Glyphs that belong to a drawing, such as a formula, are text runs for the
-// painter but not for the reader: selecting, searching and copying skip them.
-// The drawing's source run takes their place.
 function TMarkdownViewerModel.TrySelectableRun(const Index: Integer; out Run: IDisplayTextRun): Boolean;
 begin
-  Result := Supports(FDisplayList.Items[Index], IDisplayTextRun, Run) and (Run.Role <> TDisplayTextRunRole.Drawing);
+  Result := TMarkdownTextAnchors.TrySelectableRun(FDisplayList, Index, Run);
 end;
 
 // A source run is selected whole or not at all: the pointer picks the edge

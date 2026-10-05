@@ -99,6 +99,7 @@ contains
   Markdown4D.Layout.Defaults in '..\Source\Layout\Markdown4D.Layout.Defaults.pas',
   Markdown4D.Layout.DisplayList in '..\Source\Layout\Markdown4D.Layout.DisplayList.pas',
   Markdown4D.Layout.SourceMapping in '..\Source\Layout\Markdown4D.Layout.SourceMapping.pas',
+  Markdown4D.Layout.TextAnchor in '..\Source\Layout\Markdown4D.Layout.TextAnchor.pas',
   Markdown4D.Layout.Engine in '..\Source\Layout\Markdown4D.Layout.Engine.pas',
   Markdown4D.Layout.AlertIcons in '..\Source\Layout\Markdown4D.Layout.AlertIcons.pas',
   Markdown4D.Layout.ExtensionCanvas in '..\Source\Layout\Markdown4D.Layout.ExtensionCanvas.pas',
