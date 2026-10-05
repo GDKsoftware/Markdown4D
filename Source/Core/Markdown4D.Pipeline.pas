@@ -250,6 +250,7 @@ begin
     Use(TGfmTaskListExtension.Create);
     Use(TGfmStrikethroughExtension.Create);
     Use(TGfmAutolinkExtension.Create);
+    Use(TGfmEmojiExtension.Create);
     Use(TGfmTagFilterExtension.Create);
     Use(TMathExtension.Create);
     Use(TAlertExtension.Create);

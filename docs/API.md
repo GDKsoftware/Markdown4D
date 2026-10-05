@@ -132,7 +132,7 @@ type
 | Method | Effect |
 |--------|--------|
 | `UseCommonMark` | Registers the full CommonMark 0.31.2 block and inline grammar |
-| `UseGfm` | `UseCommonMark` plus tables, task lists, strikethrough, autolinks, tag filter, math, GitHub alerts |
+| `UseGfm` | `UseCommonMark` plus tables, task lists, strikethrough, autolinks, emoji shortcodes, tag filter, math, GitHub alerts |
 | `Use(ext)` | Installs a custom `IMarkdownExtension` |
 | `UnsafeHtml` | Allows raw HTML in the rendered output (CommonMark spec behaviour) |
 | `UnsafeLinks` | Writes every link and image destination out, including `javascript:`, `vbscript:`, `file:` and non-image `data:` (spec behaviour). Without it those destinations are emptied |

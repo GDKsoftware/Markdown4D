@@ -747,6 +747,31 @@ uses
 TMermaidBlockOverride.RegisterOverride;
 ```
 
+## The emoji shortcode extension
+
+`UseGfm` registers `TGfmEmojiExtension` (in `Markdown4D.Extensions.Gfm`) by
+default: an inline parser with trigger `:` that turns GitHub shortcodes such as
+`:smile:` and `:rocket:` into the emoji itself. `UseCommonMark` alone leaves
+shortcodes untouched. The rules:
+
+- The name is one or more of `a-z`, `0-9`, `_`, `+` and `-`, between two colons,
+  on one line. `:smile`, `: smile:` and `:SMILE:` stay text.
+- The character before the opening colon may not be an ASCII letter or digit, so
+  `abc:smile:`, `10:30:00` and `a:b:c` stay text. After a space, punctuation
+  (another colon included, so `:smile::rocket:` gives two emoji) or a non-ASCII
+  character a shortcode is recognised.
+- Only names in the gemoji table (`Markdown4D.Emoji.Shortcodes`, regenerated with
+  `tools/Generate-EmojiShortcodes.ps1`) are replaced; an unknown code such as
+  `:nietbestaand:` or a custom one without a Unicode character such as
+  `:octocat:` stays exactly as typed.
+- Code spans, link destinations and autolinks are parsed first, so a shortcode
+  inside them is never replaced.
+
+The emoji becomes ordinary text whose source segment covers the whole shortcode,
+so the editor keeps `:smile:` while the viewer shows and copies the emoji.
+`ToMarkdown` writes the emoji character back, not the shortcode. The VCL viewer
+draws through GDI, which may show an emoji in monochrome.
+
 ## Lifetime and threading rules
 
 - Extensions are stateless and reusable. `Setup` runs once when the pipeline
