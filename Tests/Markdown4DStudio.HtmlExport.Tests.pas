@@ -24,6 +24,9 @@ type
     procedure BuildDocument_DarkVsLightBackground;
 
     [Test]
+    procedure BuildDocument_FrontMatter_RendersPropertiesTable;
+
+    [Test]
     procedure BuildClipboardHtml_HasHeaderAndMarkers;
 
     [Test]
@@ -73,6 +76,16 @@ begin
 
   Assert.IsTrue(Dark.ToLower.Contains('#0d1117'));
   Assert.IsTrue(Light.ToLower.Contains('#ffffff'));
+end;
+
+procedure TMarkdownHtmlExportTests.BuildDocument_FrontMatter_RendersPropertiesTable;
+begin
+  const Document = TMarkdownHtmlExport.BuildDocument('---'#10'type: project'#10'---'#10#10'# Title', 'Doc', False);
+
+  Assert.IsTrue(Document.Contains('<table class="front-matter">'), 'The export must show front matter as a table');
+  Assert.IsTrue(Document.Contains('<th>type</th>'));
+  Assert.IsTrue(Document.Contains('table.front-matter'), 'The export must style the front matter table');
+  Assert.IsFalse(Document.Contains('<hr />'), 'The front matter fences must not turn into a thematic break');
 end;
 
 procedure TMarkdownHtmlExportTests.BuildClipboardHtml_HasHeaderAndMarkers;

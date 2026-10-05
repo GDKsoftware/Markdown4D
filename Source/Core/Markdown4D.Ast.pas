@@ -96,6 +96,11 @@ type
     function GetIsDisplay: Boolean;
   end;
 
+  TMarkdownFrontMatterNode = class(TMarkdownTextNode, IMarkdownFrontMatter)
+  public
+    constructor Create(const Literal: string);
+  end;
+
   TMarkdownCustomInlineNode = class(TMarkdownAstNode, IMarkdownCustomInline)
   private
     FNodeName: string;
@@ -258,6 +263,8 @@ begin
       Visitor.VisitTableCell(Self as IMarkdownTableCell);
     TMarkdownNodeKind.Math:
       Visitor.VisitMath(Self as IMarkdownMath);
+    TMarkdownNodeKind.FrontMatter:
+      Visitor.VisitFrontMatter(Self as IMarkdownFrontMatter);
   else
     raise EMarkdownError.CreateFmt('Unhandled node kind: %d', [Ord(FKind)]);
   end;
@@ -395,6 +402,11 @@ end;
 function TMarkdownMathNode.GetIsDisplay: Boolean;
 begin
   Result := FIsDisplay;
+end;
+
+constructor TMarkdownFrontMatterNode.Create(const Literal: string);
+begin
+  inherited Create(TMarkdownNodeKind.FrontMatter, Literal);
 end;
 
 constructor TMarkdownCustomInlineNode.Create(const NodeName: string);

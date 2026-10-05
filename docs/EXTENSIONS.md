@@ -20,6 +20,14 @@ This guide walks three worked examples, all built purely on the public API:
 - the shipped chart and mermaid extensions, the bundled references that
   follow the same shape at full scale.
 
+One more extension ships opt-in: `TFrontMatterExtension` (unit
+`Markdown4D.Extensions.FrontMatter`) recognises a YAML front matter block at the
+start of a document. Neither `UseCommonMark` nor `UseGfm` registers it; install
+it with `Use(TFrontMatterExtension.Create)`, pass
+`TMarkdownParseOption.FrontMatter` to `TMarkdown`, or set `FrontMatter` on a
+viewer. Its node kind, HTML table, markdown writer and properties panel are part
+of the core; see [Front matter](API.md#front-matter) in the API reference.
+
 > Every registration point takes an integer
 > priority. Use the named constants on `TMarkdownPriorities` (unit
 > `Markdown4D.Extensions.Interfaces`) instead of bare numbers: `Highest`, `High`,

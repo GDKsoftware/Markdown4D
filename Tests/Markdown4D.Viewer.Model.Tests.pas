@@ -56,6 +56,9 @@ type
     procedure SetText_LayoutsDocumentOnce;
 
     [Test]
+    procedure FrontMatter_TurnedOn_LaysOutPanelAsOneBlock;
+
+    [Test]
     procedure Selection_WithinSingleRun_ProducesSingleRectAndText;
 
     [Test]
@@ -322,6 +325,24 @@ begin
   Assert.AreEqual('alpha', FModel.Text);
   Assert.IsNotNull(FModel.DisplayList);
   AssertSingle(BaseLineHeight, FModel.DisplayList.Height);
+end;
+
+procedure TMarkdownViewerModelTests.FrontMatter_TurnedOn_LaysOutPanelAsOneBlock;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '---'#10'type: project'#10'tags: [a, b]'#10'---'#10#10'# Title';
+
+  Assert.IsFalse(FModel.FrontMatter, 'Front matter must be off by default');
+  Assert.AreEqual(3, FModel.DisplayList.BlockCount, 'Without front matter the block is a break and a heading');
+
+  FModel.FrontMatter := True;
+
+  Assert.AreEqual(2, FModel.LayoutCount);
+  Assert.AreEqual(2, FModel.DisplayList.BlockCount, 'The front matter panel must be a single block');
+
+  FModel.FrontMatter := True;
+
+  Assert.AreEqual(2, FModel.LayoutCount, 'Setting the same value must not lay out again');
 end;
 
 procedure TMarkdownViewerModelTests.Selection_WithinSingleRun_ProducesSingleRectAndText;

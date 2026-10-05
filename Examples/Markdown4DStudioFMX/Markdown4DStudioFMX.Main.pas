@@ -359,6 +359,7 @@ begin
 
   TChartBlockOverride.RegisterOverride;
   TMermaidBlockOverride.RegisterOverride;
+  mdPreview.FrontMatter := True;
 
   FIconFontName := ResolveIconFontName;
 

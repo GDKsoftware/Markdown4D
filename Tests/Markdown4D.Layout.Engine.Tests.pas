@@ -66,6 +66,7 @@ type
     class function CreateTestTheme: TMarkdownTheme;
     class function LayoutMarkdown(const Source: string; const AvailableWidth: Single): IMarkdownDisplayList;
     class function LayoutMarkdownUncapped(const Source: string; const AvailableWidth: Single): IMarkdownDisplayList;
+    class function LayoutFrontMatterMarkdown(const Source: string; const AvailableWidth: Single): IMarkdownDisplayList;
     class function LayoutMarkdownWithPadding(const Source: string;
       const AvailableWidth, Padding: Single): IMarkdownDisplayList;
     class function TextRunsOf(const DisplayList: IMarkdownDisplayList): TArray<IDisplayTextRun>;
@@ -143,6 +144,12 @@ type
 
     [Test]
     procedure Layout_Table_ClosesEveryCellWithTheThemeBorder;
+
+    [Test]
+    procedure Layout_FrontMatter_RendersPropertyRowsAndListChips;
+
+    [Test]
+    procedure Layout_FrontMatter_NestedMap_RendersRawLinesInCodeFont;
 
     [Test]
     procedure Layout_Table_ClampsColumnToMaxWidthAndWrapsCell;
@@ -563,6 +570,73 @@ begin
       (Line.StartPoint.Y >= 0);
     Assert.IsTrue(IsClosed, 'Every rule must stay inside the table it belongs to');
   end;
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_FrontMatter_RendersPropertyRowsAndListChips;
+begin
+  const Source = '---'#10'type: project'#10'status: idea'#10'tags: [markdown, delphi]'#10'---'#10#10 + HeadingLine;
+
+  const DisplayList = LayoutFrontMatterMarkdown(Source, DefaultWidth);
+
+  var Panel: IDisplayRectangle;
+  Assert.IsTrue(Supports(DisplayList.Items[0], IDisplayRectangle, Panel), 'The panel background must be painted first');
+  AssertColor(CodeBackgroundColorValue, Panel.FillColor);
+  AssertSingle(0, Panel.Bounds.Left);
+  AssertSingle(0, Panel.Bounds.Top);
+  AssertSingle(DefaultWidth, Panel.Bounds.Right);
+
+  const KeyColumnWidth = Length('status') * BaseCharWidth;
+  const ValueLeft = TableCellPaddingValue + KeyColumnWidth + TableCellPaddingValue;
+  const Runs = TextRunsOf(DisplayList);
+
+  const TypeKey = FindRunByPrefix(Runs, 'type');
+  Assert.IsNotNull(TypeKey);
+  AssertSingle(TableCellPaddingValue, TypeKey.Bounds.Left);
+
+  const TypeValue = FindRunByPrefix(Runs, 'project');
+  Assert.IsNotNull(TypeValue);
+  AssertSingle(ValueLeft, TypeValue.Bounds.Left);
+  AssertSingle(TypeKey.Bounds.Top, TypeValue.Bounds.Top);
+
+  const StatusValue = FindRunByPrefix(Runs, 'idea');
+  Assert.IsNotNull(StatusValue);
+  Assert.IsTrue(StatusValue.Bounds.Top > TypeValue.Bounds.Top, 'Every property must sit on a row of its own');
+
+  const Chips = RectanglesWithFill(DisplayList, TableHeaderBackgroundColorValue);
+  Assert.AreEqual(2, Integer(Length(Chips)), 'Every item of a list value must get a chip of its own');
+
+  const FirstItem = FindRunByPrefix(Runs, 'markdown');
+  const SecondItem = FindRunByPrefix(Runs, 'delphi');
+  Assert.IsNotNull(FirstItem);
+  Assert.IsNotNull(SecondItem);
+  AssertSingle(FirstItem.Bounds.Top, SecondItem.Bounds.Top);
+  Assert.IsTrue(SecondItem.Bounds.Left > FirstItem.Bounds.Right, 'The second chip must follow the first');
+
+  const RowLines = LinesWithColor(DisplayList, TableBorderColorValue);
+  Assert.AreEqual(2, Integer(Length(RowLines)), 'Three rows must be separated by two lines');
+
+  const Heading = FindRunByPrefix(Runs, HeadingText);
+  Assert.IsNotNull(Heading);
+  Assert.IsTrue(Heading.Bounds.Top >= Panel.Bounds.Bottom, 'The document after the panel must start below it');
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_FrontMatter_NestedMap_RendersRawLinesInCodeFont;
+begin
+  const Source = '---'#10'author:'#10'  name: Jan'#10'---'#10#10 + HeadingLine;
+
+  const DisplayList = LayoutFrontMatterMarkdown(Source, DefaultWidth);
+
+  const Runs = TextRunsOf(DisplayList);
+  const AuthorLine = FindRunByPrefix(Runs, 'author:');
+  const NameLine = FindRunByPrefix(Runs, '  name: Jan');
+  Assert.IsNotNull(AuthorLine);
+  Assert.IsNotNull(NameLine);
+  Assert.AreEqual(CodeFamilyName, AuthorLine.Font.FamilyName);
+  Assert.AreEqual(CodeFamilyName, NameLine.Font.FamilyName);
+  Assert.IsTrue(NameLine.Bounds.Top > AuthorLine.Bounds.Top, 'Every raw line must sit on a line of its own');
+
+  const Chips = RectanglesWithFill(DisplayList, TableHeaderBackgroundColorValue);
+  Assert.AreEqual(0, Integer(Length(Chips)), 'Raw front matter must not be split into chips');
 end;
 
 procedure TMarkdownLayoutEngineTests.Layout_Table_ClampsColumnToMaxWidthAndWrapsCell;
@@ -1070,6 +1144,20 @@ begin
     Theme.TableMaxColumnWidth := 0;
 
     const Document = TMarkdown.Parse(Source, TMarkdownDialect.Gfm);
+    const Measurer: ITextMeasurer = TFakeTextMeasurer.Create;
+
+    Result := TMarkdownLayoutEngine.LayoutDocument(Document, AvailableWidth, Theme, Measurer);
+  finally
+    Theme.Free;
+  end;
+end;
+
+class function TMarkdownLayoutEngineTests.LayoutFrontMatterMarkdown(const Source: string;
+  const AvailableWidth: Single): IMarkdownDisplayList;
+begin
+  const Theme = CreateTestTheme;
+  try
+    const Document = TMarkdown.Parse(Source, TMarkdownDialect.Gfm, [TMarkdownParseOption.FrontMatter]);
     const Measurer: ITextMeasurer = TFakeTextMeasurer.Create;
 
     Result := TMarkdownLayoutEngine.LayoutDocument(Document, AvailableWidth, Theme, Measurer);

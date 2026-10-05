@@ -606,7 +606,13 @@ begin
   if FPreview = nil then
     Exit;
 
-  const Document = TMarkdown.Parse(FModel.Text, TMarkdownDialect.Gfm);
+  // The document the sync maps must hold the same blocks as the one the
+  // preview laid out, or every block after a front matter panel is off by one.
+  var Options: TMarkdownParseOptions := [];
+  if FPreview.FrontMatter then
+    Include(Options, TMarkdownParseOption.FrontMatter);
+
+  const Document = TMarkdown.Parse(FModel.Text, TMarkdownDialect.Gfm, Options);
   FSync.Update(Document, FPreview.DisplayList, FModel.Text);
   FSyncedLayoutCount := FPreview.LayoutCount;
 end;

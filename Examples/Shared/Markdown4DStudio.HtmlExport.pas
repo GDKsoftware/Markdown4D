@@ -21,7 +21,8 @@ uses
   System.SysUtils,
   System.Classes,
   Markdown4D,
-  Markdown4D.Defines;
+  Markdown4D.Defines,
+  Markdown4DStudio.Defines;
 
 class function TMarkdownHtmlExport.BuildDocument(const Markdown: string; const Title: string;
   const Dark: Boolean): string;
@@ -43,7 +44,7 @@ const
     '</body>' + LineFeed +
     '</html>';
 begin
-  const Fragment = TMarkdown.ToHtml(Markdown, TMarkdownDialect.Gfm);
+  const Fragment = TMarkdown.ToHtml(Markdown, TMarkdownDialect.Gfm, StudioParseOptions);
   const Css = StyleSheet(Dark);
   const SafeTitle = EscapeTitle(Title);
 
@@ -111,6 +112,12 @@ const
     'th,td{border:1px solid $BORDER;padding:6px 12px}' + LineFeed +
     'th{background:$SURFACE}' + LineFeed +
     'hr{border:0;border-top:1px solid $BORDER}' + LineFeed +
+    'table.front-matter{width:100%;margin-bottom:1.5em}' + LineFeed +
+    'table.front-matter th{width:30%;text-align:left;vertical-align:top;font-weight:normal;color:$QUOTE}' + LineFeed +
+    'table.front-matter ul{list-style:none;margin:0;padding:0}' + LineFeed +
+    'table.front-matter li{display:inline-block;margin:0 4px 4px 0;padding:0 8px;' +
+    'border:1px solid $BORDER;border-radius:4px;background:$SURFACE}' + LineFeed +
+    'pre.front-matter{border:1px solid $BORDER}' + LineFeed +
     'img{max-width:100%}';
 begin
   var Css := Template;

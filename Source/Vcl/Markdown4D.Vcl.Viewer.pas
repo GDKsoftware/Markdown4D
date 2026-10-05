@@ -152,6 +152,8 @@ type
     function GetLayoutCount: Integer;
     function GetText: string;
     procedure SetText(const Value: string);
+    function GetFrontMatter: Boolean;
+    procedure SetFrontMatter(const Value: Boolean);
     procedure SetImages(const Value: TMarkdownViewerImageSettings);
     function IsTextStored: Boolean;
     procedure SetThemePreset(const Value: TMarkdownThemePreset);
@@ -218,6 +220,10 @@ type
     // A middle click scrolls the content by the distance of the pointer from
     // where it was pressed, until the next click, key or wheel turn.
     property AutoScroll: Boolean read GetAutoScroll write SetAutoScroll default True;
+    // Show a YAML front matter block at the start of the text as a properties
+    // panel instead of as markdown. Front matter is no CommonMark, so it is off
+    // unless the host turns it on.
+    property FrontMatter: Boolean read GetFrontMatter write SetFrontMatter default False;
     property Align;
     property Anchors;
     property Constraints;
@@ -1380,6 +1386,22 @@ begin
   FModel.Text := Value;
   FModel.ScrollOffset := 0;
   ResolvePendingImages;
+  UpdateScrollBar;
+  Invalidate;
+end;
+
+function TMarkdownViewer.GetFrontMatter: Boolean;
+begin
+  Result := FModel.FrontMatter;
+end;
+
+procedure TMarkdownViewer.SetFrontMatter(const Value: Boolean);
+begin
+  const IsUnchanged = (Value = FModel.FrontMatter);
+  if IsUnchanged then
+    Exit;
+
+  FModel.FrontMatter := Value;
   UpdateScrollBar;
   Invalidate;
 end;

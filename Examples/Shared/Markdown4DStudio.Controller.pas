@@ -500,7 +500,7 @@ procedure TPadController.RebuildSyncAndToc;
 begin
   FMapDirty := False;
 
-  const Document = TMarkdown.Parse(FEditor.EditorText, TMarkdownDialect.Gfm);
+  const Document = TMarkdown.Parse(FEditor.EditorText, TMarkdownDialect.Gfm, StudioParseOptions);
   const Outline = TPadOutlineBuilder.Build(TMarkdownToc.FromDocument(Document));
 
   FTocEntries := Outline.Entries;
@@ -654,7 +654,7 @@ end;
 
 procedure TPadController.CopyHtml;
 begin
-  const Fragment = TMarkdown.ToHtml(FEditor.EditorText, TMarkdownDialect.Gfm);
+  const Fragment = TMarkdown.ToHtml(FEditor.EditorText, TMarkdownDialect.Gfm, StudioParseOptions);
   FShell.CopyHtmlToClipboard(Fragment);
 end;
 

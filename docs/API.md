@@ -15,6 +15,7 @@ All public enumerations are scoped (`{$SCOPEDENUMS ON}`), so qualify them:
 - [Document builder](#document-builder)
 - [Table of contents](#table-of-contents)
 - [Theme](#theme)
+- [Front matter](#front-matter)
 - [Math](#math)
 - [Incremental parser](#incremental-parser)
 - [Viewer components](#viewer-components)
@@ -31,11 +32,14 @@ type
   TMarkdown = class
     class function Version: string;
     class function ToHtml(const Source: string;
-      const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): string;
+      const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark;
+      const Options: TMarkdownParseOptions = []): string;
     class function ToUnsafeHtml(const Source: string;
-      const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): string;
+      const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark;
+      const Options: TMarkdownParseOptions = []): string;
     class function Parse(const Source: string;
-      const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): IMarkdownDocument;
+      const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark;
+      const Options: TMarkdownParseOptions = []): IMarkdownDocument;
     class function ToMarkdown(const Document: IMarkdownDocument): string;
     class function CreateIncrementalParser(
       const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): IMarkdownIncrementalParser;
@@ -46,7 +50,13 @@ type
 `Markdown4DVersion` in unit `Markdown4D.Version`).
 
 `TMarkdownDialect` (unit `Markdown4D.Defines`) is `(CommonMark, Gfm)`. The
-facade caches one pipeline per dialect and rendering mode.
+facade caches one pipeline per dialect, rendering mode and set of parse
+options.
+
+`TMarkdownParseOptions` (unit `Markdown4D.Defines`) is a set of
+`TMarkdownParseOption`, which holds the optional extensions neither dialect
+includes. `TMarkdownParseOption.FrontMatter` turns on [front matter](#front-matter).
+The default `[]` parses exactly as before.
 
 `ToHtml` renders safely: raw HTML becomes `<!-- raw HTML omitted -->`, and a
 link or image destination using `javascript:`, `vbscript:`, `file:` or a
@@ -191,7 +201,7 @@ type
 `TMarkdownNodeKind` enumerates every node type: `Document, Paragraph, Heading,
 ThematicBreak, CodeBlock, BlockQuote, List, ListItem, HtmlBlock, Text, Emphasis,
 Strong, CodeSpan, Link, Image, Autolink, SoftLineBreak, HardLineBreak,
-InlineHtml, CustomInline, Table, TableRow, TableCell, Math`.
+InlineHtml, CustomInline, Table, TableRow, TableCell, Math, FrontMatter`.
 
 `TMarkdownSegment` (`StartOffset`, `EndOffset`, `Length`) locates the node in
 the source string: `StartOffset` is 1-based and `EndOffset` points at the first
@@ -215,6 +225,7 @@ Query a node for a richer interface with `as` or `Supports`:
 | `IMarkdownText` | `Literal` (also used for code spans, HTML blocks, inline HTML) |
 | `IMarkdownLink` | `Destination`, `Title` (also used for images and autolinks) |
 | `IMarkdownMath` | `Literal` (the LaTeX source), `IsDisplay`; extends `IMarkdownText` |
+| `IMarkdownFrontMatter` | `Literal` (the raw YAML between the fences); extends `IMarkdownText` |
 | `IMarkdownCustomInline` | `NodeName` (extension inline nodes such as strikethrough) |
 | `IMarkdownTableRow` | `IsHeader` |
 | `IMarkdownTableCell` | `Alignment` (`TMarkdownTableColumnAlignment`) |
@@ -236,6 +247,60 @@ end;
 `IMarkdownVisitor` offers a `Visit*` method per node kind for double-dispatch
 traversal via `Node.Accept(Visitor)`. Version 2.2 added `VisitMath`; a visitor
 written against an earlier version needs that one method to compile again.
+Front matter added `VisitFrontMatter(const Node: IMarkdownFrontMatter)` in the
+same way: an existing visitor needs that method too.
+
+## Front matter
+
+Unit `Markdown4D.Extensions.FrontMatter`. A YAML front matter block, as
+Obsidian, Jekyll, Hugo and GitHub write it, is an optional extension: neither
+`UseCommonMark` nor `UseGfm` includes it. Turn it on with
+`TMarkdownParseOption.FrontMatter` on the facade, with
+`.Use(TFrontMatterExtension.Create)` on a pipeline builder, or with the
+`FrontMatter` property of a viewer.
+
+```pascal
+const Doc = TMarkdown.Parse(Source, TMarkdownDialect.Gfm, [TMarkdownParseOption.FrontMatter]);
+
+const HasFrontMatter = (Doc.ChildCount > 0) and (Doc.Children[0].Kind = TMarkdownNodeKind.FrontMatter);
+if HasFrontMatter then
+begin
+  const Yaml = (Doc.Children[0] as IMarkdownFrontMatter).Literal;
+  Writeln(Yaml);
+end;
+```
+
+The rules:
+
+- The opening fence is exactly `---` on the first line of the document,
+  optionally followed by spaces or tabs. Nothing may come before it, not even a
+  blank line.
+- The block ends at the first line that holds only `---` or `...`, trailing
+  spaces allowed. Blank lines inside the block are fine.
+- A fence of more or fewer than three characters, such as `----`, is no fence.
+- Without a closing fence there is no front matter, and the whole document
+  parses as plain CommonMark.
+- Front matter occurs at most once, only at the start of the document and never
+  inside a container. A later `---` section parses as plain CommonMark.
+
+The node is the first child of the document. Its `Literal` holds the lines
+between the fences joined by a line feed, without a final one; its segment runs
+from the opening fence to the end of the closing fence. The nodes after it keep
+their real offsets and source lines.
+
+The HTML renderer writes simple properties as a `<table class="front-matter">`
+with a row per key, and a list value as a `<ul>` in its cell. Anything else is
+written as `<pre class="front-matter"><code class="language-yaml">`. The
+markdown writer writes the block back verbatim between `---` fences, as
+remark-frontmatter, gray-matter and Pandoc do.
+
+`TFrontMatterProperties.TryParse(Raw, Properties)` is the strict reader the
+renderer and the viewers share. It understands flat `key: value` pairs (quotes
+around a value are dropped), flow lists (`tags: [a, b]`), block lists (`tags:`
+followed by `- a` lines) and empty values; blank lines and `#` comments are
+skipped. Any other YAML, such as a nested map, a `|` or `>` scalar, or a flow
+map, makes it answer `False`, and the caller shows the raw text instead. Each
+`TFrontMatterProperty` carries `Key`, `Values` and `IsList`.
 
 ## Document builder
 
@@ -495,6 +560,11 @@ const Html = Parser.ToHtml;
 The viewer components use the same incremental machinery internally; see
 [STREAMING.md](STREAMING.md).
 
+The incremental parser never recognises front matter, even when its pipeline
+includes `TFrontMatterExtension`: a frozen segment, or a block that has only
+half arrived, would otherwise change meaning later on. A `---` block at the
+start of a stream renders as plain CommonMark.
+
 ## Viewer components
 
 `TMarkdownViewer` renders markdown natively onto the control canvas, without a
@@ -511,6 +581,7 @@ same.
 | `ThemePreset` | `TMarkdownThemePreset` | `Light` / `Dark`, editable in the Object Inspector |
 | `Images` | `TMarkdownViewerImageSettings` | How image destinations are resolved and fetched (see below) |
 | `AutoScroll` | `Boolean` | Middle-click autoscroll: the content scrolls faster the further the pointer is from where it was pressed, until the next click, key or wheel turn (default `True`) |
+| `FrontMatter` | `Boolean` | Shows a YAML [front matter](#front-matter) block at the start of the text as a properties panel: a row per property with the key on the left and the value on the right, every list item as a chip of its own, and the raw YAML for anything else (default `False`). An attached editor follows the setting for its scroll sync |
 
 ### Public members
 

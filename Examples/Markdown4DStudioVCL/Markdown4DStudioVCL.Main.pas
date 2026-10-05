@@ -337,6 +337,7 @@ begin
 
   TChartBlockOverride.RegisterOverride;
   TMermaidBlockOverride.RegisterOverride;
+  mdPreview.FrontMatter := True;
 
   FLightTheme := TMarkdownTheme.CreateLight;
   FDarkTheme := TMarkdownTheme.CreateDark;

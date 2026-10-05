@@ -206,6 +206,9 @@ type
 
     [Test]
     procedure DeletedFile_SaveRecreatesFileAndClearsFlag;
+
+    [Test]
+    procedure Outline_FrontMatter_SkipsBlockAndKeepsRealHeading;
   end;
 
 implementation
@@ -835,6 +838,17 @@ begin
   Assert.IsTrue(TFile.Exists(FFileName));
   Assert.IsFalse(FController.ActiveDocument.DiskMissing);
   Assert.IsFalse(FController.ActiveDocument.Modified);
+end;
+
+procedure TPadControllerTests.Outline_FrontMatter_SkipsBlockAndKeepsRealHeading;
+begin
+  OpenSampleFile;
+  FView.EditorText := '---'#10'type: project'#10'status: idea'#10'---'#10#10'# Title';
+
+  FController.RebuildSyncAndToc;
+
+  Assert.AreEqual(1, FController.TocEntryCount, 'The front matter block must not turn into an outline heading');
+  Assert.AreEqual(5, FController.TocSourceLine(0), 'The real heading must keep its own source line');
 end;
 
 end.

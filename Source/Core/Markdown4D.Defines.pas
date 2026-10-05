@@ -45,6 +45,10 @@ const
 type
   TMarkdownDialect = (CommonMark, Gfm);
 
+  TMarkdownParseOption = (FrontMatter);
+
+  TMarkdownParseOptions = set of TMarkdownParseOption;
+
   EMarkdownError = class(Exception);
 
   EMarkdownNotImplemented = class(EMarkdownError);

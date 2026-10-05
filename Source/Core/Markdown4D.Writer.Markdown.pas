@@ -47,6 +47,7 @@ type
       StrikethroughMarker = '~~';
       InlineMathMarker = '$';
       DisplayMathMarker = '$$';
+      FrontMatterFence = '---';
       TaskCheckedText = '[x]';
       TaskUncheckedText = '[ ]';
       TablePipe = '|';
@@ -97,6 +98,7 @@ type
     procedure WriteMath(const Task: TWriteTask);
     procedure WriteInlineMath(const Node: IMarkdownMath);
     procedure WriteMathBlock(const Task: TWriteTask; const Node: IMarkdownMath);
+    procedure WriteFrontMatter(const Task: TWriteTask);
     class function IsBlockContainer(const Kind: TMarkdownNodeKind): Boolean;
     procedure EnterCustomInline(const Task: TWriteTask);
     procedure EnterTable(const Task: TWriteTask);
@@ -243,6 +245,8 @@ begin
       EnterTableCell(Task);
     TMarkdownNodeKind.Math:
       WriteMath(Task);
+    TMarkdownNodeKind.FrontMatter:
+      WriteFrontMatter(Task);
   else
     // Render pushes only Document's children (see PushChildren), so Document
     // itself never reaches EnterNode; this guards a future node kind added
@@ -705,6 +709,27 @@ begin
   end;
 
   WriteRaw(DisplayMathMarker);
+  EnsureLineBreak;
+end;
+
+// Written back verbatim between its fences, as remark-frontmatter, gray-matter
+// and Pandoc do, so the YAML survives a round trip untouched.
+procedure TMarkdownWriter.WriteFrontMatter(const Task: TWriteTask);
+begin
+  BeginBlock(Task);
+
+  WriteRaw(FrontMatterFence);
+  WriteLineBreak;
+
+  const Literal = (Task.Node as IMarkdownFrontMatter).Literal;
+  const HasContent = (Literal <> '');
+  if HasContent then
+  begin
+    WriteText(Literal);
+    WriteLineBreak;
+  end;
+
+  WriteRaw(FrontMatterFence);
   EnsureLineBreak;
 end;
 

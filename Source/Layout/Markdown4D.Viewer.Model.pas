@@ -6,6 +6,7 @@ interface
 
 uses
   System.Generics.Collections,
+  Markdown4D.Defines,
   Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.DisplayList,
@@ -76,7 +77,9 @@ type
       FHighlightRects: TArray<TLayoutRectF>;
       FImageSlots: TDictionary<string, TImageSlot>;
       FImageSlotOrder: TList<string>;
+      FFrontMatter: Boolean;
     procedure Relayout;
+    function ParseOptions: TMarkdownParseOptions;
     procedure RegisterImageSlots;
     function TryFindTextRunBounds(out FirstIndex, LastIndex: Integer): Boolean;
     function TryResolvePosition(const Point: TLayoutPointF; out Position: TTextPosition): Boolean;
@@ -137,6 +140,8 @@ type
     procedure SetFlushIntervalMilliseconds(const Value: Cardinal);
     function GetScrollOffset: Single;
     procedure SetScrollOffset(const Value: Single);
+    function GetFrontMatter: Boolean;
+    procedure SetFrontMatter(const Value: Boolean);
 
   public
     constructor Create(const Theme: TMarkdownTheme; const Measurer: ITextMeasurer);
@@ -206,6 +211,9 @@ type
     property ShouldAutoFollow: Boolean read GetShouldAutoFollow;
     property FlushIntervalMilliseconds: Cardinal read GetFlushIntervalMilliseconds write SetFlushIntervalMilliseconds;
     property ScrollOffset: Single read GetScrollOffset write SetScrollOffset;
+    // Recognise a YAML front matter block at the start of the text and show it
+    // as a properties panel. Off by default, as front matter is no CommonMark.
+    property FrontMatter: Boolean read GetFrontMatter write SetFrontMatter;
   end;
 
 implementation
@@ -215,7 +223,6 @@ uses
   System.Math,
   System.Character,
   Markdown4D,
-  Markdown4D.Defines,
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Layout.Engine,
   Markdown4D.Layout.SourceMapping;
@@ -1249,13 +1256,21 @@ begin
   if FViewportWidth <= 0 then
     Exit;
 
-  const Document = TMarkdown.Parse(FText, TMarkdownDialect.Gfm);
+  const Document = TMarkdown.Parse(FText, TMarkdownDialect.Gfm, ParseOptions);
   TLayoutDocumentProcessorRegistry.Process(Document);
 
   FDisplayList := TMarkdownLayoutEngine.LayoutDocument(Document, FViewportWidth, FTheme, FMeasurer, Self);
   Inc(FLayoutCount);
   RegisterImageSlots;
   RefreshHighlights;
+end;
+
+function TMarkdownViewerModel.ParseOptions: TMarkdownParseOptions;
+begin
+  Result := [];
+
+  if FFrontMatter then
+    Include(Result, TMarkdownParseOption.FrontMatter);
 end;
 
 procedure TMarkdownViewerModel.RegisterImageSlots;
@@ -1482,6 +1497,22 @@ begin
   FText := Value;
   FPendingMarkdown := '';
   FDirty := False;
+  ClearSelection;
+  Relayout;
+end;
+
+function TMarkdownViewerModel.GetFrontMatter: Boolean;
+begin
+  Result := FFrontMatter;
+end;
+
+procedure TMarkdownViewerModel.SetFrontMatter(const Value: Boolean);
+begin
+  const IsUnchanged = (Value = FFrontMatter);
+  if IsUnchanged then
+    Exit;
+
+  FFrontMatter := Value;
   ClearSelection;
   Relayout;
 end;

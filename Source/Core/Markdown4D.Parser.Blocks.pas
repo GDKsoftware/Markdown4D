@@ -39,7 +39,14 @@ type
         Marker: Char;
         LastForeignIndex: Integer;
       end;
+      TFrontMatterScan = record
+        Literal: string;
+        EndOffset: Integer;
+        LineCount: Integer;
+      end;
     const
+      FrontMatterDashFence = '---';
+      FrontMatterDotFence = '...';
       CodeIndent = 4;
       MinThematicMarkers = 3;
       MaxOrderedDigits = 9;
@@ -87,7 +94,13 @@ type
       FCurrentLine: TSourceLine;
       FThematicBreakScan: TThematicBreakScan;
       FMathEnabled: Boolean;
-    class function HasMathBlockParser(const Configuration: TMarkdownPipelineConfiguration): Boolean;
+      FFrontMatterEnabled: Boolean;
+      FFrontMatter: TFrontMatterScan;
+    class function HasBlockParser(const Configuration: TMarkdownPipelineConfiguration; const Name: string): Boolean;
+    class function ScanFrontMatter(const Source: string): TFrontMatterScan;
+    class function ScanFrontMatterBody(const Reader: TLineReader): TFrontMatterScan;
+    class function IsFrontMatterFence(const Text: string; const IsClosing: Boolean): Boolean;
+    procedure ReadLines(const Source: string);
     procedure ProcessLine(const Line: TSourceLine);
     function MatchContinuations: TContinuationMatch;
     function ContinueBlock(const Block: TStagingBlock): TContinueResult;
@@ -150,6 +163,7 @@ type
     procedure FinalizeList(const Block: TStagingBlock);
     class function ListIsLoose(const Block: TStagingBlock): Boolean;
     function BuildDocument(const SourceLength: Integer): IMarkdownDocument;
+    procedure AppendFrontMatter(const DocumentNode: TMarkdownAstNode);
     procedure AppendChildren(const Staging: TStagingBlock; const AstParent: TMarkdownAstNode);
     class procedure PushChildFrames(const Pending: TStack<TBuildFrame>; const Staging: TStagingBlock;
                                     const AstParent: TMarkdownAstNode);
@@ -168,7 +182,8 @@ type
     constructor Create(const Configuration: TMarkdownPipelineConfiguration);
     destructor Destroy; override;
     function Parse(const Source: string): IMarkdownDocument; overload;
-    function Parse(const Source: string; const References: TLinkReferenceMap): IMarkdownDocument; overload;
+    function Parse(const Source: string; const References: TLinkReferenceMap;
+                   const AtDocumentStart: Boolean = True): IMarkdownDocument; overload;
   end;
 
   TBlockParserContext = class(TInterfacedObject, IMarkdownBlockParserContext)
@@ -218,6 +233,17 @@ type
     function TryStart(const Context: IMarkdownBlockParserContext): TMarkdownBlockStart;
   end;
 
+  // Front matter is recognised once, before the line loop, at the very start
+  // of the source. This starter never opens a block; its registration only
+  // tells the block parser to look for the front matter fences.
+  TFrontMatterBlockStarter = class(TInterfacedObject, IMarkdownBlockParser)
+  public
+    const
+      FrontMatterParserName = 'frontmatter';
+    function GetName: string;
+    function TryStart(const Context: IMarkdownBlockParserContext): TMarkdownBlockStart;
+  end;
+
 implementation
 
 uses
@@ -235,18 +261,20 @@ begin
   FHtmlScanner := THtmlBlockScanner.Create;
   FReferenceParser := TLinkReferenceParser.Create;
   FReferenceMap := TLinkReferenceMap.Create;
-  FMathEnabled := HasMathBlockParser(Configuration);
+  FMathEnabled := HasBlockParser(Configuration, TMathBlockStarter.MathParserName);
+  FFrontMatterEnabled := HasBlockParser(Configuration, TFrontMatterBlockStarter.FrontMatterParserName);
 end;
 
 // The ```math fence alias and the table interruption on a $$ line only make
 // sense once the math extension is part of the pipeline; without it a fence
-// tagged math stays an ordinary code block.
-class function TBlockParser.HasMathBlockParser(const Configuration: TMarkdownPipelineConfiguration): Boolean;
+// tagged math stays an ordinary code block. Front matter works the same way.
+class function TBlockParser.HasBlockParser(const Configuration: TMarkdownPipelineConfiguration;
+                                           const Name: string): Boolean;
 begin
   for var Registration in Configuration.BlockParsers do
   begin
-    const IsMathParser = (Registration.Parser.Name = TMathBlockStarter.MathParserName);
-    if IsMathParser then
+    const IsNamedParser = (Registration.Parser.Name = Name);
+    if IsNamedParser then
     begin
       Result := True;
       Exit;
@@ -274,26 +302,22 @@ begin
   Result := Parse(Source, FReferenceMap);
 end;
 
-function TBlockParser.Parse(const Source: string; const References: TLinkReferenceMap): IMarkdownDocument;
+function TBlockParser.Parse(const Source: string; const References: TLinkReferenceMap;
+                            const AtDocumentStart: Boolean): IMarkdownDocument;
 begin
   FActiveReferences := References;
   FLineNumber := 0;
+  FFrontMatter := Default(TFrontMatterScan);
+
+  const LooksForFrontMatter = (FFrontMatterEnabled and AtDocumentStart);
+  if LooksForFrontMatter then
+    FFrontMatter := ScanFrontMatter(Source);
 
   FRoot := TStagingBlock.Create(TMarkdownNodeKind.Document, nil);
   try
     FTip := FRoot;
 
-    const Reader = TLineReader.Create(Source);
-    try
-      var Line: TSourceLine;
-
-      while Reader.TryReadLine(Line) do
-      begin
-        ProcessLine(Line);
-      end;
-    finally
-      Reader.Free;
-    end;
+    ReadLines(Source);
 
     while FTip <> nil do
     begin
@@ -306,6 +330,85 @@ begin
   end;
 
   RunDocumentProcessors(Result);
+end;
+
+// Without a closing fence the source holds no front matter and the scan stays
+// empty, with a line count of zero.
+class function TBlockParser.ScanFrontMatter(const Source: string): TFrontMatterScan;
+begin
+  Result := Default(TFrontMatterScan);
+
+  const Reader = TLineReader.Create(Source);
+  try
+    var Line: TSourceLine;
+    const HasOpeningFence = (Reader.TryReadLine(Line) and IsFrontMatterFence(Line.Text, False));
+    if not HasOpeningFence then
+      Exit;
+
+    Result := ScanFrontMatterBody(Reader);
+  finally
+    Reader.Free;
+  end;
+end;
+
+class function TBlockParser.ScanFrontMatterBody(const Reader: TLineReader): TFrontMatterScan;
+begin
+  Result := Default(TFrontMatterScan);
+
+  const Lines = TList<string>.Create;
+  try
+    var Line: TSourceLine;
+    var LineCount := 1;
+
+    while Reader.TryReadLine(Line) do
+    begin
+      Inc(LineCount);
+
+      const IsClosingFence = IsFrontMatterFence(Line.Text, True);
+      if IsClosingFence then
+      begin
+        const BodyLines = Lines.ToArray;
+        Result.Literal   := string.Join(LineFeed, BodyLines);
+        Result.EndOffset := Line.EndOffset;
+        Result.LineCount := LineCount;
+        Exit;
+      end;
+
+      Lines.Add(Line.Text);
+    end;
+  finally
+    Lines.Free;
+  end;
+end;
+
+class function TBlockParser.IsFrontMatterFence(const Text: string; const IsClosing: Boolean): Boolean;
+begin
+  const Trimmed = Text.TrimRight(TrimChars);
+  const IsDashFence = (Trimmed = FrontMatterDashFence);
+  const IsDotFence = (IsClosing and (Trimmed = FrontMatterDotFence));
+
+  Result := (IsDashFence or IsDotFence);
+end;
+
+// The lines of a front matter block never reach the block structure, but they
+// still count, so every later heading keeps its real source line.
+procedure TBlockParser.ReadLines(const Source: string);
+begin
+  const Reader = TLineReader.Create(Source);
+  try
+    var Line: TSourceLine;
+
+    while Reader.TryReadLine(Line) do
+    begin
+      const IsFrontMatterLine = (FLineNumber < FFrontMatter.LineCount);
+      if IsFrontMatterLine then
+        Inc(FLineNumber)
+      else
+        ProcessLine(Line);
+    end;
+  finally
+    Reader.Free;
+  end;
 end;
 
 procedure TBlockParser.RunDocumentProcessors(const Document: IMarkdownDocument);
@@ -1834,7 +1937,21 @@ begin
   Result := DocumentNode;
   DocumentNode.SetSegment(TMarkdownSegment.Create(1, SourceLength + 1));
 
+  AppendFrontMatter(DocumentNode);
   AppendChildren(FRoot, DocumentNode);
+end;
+
+procedure TBlockParser.AppendFrontMatter(const DocumentNode: TMarkdownAstNode);
+begin
+  const HasFrontMatter = (FFrontMatter.LineCount > 0);
+  if not HasFrontMatter then
+    Exit;
+
+  const Segment = TMarkdownSegment.Create(1, FFrontMatter.EndOffset);
+  const FrontMatterNode = TMarkdownFrontMatterNode.Create(FFrontMatter.Literal);
+  FrontMatterNode.SetSegment(Segment);
+
+  DocumentNode.AddChild(FrontMatterNode);
 end;
 
 procedure TBlockParser.AppendChildren(const Staging: TStagingBlock; const AstParent: TMarkdownAstNode);
@@ -2073,6 +2190,16 @@ begin
   const Engine = (Context as TBlockParserContext).Engine;
 
   Result := Engine.TryStartMathBlock;
+end;
+
+function TFrontMatterBlockStarter.GetName: string;
+begin
+  Result := FrontMatterParserName;
+end;
+
+function TFrontMatterBlockStarter.TryStart(const Context: IMarkdownBlockParserContext): TMarkdownBlockStart;
+begin
+  Result := TMarkdownBlockStart.NoMatch;
 end;
 
 end.

@@ -50,6 +50,7 @@ uses
   Markdown4D.Html.Subset,
   Markdown4D.Layout.AlertIcons,
   Markdown4D.Layout.ExtensionCanvas,
+  Markdown4D.Layout.FrontMatter,
   Markdown4D.Layout.Primitives,
   Markdown4D.Math.Layout;
 
@@ -346,6 +347,7 @@ type
     procedure EmitMathBlock(const Command: TLayoutCommand);
     class function MathSourceOf(const Math: IMarkdownMath; const AsBlock: Boolean): string;
     procedure LayoutTable(const Command: TLayoutCommand);
+    procedure LayoutFrontMatter(const Command: TLayoutCommand);
     function CollectInlineAtoms(const Container: IMarkdownNode; const BaseFont: TMarkdownFontStyle;
       const BaseColor: TLayoutColor): TList<TInlineAtom>;
     class function SplitCodeLines(const Literal: string): TArray<string>;
@@ -785,6 +787,8 @@ begin
       LayoutTable(Command);
     TMarkdownNodeKind.Math:
       EmitMathBlock(Command);
+    TMarkdownNodeKind.FrontMatter:
+      LayoutFrontMatter(Command);
   else
     // PushBlock only ever enqueues genuine block-level nodes (document children,
     // block-quote children, list-item children), and a registered block override
@@ -1344,6 +1348,17 @@ begin
     FCurrentY := Table.Layout(Command, FCurrentY, ContentRight - Command.X);
   finally
     Table.Free;
+  end;
+end;
+
+procedure TLayoutWorker.LayoutFrontMatter(const Command: TLayoutCommand);
+begin
+  const FrontMatter = TFrontMatterLayout.Create(FTheme, FMeasurer, FItems);
+  try
+    const Height = FrontMatter.Layout(Command.Node, Command.X, FCurrentY, ContentRight, Command.Color);
+    FCurrentY := FCurrentY + Height;
+  finally
+    FrontMatter.Free;
   end;
 end;
 

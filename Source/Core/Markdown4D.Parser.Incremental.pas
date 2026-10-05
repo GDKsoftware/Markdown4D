@@ -639,12 +639,16 @@ begin
   Result := False;
 end;
 
+// Streamed segments never carry front matter: a frozen segment, or a block
+// that has only half arrived, would otherwise change meaning later on.
 function TStreamingIncrementalParser.ParseWithReferences(const Source: string;
                                                          const References: TLinkReferenceMap): IMarkdownDocument;
 begin
+  const IsAtDocumentStart = False;
+
   const Parser = TBlockParser.Create(FConfiguration);
   try
-    Result := Parser.Parse(Source, References);
+    Result := Parser.Parse(Source, References, IsAtDocumentStart);
   finally
     Parser.Free;
   end;

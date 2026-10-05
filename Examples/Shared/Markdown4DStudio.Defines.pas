@@ -6,7 +6,14 @@ unit Markdown4DStudio.Defines;
 
 interface
 
+uses
+  Markdown4D.Defines;
+
 const
+  // The studio reads front matter everywhere it parses: in the preview, the
+  // outline, the HTML export and the copied HTML.
+  StudioParseOptions: TMarkdownParseOptions = [TMarkdownParseOption.FrontMatter];
+
   // Icon fonts
   FluentIconFontName = 'Segoe Fluent Icons';
   Mdl2IconFontName = 'Segoe MDL2 Assets';
