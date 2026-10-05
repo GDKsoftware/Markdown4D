@@ -543,6 +543,7 @@ same.
 | `OnResolveImage` | `(const Sender: TObject; const Url: string; const Picture/Bitmap; var Handled: Boolean)` | An image needs resolving; set `Handled` to supply it yourself |
 | `OnRemoteImageRequest` | `(const Sender: TObject; const Url: string; var Allow: Boolean)` | About to fetch a remote image. `Allow` arrives holding `Images.AllowRemote`; clear it to refuse this address |
 | `OnScroll` | `TNotifyEvent` | The scroll position changes |
+| `OnExtensionError` | `(const Sender: TObject; const Extension: string; const Error: Exception)` | A block override or a document processor raised. The block shows as plain markdown and the rest of the document as usual (see [EXTENSIONS.md](EXTENSIONS.md)) |
 
 The viewer loads `http(s)` images asynchronously and local images relative to
 `Images.BaseUrl` or the loaded document's folder. Code blocks tagged `pascal`,

@@ -66,7 +66,7 @@ end;
 class procedure TChartBlockOverride.RegisterWith(const Options: TChartLayoutOptions);
 begin
   TMarkdownLayoutEngine.RegisterBlockOverride(TChartBlockOverride.Create(Options), OverridePriority);
-  TLayoutDocumentProcessorRegistry.Register(TChartExtension.CreateDocumentProcessor);
+  TLayoutDocumentProcessorRegistry.Register(OverrideName, TChartExtension.CreateDocumentProcessor);
 end;
 
 constructor TChartBlockOverride.Create;

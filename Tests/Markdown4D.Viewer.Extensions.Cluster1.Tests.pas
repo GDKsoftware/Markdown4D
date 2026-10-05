@@ -108,10 +108,10 @@ begin
   FModel := TMarkdownViewerModel.Create(FTheme, FMeasurer);
 
   TMarkdownLayoutEngine.RegisterBlockOverride(TChartBlockOverride.Create, TChartBlockOverride.OverridePriority);
-  TLayoutDocumentProcessorRegistry.Register(TChartExtension.CreateDocumentProcessor);
+  TLayoutDocumentProcessorRegistry.Register(TChartBlockOverride.OverrideName, TChartExtension.CreateDocumentProcessor);
 
   TMarkdownLayoutEngine.RegisterBlockOverride(TMermaidBlockOverride.Create, TMermaidBlockOverride.OverridePriority);
-  TLayoutDocumentProcessorRegistry.Register(TMermaidExtension.CreateDocumentProcessor);
+  TLayoutDocumentProcessorRegistry.Register(TMermaidBlockOverride.OverrideName, TMermaidExtension.CreateDocumentProcessor);
 
   FModel.SetViewport(ViewportWidth, ViewportHeight);
 end;

@@ -5,6 +5,7 @@ unit Markdown4D.Vcl.Viewer.Tests;
 interface
 
 uses
+  System.SysUtils,
   System.Classes,
   Vcl.Forms,
   DUnitX.TestFramework,
@@ -31,7 +32,9 @@ type
       SecondParagraph = 'Paragraph 01';
     var
       FHostForm: TForm;
+      FReportedSender: TObject;
     function NewHostedViewer: TTestableVclViewer;
+    procedure RecordExtensionError(const Sender: TObject; const Extension: string; const Error: Exception);
 
   public
     [TearDown]
@@ -63,15 +66,19 @@ type
 
     [Test]
     procedure HighlightMatches_SeveralMatches_CountsEveryMatch;
+
+    [Test]
+    procedure Text_FailingExtension_ReportsErrorWithViewerAsSender;
   end;
 
 implementation
 
 uses
-  System.SysUtils,
   System.Types,
   Winapi.Windows,
-  Markdown4D.Tests.Pipeline.Helpers;
+  Markdown4D.Layout.BlockOverride,
+  Markdown4D.Tests.Pipeline.Helpers,
+  Markdown4D.Tests.FailingExtensions;
 
 function TTestableVclViewer.SimulateWheel(const WheelDelta: Integer): Boolean;
 begin
@@ -193,6 +200,27 @@ begin
 
   Assert.AreEqual(2, Viewer.HighlightCount);
   Assert.AreEqual(2, Viewer.FindMatchCount(RepeatedWord));
+end;
+
+procedure TMarkdownVclViewerTests.Text_FailingExtension_ReportsErrorWithViewerAsSender;
+begin
+  TLayoutDocumentProcessorRegistry.Register(TFailingDocumentProcessor.ProcessorName, TFailingDocumentProcessor.Create);
+  try
+    const Viewer = NewHostedViewer;
+    Viewer.OnExtensionError := RecordExtensionError;
+
+    Viewer.Text := ShortMarkdown;
+
+    Assert.AreSame(Viewer, FReportedSender, 'The viewer, not its internal model, must be the sender');
+  finally
+    TLayoutDocumentProcessorRegistry.Clear;
+  end;
+end;
+
+procedure TMarkdownVclViewerTests.RecordExtensionError(const Sender: TObject; const Extension: string;
+  const Error: Exception);
+begin
+  FReportedSender := Sender;
 end;
 
 end.

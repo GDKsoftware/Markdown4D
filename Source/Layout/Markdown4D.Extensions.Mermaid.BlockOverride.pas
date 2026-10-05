@@ -39,7 +39,7 @@ begin
     Exit;
 
   TMarkdownLayoutEngine.RegisterBlockOverride(TMermaidBlockOverride.Create, OverridePriority);
-  TLayoutDocumentProcessorRegistry.Register(TMermaidExtension.CreateDocumentProcessor);
+  TLayoutDocumentProcessorRegistry.Register(OverrideName, TMermaidExtension.CreateDocumentProcessor);
   FRegistered := True;
 end;
 
