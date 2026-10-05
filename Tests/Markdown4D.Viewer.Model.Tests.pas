@@ -30,6 +30,7 @@ type
       TallParagraphCount = 10;
       ImageMarkdown = '![alt](img.png)';
       ImageSource = 'img.png';
+      WrappingMarkdown = 'alpha beta gamma delta'#10#10'omega';
       LoadedImageWidth = 200.0;
       LoadedImageHeight = 100.0;
       Fence = '```';
@@ -220,6 +221,20 @@ type
 
     [Test]
     procedure TrySelectPreviousMatch_AfterNextMatch_SelectsMatchBefore;
+
+    [Test]
+    [TestCase('Narrower', '300,120')]
+    [TestCase('Wider', '120,300')]
+    procedure SetViewport_WidthChangesAfterSelection_SelectionKeepsItsText(const FirstWidth, SecondWidth: Single);
+
+    [Test]
+    procedure NotifyImageArrived_AfterSelection_SelectionKeepsItsText;
+
+    [Test]
+    procedure TrySelectNextMatch_AfterRelayout_SelectsMatchAfterSelection;
+
+    [Test]
+    procedure TryFlush_SelectedTextBecomesOtherNode_ClearsSelection;
 
     [Test]
     procedure HighlightMatches_SeveralMatches_ReturnsRectPerMatch;
@@ -913,6 +928,57 @@ begin
 
   Assert.AreEqual(1, Match.StartCharacter);
   Assert.AreEqual('Alpha', FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.SetViewport_WidthChangesAfterSelection_SelectionKeepsItsText(const FirstWidth,
+  SecondWidth: Single);
+begin
+  FModel.SetViewport(FirstWidth, DefaultHeight);
+  FModel.Text := WrappingMarkdown;
+  var Match: TMarkdownFoundRange;
+  FModel.TrySelectNextMatch('omega', Match);
+
+  FModel.SetViewport(SecondWidth, DefaultHeight);
+
+  Assert.AreEqual('omega', FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.NotifyImageArrived_AfterSelection_SelectionKeepsItsText;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := ImageMarkdown + ' alpha beta'#10#10'omega';
+  var Match: TMarkdownFoundRange;
+  FModel.TrySelectNextMatch('omega', Match);
+
+  FModel.NotifyImageArrived(ImageSource, TLayoutSizeF.Create(LoadedImageWidth, LoadedImageHeight));
+
+  Assert.AreEqual('omega', FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectNextMatch_AfterRelayout_SelectsMatchAfterSelection;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := WrappingMarkdown + ' omega';
+  var Match: TMarkdownFoundRange;
+  FModel.TrySelectNextMatch('omega', Match);
+
+  FModel.SetViewport(WrapWidthCharacters * BaseCharWidth, DefaultHeight);
+  FModel.TrySelectNextMatch('omega', Match);
+
+  Assert.AreEqual(7, Match.StartCharacter);
+end;
+
+procedure TMarkdownViewerModelTests.TryFlush_SelectedTextBecomesOtherNode_ClearsSelection;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '[omega] beta';
+  var Match: TMarkdownFoundRange;
+  FModel.TrySelectNextMatch('omega', Match);
+
+  FModel.AppendMarkdown(#10#10'[omega]: /target', StartTime);
+  FModel.TryFlush(StartTime + FlushIntervalValue);
+
+  Assert.IsFalse(FModel.HasSelection);
 end;
 
 procedure TMarkdownViewerModelTests.HighlightMatches_SeveralMatches_ReturnsRectPerMatch;
