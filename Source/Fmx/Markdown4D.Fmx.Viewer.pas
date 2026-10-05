@@ -42,8 +42,6 @@ type
   // through this unit.
   TMarkdownViewerImageSettings = Markdown4D.Viewer.ImageSettings.TMarkdownViewerImageSettings;
 
-  // Republished from the shared layer so code that handles OnExtensionError
-  // finds the type through this unit.
   TMarkdownExtensionErrorEvent = Markdown4D.Viewer.Model.TMarkdownExtensionErrorEvent;
 
   // Vetoes or permits one remote image, starting from Images.AllowRemote. Use it

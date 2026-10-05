@@ -14,8 +14,6 @@ uses
 type
   EFailingExtension = class(Exception);
 
-  // Stands in for a chart or diagram that cannot handle its input: it claims
-  // every code block, draws part of it and then raises.
   TFailingCodeBlockOverride = class(TInterfacedObject, ILayoutBlockOverride)
   public
     const

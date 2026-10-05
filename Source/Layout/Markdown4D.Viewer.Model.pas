@@ -28,8 +28,8 @@ type
     class function Create(const Rect: TLayoutRectF; const Text: string): TMarkdownCodeBlockRegion; static;
   end;
 
-  // Raised when a block override or a document processor fails. The block is
-  // shown as plain markdown and the rest of the document as usual.
+  // Raised when a block override or a document processor fails. The document
+  // shows without what that extension would have drawn or added.
   TMarkdownExtensionErrorEvent = procedure(const Sender: TObject; const Extension: string;
     const Error: Exception) of object;
 

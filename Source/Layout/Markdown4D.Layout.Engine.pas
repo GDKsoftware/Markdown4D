@@ -801,11 +801,8 @@ begin
   end;
 end;
 
-// An extension that raises must not take the rest of the document with it:
-// what it drew so far is dropped and the block is laid out as plain markdown.
-// That only happens when there is an error sink to report the failure to;
-// without one the exception reaches the caller. Overrides are extension code
-// that may fail on any input, so every exception counts.
+// Extension code may fail on any input, so every exception counts. With an
+// error sink the block then falls back to plain markdown.
 function TLayoutWorker.TryApplyBlockOverride(const Command: TLayoutCommand; const Handler: ILayoutBlockOverride): Boolean;
 begin
   const FirstItemIndex = FItems.Count;

@@ -92,12 +92,10 @@ type
       const Errors: IMarkdownExtensionErrorSink);
 
   public
-    // The name identifies the processor when it fails; an extension that also
-    // registers a block override passes the same name for both.
+    // The name tells a host which extension failed.
     class procedure Register(const Name: string; const Processor: IMarkdownDocumentProcessor);
-    // With Errors, a processor that raises is reported and skipped, so the
-    // document still shows with what the other processors made of it.
-    // Without Errors the exception reaches the caller.
+    // With Errors, a processor that raises is reported and skipped; without,
+    // the exception reaches the caller.
     class procedure Process(const Document: IMarkdownDocument; const Errors: IMarkdownExtensionErrorSink = nil);
     class procedure Clear;
   end;
@@ -186,8 +184,7 @@ begin
   end;
 end;
 
-// Processors are extension code that may fail on any input, so every
-// exception counts, not only the ones Markdown4D raises itself.
+// Extension code may fail on any input, so every exception counts.
 class procedure TLayoutDocumentProcessorRegistry.RunProcessor(const Registration: TRegistration;
   const Document: IMarkdownDocument; const Errors: IMarkdownExtensionErrorSink);
 begin
