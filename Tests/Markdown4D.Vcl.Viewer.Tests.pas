@@ -16,6 +16,8 @@ type
   public
     function SimulateWheel(const WheelDelta: Integer): Boolean;
     procedure SimulateKeyDown(const Key: Word; const Shift: TShiftState);
+    procedure SimulateMiddlePress;
+    procedure SimulateKeyFromMessageLoop(const Key: Word);
   end;
 
   [TestFixture]
@@ -36,7 +38,12 @@ type
     var
       FHostForm: TForm;
       FReportedSender: TObject;
+      FFormKeyCount: Integer;
+      FAutoScrollChangeCount: Integer;
     function NewHostedViewer: TTestableVclViewer;
+    function NewViewerOnPreviewingForm: TTestableVclViewer;
+    procedure RecordFormKey(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure RecordAutoScrollChange(Sender: TObject);
     class function FirstTextRunHeight(const Viewer: TMarkdownViewer): Single; static;
     procedure RecordExtensionError(const Sender: TObject; const Extension: string; const Error: Exception);
 
@@ -76,13 +83,28 @@ type
 
     [Test]
     procedure Text_FailingExtension_ReportsErrorWithViewerAsSender;
+
+    [Test]
+    procedure MiddlePress_OverflowingContent_IsAutoScrolling;
+
+    [Test]
+    procedure AutoScrollChange_StartAndStop_RaisedForBoth;
+
+    [Test]
+    procedure ShortcutKey_DuringAutoScroll_EndsItBeforeTheForm;
+
+    [Test]
+    procedure ShortcutKey_WithoutAutoScroll_ReachesTheForm;
   end;
 
 implementation
 
 uses
   System.Types,
+  System.UITypes,
   Winapi.Windows,
+  Winapi.Messages,
+  Vcl.Controls,
   Markdown4D.Layout.DisplayList,
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Tests.Pipeline.Helpers,
@@ -99,10 +121,27 @@ begin
   KeyDown(PressedKey, Shift);
 end;
 
+procedure TTestableVclViewer.SimulateMiddlePress;
+begin
+  MouseDown(TMouseButton.mbMiddle, [], 10, 10);
+end;
+
+// As the VCL message loop delivers a key: CN_KEYDOWN first, where menu and
+// action shortcuts are handled, and WM_KEYDOWN only when nothing took it.
+procedure TTestableVclViewer.SimulateKeyFromMessageLoop(const Key: Word);
+begin
+  const Handled = (Perform(CN_KEYDOWN, Key, 0) <> 0);
+  if not Handled then
+    Perform(WM_KEYDOWN, Key, 0);
+end;
+
 procedure TMarkdownVclViewerTests.TearDown;
 begin
   FHostForm.Free;
   FHostForm := nil;
+
+  FFormKeyCount := 0;
+  FAutoScrollChangeCount := 0;
 end;
 
 function TMarkdownVclViewerTests.NewHostedViewer: TTestableVclViewer;
@@ -262,6 +301,67 @@ procedure TMarkdownVclViewerTests.RecordExtensionError(const Sender: TObject; co
   const Error: Exception);
 begin
   FReportedSender := Sender;
+end;
+
+procedure TMarkdownVclViewerTests.MiddlePress_OverflowingContent_IsAutoScrolling;
+begin
+  const Viewer = NewViewerOnPreviewingForm;
+
+  Viewer.SimulateMiddlePress;
+
+  Assert.IsTrue(Viewer.IsAutoScrolling);
+end;
+
+procedure TMarkdownVclViewerTests.AutoScrollChange_StartAndStop_RaisedForBoth;
+begin
+  const Viewer = NewViewerOnPreviewingForm;
+  Viewer.OnAutoScrollChange := RecordAutoScrollChange;
+
+  Viewer.SimulateMiddlePress;
+  Viewer.SimulateKeyFromMessageLoop(VK_DOWN);
+
+  Assert.AreEqual(2, FAutoScrollChangeCount);
+  Assert.IsFalse(Viewer.IsAutoScrolling);
+end;
+
+procedure TMarkdownVclViewerTests.ShortcutKey_DuringAutoScroll_EndsItBeforeTheForm;
+begin
+  const Viewer = NewViewerOnPreviewingForm;
+  Viewer.SimulateMiddlePress;
+
+  Viewer.SimulateKeyFromMessageLoop(VK_F3);
+
+  Assert.IsFalse(Viewer.IsAutoScrolling, 'The key must end autoscroll');
+  Assert.AreEqual(0, FFormKeyCount, 'The key that ends autoscroll must not reach the form');
+end;
+
+procedure TMarkdownVclViewerTests.ShortcutKey_WithoutAutoScroll_ReachesTheForm;
+begin
+  const Viewer = NewViewerOnPreviewingForm;
+
+  Viewer.SimulateKeyFromMessageLoop(VK_F3);
+
+  Assert.AreEqual(1, FFormKeyCount);
+end;
+
+function TMarkdownVclViewerTests.NewViewerOnPreviewingForm: TTestableVclViewer;
+begin
+  Result := NewHostedViewer;
+  Result.Text := TMarkdownTestPipelineHelpers.ManyParagraphs(ParagraphCount);
+
+  FHostForm.KeyPreview := True;
+  FHostForm.OnKeyDown := RecordFormKey;
+end;
+
+procedure TMarkdownVclViewerTests.RecordFormKey(Sender: TObject; var Key: Word; Shift: TShiftState);
+begin
+  Inc(FFormKeyCount);
+  Key := 0;
+end;
+
+procedure TMarkdownVclViewerTests.RecordAutoScrollChange(Sender: TObject);
+begin
+  Inc(FAutoScrollChangeCount);
 end;
 
 end.
