@@ -228,6 +228,8 @@ type
 
   TAdmonitionExtension = class(TInterfacedObject, IMarkdownExtension)
   public
+    const
+      ExtensionName = 'sample.admonition';
     procedure Setup(const Pipeline: IMarkdownPipelineBuilder);
   end;
 
@@ -239,7 +241,6 @@ type
     function LayoutBlock(const Node: IMarkdownNode; const Top: Single; const Context: ILayoutBlockContext): Single;
   public
     const
-      OverrideName = 'sample.admonition';
       BannerHeight = 24.0;
     class procedure RegisterOverride;
   end;
@@ -434,7 +435,7 @@ origin is not.
 ```pascal
 function TAdmonitionBlockOverride.GetName: string;
 begin
-  Result := OverrideName;
+  Result := TAdmonitionExtension.ExtensionName;
 end;
 
 function TAdmonitionBlockOverride.Handles(const Node: IMarkdownNode): Boolean;
@@ -524,15 +525,14 @@ begin
 
   TMarkdownLayoutEngine.RegisterBlockOverride(TAdmonitionBlockOverride.Create,
     TMarkdownPriorities.ExtensionLayoutOverride);
-  TLayoutDocumentProcessorRegistry.Register(OverrideName, TAdmonitionProcessor.Create);
+  TLayoutDocumentProcessorRegistry.Register(TAdmonitionExtension.ExtensionName, TAdmonitionProcessor.Create);
 
   FRegistered := True;
 end;
 ```
 
-The name passed to `Register` identifies the processor when it fails. Pass the
-same name the override returns from `GetName`, so a host sees one name per
-extension.
+The name passed to `Register` tells a host which extension failed. Use the
+extension's name, the same one the override returns from `GetName`.
 
 Declare `class var FRegistered: Boolean;` (strict private) on the override so the
 guard makes repeated calls from several forms harmless; the shipped chart and
@@ -621,7 +621,7 @@ Chart registration mirrors the admonition, and for the same reason: the viewer's
 fixed GFM pipeline does not register the chart extension, so charts render only
 because `TChartBlockOverride.RegisterOverride` installs **both** halves at layout
 time. It calls `TMarkdownLayoutEngine.RegisterBlockOverride` for the override
-**and** `TLayoutDocumentProcessorRegistry.Register(OverrideName, TChartExtension.CreateDocumentProcessor)`
+**and** `TLayoutDocumentProcessorRegistry.Register(TChartExtension.ExtensionName, TChartExtension.CreateDocumentProcessor)`
 for the document processor. That processor, not any on-demand parse in the
 override, is what runs during `TMarkdownViewerModel`'s layout pass and caches the
 `IChartModel`; `TChartBlockOverride.Handles` then merely reads the cached model

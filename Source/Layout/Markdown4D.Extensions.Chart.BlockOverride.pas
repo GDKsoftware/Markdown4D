@@ -24,7 +24,6 @@ type
     class procedure RegisterWith(const Options: TChartLayoutOptions);
   public
     const
-      OverrideName = 'markdown4d.chart';
       OverridePriority = TMarkdownPriorities.ExtensionLayoutOverride;
     class procedure RegisterOverride; overload;
     class procedure RegisterOverride(const Options: TChartLayoutOptions); overload;
@@ -60,13 +59,13 @@ end;
 
 class function TChartBlockOverride.IsRegistered: Boolean;
 begin
-  Result := TLayoutBlockOverrideRegistry.IsRegistered(OverrideName, OverridePriority);
+  Result := TLayoutBlockOverrideRegistry.IsRegistered(TChartExtension.ExtensionName, OverridePriority);
 end;
 
 class procedure TChartBlockOverride.RegisterWith(const Options: TChartLayoutOptions);
 begin
   TMarkdownLayoutEngine.RegisterBlockOverride(TChartBlockOverride.Create(Options), OverridePriority);
-  TLayoutDocumentProcessorRegistry.Register(OverrideName, TChartExtension.CreateDocumentProcessor);
+  TLayoutDocumentProcessorRegistry.Register(TChartExtension.ExtensionName, TChartExtension.CreateDocumentProcessor);
 end;
 
 constructor TChartBlockOverride.Create;
@@ -83,7 +82,7 @@ end;
 
 function TChartBlockOverride.GetName: string;
 begin
-  Result := OverrideName;
+  Result := TChartExtension.ExtensionName;
 end;
 
 class function TChartBlockOverride.TryResolveModel(const Node: IMarkdownNode; out Model: IChartModel): Boolean;

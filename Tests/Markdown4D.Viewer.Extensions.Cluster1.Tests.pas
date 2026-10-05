@@ -108,10 +108,10 @@ begin
   FModel := TMarkdownViewerModel.Create(FTheme, FMeasurer);
 
   TMarkdownLayoutEngine.RegisterBlockOverride(TChartBlockOverride.Create, TChartBlockOverride.OverridePriority);
-  TLayoutDocumentProcessorRegistry.Register(TChartBlockOverride.OverrideName, TChartExtension.CreateDocumentProcessor);
+  TLayoutDocumentProcessorRegistry.Register(TChartExtension.ExtensionName, TChartExtension.CreateDocumentProcessor);
 
   TMarkdownLayoutEngine.RegisterBlockOverride(TMermaidBlockOverride.Create, TMermaidBlockOverride.OverridePriority);
-  TLayoutDocumentProcessorRegistry.Register(TMermaidBlockOverride.OverrideName, TMermaidExtension.CreateDocumentProcessor);
+  TLayoutDocumentProcessorRegistry.Register(TMermaidExtension.ExtensionName, TMermaidExtension.CreateDocumentProcessor);
 
   FModel.SetViewport(ViewportWidth, ViewportHeight);
 end;
@@ -258,7 +258,7 @@ begin
       TChartBlockOverride.RegisterOverride(Default(TChartLayoutOptions));
     end);
 
-  const IsRegistered = TLayoutBlockOverrideRegistry.IsRegistered(TChartBlockOverride.OverrideName,
+  const IsRegistered = TLayoutBlockOverrideRegistry.IsRegistered(TChartExtension.ExtensionName,
                                                                  TChartBlockOverride.OverridePriority);
   Assert.IsTrue(IsRegistered, 'Clearing the overrides must let the chart override register again');
 end;
