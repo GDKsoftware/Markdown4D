@@ -104,7 +104,8 @@ type
     procedure WriteMathBlock(const Node: IMarkdownMath);
     procedure WriteFrontMatter(const Node: IMarkdownFrontMatter);
     procedure WriteFrontMatterTable(const Properties: TArray<TFrontMatterProperty>);
-    procedure WriteFrontMatterValue(const Prop: TFrontMatterProperty);
+    procedure WriteFrontMatterRow(const Prop: TFrontMatterProperty);
+    function FrontMatterCell(const Prop: TFrontMatterProperty): string;
     procedure WriteFrontMatterRaw(const Literal: string);
     function CurrentTableCellTag: string;
     function RawHtmlOutput(const Literal: string): string;
@@ -545,7 +546,7 @@ begin
 
   for var Prop in Properties do
   begin
-    WriteFrontMatterValue(Prop);
+    WriteFrontMatterRow(Prop);
   end;
 
   FOutput.Append(TableBodyCloseTag);
@@ -553,32 +554,34 @@ begin
   FOutput.Append(FrontMatterTableCloseTag);
 end;
 
-procedure TMarkdownHtmlRenderer.WriteFrontMatterValue(const Prop: TFrontMatterProperty);
+procedure TMarkdownHtmlRenderer.WriteFrontMatterRow(const Prop: TFrontMatterProperty);
 begin
-  var Value := '';
-
-  if Prop.IsList then
-  begin
-    var Items: TArray<string>;
-    for var Item in Prop.Values do
-    begin
-      const EscapedItem = EscapeHtml(Item);
-      Items := Items + [Format(FrontMatterListItemFormat, [EscapedItem])];
-    end;
-
-    const JoinedItems = string.Join('', Items);
-    Value := Format(FrontMatterListFormat, [JoinedItems]);
-  end
-  else
-  begin
-    const JoinedValues = string.Join(Space, Prop.Values);
-    Value := EscapeHtml(JoinedValues);
-  end;
-
   const EscapedKey = EscapeHtml(Prop.Key);
-  const Row = Format(FrontMatterRowFormat, [EscapedKey, Value]);
+  const Cell = FrontMatterCell(Prop);
+  const Row = Format(FrontMatterRowFormat, [EscapedKey, Cell]);
+
   FOutput.Append(Row);
   FOutput.Append(LineFeed);
+end;
+
+function TMarkdownHtmlRenderer.FrontMatterCell(const Prop: TFrontMatterProperty): string;
+begin
+  if not Prop.IsList then
+  begin
+    const JoinedValues = string.Join(Space, Prop.Values);
+    Result := EscapeHtml(JoinedValues);
+    Exit;
+  end;
+
+  var Items: TArray<string>;
+  for var Item in Prop.Values do
+  begin
+    const EscapedItem = EscapeHtml(Item);
+    Items := Items + [Format(FrontMatterListItemFormat, [EscapedItem])];
+  end;
+
+  const JoinedItems = string.Join('', Items);
+  Result := Format(FrontMatterListFormat, [JoinedItems]);
 end;
 
 procedure TMarkdownHtmlRenderer.WriteFrontMatterRaw(const Literal: string);

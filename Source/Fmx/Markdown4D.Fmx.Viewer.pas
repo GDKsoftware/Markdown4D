@@ -14,6 +14,7 @@ uses
   FMX.Controls,
   FMX.Graphics,
   FMX.Menus,
+  Markdown4D.Defines,
   Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.DisplayList,
@@ -156,6 +157,7 @@ type
     procedure SetText(const Value: string);
     function GetFrontMatter: Boolean;
     procedure SetFrontMatter(const Value: Boolean);
+    function GetParseOptions: TMarkdownParseOptions;
     procedure SetImages(const Value: TMarkdownViewerImageSettings);
     function IsTextStored: Boolean;
     procedure SetThemePreset(const Value: TMarkdownThemePreset);
@@ -206,6 +208,9 @@ type
     // its scroll mapping went stale.
     property LayoutCount: Integer read GetLayoutCount;
     property SelectedText: string read GetSelectedText;
+    // The options the text is parsed with, so an attached editor parses the
+    // same blocks as the ones laid out.
+    property ParseOptions: TMarkdownParseOptions read GetParseOptions;
 
   published
     property Text: string read GetText write SetText stored IsTextStored;
@@ -1410,6 +1415,11 @@ begin
 
   FModel.FrontMatter := Value;
   RedrawContent;
+end;
+
+function TMarkdownViewer.GetParseOptions: TMarkdownParseOptions;
+begin
+  Result := FModel.ParseOptions;
 end;
 
 procedure TMarkdownViewer.SetImages(const Value: TMarkdownViewerImageSettings);

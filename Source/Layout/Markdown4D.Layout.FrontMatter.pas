@@ -23,6 +23,7 @@ type
     const
       KeyColumnShare = 0.4;
       RowLineThickness = 1.0;
+      FitEpsilon = 0.01;
       WordSeparator = ' ';
     var
       FTheme: TMarkdownTheme;
@@ -39,7 +40,11 @@ type
     function PlaceWords(const Text: string; const Left, Top, Width: Single; const Color: TLayoutColor;
                         const FirstJoin: TDisplayTextJoin): Single;
     function PlaceChips(const Values: TArray<string>; const Left, Top, Width: Single): Single;
-    procedure PlaceChip(const Value: string; const Left, Top: Single; const Join: TDisplayTextJoin);
+    procedure PlaceChip(const Pieces: TArray<string>; const Left, Top, ChipWidth: Single;
+                        const Join: TDisplayTextJoin);
+    function FittingPieces(const Text: string; const Font: TMarkdownFontStyle; const Width: Single): TArray<string>;
+    function MaxCharsFitting(const Text: string; const Font: TMarkdownFontStyle; const Width: Single): Integer;
+    function WidestPiece(const Pieces: TArray<string>; const Font: TMarkdownFontStyle): Single;
     procedure EmitRowLine(const Y: Single);
     procedure LayoutRawLines(const Literal: string);
     procedure EmitRun(const Bounds: TLayoutRectF; const Text: string; const Font: TMarkdownFontStyle;
@@ -108,15 +113,17 @@ begin
 
   const KeyWidth = KeyColumnWidth(Properties);
 
-  for var Index := 0 to High(Properties) do
+  var IsFirstRow := True;
+  for var Prop in Properties do
   begin
-    const IsFirstRow = (Index = 0);
-    PlaceRow(Properties[Index], KeyWidth, IsFirstRow);
+    PlaceRow(Prop, KeyWidth, IsFirstRow);
+    IsFirstRow := False;
   end;
 end;
 
 // The key column is as wide as the widest key, but never takes more than its
-// share of the panel; a longer key wraps within the column.
+// share of the panel; a longer key wraps within the column, and a single word
+// that is still too wide breaks between its characters.
 function TFrontMatterLayout.KeyColumnWidth(const Properties: TArray<TFrontMatterProperty>): Single;
 begin
   Result := 0;
@@ -170,7 +177,8 @@ begin
 end;
 
 // Places Text word by word and starts a new line when the next word no longer
-// fits. Answers the height the words took.
+// fits; a word wider than the column is broken into pieces that do fit.
+// Answers the height the words took.
 function TFrontMatterLayout.PlaceWords(const Text: string; const Left, Top, Width: Single; const Color: TLayoutColor;
                                        const FirstJoin: TDisplayTextJoin): Single;
 begin
@@ -194,10 +202,25 @@ begin
       LineTop := LineTop + LineHeight;
     end;
 
-    const Bounds = TLayoutRectF.Create(Cursor, LineTop, Cursor + WordWidth, LineTop + LineHeight);
-    EmitRun(Bounds, WordText, Font, Color, 0, Join);
+    const Pieces = FittingPieces(WordText, Font, Width);
+    var PieceWidth: Single := 0;
+    var IsFirstPiece := True;
+    for var Piece in Pieces do
+    begin
+      if not IsFirstPiece then
+      begin
+        Cursor := Left;
+        LineTop := LineTop + LineHeight;
+        Join := TDisplayTextJoin.Adjacent;
+      end;
 
-    Cursor := Cursor + WordWidth + SpaceWidth;
+      PieceWidth := TextWidth(Piece, Font);
+      const Bounds = TLayoutRectF.Create(Cursor, LineTop, Cursor + PieceWidth, LineTop + LineHeight);
+      EmitRun(Bounds, Piece, Font, Color, 0, Join);
+      IsFirstPiece := False;
+    end;
+
+    Cursor := Cursor + PieceWidth + SpaceWidth;
     Join := TDisplayTextJoin.Space;
   end;
 
@@ -205,49 +228,115 @@ begin
 end;
 
 // Every item of a list value is a chip of its own; a chip that no longer fits
-// on the line moves to the next one.
+// on the line moves to the next one, and a chip wider than the column breaks
+// its text over more lines.
 function TFrontMatterLayout.PlaceChips(const Values: TArray<string>; const Left, Top, Width: Single): Single;
 begin
   const Font = FTheme.BaseFont;
-  const ChipHeight = FMeasurer.LineHeight(Font);
-  const LineAdvance = ChipHeight + ChipGap;
+  const LineHeight = FMeasurer.LineHeight(Font);
+  const TextWidthLimit = Max(0, Width - 2 * ChipPadding);
 
   var Cursor := Left;
   var LineTop := Top;
+  var LineBottom := Top + LineHeight;
   var Join := TDisplayTextJoin.Tab;
 
   for var Value in Values do
   begin
-    const ChipWidth = TextWidth(Value, Font) + 2 * ChipPadding;
+    const Pieces = FittingPieces(Value, Font, TextWidthLimit);
+    const ChipWidth = WidestPiece(Pieces, Font) + 2 * ChipPadding;
+    const ChipHeight = Max(1, Length(Pieces)) * LineHeight;
     const IsLineStart = (SameValue(Cursor, Left));
     const Overflows = (not IsLineStart and (Cursor + ChipWidth > Left + Width));
     if Overflows then
     begin
       Cursor := Left;
-      LineTop := LineTop + LineAdvance;
+      LineTop := LineBottom + ChipGap;
     end;
 
-    PlaceChip(Value, Cursor, LineTop, Join);
+    PlaceChip(Pieces, Cursor, LineTop, ChipWidth, Join);
 
     Cursor := Cursor + ChipWidth + ChipGap;
+    LineBottom := Max(LineBottom, LineTop + ChipHeight);
     Join := TDisplayTextJoin.Space;
   end;
 
-  Result := LineTop + ChipHeight - Top;
+  Result := LineBottom - Top;
 end;
 
-procedure TFrontMatterLayout.PlaceChip(const Value: string; const Left, Top: Single; const Join: TDisplayTextJoin);
+procedure TFrontMatterLayout.PlaceChip(const Pieces: TArray<string>; const Left, Top, ChipWidth: Single;
+                                       const Join: TDisplayTextJoin);
 begin
   const Font = FTheme.BaseFont;
-  const ValueWidth = TextWidth(Value, Font);
-  const Height = FMeasurer.LineHeight(Font);
-  const ChipBounds = TLayoutRectF.Create(Left, Top, Left + ValueWidth + 2 * ChipPadding, Top + Height);
-  const TextLeft = Left + ChipPadding;
-  const TextBounds = TLayoutRectF.Create(TextLeft, Top, TextLeft + ValueWidth, Top + Height);
+  const LineHeight = FMeasurer.LineHeight(Font);
+  const ChipHeight = Max(1, Length(Pieces)) * LineHeight;
+  const ChipBounds = TLayoutRectF.Create(Left, Top, Left + ChipWidth, Top + ChipHeight);
   const Chip: IDisplayItem = TDisplayRectangle.Create(ChipBounds, FNode, FTheme.TableHeaderBackgroundColor, 0, 0);
 
   FItems.Add(Chip);
-  EmitRun(TextBounds, Value, Font, FValueColor, 0, Join);
+
+  const TextLeft = Left + ChipPadding;
+  var LineTop := Top;
+  var PieceJoin := Join;
+  for var Piece in Pieces do
+  begin
+    const PieceWidth = TextWidth(Piece, Font);
+    const TextBounds = TLayoutRectF.Create(TextLeft, LineTop, TextLeft + PieceWidth, LineTop + LineHeight);
+    EmitRun(TextBounds, Piece, Font, FValueColor, 0, PieceJoin);
+
+    LineTop := LineTop + LineHeight;
+    PieceJoin := TDisplayTextJoin.Adjacent;
+  end;
+end;
+
+// Answers Text as a single piece when it fits Width, and otherwise breaks it
+// into pieces of as many characters as fit, the way a too wide table cell
+// breaks. A piece holds at least one character, even when that is wider.
+function TFrontMatterLayout.FittingPieces(const Text: string; const Font: TMarkdownFontStyle;
+                                          const Width: Single): TArray<string>;
+begin
+  const Fits = (TextWidth(Text, Font) <= Width + FitEpsilon);
+  if Fits then
+  begin
+    Result := [Text];
+    Exit;
+  end;
+
+  Result := [];
+  var Rest := Text;
+  while not Rest.IsEmpty do
+  begin
+    const FitCount = MaxCharsFitting(Rest, Font, Width);
+    Result := Result + [Copy(Rest, 1, FitCount)];
+    Rest := Copy(Rest, FitCount + 1, Length(Rest));
+  end;
+end;
+
+function TFrontMatterLayout.MaxCharsFitting(const Text: string; const Font: TMarkdownFontStyle;
+                                            const Width: Single): Integer;
+begin
+  Result := 1;
+
+  for var CharCount := 2 to Length(Text) do
+  begin
+    const Prefix = Copy(Text, 1, CharCount);
+    const PrefixFits = (TextWidth(Prefix, Font) <= Width + FitEpsilon);
+    if not PrefixFits then
+      Exit;
+
+    Result := CharCount;
+  end;
+end;
+
+function TFrontMatterLayout.WidestPiece(const Pieces: TArray<string>; const Font: TMarkdownFontStyle): Single;
+begin
+  Result := 0;
+
+  for var Piece in Pieces do
+  begin
+    const PieceWidth = TextWidth(Piece, Font);
+    Result := Max(Result, PieceWidth);
+  end;
 end;
 
 procedure TFrontMatterLayout.EmitRowLine(const Y: Single);

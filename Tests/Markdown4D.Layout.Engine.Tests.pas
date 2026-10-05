@@ -57,6 +57,7 @@ type
       TableBorderColorValue = $FFD4D4D4;
       ThematicBreakColorValue = $FFB0B0B0;
       DefaultWidth = 300.0;
+      NarrowFrontMatterWidth = 200.0;
       SingleTolerance = 0.05;
       FullLayoutBudgetMilliseconds = 200;
       IncrementalLayoutBudgetMilliseconds = 10;
@@ -150,6 +151,8 @@ type
 
     [Test]
     procedure Layout_FrontMatter_NestedMap_RendersRawLinesInCodeFont;
+    [Test]
+    procedure Layout_FrontMatter_NarrowWidth_BreaksLongWordsWithinColumns;
 
     [Test]
     procedure Layout_Table_ClampsColumnToMaxWidthAndWrapsCell;
@@ -637,6 +640,63 @@ begin
 
   const Chips = RectanglesWithFill(DisplayList, TableHeaderBackgroundColorValue);
   Assert.AreEqual(0, Integer(Length(Chips)), 'Raw front matter must not be split into chips');
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_FrontMatter_NarrowWidth_BreaksLongWordsWithinColumns;
+begin
+  const LongKey = 'date_modified_original';
+  const LongUrl = 'https://example.com/a/very/long/path';
+  const LongItem = 'averyveryverylongchipitem';
+  const Source = '---'#10 + LongKey + ': ' + LongUrl + #10'tags: [' + LongItem + ', b]'#10'---'#10#10 + HeadingLine;
+
+  const DisplayList = LayoutFrontMatterMarkdown(Source, NarrowFrontMatterWidth);
+
+  var Panel: IDisplayRectangle;
+  Assert.IsTrue(Supports(DisplayList.Items[0], IDisplayRectangle, Panel), 'The panel background must be painted first');
+
+  const Runs = TextRunsOf(DisplayList);
+  const ValueRun = FindRunByPrefix(Runs, 'https');
+  Assert.IsNotNull(ValueRun);
+  const ValueLeft = ValueRun.Bounds.Left;
+
+  var KeyText := '';
+  var ValueText := '';
+  for var Run in Runs do
+  begin
+    const IsInPanel = (Run.Bounds.Top < Panel.Bounds.Bottom);
+    if not IsInPanel then
+      Continue;
+
+    const StaysInPanel = (Run.Bounds.Right <= Panel.Bounds.Right + SingleTolerance);
+    Assert.IsTrue(StaysInPanel, Format('Run "%s" must stay inside the panel', [Run.Text]));
+
+    const IsKeyRun = SameValue(Run.Bounds.Left, TableCellPaddingValue);
+    if IsKeyRun then
+    begin
+      const StaysInKeyColumn = (Run.Bounds.Right <= ValueLeft);
+      Assert.IsTrue(StaysInKeyColumn, Format('Key run "%s" must stay left of the value column', [Run.Text]));
+      KeyText := KeyText + Run.Text;
+    end
+    else
+    begin
+      ValueText := ValueText + Run.Text;
+    end;
+  end;
+
+  Assert.AreEqual(LongKey + 'tags', KeyText, 'The broken key must keep all its characters');
+  Assert.AreEqual(LongUrl + LongItem + 'b', ValueText, 'The broken values must keep all their characters');
+
+  const Chips = RectanglesWithFill(DisplayList, TableHeaderBackgroundColorValue);
+  Assert.AreEqual(2, Integer(Length(Chips)), 'A broken list item must still be a single chip');
+  for var Chip in Chips do
+  begin
+    const ChipStaysInPanel = (Chip.Bounds.Right <= Panel.Bounds.Right + SingleTolerance);
+    Assert.IsTrue(ChipStaysInPanel, 'Every chip must stay inside the panel');
+  end;
+
+  const Heading = FindRunByPrefix(Runs, HeadingText);
+  Assert.IsNotNull(Heading);
+  Assert.IsTrue(Heading.Bounds.Top >= Panel.Bounds.Bottom, 'The document after the panel must start below it');
 end;
 
 procedure TMarkdownLayoutEngineTests.Layout_Table_ClampsColumnToMaxWidthAndWrapsCell;

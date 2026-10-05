@@ -97,6 +97,14 @@ type
     [TestCase('ListItemAfterValue', 'tags: a~- b')]
     [TestCase('ListOfMaps', 'people:~  - name: Jan')]
     [TestCase('NoSpaceAfterColon', 'a:b')]
+    [TestCase('Alias', 'ref: *b')]
+    [TestCase('Anchor', 'base: &b x')]
+    [TestCase('Tag', 'n: !!int 3')]
+    [TestCase('InlineComment', 'status: idea # todo')]
+    [TestCase('QuotedKey', '"my key": v')]
+    [TestCase('SameQuoteInside', 'title: "a" and "b"')]
+    [TestCase('NestedFlowListItem', 'tags:~- [a]')]
+    [TestCase('CommaInsideQuotedItem', 'tags: [a, ''b, c'']', ';')]
     procedure TryParse_UnsupportedYaml_ReturnsFalse(const Raw: string);
 
     [Test]

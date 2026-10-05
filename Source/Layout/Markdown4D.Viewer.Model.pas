@@ -79,7 +79,6 @@ type
       FImageSlotOrder: TList<string>;
       FFrontMatter: Boolean;
     procedure Relayout;
-    function ParseOptions: TMarkdownParseOptions;
     procedure RegisterImageSlots;
     function TryFindTextRunBounds(out FirstIndex, LastIndex: Integer): Boolean;
     function TryResolvePosition(const Point: TLayoutPointF; out Position: TTextPosition): Boolean;
@@ -149,6 +148,9 @@ type
     procedure SetViewport(const Width, Height: Single);
     procedure ApplyTheme(const Theme: TMarkdownTheme);
     procedure RefreshLayout;
+    // The options the text is parsed with, so a host that parses the same
+    // text gets a document with the same blocks as the one laid out.
+    function ParseOptions: TMarkdownParseOptions;
     function IsScrolledToBottom: Boolean;
     procedure AppendMarkdown(const Markdown: string; const NowMilliseconds: Int64);
     function TryFlush(const NowMilliseconds: Int64): Boolean;

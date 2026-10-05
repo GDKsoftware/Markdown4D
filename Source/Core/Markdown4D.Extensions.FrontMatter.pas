@@ -42,7 +42,7 @@ type
       FlowListSeparator = ',';
       SingleQuote = '''';
       DoubleQuote = '"';
-      UnsupportedValueStarts = '{|>';
+      UnsupportedValueStarts = '{[|>&*!';
       TrimChars: array[0..1] of Char = (' ', #9);
     var
       FProperties: TArray<TFrontMatterProperty>;
@@ -54,9 +54,11 @@ type
     class function TryParseKeyLine(const Line: string; out Prop: TFrontMatterProperty): Boolean;
     class function TryParseValue(const Key, Value: string; out Prop: TFrontMatterProperty): Boolean;
     class function TryParseFlowList(const Value: string; out Items: TArray<string>): Boolean;
+    class function TryReadScalar(const Value: string; out Text: string): Boolean;
     class function IsListItemLine(const Trimmed: string): Boolean;
     class function IsIndented(const Line: string): Boolean;
-    class function Unquote(const Value: string): string;
+    class function StartsWithQuote(const Value: string): Boolean;
+    class function TryUnquote(const Value: string; out Text: string): Boolean;
 
   public
     class function TryParse(const Raw: string; out Properties: TArray<TFrontMatterProperty>): Boolean;
@@ -134,11 +136,11 @@ end;
 
 function TFrontMatterProperties.TryAddListItem(const Item: string): Boolean;
 begin
-  const Value = Unquote(Item);
-  const IsQuoted = (Value <> Item);
+  const IsQuoted = (StartsWithQuote(Item));
   const IsMapping = (not IsQuoted and (Item.Contains(KeySeparator + Space) or Item.EndsWith(KeySeparator)));
 
-  Result := FAcceptsListItems and not Item.IsEmpty and not IsMapping;
+  var Value: string;
+  Result := FAcceptsListItems and not Item.IsEmpty and not IsMapping and TryReadScalar(Item, Value);
   if not Result then
     Exit;
 
@@ -173,9 +175,10 @@ begin
   const Key = Line.Substring(0, SeparatorIndex).Trim(TrimChars);
   const Value = Line.Substring(SeparatorIndex + 1);
   const IsSeparatedFromValue = (Value.IsEmpty or CharInSet(Value.Chars[0], [Space, Tab]));
+  const IsQuotedKey = (StartsWithQuote(Key));
   const TrimmedValue = Value.Trim(TrimChars);
 
-  Result := IsSeparatedFromValue and not Key.IsEmpty and TryParseValue(Key, TrimmedValue, Prop);
+  Result := IsSeparatedFromValue and not Key.IsEmpty and not IsQuotedKey and TryParseValue(Key, TrimmedValue, Prop);
 end;
 
 class function TFrontMatterProperties.TryParseValue(const Key, Value: string; out Prop: TFrontMatterProperty): Boolean;
@@ -189,13 +192,6 @@ begin
     Exit;
   end;
 
-  const IsUnsupported = (Pos(Value.Chars[0], UnsupportedValueStarts) > 0);
-  if IsUnsupported then
-  begin
-    Result := False;
-    Exit;
-  end;
-
   if Value.StartsWith(FlowListOpen) then
   begin
     Prop.IsList := True;
@@ -203,8 +199,10 @@ begin
     Exit;
   end;
 
-  Prop.Values := [Unquote(Value)];
-  Result := True;
+  var Text: string;
+  Result := TryReadScalar(Value, Text);
+  if Result then
+    Prop.Values := [Text];
 end;
 
 class function TFrontMatterProperties.TryParseFlowList(const Value: string; out Items: TArray<string>): Boolean;
@@ -238,10 +236,47 @@ begin
   for var Part in Parts do
   begin
     const TrimmedPart = Part.Trim(TrimChars);
-    Items := Items + [Unquote(TrimmedPart)];
+
+    var Item: string;
+    if not TryReadScalar(TrimmedPart, Item) then
+    begin
+      Items := nil;
+      Result := False;
+      Exit;
+    end;
+
+    Items := Items + [Item];
   end;
 
   Result := True;
+end;
+
+// A plain scalar or a scalar in quotes. Anything that would need more of YAML
+// to read right (an anchor, alias or tag, a nested list, an inline comment, a
+// quoted text with the same quote inside) fails, so the raw text is shown.
+class function TFrontMatterProperties.TryReadScalar(const Value: string; out Text: string): Boolean;
+begin
+  Text := '';
+
+  if Value.IsEmpty then
+  begin
+    Result := True;
+    Exit;
+  end;
+
+  if StartsWithQuote(Value) then
+  begin
+    Result := TryUnquote(Value, Text);
+    Exit;
+  end;
+
+  const IsUnsupportedStart = (Pos(Value.Chars[0], UnsupportedValueStarts) > 0);
+  const HasInlineComment = (Value.Contains(Space + CommentMarker) or Value.Contains(Tab + CommentMarker));
+  const IsNestedListItem = (IsListItemLine(Value));
+
+  Result := not IsUnsupportedStart and not HasInlineComment and not IsNestedListItem;
+  if Result then
+    Text := Value;
 end;
 
 class function TFrontMatterProperties.IsListItemLine(const Trimmed: string): Boolean;
@@ -257,19 +292,27 @@ begin
   Result := ((not Line.IsEmpty) and CharInSet(Line.Chars[0], [Space, Tab]));
 end;
 
-class function TFrontMatterProperties.Unquote(const Value: string): string;
+class function TFrontMatterProperties.StartsWithQuote(const Value: string): Boolean;
 begin
-  Result := Value;
+  Result := (Value.StartsWith(SingleQuote) or Value.StartsWith(DoubleQuote));
+end;
 
-  const IsLongEnough = (Value.Length >= 2);
-  if not IsLongEnough then
+class function TFrontMatterProperties.TryUnquote(const Value: string; out Text: string): Boolean;
+begin
+  Text := '';
+
+  const Quote = Value.Chars[0];
+  const IsClosed = ((Value.Length >= 2) and Value.EndsWith(Quote));
+  if not IsClosed then
+  begin
+    Result := False;
     Exit;
+  end;
 
-  const FirstChar = Value.Chars[0];
-  const IsQuoted = (((FirstChar = SingleQuote) or (FirstChar = DoubleQuote)) and
-                    Value.EndsWith(FirstChar));
-  if IsQuoted then
-    Result := Value.Substring(1, Value.Length - 2);
+  const Inner = Value.Substring(1, Value.Length - 2);
+  Result := not Inner.Contains(Quote);
+  if Result then
+    Text := Inner;
 end;
 
 end.
