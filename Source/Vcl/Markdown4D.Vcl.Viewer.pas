@@ -124,6 +124,7 @@ type
     procedure ScrollToMatch(const Match: TMarkdownFoundRange);
     procedure UpdateScrollBar;
     function LineScrollAmount: Integer;
+    function ContentPixelsPerInch: Integer;
     function ContentPointOf(const X, Y: Integer): TLayoutPointF;
     procedure UpdateHoverCursor(const Point: TLayoutPointF);
     procedure SetHoveredLinkUrl(const Value: string);
@@ -286,7 +287,7 @@ begin
 
   FMeasureBitmap := TBitmap.Create;
   FMeasureBitmap.SetSize(1, 1);
-  FMeasurePainter := TMarkdownVclPainter.Create(FMeasureBitmap.Canvas, CurrentPPI);
+  FMeasurePainter := TMarkdownVclPainter.Create(FMeasureBitmap.Canvas, ContentPixelsPerInch);
   FMeasurePainterLifetime := FMeasurePainter;
   FModel := TMarkdownViewerModel.Create(FTheme, FMeasurePainterLifetime);
 
@@ -553,7 +554,7 @@ procedure TMarkdownViewer.ChangeScale(Multiplier, Divider: Integer; IsDpiChange:
 begin
   inherited ChangeScale(Multiplier, Divider, IsDpiChange);
 
-  FMeasurePainter.PixelsPerInch := CurrentPPI;
+  FMeasurePainter.PixelsPerInch := ContentPixelsPerInch;
   FModel.RefreshLayout;
   UpdateScrollBar;
   Invalidate;
@@ -604,7 +605,7 @@ end;
 
 procedure TMarkdownViewer.RenderToBuffer;
 begin
-  const Painter = TMarkdownVclPainter.Create(FBuffer.Canvas, CurrentPPI);
+  const Painter = TMarkdownVclPainter.Create(FBuffer.Canvas, ContentPixelsPerInch);
   const PainterLifetime: IPainter = Painter;
   Painter.ImageResolver := ResolveLoadedImage;
   Painter.BrokenImageQuery := IsImageBroken;
@@ -969,7 +970,15 @@ end;
 
 function TMarkdownViewer.LineScrollAmount: Integer;
 begin
-  Result := MulDiv(ScrollLineDips, CurrentPPI, ReferencePixelsPerInch);
+  Result := MulDiv(ScrollLineDips, ContentPixelsPerInch, ReferencePixelsPerInch);
+end;
+
+// The content follows the scale the VCL gave this control, as its size does.
+// CurrentPPI answers the monitor's DPI once there is a window handle, so it
+// misses a form that scales itself with ScaleForPPI or ScaleBy.
+function TMarkdownViewer.ContentPixelsPerInch: Integer;
+begin
+  Result := Round(ReferencePixelsPerInch * ScaleFactor);
 end;
 
 function TMarkdownViewer.ContentPointOf(const X, Y: Integer): TLayoutPointF;
