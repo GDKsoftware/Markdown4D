@@ -83,6 +83,7 @@ type
       FLoadedImages: TObjectDictionary<string, TGraphic>;
       FSelecting: Boolean;
       FClickCounter: TMarkdownClickCounter;
+      FClickGesture: TMarkdownClickGesture;
       FAutoScroller: TMarkdownVclAutoScroller;
       FLastMousePoint: TPoint;
       FHasLastMousePoint: Boolean;
@@ -138,6 +139,8 @@ type
     procedure ClearCodeHover;
     procedure CopyCodeToClipboard(const Text: string);
     procedure SelectForPress(const Point: TLayoutPointF; const X, Y: Integer; const IsDoubleClick: Boolean);
+    procedure FinishLinkClick(const X, Y: Integer);
+    procedure RaiseClick(const Kind: TMarkdownClickKind);
     function GetAutoScroll: Boolean;
     function GetIsAutoScrolling: Boolean;
     procedure PaintAutoScrollOrigin;
@@ -240,6 +243,11 @@ type
     property OnRemoteImageRequest: TMarkdownRemoteImageEvent read FOnRemoteImageRequest
       write FOnRemoteImageRequest;
     property OnScroll: TNotifyEvent read FOnScroll write FOnScroll;
+    property OnClick;
+    property OnDblClick;
+    property OnMouseDown;
+    property OnMouseMove;
+    property OnMouseUp;
     property OnAutoScrollChange: TNotifyEvent read FOnAutoScrollChange write FOnAutoScrollChange;
     property OnExtensionError: TMarkdownExtensionErrorEvent read FOnExtensionError write FOnExtensionError;
   end;
@@ -281,7 +289,8 @@ begin
 
   FLifetime := TMarkdownViewerLifetime.Create;
 
-  ControlStyle := ControlStyle + [csOpaque];
+  // The control decides itself which release is a click; see RaiseClick.
+  ControlStyle := ControlStyle + [csOpaque] - [csClickEvents];
   Width := DefaultControlWidth;
   Height := DefaultControlHeight;
   TabStop := True;
@@ -666,6 +675,7 @@ procedure TMarkdownViewer.MouseDown(Button: TMouseButton; Shift: TShiftState; X,
 begin
   inherited MouseDown(Button, Shift, X, Y);
 
+  FClickGesture.PressElsewhere;
   if FAutoScroller.TryHandlePress(Button, X, Y) then
     Exit;
 
@@ -723,6 +733,8 @@ begin
   const Tolerance = Max(GetSystemMetrics(SM_CXDOUBLECLK), GetSystemMetrics(SM_CYDOUBLECLK)) / 2;
   const ClickCount = FClickCounter.RegisterPress(GetTickCount64, X, Y, IsDoubleClick, GetDoubleClickTime,
     Tolerance);
+
+  FClickGesture.PressInText(X, Y, ClickCount);
 
   if ClickCount = TMarkdownClickCounter.TripleClick then
     FModel.SelectLineAt(Point)
@@ -784,12 +796,18 @@ begin
   if Button <> TMouseButton.mbLeft then
     Exit;
 
-  if FSelecting then
-  begin
-    FSelecting := False;
-    Exit;
-  end;
+  const ClickKind = FClickGesture.Release(X, Y, Mouse.DragThreshold);
 
+  if FSelecting then
+    FSelecting := False
+  else
+    FinishLinkClick(X, Y);
+
+  RaiseClick(ClickKind);
+end;
+
+procedure TMarkdownViewer.FinishLinkClick(const X, Y: Integer);
+begin
   if FPressedLinkUrl = '' then
     Exit;
 
@@ -800,6 +818,19 @@ begin
   const IsSameLink = TryFindLinkUrl(ContentPointOf(X, Y), ReleasedUrl) and (ReleasedUrl = PressedUrl);
   if IsSameLink and Assigned(FOnLinkClick) then
     FOnLinkClick(Self, PressedUrl);
+end;
+
+// Raised last, once the press is fully handled, so a handler may open a modal
+// window or free the form.
+procedure TMarkdownViewer.RaiseClick(const Kind: TMarkdownClickKind);
+begin
+  case Kind of
+    TMarkdownClickKind.None        : ;
+    TMarkdownClickKind.Click       : Click;
+    TMarkdownClickKind.DoubleClick : DblClick;
+  else
+    raise ENotSupportedException.CreateFmt('Unhandled click kind: %d', [Ord(Kind)]);
+  end;
 end;
 
 function TMarkdownViewer.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean;

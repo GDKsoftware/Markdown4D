@@ -25,6 +25,7 @@ uses
   Markdown4D.Editor.Highlighter,
   Markdown4D.Editor.Sync,
   Markdown4D.Viewer.Lifetime,
+  Markdown4D.Viewer.Clicks,
   Markdown4D.Viewer.ScrollBar,
   Markdown4D.Fmx.Painter,
   Markdown4D.AutoScroll,
@@ -84,6 +85,7 @@ type
       FDragOffset: Integer;
       FContextMenu: TPopupMenu;
       FClickCount: Integer;
+      FClickGesture: TMarkdownClickGesture;
       FLastClickTicks: Cardinal;
       FLastClickX: Single;
       FLastClickY: Single;
@@ -149,6 +151,7 @@ type
     function BeginSelectionDrag(const X, Y: Single; const Offset: Integer): Boolean;
     procedure UpdateSelectionDrag(const X, Y: Single);
     function FinishSelectionDrag(const X, Y: Single): Boolean;
+    procedure RaiseClick(const Kind: TMarkdownClickKind);
     procedure PopupContextMenu(const X, Y: Single);
     procedure HandleContextItemClick(Sender: TObject);
     function ClipboardHasText: Boolean;
@@ -207,6 +210,8 @@ type
     procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Single); override;
     procedure MouseMove(Shift: TShiftState; X, Y: Single); override;
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Single); override;
+    procedure MouseClick(Button: TMouseButton; Shift: TShiftState; X, Y: Single); override;
+    procedure DblClick; override;
     procedure MouseWheel(Shift: TShiftState; WheelDelta: Integer; var Handled: Boolean); override;
     procedure KeyDown(var Key: Word; var KeyChar: WideChar; Shift: TShiftState); override;
     procedure DialogKey(var Key: Word; Shift: TShiftState); override;
@@ -296,6 +301,11 @@ type
     property Width;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
     property OnScroll: TNotifyEvent read FOnScroll write FOnScroll;
+    property OnClick;
+    property OnDblClick;
+    property OnMouseDown;
+    property OnMouseMove;
+    property OnMouseUp;
     property OnAutoScrollChange: TNotifyEvent read FOnAutoScrollChange write FOnAutoScrollChange;
     property OnSyncScroll: TMarkdownSyncScrollEvent read FOnSyncScroll write FOnSyncScroll;
   end;
@@ -1659,6 +1669,7 @@ procedure TMarkdownEditor.MouseDown(Button: TMouseButton; Shift: TShiftState; X,
 begin
   inherited MouseDown(Button, Shift, X, Y);
 
+  FClickGesture.PressElsewhere;
   if FAutoScroller.TryHandlePress(Button, X, Y) then
     Exit;
 
@@ -1696,7 +1707,10 @@ begin
   const Offset = OffsetFromPoint(X, Y);
 
   if BeginSelectionDrag(X, Y, Offset) then
+  begin
+    FClickGesture.PressInText(X, Y, TMarkdownClickCounter.SingleClick);
     Exit;
+  end;
 
   if ssShift in Shift then
   begin
@@ -1708,6 +1722,7 @@ begin
     FLastClickTicks := TThread.GetTickCount;
     FLastClickX := X;
     FLastClickY := Y;
+    FClickGesture.PressInText(X, Y, TMarkdownClickCounter.SingleClick);
     RestartCaretBlink;
     RedrawContent;
     Exit;
@@ -1716,6 +1731,7 @@ begin
   const Ticks = TThread.GetTickCount;
   FClickCount := ClickCountAt(X, Y, Shift, Ticks);
   RecordClick(X, Y, Ticks);
+  FClickGesture.PressInText(X, Y, FClickCount);
 
   case FClickCount of
     2:
@@ -1782,18 +1798,43 @@ begin
   if Button <> TMouseButton.mbLeft then
     Exit;
 
+  const ClickKind = FClickGesture.Release(X, Y, DragThresholdPx);
+
   if FDraggingScrollBar then
+    FDraggingScrollBar := False
+  else if not FinishSelectionDrag(X, Y) then
   begin
-    FDraggingScrollBar := False;
-    Exit;
+    FSelecting := False;
+    if FAutoScrollTimer <> nil then
+      FAutoScrollTimer.Enabled := False;
   end;
 
-  if FinishSelectionDrag(X, Y) then
-    Exit;
+  RaiseClick(ClickKind);
+end;
 
-  FSelecting := False;
-  if FAutoScrollTimer <> nil then
-    FAutoScrollTimer.Enabled := False;
+// Raised last, once the press is fully handled, so a handler may open a modal
+// window or free the form. The form calls MouseClick before MouseUp, so that
+// is too early.
+procedure TMarkdownEditor.RaiseClick(const Kind: TMarkdownClickKind);
+begin
+  case Kind of
+    TMarkdownClickKind.None        : ;
+    TMarkdownClickKind.Click       : Click;
+    TMarkdownClickKind.DoubleClick : inherited DblClick;
+  else
+    raise ENotSupportedException.CreateFmt('Unhandled click kind: %d', [Ord(Kind)]);
+  end;
+end;
+
+// The release decides in MouseUp whether the press was a click; see RaiseClick.
+procedure TMarkdownEditor.MouseClick(Button: TMouseButton; Shift: TShiftState; X, Y: Single);
+begin
+end;
+
+// The base control raises the double click on the second press; RaiseClick
+// raises it on release instead.
+procedure TMarkdownEditor.DblClick;
+begin
 end;
 
 function TMarkdownEditor.ClickCountAt(const X, Y: Single; const Shift: TShiftState; const Ticks: Cardinal): Integer;

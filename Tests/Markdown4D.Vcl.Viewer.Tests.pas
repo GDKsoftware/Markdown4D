@@ -7,6 +7,7 @@ interface
 uses
   System.SysUtils,
   System.Classes,
+  System.Types,
   Vcl.Forms,
   DUnitX.TestFramework,
   Markdown4D.Vcl.Viewer;
@@ -18,6 +19,7 @@ type
     procedure SimulateKeyDown(const Key: Word; const Shift: TShiftState);
     procedure SimulateMiddlePress;
     procedure SimulateKeyFromMessageLoop(const Key: Word);
+    procedure SendMouse(const Message: Cardinal; const X, Y: Integer);
   end;
 
   [TestFixture]
@@ -35,15 +37,26 @@ type
       ScaleTolerance = 0.1;
       GrowthNumerator = 3;
       GrowthDenominator = 2;
+      ClickMarkdown = 'alpha';
+      LinkMarkdown = '[alpha](https://example.com)';
+      DragDistance = 40;
     var
       FHostForm: TForm;
       FReportedSender: TObject;
       FFormKeyCount: Integer;
       FAutoScrollChangeCount: Integer;
+      FClickCount: Integer;
+      FDoubleClickCount: Integer;
+      FLinkClickCount: Integer;
     function NewHostedViewer: TTestableVclViewer;
     function NewViewerOnPreviewingForm: TTestableVclViewer;
     procedure RecordFormKey(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure RecordAutoScrollChange(Sender: TObject);
+    function NewClickRecordingViewer(const Markdown: string): TTestableVclViewer;
+    class function FirstTextRunCenter(const Viewer: TMarkdownViewer): TPoint; static;
+    procedure RecordClick(Sender: TObject);
+    procedure RecordDoubleClick(Sender: TObject);
+    procedure RecordLinkClick(const Sender: TObject; const Url: string);
     class function FirstTextRunHeight(const Viewer: TMarkdownViewer): Single; static;
     procedure RecordExtensionError(const Sender: TObject; const Extension: string; const Error: Exception);
 
@@ -95,12 +108,26 @@ type
 
     [Test]
     procedure ShortcutKey_WithoutAutoScroll_ReachesTheForm;
+
+    [Test]
+    procedure Click_InText_RaisesOnClickOnce;
+
+    [Test]
+    procedure Click_OnLink_RaisesOnlyOnLinkClick;
+
+    [Test]
+    procedure Drag_PastThreshold_RaisesNoClick;
+
+    [Test]
+    procedure DoubleClick_InText_RaisesOnDblClickOnReleaseAndKeepsWord;
+
+    [Test]
+    procedure Click_EndingAutoScroll_RaisesNoClick;
   end;
 
 implementation
 
 uses
-  System.Types,
   System.UITypes,
   Winapi.Windows,
   Winapi.Messages,
@@ -135,6 +162,16 @@ begin
     Perform(WM_KEYDOWN, Key, 0);
 end;
 
+procedure TTestableVclViewer.SendMouse(const Message: Cardinal; const X, Y: Integer);
+begin
+  const IsPressed = ((Message = WM_LBUTTONDOWN) or (Message = WM_LBUTTONDBLCLK) or (Message = WM_MOUSEMOVE));
+  var Keys: WPARAM := 0;
+  if IsPressed then
+    Keys := MK_LBUTTON;
+
+  Perform(Message, Keys, MakeLParam(X, Y));
+end;
+
 procedure TMarkdownVclViewerTests.TearDown;
 begin
   FHostForm.Free;
@@ -142,6 +179,9 @@ begin
 
   FFormKeyCount := 0;
   FAutoScrollChangeCount := 0;
+  FClickCount := 0;
+  FDoubleClickCount := 0;
+  FLinkClickCount := 0;
 end;
 
 function TMarkdownVclViewerTests.NewHostedViewer: TTestableVclViewer;
@@ -362,6 +402,115 @@ end;
 procedure TMarkdownVclViewerTests.RecordAutoScrollChange(Sender: TObject);
 begin
   Inc(FAutoScrollChangeCount);
+end;
+
+procedure TMarkdownVclViewerTests.Click_InText_RaisesOnClickOnce;
+begin
+  const Viewer = NewClickRecordingViewer(ClickMarkdown);
+  const Center = FirstTextRunCenter(Viewer);
+
+  Viewer.SendMouse(WM_LBUTTONDOWN, Center.X, Center.Y);
+  Viewer.SendMouse(WM_LBUTTONUP, Center.X, Center.Y);
+
+  Assert.AreEqual(1, FClickCount);
+  Assert.AreEqual(0, FDoubleClickCount);
+end;
+
+procedure TMarkdownVclViewerTests.Click_OnLink_RaisesOnlyOnLinkClick;
+begin
+  const Viewer = NewClickRecordingViewer(LinkMarkdown);
+  const Center = FirstTextRunCenter(Viewer);
+
+  Viewer.SendMouse(WM_LBUTTONDOWN, Center.X, Center.Y);
+  Viewer.SendMouse(WM_LBUTTONUP, Center.X, Center.Y);
+
+  Assert.AreEqual(1, FLinkClickCount);
+  Assert.AreEqual(0, FClickCount, 'A click on a link is not a click in the text');
+end;
+
+procedure TMarkdownVclViewerTests.Drag_PastThreshold_RaisesNoClick;
+begin
+  const Viewer = NewClickRecordingViewer(ClickMarkdown);
+  const Center = FirstTextRunCenter(Viewer);
+
+  Viewer.SendMouse(WM_LBUTTONDOWN, Center.X, Center.Y);
+  Viewer.SendMouse(WM_MOUSEMOVE, Center.X + DragDistance, Center.Y);
+  Viewer.SendMouse(WM_LBUTTONUP, Center.X + DragDistance, Center.Y);
+
+  Assert.AreEqual(0, FClickCount, 'A drag selects text and is no click');
+end;
+
+procedure TMarkdownVclViewerTests.DoubleClick_InText_RaisesOnDblClickOnReleaseAndKeepsWord;
+begin
+  const Viewer = NewClickRecordingViewer(ClickMarkdown);
+  const Center = FirstTextRunCenter(Viewer);
+  Viewer.SendMouse(WM_LBUTTONDOWN, Center.X, Center.Y);
+  Viewer.SendMouse(WM_LBUTTONUP, Center.X, Center.Y);
+
+  Viewer.SendMouse(WM_LBUTTONDBLCLK, Center.X, Center.Y);
+  const DoubleClicksWhilePressed = FDoubleClickCount;
+  Viewer.SendMouse(WM_LBUTTONUP, Center.X, Center.Y);
+
+  Assert.AreEqual(0, DoubleClicksWhilePressed, 'The double click comes on release');
+  Assert.AreEqual(1, FDoubleClickCount);
+  Assert.AreEqual(1, FClickCount, 'The second press of a double click is no extra click');
+  Assert.AreEqual(ClickMarkdown, Viewer.SelectedText);
+end;
+
+procedure TMarkdownVclViewerTests.Click_EndingAutoScroll_RaisesNoClick;
+begin
+  const Viewer = NewViewerOnPreviewingForm;
+  Viewer.OnClick := RecordClick;
+  Viewer.SimulateMiddlePress;
+
+  Viewer.SendMouse(WM_LBUTTONDOWN, 10, 10);
+  Viewer.SendMouse(WM_LBUTTONUP, 10, 10);
+
+  Assert.IsFalse(Viewer.IsAutoScrolling);
+  Assert.AreEqual(0, FClickCount, 'The click that ends autoscroll is no click in the text');
+end;
+
+function TMarkdownVclViewerTests.NewClickRecordingViewer(const Markdown: string): TTestableVclViewer;
+begin
+  Result := NewHostedViewer;
+  Result.Text := Markdown;
+  Result.OnClick := RecordClick;
+  Result.OnDblClick := RecordDoubleClick;
+  Result.OnLinkClick := RecordLinkClick;
+end;
+
+class function TMarkdownVclViewerTests.FirstTextRunCenter(const Viewer: TMarkdownViewer): TPoint;
+begin
+  Result := TPoint.Zero;
+
+  const DisplayList = Viewer.DisplayList;
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    if Supports(DisplayList.Items[Index], IDisplayTextRun, Run) then
+    begin
+      const Bounds = Run.Bounds;
+      Result := TPoint.Create(Round((Bounds.Left + Bounds.Right) / 2), Round((Bounds.Top + Bounds.Bottom) / 2));
+      Exit;
+    end;
+  end;
+
+  Assert.Fail('The viewer laid out no text run');
+end;
+
+procedure TMarkdownVclViewerTests.RecordClick(Sender: TObject);
+begin
+  Inc(FClickCount);
+end;
+
+procedure TMarkdownVclViewerTests.RecordDoubleClick(Sender: TObject);
+begin
+  Inc(FDoubleClickCount);
+end;
+
+procedure TMarkdownVclViewerTests.RecordLinkClick(const Sender: TObject; const Url: string);
+begin
+  Inc(FLinkClickCount);
 end;
 
 end.

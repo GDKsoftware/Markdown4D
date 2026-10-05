@@ -82,6 +82,7 @@ type
       FCopyFeedbackTimer: TTimer;
       FSelecting: Boolean;
       FClickCounter: TMarkdownClickCounter;
+      FClickGesture: TMarkdownClickGesture;
       FAutoScroller: TMarkdownFmxAutoScroller;
       FDraggingScrollBar: Boolean;
       FScrollBarGrabDelta: Single;
@@ -128,6 +129,8 @@ type
     procedure ClearCodeHover;
     procedure CopyCodeToClipboard(const Text: string);
     procedure SelectForPress(const Point: TLayoutPointF; const X, Y: Single; const IsDoubleClick: Boolean);
+    procedure FinishLinkClick(const X, Y: Single);
+    procedure RaiseClick(const Kind: TMarkdownClickKind);
     function GetAutoScroll: Boolean;
     function GetIsAutoScrolling: Boolean;
     procedure SetAutoScroll(const Value: Boolean);
@@ -171,6 +174,8 @@ type
     procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Single); override;
     procedure MouseMove(Shift: TShiftState; X, Y: Single); override;
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Single); override;
+    procedure MouseClick(Button: TMouseButton; Shift: TShiftState; X, Y: Single); override;
+    procedure DblClick; override;
     procedure MouseWheel(Shift: TShiftState; WheelDelta: Integer; var Handled: Boolean); override;
     procedure DoMouseLeave; override;
     procedure DoExit; override;
@@ -240,6 +245,11 @@ type
     property OnRemoteImageRequest: TMarkdownRemoteImageEvent read FOnRemoteImageRequest
       write FOnRemoteImageRequest;
     property OnScroll: TNotifyEvent read FOnScroll write FOnScroll;
+    property OnClick;
+    property OnDblClick;
+    property OnMouseDown;
+    property OnMouseMove;
+    property OnMouseUp;
     property OnAutoScrollChange: TNotifyEvent read FOnAutoScrollChange write FOnAutoScrollChange;
     property OnExtensionError: TMarkdownExtensionErrorEvent read FOnExtensionError write FOnExtensionError;
   end;
@@ -651,6 +661,7 @@ procedure TMarkdownViewer.MouseDown(Button: TMouseButton; Shift: TShiftState; X,
 begin
   inherited MouseDown(Button, Shift, X, Y);
 
+  FClickGesture.PressElsewhere;
   if FAutoScroller.TryHandlePress(Button, X, Y) then
     Exit;
 
@@ -702,6 +713,7 @@ procedure TMarkdownViewer.SelectForPress(const Point: TLayoutPointF; const X, Y:
 begin
   const ClickCount = FClickCounter.RegisterPress(TThread.GetTickCount64, X, Y, IsDoubleClick,
     TMarkdownClickCounter.DefaultIntervalMilliseconds, TMarkdownClickCounter.DefaultTolerance);
+  FClickGesture.PressInText(X, Y, ClickCount);
 
   if ClickCount = TMarkdownClickCounter.TripleClick then
     FModel.SelectLineAt(Point)
@@ -769,18 +781,20 @@ begin
   if Button <> TMouseButton.mbLeft then
     Exit;
 
+  const ClickKind = FClickGesture.Release(X, Y, TMarkdownClickGesture.DefaultDragThreshold);
+
   if FDraggingScrollBar then
-  begin
-    FDraggingScrollBar := False;
-    Exit;
-  end;
+    FDraggingScrollBar := False
+  else if FSelecting then
+    FSelecting := False
+  else
+    FinishLinkClick(X, Y);
 
-  if FSelecting then
-  begin
-    FSelecting := False;
-    Exit;
-  end;
+  RaiseClick(ClickKind);
+end;
 
+procedure TMarkdownViewer.FinishLinkClick(const X, Y: Single);
+begin
   if FPressedLinkUrl = '' then
     Exit;
 
@@ -791,6 +805,31 @@ begin
   const IsSameLink = TryFindLinkUrl(ContentPointOf(X, Y), ReleasedUrl) and (ReleasedUrl = PressedUrl);
   if IsSameLink and Assigned(FOnLinkClick) then
     FOnLinkClick(Self, PressedUrl);
+end;
+
+// Raised last, once the press is fully handled, so a handler may open a modal
+// window or free the form. The form calls MouseClick before MouseUp, so that
+// is too early.
+procedure TMarkdownViewer.RaiseClick(const Kind: TMarkdownClickKind);
+begin
+  case Kind of
+    TMarkdownClickKind.None        : ;
+    TMarkdownClickKind.Click       : Click;
+    TMarkdownClickKind.DoubleClick : inherited DblClick;
+  else
+    raise ENotSupportedException.CreateFmt('Unhandled click kind: %d', [Ord(Kind)]);
+  end;
+end;
+
+// The release decides in MouseUp whether the press was a click; see RaiseClick.
+procedure TMarkdownViewer.MouseClick(Button: TMouseButton; Shift: TShiftState; X, Y: Single);
+begin
+end;
+
+// The base control raises the double click on the second press; RaiseClick
+// raises it on release instead.
+procedure TMarkdownViewer.DblClick;
+begin
 end;
 
 procedure TMarkdownViewer.MouseWheel(Shift: TShiftState; WheelDelta: Integer; var Handled: Boolean);

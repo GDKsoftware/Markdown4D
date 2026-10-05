@@ -28,6 +28,8 @@ type
     procedure PumpAutoScrollTimer;
     procedure SimulateMiddlePress;
     function SimulateDialogKey(const Key: Word): Word;
+    procedure SimulatePress(const X, Y: Single; const Shift: TShiftState);
+    procedure SimulateRelease(const X, Y: Single);
   end;
 
   [TestFixture]
@@ -46,14 +48,23 @@ type
       ManyLineCount = 40;
       PreviewWidth = 400;
       PreviewScrollTarget = 40;
+      ClickText = 'alpha';
+      ClickX = 20.0;
+      ClickY = 8.0;
+      DragDistance = 40.0;
     var
       FEditor: TMarkdownEditor;
       FAutoScrollChangeCount: Integer;
+      FClickCount: Integer;
+      FDoubleClickCount: Integer;
       FSavedClipboard: IInterface;
       FClipboardReplaced: Boolean;
     class function ManyLines(const Count: Integer): string; static;
     function NewOverflowingEditor: TTestableFmxEditor;
     procedure RecordAutoScrollChange(Sender: TObject);
+    function NewClickRecordingEditor: TTestableFmxEditor;
+    procedure RecordClick(Sender: TObject);
+    procedure RecordDoubleClick(Sender: TObject);
     class function OneWrappedLine: string; static;
     procedure ReplaceClipboardWithFake;
     procedure RestoreClipboard;
@@ -221,6 +232,18 @@ type
     procedure DialogKey_WithoutAutoScroll_LeavesTheKey;
 
     [Test]
+    procedure Click_InText_RaisesOnClickOnce;
+
+    [Test]
+    procedure Drag_PastThreshold_RaisesNoClick;
+
+    [Test]
+    procedure DoubleClick_InText_RaisesOnDblClickOnReleaseAndKeepsWord;
+
+    [Test]
+    procedure Click_EndingAutoScroll_RaisesNoClick;
+
+    [Test]
     procedure FocusEnterExit_TogglesCaretWithoutError;
 
     [Test]
@@ -311,6 +334,18 @@ function TTestableFmxEditor.SimulateDialogKey(const Key: Word): Word;
 begin
   Result := Key;
   DialogKey(Result, []);
+end;
+
+procedure TTestableFmxEditor.SimulatePress(const X, Y: Single; const Shift: TShiftState);
+begin
+  MouseDown(TMouseButton.mbLeft, Shift + [ssLeft], X, Y);
+end;
+
+// In the order the form delivers a release: MouseClick first, then MouseUp.
+procedure TTestableFmxEditor.SimulateRelease(const X, Y: Single);
+begin
+  MouseClick(TMouseButton.mbLeft, [], X, Y);
+  MouseUp(TMouseButton.mbLeft, [], X, Y);
 end;
 
 procedure TTestableFmxEditor.PumpAutoScrollTimer;
@@ -1180,6 +1215,93 @@ end;
 procedure TMarkdownFmxEditorTests.RecordAutoScrollChange(Sender: TObject);
 begin
   Inc(FAutoScrollChangeCount);
+end;
+
+procedure TMarkdownFmxEditorTests.Click_InText_RaisesOnClickOnce;
+begin
+  const Editor = NewClickRecordingEditor;
+  try
+    Editor.SimulatePress(ClickX, ClickY, []);
+    Editor.SimulateRelease(ClickX, ClickY);
+
+    Assert.AreEqual(1, FClickCount);
+    Assert.AreEqual(0, FDoubleClickCount);
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.Drag_PastThreshold_RaisesNoClick;
+begin
+  const Editor = NewClickRecordingEditor;
+  try
+    Editor.SimulatePress(ClickX, ClickY, []);
+    Editor.SimulateMouseMove(ClickX + DragDistance, ClickY, [ssLeft]);
+    Editor.SimulateRelease(ClickX + DragDistance, ClickY);
+
+    Assert.AreEqual(0, FClickCount, 'A drag selects text and is no click');
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.DoubleClick_InText_RaisesOnDblClickOnReleaseAndKeepsWord;
+begin
+  const Editor = NewClickRecordingEditor;
+  try
+    Editor.SimulatePress(ClickX, ClickY, []);
+    Editor.SimulateRelease(ClickX, ClickY);
+
+    Editor.SimulatePress(ClickX, ClickY, [ssDouble]);
+    const DoubleClicksWhilePressed = FDoubleClickCount;
+    Editor.SimulateRelease(ClickX, ClickY);
+
+    Assert.AreEqual(0, DoubleClicksWhilePressed, 'The double click comes on release');
+    Assert.AreEqual(1, FDoubleClickCount);
+    Assert.AreEqual(1, FClickCount, 'The second press of a double click is no extra click');
+    Assert.AreEqual(ClickText, Editor.SelectedText);
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.Click_EndingAutoScroll_RaisesNoClick;
+begin
+  FClickCount := 0;
+  const Editor = NewOverflowingEditor;
+  try
+    Editor.OnClick := RecordClick;
+    Editor.SimulateMiddlePress;
+
+    Editor.SimulatePress(ClickX, ClickY, []);
+    Editor.SimulateRelease(ClickX, ClickY);
+
+    Assert.IsFalse(Editor.IsAutoScrolling);
+    Assert.AreEqual(0, FClickCount, 'The click that ends autoscroll is no click in the text');
+  finally
+    Editor.Free;
+  end;
+end;
+
+function TMarkdownFmxEditorTests.NewClickRecordingEditor: TTestableFmxEditor;
+begin
+  FClickCount := 0;
+  FDoubleClickCount := 0;
+
+  Result := TTestableFmxEditor.Create(nil);
+  Result.Text := ClickText;
+  Result.OnClick := RecordClick;
+  Result.OnDblClick := RecordDoubleClick;
+end;
+
+procedure TMarkdownFmxEditorTests.RecordClick(Sender: TObject);
+begin
+  Inc(FClickCount);
+end;
+
+procedure TMarkdownFmxEditorTests.RecordDoubleClick(Sender: TObject);
+begin
+  Inc(FDoubleClickCount);
 end;
 
 end.

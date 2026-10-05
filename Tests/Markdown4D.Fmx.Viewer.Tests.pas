@@ -36,6 +36,9 @@ type
       ClipTestBandHeight = 60;
       WheelNotchDown = -120;
       KeyboardMarkdown = 'alpha beta';
+      ClickMarkdown = 'alpha';
+      LinkMarkdown = '[alpha](https://example.com)';
+      DragDistance = 40.0;
       ClipTestMarkdown =
         '# Top'#10#10 +
         'Filler paragraph number one with enough words to wrap across several lines of text at this width.'#10#10 +
@@ -53,11 +56,21 @@ type
       FExternalTheme: TMarkdownTheme;
       FReportedSender: TObject;
       FAutoScrollChangeCount: Integer;
+      FClickCount: Integer;
+      FDoubleClickCount: Integer;
+      FLinkClickCount: Integer;
     class function IsBandUntouched(const Bitmap: TBitmap; const BandHeight: Integer): Boolean;
     procedure PressKey(const Key: Word; const Shift: TShiftState);
     procedure StartAutoScroll;
     function PressDialogKey(const Key: Word): Word;
     procedure RecordAutoScrollChange(Sender: TObject);
+    procedure ShowClickMarkdown(const Markdown: string);
+    function FirstTextRunCenter: TPointF;
+    procedure PressAt(const Point: TPointF; const Shift: TShiftState);
+    procedure ReleaseAt(const Point: TPointF);
+    procedure RecordClick(Sender: TObject);
+    procedure RecordDoubleClick(Sender: TObject);
+    procedure RecordLinkClick(const Sender: TObject; const Url: string);
     procedure RecordExtensionError(const Sender: TObject; const Extension: string; const Error: Exception);
 
   public
@@ -135,11 +148,27 @@ type
 
     [Test]
     procedure DialogKey_WithoutAutoScroll_LeavesTheKey;
+
+    [Test]
+    procedure Click_InText_RaisesOnClickOnce;
+
+    [Test]
+    procedure Click_OnLink_RaisesOnlyOnLinkClick;
+
+    [Test]
+    procedure Drag_PastThreshold_RaisesNoClick;
+
+    [Test]
+    procedure DoubleClick_InText_RaisesOnDblClickOnReleaseAndKeepsWord;
+
+    [Test]
+    procedure Click_EndingAutoScroll_RaisesNoClick;
   end;
 
 implementation
 
 uses
+  Markdown4D.Layout.DisplayList,
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Tests.Pipeline.Helpers,
   Markdown4D.Tests.FailingExtensions;
@@ -165,6 +194,9 @@ begin
   FExternalTheme := nil;
 
   FAutoScrollChangeCount := 0;
+  FClickCount := 0;
+  FDoubleClickCount := 0;
+  FLinkClickCount := 0;
 end;
 
 procedure TMarkdownFmxViewerTests.NewViewer_HasEmptySelectedText;
@@ -484,6 +516,127 @@ end;
 procedure TMarkdownFmxViewerTests.RecordAutoScrollChange(Sender: TObject);
 begin
   Inc(FAutoScrollChangeCount);
+end;
+
+procedure TMarkdownFmxViewerTests.Click_InText_RaisesOnClickOnce;
+begin
+  ShowClickMarkdown(ClickMarkdown);
+  const Center = FirstTextRunCenter;
+
+  PressAt(Center, []);
+  ReleaseAt(Center);
+
+  Assert.AreEqual(1, FClickCount);
+  Assert.AreEqual(0, FDoubleClickCount);
+end;
+
+procedure TMarkdownFmxViewerTests.Click_OnLink_RaisesOnlyOnLinkClick;
+begin
+  ShowClickMarkdown(LinkMarkdown);
+  const Center = FirstTextRunCenter;
+
+  PressAt(Center, []);
+  ReleaseAt(Center);
+
+  Assert.AreEqual(1, FLinkClickCount);
+  Assert.AreEqual(0, FClickCount, 'A click on a link is not a click in the text');
+end;
+
+procedure TMarkdownFmxViewerTests.Drag_PastThreshold_RaisesNoClick;
+begin
+  ShowClickMarkdown(ClickMarkdown);
+  const Center = FirstTextRunCenter;
+  const Dragged = TPointF.Create(Center.X + DragDistance, Center.Y);
+
+  PressAt(Center, []);
+  TMarkdownViewerAccess(FViewer).MouseMove([ssLeft], Dragged.X, Dragged.Y);
+  ReleaseAt(Dragged);
+
+  Assert.AreEqual(0, FClickCount, 'A drag selects text and is no click');
+end;
+
+procedure TMarkdownFmxViewerTests.DoubleClick_InText_RaisesOnDblClickOnReleaseAndKeepsWord;
+begin
+  ShowClickMarkdown(ClickMarkdown);
+  const Center = FirstTextRunCenter;
+  PressAt(Center, []);
+  ReleaseAt(Center);
+
+  PressAt(Center, [ssDouble]);
+  const DoubleClicksWhilePressed = FDoubleClickCount;
+  ReleaseAt(Center);
+
+  Assert.AreEqual(0, DoubleClicksWhilePressed, 'The double click comes on release');
+  Assert.AreEqual(1, FDoubleClickCount);
+  Assert.AreEqual(1, FClickCount, 'The second press of a double click is no extra click');
+  Assert.AreEqual(ClickMarkdown, FViewer.SelectedText);
+end;
+
+procedure TMarkdownFmxViewerTests.Click_EndingAutoScroll_RaisesNoClick;
+begin
+  StartAutoScroll;
+  FViewer.OnClick := RecordClick;
+  const Point = TPointF.Create(10, 10);
+
+  PressAt(Point, []);
+  ReleaseAt(Point);
+
+  Assert.IsFalse(FViewer.IsAutoScrolling);
+  Assert.AreEqual(0, FClickCount, 'The click that ends autoscroll is no click in the text');
+end;
+
+procedure TMarkdownFmxViewerTests.ShowClickMarkdown(const Markdown: string);
+begin
+  FViewer.Text := Markdown;
+  FViewer.OnClick := RecordClick;
+  FViewer.OnDblClick := RecordDoubleClick;
+  FViewer.OnLinkClick := RecordLinkClick;
+end;
+
+function TMarkdownFmxViewerTests.FirstTextRunCenter: TPointF;
+begin
+  Result := TPointF.Zero;
+
+  const DisplayList = FViewer.DisplayList;
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    if Supports(DisplayList.Items[Index], IDisplayTextRun, Run) then
+    begin
+      const Bounds = Run.Bounds;
+      Result := TPointF.Create((Bounds.Left + Bounds.Right) / 2, (Bounds.Top + Bounds.Bottom) / 2);
+      Exit;
+    end;
+  end;
+
+  Assert.Fail('The viewer laid out no text run');
+end;
+
+procedure TMarkdownFmxViewerTests.PressAt(const Point: TPointF; const Shift: TShiftState);
+begin
+  TMarkdownViewerAccess(FViewer).MouseDown(TMouseButton.mbLeft, Shift + [ssLeft], Point.X, Point.Y);
+end;
+
+// In the order the form delivers a release: MouseClick first, then MouseUp.
+procedure TMarkdownFmxViewerTests.ReleaseAt(const Point: TPointF);
+begin
+  TMarkdownViewerAccess(FViewer).MouseClick(TMouseButton.mbLeft, [], Point.X, Point.Y);
+  TMarkdownViewerAccess(FViewer).MouseUp(TMouseButton.mbLeft, [], Point.X, Point.Y);
+end;
+
+procedure TMarkdownFmxViewerTests.RecordClick(Sender: TObject);
+begin
+  Inc(FClickCount);
+end;
+
+procedure TMarkdownFmxViewerTests.RecordDoubleClick(Sender: TObject);
+begin
+  Inc(FDoubleClickCount);
+end;
+
+procedure TMarkdownFmxViewerTests.RecordLinkClick(const Sender: TObject; const Url: string);
+begin
+  Inc(FLinkClickCount);
 end;
 
 end.

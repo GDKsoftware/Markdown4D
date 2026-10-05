@@ -32,6 +32,32 @@ type
       const IntervalMilliseconds: Cardinal; const Tolerance: Single): Integer;
   end;
 
+  TMarkdownClickKind = (None, Click, DoubleClick);
+
+  // Decides on release whether a press was a click in the text for the host.
+  // A press on a link, a button or one that ends autoscroll is no click, nor
+  // is a press dragged past the threshold into a selection. The double click
+  // comes on release too, as in browsers, so its handler can open a modal
+  // window while no button is held.
+  TMarkdownClickGesture = record
+  public
+    const
+      // Windows' default drag distance, for a platform that does not report
+      // its own.
+      DefaultDragThreshold = 4.0;
+
+  private
+    FInText: Boolean;
+    FClickCount: Integer;
+    FPressX: Single;
+    FPressY: Single;
+
+  public
+    procedure PressInText(const X, Y: Single; const ClickCount: Integer);
+    procedure PressElsewhere;
+    function Release(const X, Y, DragThreshold: Single): TMarkdownClickKind;
+  end;
+
 implementation
 
 function TMarkdownClickCounter.RegisterPress(const TimeMilliseconds: Int64; const X, Y: Single;
@@ -58,6 +84,39 @@ begin
   const IsCloseEnough = ((Abs(X - FLastX) <= Tolerance) and (Abs(Y - FLastY) <= Tolerance));
 
   Result := IsAfterDouble and IsSoonEnough and IsCloseEnough;
+end;
+
+procedure TMarkdownClickGesture.PressInText(const X, Y: Single; const ClickCount: Integer);
+begin
+  FInText := True;
+  FClickCount := ClickCount;
+  FPressX := X;
+  FPressY := Y;
+end;
+
+procedure TMarkdownClickGesture.PressElsewhere;
+begin
+  FInText := False;
+end;
+
+function TMarkdownClickGesture.Release(const X, Y, DragThreshold: Single): TMarkdownClickKind;
+begin
+  Result := TMarkdownClickKind.None;
+
+  const WasInText = FInText;
+  FInText := False;
+  if not WasInText then
+    Exit;
+
+  const IsDragged = ((Abs(X - FPressX) > DragThreshold) or (Abs(Y - FPressY) > DragThreshold));
+  if IsDragged then
+    Exit;
+
+  const IsDoubleClick = (FClickCount = TMarkdownClickCounter.DoubleClick);
+  if IsDoubleClick then
+    Result := TMarkdownClickKind.DoubleClick
+  else
+    Result := TMarkdownClickKind.Click;
 end;
 
 end.
