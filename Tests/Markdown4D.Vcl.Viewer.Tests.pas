@@ -15,7 +15,7 @@ uses
 type
   TTestableVclViewer = class(TMarkdownViewer)
   public
-    function SimulateWheel(const WheelDelta: Integer): Boolean;
+    function SimulateWheel(const WheelDelta: Integer; const Shift: TShiftState = []): Boolean;
     procedure SimulateKeyDown(const Key: Word; const Shift: TShiftState);
     procedure SimulateMiddlePress;
     procedure SimulateKeyFromMessageLoop(const Key: Word);
@@ -45,6 +45,7 @@ type
       FReportedSender: TObject;
       FFormKeyCount: Integer;
       FAutoScrollChangeCount: Integer;
+      FZoomChangeCount: Integer;
       FClickCount: Integer;
       FDoubleClickCount: Integer;
       FLinkClickCount: Integer;
@@ -52,6 +53,7 @@ type
     function NewViewerOnPreviewingForm: TTestableVclViewer;
     procedure RecordFormKey(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure RecordAutoScrollChange(Sender: TObject);
+    procedure RecordZoomChange(Sender: TObject);
     function NewClickRecordingViewer(const Markdown: string): TTestableVclViewer;
     class function FirstTextRunCenter(const Viewer: TMarkdownViewer): TPoint; static;
     procedure RecordClick(Sender: TObject);
@@ -72,6 +74,20 @@ type
 
     [Test]
     procedure Keyboard_CtrlA_SelectsWholeDocument;
+
+    [Test]
+    procedure CtrlWheel_Up_ZoomsInOneLevel;
+
+    [Test]
+    [TestCase('MainKeyboard', '187')]
+    [TestCase('NumericKeypad', '107')]
+    procedure Keyboard_CtrlPlus_ZoomsInOneLevel(const Key: Word);
+
+    [Test]
+    procedure Keyboard_CtrlZero_ResetsZoom;
+
+    [Test]
+    procedure Zoom_Changed_RaisesOnZoomChange;
 
     [Test]
     procedure Keyboard_ArrowDown_ScrollsOverflowingContent;
@@ -137,9 +153,9 @@ uses
   Markdown4D.Tests.Pipeline.Helpers,
   Markdown4D.Tests.FailingExtensions;
 
-function TTestableVclViewer.SimulateWheel(const WheelDelta: Integer): Boolean;
+function TTestableVclViewer.SimulateWheel(const WheelDelta: Integer; const Shift: TShiftState): Boolean;
 begin
-  Result := DoMouseWheel([], WheelDelta, TPoint.Create(0, 0));
+  Result := DoMouseWheel(Shift, WheelDelta, TPoint.Create(0, 0));
 end;
 
 procedure TTestableVclViewer.SimulateKeyDown(const Key: Word; const Shift: TShiftState);
@@ -179,6 +195,7 @@ begin
 
   FFormKeyCount := 0;
   FAutoScrollChangeCount := 0;
+  FZoomChangeCount := 0;
   FClickCount := 0;
   FDoubleClickCount := 0;
   FLinkClickCount := 0;
@@ -213,6 +230,50 @@ begin
 
   Assert.IsTrue(Viewer.SimulateWheel(-WHEEL_DELTA), 'A scrollable viewer should claim the wheel');
   Assert.IsTrue(Viewer.ScrollOffset > 0, 'The wheel should have scrolled the content down');
+end;
+
+procedure TMarkdownVclViewerTests.CtrlWheel_Up_ZoomsInOneLevel;
+begin
+  const Viewer = NewHostedViewer;
+  Viewer.Text := ShortMarkdown;
+
+  const Handled = Viewer.SimulateWheel(WHEEL_DELTA, [ssCtrl]);
+
+  Assert.IsTrue(Handled);
+  Assert.AreEqual(110, Viewer.Zoom);
+end;
+
+procedure TMarkdownVclViewerTests.Keyboard_CtrlPlus_ZoomsInOneLevel(const Key: Word);
+begin
+  const Viewer = NewHostedViewer;
+  Viewer.Text := ShortMarkdown;
+
+  Viewer.SimulateKeyDown(Key, [ssCtrl]);
+
+  Assert.AreEqual(110, Viewer.Zoom);
+end;
+
+procedure TMarkdownVclViewerTests.Keyboard_CtrlZero_ResetsZoom;
+begin
+  const Viewer = NewHostedViewer;
+  Viewer.Text := ShortMarkdown;
+  Viewer.Zoom := 200;
+
+  Viewer.SimulateKeyDown(Ord('0'), [ssCtrl]);
+
+  Assert.AreEqual(100, Viewer.Zoom);
+end;
+
+procedure TMarkdownVclViewerTests.Zoom_Changed_RaisesOnZoomChange;
+begin
+  const Viewer = NewHostedViewer;
+  Viewer.Text := ShortMarkdown;
+  Viewer.OnZoomChange := RecordZoomChange;
+
+  Viewer.Zoom := 150;
+  Viewer.Zoom := 150;
+
+  Assert.AreEqual(1, FZoomChangeCount);
 end;
 
 procedure TMarkdownVclViewerTests.Keyboard_CtrlA_SelectsWholeDocument;
@@ -402,6 +463,11 @@ end;
 procedure TMarkdownVclViewerTests.RecordAutoScrollChange(Sender: TObject);
 begin
   Inc(FAutoScrollChangeCount);
+end;
+
+procedure TMarkdownVclViewerTests.RecordZoomChange(Sender: TObject);
+begin
+  Inc(FZoomChangeCount);
 end;
 
 procedure TMarkdownVclViewerTests.Click_InText_RaisesOnClickOnce;

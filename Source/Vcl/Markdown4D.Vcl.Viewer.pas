@@ -23,6 +23,7 @@ uses
   Markdown4D.Layout.TextSearch,
   Markdown4D.Viewer.Clicks,
   Markdown4D.Layout.ResizePacer,
+  Markdown4D.Layout.Zoom,
   Markdown4D.Layout.Pointer,
   Markdown4D.Viewer.ContextMenu,
   Markdown4D.AutoScroll,
@@ -108,6 +109,10 @@ type
       FOnRemoteImageRequest: TMarkdownRemoteImageEvent;
       FOnScroll: TNotifyEvent;
       FOnAutoScrollChange: TNotifyEvent;
+      FOnZoomChange: TNotifyEvent;
+      FZoomTimer: TTimer;
+      FZoomPacer: TMarkdownResizePacer;
+      FPendingZoom: Integer;
       FOnExtensionError: TMarkdownExtensionErrorEvent;
     class constructor Create;
     class destructor Destroy;
@@ -117,6 +122,10 @@ type
     procedure ApplyViewport;
     procedure ApplyViewportNow;
     procedure HandleResizeTimer(Sender: TObject);
+    procedure StepZoom(const Percent: Integer);
+    procedure ApplyZoomNow;
+    procedure HandleZoomTimer(Sender: TObject);
+    function TryHandleZoomKey(const Key: Word): Boolean;
     procedure ResolvePendingImages;
     procedure ResolvePendingImage(const Source: string);
     function TryResolveImageThroughEvent(const Source, Url: string): Boolean;
@@ -152,6 +161,8 @@ type
     procedure RaiseClick(const Kind: TMarkdownClickKind);
     function GetAutoScroll: Boolean;
     function GetIsAutoScrolling: Boolean;
+    function GetZoom: Integer;
+    procedure SetZoom(const Value: Integer);
     procedure PaintAutoScrollOrigin;
     procedure SetAutoScroll(const Value: Boolean);
     function CanAutoScroll: Boolean;
@@ -221,6 +232,9 @@ type
     procedure CopySelectionToClipboard;
     procedure SelectAll;
     procedure ClearSelection;
+    procedure ZoomIn;
+    procedure ZoomOut;
+    procedure ResetZoom;
     // Answers the stretch of markdown the selection in the preview was
     // rendered from, so an editor can put its own selection on those same
     // characters before a formatting command runs.
@@ -265,6 +279,10 @@ type
     property OnMouseMove;
     property OnMouseUp;
     property OnAutoScrollChange: TNotifyEvent read FOnAutoScrollChange write FOnAutoScrollChange;
+    // In percent: every font, spacing and image grows with it. Ctrl+wheel and
+    // Ctrl+Plus/Minus step through the levels browsers use, Ctrl+0 resets it.
+    property Zoom: Integer read GetZoom write SetZoom default TMarkdownZoom.DefaultPercent;
+    property OnZoomChange: TNotifyEvent read FOnZoomChange write FOnZoomChange;
     property OnExtensionError: TMarkdownExtensionErrorEvent read FOnExtensionError write FOnExtensionError;
   end;
 
@@ -337,6 +355,12 @@ begin
   FResizeTimer.Enabled := False;
   FResizeTimer.Interval := TMarkdownResizePacer.SettleMilliseconds;
   FResizeTimer.OnTimer := HandleResizeTimer;
+
+  FPendingZoom := TMarkdownZoom.DefaultPercent;
+  FZoomTimer := TTimer.Create(Self);
+  FZoomTimer.Enabled := False;
+  FZoomTimer.Interval := TMarkdownResizePacer.SettleMilliseconds;
+  FZoomTimer.OnTimer := HandleZoomTimer;
 
   FCopyFeedbackTimer := TTimer.Create(Self);
   FCopyFeedbackTimer.Enabled := False;
@@ -921,6 +945,17 @@ begin
     Exit;
   end;
 
+  if ssCtrl in Shift then
+  begin
+    if WheelDelta > 0 then
+      ZoomIn
+    else
+      ZoomOut;
+
+    Result := True;
+    Exit;
+  end;
+
   // Content that already fits has nothing to scroll; leaving the wheel
   // unhandled lets a surrounding scroll box move the viewer itself instead.
   const CanScroll = ContentHeight > ClientHeight;
@@ -947,6 +982,13 @@ begin
 
   inherited KeyDown(Key, Shift);
 
+  const IsZoomKey = ((ssCtrl in Shift) and TryHandleZoomKey(Key));
+  if IsZoomKey then
+  begin
+    Key := 0;
+    Exit;
+  end;
+
   case Key of
     VK_UP:
       SetScrollPosition(FModel.ScrollOffset - LineScrollAmount);
@@ -972,6 +1014,86 @@ end;
 function TMarkdownViewer.GetAutoScroll: Boolean;
 begin
   Result := FAutoScroller.Enabled;
+end;
+
+function TMarkdownViewer.GetZoom: Integer;
+begin
+  Result := FPendingZoom;
+end;
+
+procedure TMarkdownViewer.SetZoom(const Value: Integer);
+begin
+  FPendingZoom := TMarkdownZoom.Clamp(Value);
+  ApplyZoomNow;
+end;
+
+procedure TMarkdownViewer.ZoomIn;
+begin
+  StepZoom(TMarkdownZoom.StepIn(FPendingZoom));
+end;
+
+procedure TMarkdownViewer.ZoomOut;
+begin
+  StepZoom(TMarkdownZoom.StepOut(FPendingZoom));
+end;
+
+procedure TMarkdownViewer.ResetZoom;
+begin
+  StepZoom(TMarkdownZoom.DefaultPercent);
+end;
+
+// A slow document waits until the wheel rests, so turning it several notches
+// lays the document out once.
+procedure TMarkdownViewer.StepZoom(const Percent: Integer);
+begin
+  FPendingZoom := TMarkdownZoom.Clamp(Percent);
+
+  if FZoomPacer.TryReflowNow(GetTickCount64, FModel.LastLayoutMilliseconds) then
+  begin
+    ApplyZoomNow;
+    Exit;
+  end;
+
+  FZoomTimer.Enabled := False;
+  FZoomTimer.Enabled := True;
+end;
+
+procedure TMarkdownViewer.ApplyZoomNow;
+begin
+  FZoomTimer.Enabled := False;
+
+  const IsChange = (FModel.Zoom <> FPendingZoom);
+  if not IsChange then
+    Exit;
+
+  FModel.Zoom := FPendingZoom;
+  UpdateScrollBar;
+  Invalidate;
+
+  if Assigned(FOnZoomChange) then
+    FOnZoomChange(Self);
+end;
+
+procedure TMarkdownViewer.HandleZoomTimer(Sender: TObject);
+begin
+  if FZoomPacer.TryFlush(GetTickCount64, False) then
+    ApplyZoomNow;
+end;
+
+function TMarkdownViewer.TryHandleZoomKey(const Key: Word): Boolean;
+begin
+  Result := True;
+
+  case Key of
+    VK_OEM_PLUS, VK_ADD:
+      ZoomIn;
+    VK_OEM_MINUS, VK_SUBTRACT:
+      ZoomOut;
+    Ord('0'), VK_NUMPAD0:
+      ResetZoom;
+  else
+    Result := False;
+  end;
 end;
 
 function TMarkdownViewer.GetIsAutoScrolling: Boolean;

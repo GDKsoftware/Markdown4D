@@ -63,6 +63,12 @@ type
     procedure ContentPadding_SurvivesJsonRoundTrip;
 
     [Test]
+    procedure Scaled_TwoTimes_DoublesFontsAndLengthsKeepsColours;
+
+    [Test]
+    procedure Scaled_TwoTimes_LeavesOriginalUnchanged;
+
+    [Test]
     procedure CodeSpanBackground_BothPresets_MatchCodeBackgroundTone;
 
     [Test]
@@ -250,6 +256,44 @@ begin
     Assert.IsTrue(DarkHasEnoughColors);
   finally
     Dark.Free;
+  end;
+end;
+
+procedure TMarkdownThemeTests.Scaled_TwoTimes_DoublesFontsAndLengthsKeepsColours;
+begin
+  const Theme = TMarkdownTheme.CreateLight;
+  try
+    const Zoomed = Theme.Scaled(2);
+    try
+      Assert.AreEqual(Double(2 * Theme.BaseFont.Size), Double(Zoomed.BaseFont.Size), SingleTolerance);
+      Assert.AreEqual(Double(2 * Theme.CodeFont.Size), Double(Zoomed.CodeFont.Size), SingleTolerance);
+      Assert.AreEqual(Double(2 * Theme.HeadingFonts[1].Size), Double(Zoomed.HeadingFonts[1].Size), SingleTolerance);
+      Assert.AreEqual(Double(2 * Theme.HeadingSpacingAbove[2]), Double(Zoomed.HeadingSpacingAbove[2]),
+                      SingleTolerance);
+      Assert.AreEqual(Double(2 * Theme.BlockSpacing), Double(Zoomed.BlockSpacing), SingleTolerance);
+      Assert.AreEqual(Double(2 * Theme.ListIndent), Double(Zoomed.ListIndent), SingleTolerance);
+      Assert.AreEqual(Double(2 * Theme.ContentPadding), Double(Zoomed.ContentPadding), SingleTolerance);
+      Assert.AreEqual(Theme.TextColor, Zoomed.TextColor);
+      Assert.AreEqual(Theme.BaseFont.FamilyName, Zoomed.BaseFont.FamilyName);
+    finally
+      Zoomed.Free;
+    end;
+  finally
+    Theme.Free;
+  end;
+end;
+
+procedure TMarkdownThemeTests.Scaled_TwoTimes_LeavesOriginalUnchanged;
+begin
+  const Theme = TMarkdownTheme.CreateLight;
+  try
+    const Before = Theme.SaveToJson;
+
+    Theme.Scaled(2).Free;
+
+    Assert.AreEqual(Before, Theme.SaveToJson);
+  finally
+    Theme.Free;
   end;
 end;
 

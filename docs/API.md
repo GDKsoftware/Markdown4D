@@ -511,6 +511,7 @@ same.
 | `Text` | `string` | The whole markdown document as one value |
 | `ThemePreset` | `TMarkdownThemePreset` | `Light` / `Dark`, editable in the Object Inspector |
 | `Images` | `TMarkdownViewerImageSettings` | How image destinations are resolved and fetched (see below) |
+| `Zoom` | `Integer` | In percent (default `100`, from `25` to `500`). Every font, spacing and image grows with it; the theme the application assigned stays as it is. Ctrl+wheel and Ctrl+Plus/Minus step through the levels browsers use (25, 33, 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400, 500), Ctrl+0 resets it. The line at the top of the view stays there, and a document that lays out slowly waits until the wheel rests |
 | `AutoScroll` | `Boolean` | Middle-click autoscroll: the content scrolls faster the further the pointer is from where it was pressed, until the next click, key or wheel turn (default `True`). The key that ends it reaches no shortcut, menu or form handler; only an Alt+letter accelerator in FMX goes to the form first |
 
 ### Public members
@@ -531,6 +532,7 @@ same.
 | `ClearSelection` | Drop the selection |
 | `SelectedText: string` | The selected text |
 | `IsAutoScrolling: Boolean` | True while middle-click autoscroll runs |
+| `ZoomIn` / `ZoomOut` / `ResetZoom` | Step `Zoom` to the next level up or down, or back to 100, as the keys do |
 | `TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean` | The stretch of markdown the selection was rendered from, so an editor can format exactly those characters; `False` when there is no selection or the runs carry no source |
 | `ContentHeight: Integer` | Laid-out document height, for auto-sizing |
 | `ScrollOffset: Single` | Read / set the vertical scroll position |
@@ -547,6 +549,7 @@ same.
 | `OnRemoteImageRequest` | `(const Sender: TObject; const Url: string; var Allow: Boolean)` | About to fetch a remote image. `Allow` arrives holding `Images.AllowRemote`; clear it to refuse this address |
 | `OnScroll` | `TNotifyEvent` | The scroll position changes |
 | `OnAutoScrollChange` | `TNotifyEvent` | Autoscroll starts or stops |
+| `OnZoomChange` | `TNotifyEvent` | `Zoom` changes and the document has been laid out at it |
 | `OnClick` | `TNotifyEvent` | A click in the text, on release. Not for a link, the copy button of a code block, the scroll bar, a drag that selects text or the click that ends autoscroll |
 | `OnDblClick` | `TNotifyEvent` | A double click in the text, on release of the second click, with the same exceptions. The word it selected stays selected. The second click raises no `OnClick` |
 | `OnMouseDown` / `OnMouseMove` / `OnMouseUp` | the standard mouse events | Every press, move and release, as on any control |
