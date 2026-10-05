@@ -670,10 +670,9 @@ end;
 // Without a timer to finish it later, a new width applies at once.
 procedure TMarkdownViewer.ApplyViewport;
 begin
-  FResizePacer.LayoutTook(FModel.LastLayoutMilliseconds);
   const IsNewWidth = not SameValue(Width, FAppliedWidth);
   const ReflowsNow = ((not IsNewWidth) or (FResizeTimer = nil) or
-                      FResizePacer.TryReflowNow(TThread.GetTickCount64));
+                      FResizePacer.TryReflowNow(TThread.GetTickCount64, FModel.LastLayoutMilliseconds));
   if ReflowsNow then
   begin
     ApplyViewportNow;

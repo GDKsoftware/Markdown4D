@@ -88,9 +88,10 @@ type
       FAutoScrollTimer: TTimer;
       FPreview: TMarkdownViewer;
       FPreviewTimer: TTimer;
-      FPreviewPacer: TMarkdownPreviewPacer;
+      FLastPreviewUpdateMilliseconds: Int64;
       FWrapTimer: TTimer;
       FWrapPacer: TMarkdownResizePacer;
+      FLastWrapMilliseconds: Int64;
       FAppliedWrapWidth: Integer;
       FPreviewDirty: Boolean;
       FUpdatingPreview: Boolean;
@@ -608,7 +609,7 @@ begin
   UpdateSync;
   RestorePreviewScroll(PreviousOffset);
 
-  FPreviewPacer.UpdateTook(Watch.ElapsedMilliseconds);
+  FLastPreviewUpdateMilliseconds := Watch.ElapsedMilliseconds;
 end;
 
 procedure TMarkdownEditor.RestorePreviewScroll(const PreviousOffset: Single);
@@ -900,7 +901,7 @@ begin
 
   FPreviewDirty := True;
   FPreviewTimer.Enabled := False;
-  FPreviewTimer.Interval := FPreviewPacer.DelayMilliseconds;
+  FPreviewTimer.Interval := TMarkdownPreviewPacer.DelayAfter(FLastPreviewUpdateMilliseconds);
   FPreviewTimer.Enabled := True;
 end;
 
@@ -1665,7 +1666,7 @@ end;
 procedure TMarkdownEditor.ApplyWrapWidth;
 begin
   const IsNewWidth = (WrapWidthPx <> FAppliedWrapWidth);
-  const RewrapsNow = ((not IsNewWidth) or FWrapPacer.TryReflowNow(GetTickCount64));
+  const RewrapsNow = ((not IsNewWidth) or FWrapPacer.TryReflowNow(GetTickCount64, FLastWrapMilliseconds));
   if RewrapsNow then
   begin
     ApplyWrapWidthNow;
@@ -1683,7 +1684,7 @@ begin
   const Watch = TStopwatch.StartNew;
   FAppliedWrapWidth := WrapWidthPx;
   RebuildRows;
-  FWrapPacer.LayoutTook(Watch.ElapsedMilliseconds);
+  FLastWrapMilliseconds := Watch.ElapsedMilliseconds;
 end;
 
 procedure TMarkdownEditor.HandleWrapTimer(Sender: TObject);

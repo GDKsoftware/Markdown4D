@@ -592,9 +592,8 @@ end;
 
 procedure TMarkdownViewer.ApplyViewport;
 begin
-  FResizePacer.LayoutTook(FModel.LastLayoutMilliseconds);
   const IsNewWidth = (ClientWidth <> FAppliedWidth);
-  const ReflowsNow = ((not IsNewWidth) or FResizePacer.TryReflowNow(GetTickCount64));
+  const ReflowsNow = ((not IsNewWidth) or FResizePacer.TryReflowNow(GetTickCount64, FModel.LastLayoutMilliseconds));
   if ReflowsNow then
   begin
     ApplyViewportNow;

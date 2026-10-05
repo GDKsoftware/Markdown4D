@@ -18,27 +18,20 @@ type
       SettleMilliseconds = 150;
 
   private
-    FLastLayoutMilliseconds: Int64;
     FWaiting: Boolean;
     FLastChange: Int64;
 
   public
-    procedure LayoutTook(const Milliseconds: Int64);
-    function TryReflowNow(const NowMilliseconds: Int64): Boolean;
+    function TryReflowNow(const NowMilliseconds, LastLayoutMilliseconds: Int64): Boolean;
     function TryFlush(const NowMilliseconds: Int64; const IsPointerHeld: Boolean): Boolean;
     function IsWaiting: Boolean;
   end;
 
 implementation
 
-procedure TMarkdownResizePacer.LayoutTook(const Milliseconds: Int64);
+function TMarkdownResizePacer.TryReflowNow(const NowMilliseconds, LastLayoutMilliseconds: Int64): Boolean;
 begin
-  FLastLayoutMilliseconds := Milliseconds;
-end;
-
-function TMarkdownResizePacer.TryReflowNow(const NowMilliseconds: Int64): Boolean;
-begin
-  Result := (FLastLayoutMilliseconds <= LiveLayoutMilliseconds);
+  Result := (LastLayoutMilliseconds <= LiveLayoutMilliseconds);
   FWaiting := not Result;
   FLastChange := NowMilliseconds;
 end;

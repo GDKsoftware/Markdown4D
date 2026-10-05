@@ -13,33 +13,21 @@ type
   TMarkdownPreviewPacerTests = class
   public
     [Test]
-    procedure DelayMilliseconds_BeforeAnyUpdate_IsTheShortestPause;
-
-    [Test]
+    [TestCase('NoUpdateYet', '0,60')]
     [TestCase('QuickUpdate', '5,60')]
     [TestCase('MediumUpdate', '100,400')]
     [TestCase('SlowUpdate', '1000,1500')]
-    procedure DelayMilliseconds_AfterUpdate_IsFourTimesItsDurationWithinBounds(const UpdateMilliseconds,
-                                                                                  Expected: Integer);
+    procedure DelayAfter_Update_IsFourTimesItsDurationWithinBounds(const UpdateMilliseconds, Expected: Integer);
   end;
 
 implementation
 
-procedure TMarkdownPreviewPacerTests.DelayMilliseconds_BeforeAnyUpdate_IsTheShortestPause;
+procedure TMarkdownPreviewPacerTests.DelayAfter_Update_IsFourTimesItsDurationWithinBounds(const UpdateMilliseconds,
+  Expected: Integer);
 begin
-  const Pacer = Default(TMarkdownPreviewPacer);
+  const Actual = TMarkdownPreviewPacer.DelayAfter(UpdateMilliseconds);
 
-  Assert.AreEqual(TMarkdownPreviewPacer.ShortestDelayMilliseconds, Pacer.DelayMilliseconds);
-end;
-
-procedure TMarkdownPreviewPacerTests.DelayMilliseconds_AfterUpdate_IsFourTimesItsDurationWithinBounds(
-  const UpdateMilliseconds, Expected: Integer);
-begin
-  var Pacer := Default(TMarkdownPreviewPacer);
-
-  Pacer.UpdateTook(UpdateMilliseconds);
-
-  Assert.AreEqual(Expected, Pacer.DelayMilliseconds);
+  Assert.AreEqual(Expected, Actual);
 end;
 
 end.

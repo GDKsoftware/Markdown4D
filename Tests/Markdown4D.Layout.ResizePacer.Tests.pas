@@ -54,9 +54,7 @@ end;
 
 procedure TMarkdownResizePacerTests.TryReflowNow_AfterQuickLayout_ReflowsLive;
 begin
-  FPacer.LayoutTook(QuickLayoutMilliseconds);
-
-  const ReflowsNow = FPacer.TryReflowNow(StartTime);
+  const ReflowsNow = FPacer.TryReflowNow(StartTime, QuickLayoutMilliseconds);
 
   Assert.IsTrue(ReflowsNow);
   Assert.IsFalse(FPacer.IsWaiting);
@@ -64,9 +62,7 @@ end;
 
 procedure TMarkdownResizePacerTests.TryReflowNow_AfterSlowLayout_Waits;
 begin
-  FPacer.LayoutTook(SlowLayoutMilliseconds);
-
-  const ReflowsNow = FPacer.TryReflowNow(StartTime);
+  const ReflowsNow = FPacer.TryReflowNow(StartTime, SlowLayoutMilliseconds);
 
   Assert.IsFalse(ReflowsNow);
   Assert.IsTrue(FPacer.IsWaiting);
@@ -74,8 +70,7 @@ end;
 
 procedure TMarkdownResizePacerTests.TryFlush_BeforeTheWidthSettles_Waits;
 begin
-  FPacer.LayoutTook(SlowLayoutMilliseconds);
-  FPacer.TryReflowNow(StartTime);
+  FPacer.TryReflowNow(StartTime, SlowLayoutMilliseconds);
 
   const Flushed = FPacer.TryFlush(StartTime + TMarkdownResizePacer.SettleMilliseconds - 1, False);
 
@@ -84,8 +79,7 @@ end;
 
 procedure TMarkdownResizePacerTests.TryFlush_OnceTheWidthSettles_ReflowsOnce;
 begin
-  FPacer.LayoutTook(SlowLayoutMilliseconds);
-  FPacer.TryReflowNow(StartTime);
+  FPacer.TryReflowNow(StartTime, SlowLayoutMilliseconds);
 
   const FirstFlush = FPacer.TryFlush(StartTime + TMarkdownResizePacer.SettleMilliseconds, False);
   const SecondFlush = FPacer.TryFlush(StartTime + 2 * TMarkdownResizePacer.SettleMilliseconds, False);
@@ -96,10 +90,9 @@ end;
 
 procedure TMarkdownResizePacerTests.TryFlush_EveryWidthChange_RestartsTheWait;
 begin
-  FPacer.LayoutTook(SlowLayoutMilliseconds);
-  FPacer.TryReflowNow(StartTime);
+  FPacer.TryReflowNow(StartTime, SlowLayoutMilliseconds);
   const LaterChange = StartTime + TMarkdownResizePacer.SettleMilliseconds - 1;
-  FPacer.TryReflowNow(LaterChange);
+  FPacer.TryReflowNow(LaterChange, SlowLayoutMilliseconds);
 
   const Flushed = FPacer.TryFlush(StartTime + TMarkdownResizePacer.SettleMilliseconds, False);
 
@@ -108,8 +101,6 @@ end;
 
 procedure TMarkdownResizePacerTests.TryFlush_WithoutAWaitingChange_DoesNothing;
 begin
-  FPacer.LayoutTook(SlowLayoutMilliseconds);
-
   const Flushed = FPacer.TryFlush(StartTime, False);
 
   Assert.IsFalse(Flushed);
@@ -117,8 +108,7 @@ end;
 
 procedure TMarkdownResizePacerTests.TryFlush_WhileThePointerIsHeld_Waits;
 begin
-  FPacer.LayoutTook(SlowLayoutMilliseconds);
-  FPacer.TryReflowNow(StartTime);
+  FPacer.TryReflowNow(StartTime, SlowLayoutMilliseconds);
   const Settled = StartTime + TMarkdownResizePacer.SettleMilliseconds;
 
   const FlushedWhileHeld = FPacer.TryFlush(Settled, True);

@@ -15,13 +15,7 @@ type
       ShortestDelayMilliseconds = 60;
       LongestDelayMilliseconds = 1500;
       DelayPerUpdateMillisecond = 4;
-
-  private
-    FLastUpdateMilliseconds: Int64;
-
-  public
-    procedure UpdateTook(const Milliseconds: Int64);
-    function DelayMilliseconds: Integer;
+    class function DelayAfter(const UpdateMilliseconds: Int64): Integer; static;
   end;
 
 implementation
@@ -29,14 +23,9 @@ implementation
 uses
   System.Math;
 
-procedure TMarkdownPreviewPacer.UpdateTook(const Milliseconds: Int64);
+class function TMarkdownPreviewPacer.DelayAfter(const UpdateMilliseconds: Int64): Integer;
 begin
-  FLastUpdateMilliseconds := Milliseconds;
-end;
-
-function TMarkdownPreviewPacer.DelayMilliseconds: Integer;
-begin
-  const Scaled = FLastUpdateMilliseconds * DelayPerUpdateMillisecond;
+  const Scaled = UpdateMilliseconds * DelayPerUpdateMillisecond;
   Result := EnsureRange(Scaled, ShortestDelayMilliseconds, LongestDelayMilliseconds);
 end;
 
