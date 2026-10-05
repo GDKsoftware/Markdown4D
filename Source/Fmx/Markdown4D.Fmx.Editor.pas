@@ -150,6 +150,7 @@ type
       const DrawCaret: Boolean);
     procedure RebuildRows;
     procedure CreateWrapTimer;
+    procedure CreateZoomTimer;
     procedure ApplyWrapWidth;
     procedure ApplyWrapWidthNow;
     procedure HandleWrapTimer(Sender: TObject);
@@ -396,6 +397,7 @@ begin
   CreateCaretTimer;
   CreatePreviewTimer;
   CreateWrapTimer;
+  CreateZoomTimer;
   FZoom := TMarkdownZoom.DefaultPercent;
   FPendingZoom := TMarkdownZoom.DefaultPercent;
   CreateAutoScrollTimer;
@@ -463,6 +465,13 @@ begin
   FWrapTimer.Enabled := False;
   FWrapTimer.Interval := TMarkdownResizePacer.SettleMilliseconds;
   FWrapTimer.OnTimer := HandleWrapTimer;
+end;
+
+procedure TMarkdownEditor.CreateZoomTimer;
+begin
+  var TimerService: IFMXTimerService;
+  if not TPlatformServices.Current.SupportsPlatformService(IFMXTimerService, TimerService) then
+    Exit;
 
   FZoomTimer := TTimer.Create(Self);
   FZoomTimer.Enabled := False;
@@ -1446,13 +1455,12 @@ begin
 end;
 
 // A long text waits until the wheel rests, so turning it several notches
-// wraps the text once.
+// wraps the text once. Without a timer service every step wraps.
 procedure TMarkdownEditor.StepZoom(const Percent: Integer);
 begin
   FPendingZoom := TMarkdownZoom.Clamp(Percent);
 
   const RewrapsNow = ((FZoomTimer = nil) or
-                      
                       FZoomPacer.TryReflowNow(TThread.GetTickCount64, FLastWrapMilliseconds));
   if RewrapsNow then
   begin

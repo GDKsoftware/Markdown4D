@@ -1441,9 +1441,7 @@ procedure TMarkdownEditor.StepZoom(const Percent: Integer);
 begin
   FPendingZoom := TMarkdownZoom.Clamp(Percent);
 
-  const RewrapsNow = (
-                      FZoomPacer.TryReflowNow(GetTickCount64, FLastWrapMilliseconds));
-  if RewrapsNow then
+  if FZoomPacer.TryReflowNow(GetTickCount64, FLastWrapMilliseconds) then
   begin
     ApplyZoomNow;
     Exit;

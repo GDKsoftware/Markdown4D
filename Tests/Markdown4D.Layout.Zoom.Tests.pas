@@ -31,6 +31,16 @@ type
     [TestCase('AboveMaximum', '600,500')]
     [TestCase('InRange', '150,150')]
     procedure Clamp_Percent_StaysWithinMinimumAndMaximum(const Percent, Expected: Integer);
+
+    [Test]
+    [TestCase('PlusMainKeyboard', '187,StepIn')]
+    [TestCase('PlusNumericKeypad', '107,StepIn')]
+    [TestCase('MinusMainKeyboard', '189,StepOut')]
+    [TestCase('MinusNumericKeypad', '109,StepOut')]
+    [TestCase('ZeroMainKeyboard', '48,Reset')]
+    [TestCase('ZeroNumericKeypad', '96,Reset')]
+    [TestCase('OtherKey', '65,None')]
+    procedure ActionOfKey_Key_ReturnsZoomAction(const Key: Word; const Expected: TMarkdownZoomAction);
   end;
 
 implementation
@@ -54,6 +64,14 @@ begin
   const Actual = TMarkdownZoom.Clamp(Percent);
 
   Assert.AreEqual(Expected, Actual);
+end;
+
+procedure TMarkdownZoomTests.ActionOfKey_Key_ReturnsZoomAction(const Key: Word;
+  const Expected: TMarkdownZoomAction);
+begin
+  const Actual = TMarkdownZoom.ActionOfKey(Key);
+
+  Assert.AreEqual<TMarkdownZoomAction>(Expected, Actual);
 end;
 
 end.

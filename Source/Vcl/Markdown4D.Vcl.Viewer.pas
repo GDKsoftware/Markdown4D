@@ -1084,13 +1084,10 @@ function TMarkdownViewer.TryHandleZoomKey(const Key: Word): Boolean;
 begin
   Result := True;
 
-  case Key of
-    VK_OEM_PLUS, VK_ADD:
-      ZoomIn;
-    VK_OEM_MINUS, VK_SUBTRACT:
-      ZoomOut;
-    Ord('0'), VK_NUMPAD0:
-      ResetZoom;
+  case TMarkdownZoom.ActionOfKey(Key) of
+    TMarkdownZoomAction.StepIn  : ZoomIn;
+    TMarkdownZoomAction.StepOut : ZoomOut;
+    TMarkdownZoomAction.Reset   : ResetZoom;
   else
     Result := False;
   end;

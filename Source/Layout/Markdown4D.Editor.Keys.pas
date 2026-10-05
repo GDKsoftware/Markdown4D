@@ -40,6 +40,7 @@ type
   strict private
     class function ResolveControl(const Key: Word; const Extend: Boolean): TEditorKeyStroke; static;
     class function ResolvePlain(const Key: Word; const Extend: Boolean): TEditorKeyStroke; static;
+    class function ZoomActionOf(const Key: Word): TEditorKeyAction; static;
   public
     class function Resolve(const Key: Word; const Shift: TShiftState): TEditorKeyStroke; static;
   end;
@@ -56,7 +57,8 @@ implementation
 
 uses
   System.UITypes,
-  Markdown4D.Editor.Actions;
+  Markdown4D.Editor.Actions,
+  Markdown4D.Layout.Zoom;
 
 class function TEditorKeyStroke.Create(const Action: TEditorKeyAction; const Extend: Boolean): TEditorKeyStroke;
 begin
@@ -130,15 +132,22 @@ begin
       Action := TEditorKeyAction.DeleteWordRight;
     vkInsert:
       Action := TEditorKeyAction.Copy;
-    vkEqual, vkAdd:
-      Action := TEditorKeyAction.ZoomIn;
-    vkMinus, vkSubtract:
-      Action := TEditorKeyAction.ZoomOut;
-    vk0, vkNumpad0:
-      Action := TEditorKeyAction.ResetZoom;
+  else
+    Action := ZoomActionOf(Key);
   end;
 
   Result := TEditorKeyStroke.Create(Action, Extend);
+end;
+
+class function TMarkdownEditorKeymap.ZoomActionOf(const Key: Word): TEditorKeyAction;
+begin
+  case TMarkdownZoom.ActionOfKey(Key) of
+    TMarkdownZoomAction.StepIn  : Result := TEditorKeyAction.ZoomIn;
+    TMarkdownZoomAction.StepOut : Result := TEditorKeyAction.ZoomOut;
+    TMarkdownZoomAction.Reset   : Result := TEditorKeyAction.ResetZoom;
+  else
+    Result := TEditorKeyAction.None;
+  end;
 end;
 
 class function TMarkdownEditorKeymap.ResolvePlain(const Key: Word; const Extend: Boolean): TEditorKeyStroke;
