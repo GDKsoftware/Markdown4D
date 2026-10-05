@@ -1172,6 +1172,7 @@ begin
     var Entry := TMenuItem.Create(FContextMenu);
     Entry.Caption := Item.Caption;
     Entry.Enabled := Item.Enabled;
+    Entry.ShortCut := Item.ShortCut;
     Entry.Tag := Ord(Item.Command);
     Entry.OnClick := HandleContextItemClick;
     FContextMenu.Items.Add(Entry);
