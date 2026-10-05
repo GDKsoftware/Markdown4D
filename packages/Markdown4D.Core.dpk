@@ -97,6 +97,7 @@ contains
   Markdown4D.Math.Layout in '..\Source\Layout\Markdown4D.Math.Layout.pas',
   Markdown4D.Math.Font in '..\Source\Layout\Markdown4D.Math.Font.pas',
   Markdown4D.Layout.Defaults in '..\Source\Layout\Markdown4D.Layout.Defaults.pas',
+  Markdown4D.Layout.EmojiRuns in '..\Source\Layout\Markdown4D.Layout.EmojiRuns.pas',
   Markdown4D.Layout.DisplayList in '..\Source\Layout\Markdown4D.Layout.DisplayList.pas',
   Markdown4D.Layout.SourceMapping in '..\Source\Layout\Markdown4D.Layout.SourceMapping.pas',
   Markdown4D.Layout.Engine in '..\Source\Layout\Markdown4D.Layout.Engine.pas',

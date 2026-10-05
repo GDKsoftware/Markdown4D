@@ -115,6 +115,8 @@
         <DCCReference Include="..\Examples\Shared\Markdown4DStudio.SingleInstance.pas"/>
         <DCCReference Include="Markdown4DStudio.SingleInstance.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Render.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Vcl.Emoji.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Layout.EmojiRuns.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Viewer.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.ScrollBarTheme.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Image.Tests.pas"/>

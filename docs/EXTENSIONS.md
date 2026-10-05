@@ -769,8 +769,15 @@ shortcodes untouched. The rules:
 
 The emoji becomes ordinary text whose source segment covers the whole shortcode,
 so the editor keeps `:smile:` while the viewer shows and copies the emoji.
-`ToMarkdown` writes the emoji character back, not the shortcode. The VCL viewer
-draws through GDI, which may show an emoji in monochrome.
+`ToMarkdown` writes the emoji character back, not the shortcode.
+
+Both viewers draw emoji in colour. The VCL painter splits every text run into
+plain text and emoji (`TMarkdownEmojiRuns` in `Markdown4D.Layout.EmojiRuns`).
+Plain text keeps the GDI path. The emoji go through DirectWrite and Direct2D
+with colour fonts enabled (`Markdown4D.Vcl.ColorText`), are rendered into a
+transparent buffer and blended onto the canvas. If Direct2D is unavailable, an
+emoji falls back to GDI and shows in monochrome. The FMX viewer draws emoji in
+colour through its own canvas (Skia or Direct2D).
 
 ## Lifetime and threading rules
 
