@@ -51,6 +51,9 @@ type
       ShortHostHeight = 100;
       ManyLineCount = 40;
       HighDpi = 192;
+      ScaleTolerance = 0.05;
+      GrowthNumerator = 3;
+      GrowthDenominator = 2;
       PreviewScrollTarget = 40;
       ClipboardAttempts = 20;
       ClipboardPauseMilliseconds = 25;
@@ -61,6 +64,7 @@ type
     function NewHostedPreview(const Editor: TMarkdownEditor): TMarkdownViewer;
     class function ManyLines(const Count: Integer): string; static;
     class function OneWrappedLine: string; static;
+    class function ContentHeightOf(const Editor: TMarkdownEditor): Integer; static;
     class function ClipboardIsAccessible: Boolean; static;
     class function TrySetClipboardText(const Value: string): Boolean; static;
     class function TryGetClipboardText(out Value: string): Boolean; static;
@@ -238,6 +242,9 @@ type
 
     [Test]
     procedure HighDpiClick_MapsCaretToClickedLine;
+
+    [Test]
+    procedure ScaleForPPI_OnHostForm_ScalesText;
 
     [Test]
     procedure FocusMessages_ShowAndHideCaretWithoutError;
@@ -1269,6 +1276,31 @@ begin
   Editor.CaretPosition := SecondRowStart + 2;
   Editor.SimulateKeyDown(vkHome, []);
   Assert.AreEqual(SecondRowStart, Editor.CaretPosition);
+end;
+
+procedure TMarkdownVclEditorTests.ScaleForPPI_OnHostForm_ScalesText;
+begin
+  const Editor = NewHostedEditor(ShortHostHeight);
+  Editor.Text := ManyLines(ManyLineCount);
+  const HeightBefore = ContentHeightOf(Editor);
+  const ScaledPixelsPerInch = MulDiv(FHostForm.PixelsPerInch, GrowthNumerator, GrowthDenominator);
+
+  FHostForm.ScaleForPPI(ScaledPixelsPerInch);
+
+  const HeightAfter = ContentHeightOf(Editor);
+  const ExpectedHeight = HeightBefore * GrowthNumerator / GrowthDenominator;
+  Assert.AreEqual(ExpectedHeight, Double(HeightAfter), HeightBefore * ScaleTolerance,
+    'The text must grow with the form it is on, as the controls around it do');
+end;
+
+class function TMarkdownVclEditorTests.ContentHeightOf(const Editor: TMarkdownEditor): Integer;
+begin
+  var Info := Default(TScrollInfo);
+  Info.cbSize := SizeOf(Info);
+  Info.fMask := SIF_RANGE;
+  GetScrollInfo(Editor.Handle, SB_VERT, Info);
+
+  Result := Info.nMax + 1;
 end;
 
 end.

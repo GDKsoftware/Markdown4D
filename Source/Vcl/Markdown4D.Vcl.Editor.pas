@@ -145,6 +145,7 @@ type
     function VisibleLineCount: Integer;
     function TextLeftPx: Integer;
     function CaretWidthPx: Integer;
+    function ContentPixelsPerInch: Integer;
     function LineTextAt(const LineIndex: Integer): string;
     function LineStartOffset(const LineIndex: Integer): Integer;
     function OffsetFromPoint(const X, Y: Integer): Integer;
@@ -339,7 +340,7 @@ begin
 
   FMeasureBitmap := TBitmap.Create;
   FMeasureBitmap.SetSize(1, 1);
-  FMeasurePainter := TMarkdownVclPainter.Create(FMeasureBitmap.Canvas, CurrentPPI);
+  FMeasurePainter := TMarkdownVclPainter.Create(FMeasureBitmap.Canvas, ContentPixelsPerInch);
   FMeasurePainterLifetime := FMeasurePainter;
 
   FBuffer := TBitmap.Create;
@@ -651,7 +652,7 @@ end;
 
 procedure TMarkdownEditor.PaintTo(const Bitmap: TBitmap);
 begin
-  RenderContent(Bitmap.Canvas, Bitmap.Width, Bitmap.Height, CurrentPPI, 0);
+  RenderContent(Bitmap.Canvas, Bitmap.Width, Bitmap.Height, ContentPixelsPerInch, 0);
 end;
 
 function TMarkdownEditor.FirstVisibleSourceLine: Integer;
@@ -858,7 +859,7 @@ procedure TMarkdownEditor.Paint;
 begin
   EnsureDesignSample;
   EnsureBufferSize;
-  RenderContent(FBuffer.Canvas, Max(1, ClientWidth), Max(1, ClientHeight), CurrentPPI, FScrollOffset);
+  RenderContent(FBuffer.Canvas, Max(1, ClientWidth), Max(1, ClientHeight), ContentPixelsPerInch, FScrollOffset);
   PaintAutoScrollOrigin;
   Canvas.Draw(0, 0, FBuffer);
 end;
@@ -1033,7 +1034,7 @@ begin
     ControlWidth := ClientWidth;
 
   const Available = ControlWidth - TextLeftPx - CaretWidthPx;
-  const MinimumWidth = MulDiv(MinimumWrapWidthDips, CurrentPPI, ReferencePixelsPerInch);
+  const MinimumWidth = MulDiv(MinimumWrapWidthDips, ContentPixelsPerInch, ReferencePixelsPerInch);
   Result := Max(Available, MinimumWidth);
 end;
 
@@ -1060,16 +1061,16 @@ end;
 procedure TMarkdownEditor.DrawGutterNumber(const Painter: IPainter; const LineIndex, GutterWidth, Top: Integer);
 begin
   const Number = IntToStr(LineIndex + 1);
-  const Padding = MulDiv(GutterPaddingDips, CurrentPPI, ReferencePixelsPerInch);
+  const Padding = MulDiv(GutterPaddingDips, ContentPixelsPerInch, ReferencePixelsPerInch);
   const NumberWidth = Round(Painter.MeasureText(Number, CodeFont).Width);
-  const NumberLeft = GutterWidth - FoldGutterWidthPx(CurrentPPI) - Padding - NumberWidth;
+  const NumberLeft = GutterWidth - FoldGutterWidthPx(ContentPixelsPerInch) - Padding - NumberWidth;
   Painter.DrawTextRun(TLayoutPointF.Create(NumberLeft, Top), Number, CodeFont, FTheme.BlockQuoteTextColor);
 end;
 
 procedure TMarkdownEditor.DrawFoldMarker(const Painter: IPainter; const GutterWidth, Top: Integer;
   const Collapsed: Boolean);
 begin
-  const FoldWidth = FoldGutterWidthPx(CurrentPPI);
+  const FoldWidth = FoldGutterWidthPx(ContentPixelsPerInch);
   if FoldWidth <= 0 then
     Exit;
 
@@ -1257,11 +1258,11 @@ function TMarkdownEditor.HandleFoldClick(const X, Y: Integer): Boolean;
 begin
   Result := False;
 
-  const FoldWidth = FoldGutterWidthPx(CurrentPPI);
+  const FoldWidth = FoldGutterWidthPx(ContentPixelsPerInch);
   if FoldWidth <= 0 then
     Exit;
 
-  const GutterWidth = GutterWidthPx(FMeasurePainterLifetime, CurrentPPI);
+  const GutterWidth = GutterWidthPx(FMeasurePainterLifetime, ContentPixelsPerInch);
   const InFoldColumn = (X >= GutterWidth - FoldWidth) and (X < GutterWidth);
   if not InFoldColumn then
     Exit;
@@ -1348,13 +1349,21 @@ end;
 
 function TMarkdownEditor.TextLeftPx: Integer;
 begin
-  Result := GutterWidthPx(FMeasurePainterLifetime, CurrentPPI) +
-    MulDiv(TextLeftPaddingDips, CurrentPPI, ReferencePixelsPerInch);
+  Result := GutterWidthPx(FMeasurePainterLifetime, ContentPixelsPerInch) +
+    MulDiv(TextLeftPaddingDips, ContentPixelsPerInch, ReferencePixelsPerInch);
 end;
 
 function TMarkdownEditor.CaretWidthPx: Integer;
 begin
-  Result := Max(1, MulDiv(CaretWidthDips, CurrentPPI, ReferencePixelsPerInch));
+  Result := Max(1, MulDiv(CaretWidthDips, ContentPixelsPerInch, ReferencePixelsPerInch));
+end;
+
+// The content follows the scale the VCL gave this control, as its size does.
+// CurrentPPI answers the monitor's DPI once there is a window handle, so it
+// misses a form that scales itself with ScaleForPPI or ScaleBy.
+function TMarkdownEditor.ContentPixelsPerInch: Integer;
+begin
+  Result := Round(ReferencePixelsPerInch * ScaleFactor);
 end;
 
 function TMarkdownEditor.LineTextAt(const LineIndex: Integer): string;
@@ -1566,7 +1575,7 @@ end;
 
 procedure TMarkdownEditor.RecomputeMetrics;
 begin
-  FMeasurePainter.PixelsPerInch := CurrentPPI;
+  FMeasurePainter.PixelsPerInch := ContentPixelsPerInch;
   RebuildRows;
   UpdateScrollBar;
   RecreateCaret;
@@ -1586,7 +1595,7 @@ begin
 
   EnsureDesignSample;
 
-  FMeasurePainter.PixelsPerInch := CurrentPPI;
+  FMeasurePainter.PixelsPerInch := ContentPixelsPerInch;
   RebuildRows;
   UpdateScrollBar;
   ApplyScrollBarTheme;

@@ -30,10 +30,14 @@ type
       RepeatedWord = 'alpha';
       LastParagraph = 'Paragraph 39';
       SecondParagraph = 'Paragraph 01';
+      ScaleTolerance = 0.1;
+      GrowthNumerator = 3;
+      GrowthDenominator = 2;
     var
       FHostForm: TForm;
       FReportedSender: TObject;
     function NewHostedViewer: TTestableVclViewer;
+    class function FirstTextRunHeight(const Viewer: TMarkdownViewer): Single; static;
     procedure RecordExtensionError(const Sender: TObject; const Extension: string; const Error: Exception);
 
   public
@@ -68,6 +72,9 @@ type
     procedure HighlightMatches_SeveralMatches_CountsEveryMatch;
 
     [Test]
+    procedure ScaleForPPI_OnHostForm_ScalesText;
+
+    [Test]
     procedure Text_FailingExtension_ReportsErrorWithViewerAsSender;
   end;
 
@@ -76,6 +83,7 @@ implementation
 uses
   System.Types,
   Winapi.Windows,
+  Markdown4D.Layout.DisplayList,
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Tests.Pipeline.Helpers,
   Markdown4D.Tests.FailingExtensions;
@@ -200,6 +208,39 @@ begin
 
   Assert.AreEqual(2, Viewer.HighlightCount);
   Assert.AreEqual(2, Viewer.FindMatchCount(RepeatedWord));
+end;
+
+procedure TMarkdownVclViewerTests.ScaleForPPI_OnHostForm_ScalesText;
+begin
+  const Viewer = NewHostedViewer;
+  Viewer.Text := ShortMarkdown;
+  const HeightBefore = FirstTextRunHeight(Viewer);
+  const ScaledPixelsPerInch = MulDiv(FHostForm.PixelsPerInch, GrowthNumerator, GrowthDenominator);
+
+  FHostForm.ScaleForPPI(ScaledPixelsPerInch);
+
+  const HeightAfter = FirstTextRunHeight(Viewer);
+  const ExpectedHeight = HeightBefore * GrowthNumerator / GrowthDenominator;
+  Assert.AreEqual(ExpectedHeight, Double(HeightAfter), Double(HeightBefore * ScaleTolerance),
+    'The text must grow with the form it is on, as the controls around it do');
+end;
+
+class function TMarkdownVclViewerTests.FirstTextRunHeight(const Viewer: TMarkdownViewer): Single;
+begin
+  Result := 0;
+
+  const DisplayList = Viewer.DisplayList;
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    if Supports(DisplayList.Items[Index], IDisplayTextRun, Run) then
+    begin
+      Result := Run.Bounds.Height;
+      Exit;
+    end;
+  end;
+
+  Assert.Fail('The viewer laid out no text run');
 end;
 
 procedure TMarkdownVclViewerTests.Text_FailingExtension_ReportsErrorWithViewerAsSender;
