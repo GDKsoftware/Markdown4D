@@ -6,7 +6,8 @@ interface
 
 uses
   Markdown4D.Editor.InlineStyle,
-  Markdown4D.Editor.Folding;
+  Markdown4D.Editor.Folding,
+  Markdown4D.Layout.TextSearch;
 
 type
   TEditorCommand = (Bold, Italic, Link, CodeBlock, Heading1, Heading2, Heading3, BulletList, NumberedList, Quote,
@@ -35,11 +36,9 @@ type
     ['{8F2D4A31-6B7C-4E19-9A03-2C5D8E1F4B60}']
   end;
 
-  TMarkdownFindOptions = record
-    MatchCase: Boolean;
-    WholeWord: Boolean;
-    class function Create(const MatchCase, WholeWord: Boolean): TMarkdownFindOptions; static;
-  end;
+  // Declared again here so code that finds through the editor keeps compiling
+  // without naming the unit the options moved to.
+  TMarkdownFindOptions = Markdown4D.Layout.TextSearch.TMarkdownFindOptions;
 
   TMarkdownEditorModel = class
   strict private
@@ -151,6 +150,9 @@ type
     function FindAllMatches(const Needle: string; const Options: TMarkdownFindOptions): TArray<Integer>;
     function FindMatchCount(const Needle: string): Integer; overload;
     function FindMatchCount(const Needle: string; const Options: TMarkdownFindOptions): Integer; overload;
+    // Which match the selection covers, counted from 0; -1 when the selection
+    // is not a match.
+    function FindMatchIndex(const Needle: string; const Options: TMarkdownFindOptions): Integer;
     function FindNext(const Needle: string; const StartAfter: Integer): Integer; overload;
     function FindNext(const Needle: string; const StartAfter: Integer;
       const Options: TMarkdownFindOptions): Integer; overload;
@@ -220,12 +222,6 @@ end;
 function TEditorReplaceRange.Apply(const Source: string): string;
 begin
   Result := Copy(Source, 1, Start) + Replacement + Copy(Source, Start + Length + 1, System.Length(Source));
-end;
-
-class function TMarkdownFindOptions.Create(const MatchCase, WholeWord: Boolean): TMarkdownFindOptions;
-begin
-  Result.MatchCase := MatchCase;
-  Result.WholeWord := WholeWord;
 end;
 
 constructor TMarkdownEditorModel.Create;
@@ -571,6 +567,26 @@ end;
 function TMarkdownEditorModel.FindMatchCount(const Needle: string; const Options: TMarkdownFindOptions): Integer;
 begin
   Result := System.Length(CollectMatches(Needle, Options));
+end;
+
+function TMarkdownEditorModel.FindMatchIndex(const Needle: string; const Options: TMarkdownFindOptions): Integer;
+begin
+  Result := -1;
+
+  const SelectsNeedleLength = (SelectionLength = System.Length(Needle));
+  if not SelectsNeedleLength then
+    Exit;
+
+  const Matches = CollectMatches(Needle, Options);
+  for var Index := 0 to High(Matches) do
+  begin
+    const IsSelected = (Matches[Index] = SelectionStart);
+    if IsSelected then
+    begin
+      Result := Index;
+      Exit;
+    end;
+  end;
 end;
 
 function TMarkdownEditorModel.FindNext(const Needle: string; const StartAfter: Integer): Integer;
@@ -1181,68 +1197,15 @@ end;
 function TMarkdownEditorModel.IndexOfNeedle(const Needle: string; const FromOffset: Integer;
   const Options: TMarkdownFindOptions): Integer;
 begin
-  const NeedleLen = System.Length(Needle);
-  const TextLen = System.Length(FText);
-  const LastStart = TextLen - NeedleLen;
-
-  const Start = EnsureRange(FromOffset, 0, TextLen);
-
-  for var CandidateStart := Start to LastStart do
-  begin
-    if MatchesAt(Needle, CandidateStart, Options) then
-    begin
-      Result := CandidateStart;
-      Exit;
-    end;
-  end;
-
-  Result := -1;
+  const Start = EnsureRange(FromOffset, 0, System.Length(FText));
+  const Found = TMarkdownTextSearch.IndexOf(Needle, FText, Start + 1, Options);
+  Result := Found - 1;
 end;
 
 function TMarkdownEditorModel.MatchesAt(const Needle: string; const CandidateStart: Integer;
   const Options: TMarkdownFindOptions): Boolean;
 begin
-  const NeedleLen = System.Length(Needle);
-  const TextLen = System.Length(FText);
-
-  if (CandidateStart < 0) or (CandidateStart + NeedleLen > TextLen) then
-  begin
-    Result := False;
-    Exit;
-  end;
-
-  for var Index := 1 to NeedleLen do
-  begin
-    const TextChar = FText[CandidateStart + Index];
-    const NeedleChar = Needle[Index];
-    if Options.MatchCase then
-    begin
-      if TextChar <> NeedleChar then
-      begin
-        Result := False;
-        Exit;
-      end;
-    end
-    else if TextChar.ToLower <> NeedleChar.ToLower then
-    begin
-      Result := False;
-      Exit;
-    end;
-  end;
-
-  if Options.WholeWord then
-  begin
-    const HasLeftBoundary = (CandidateStart = 0) or not IsWordChar(FText[CandidateStart]);
-    const RightIndex = CandidateStart + NeedleLen + 1;
-    const HasRightBoundary = (RightIndex > TextLen) or not IsWordChar(FText[RightIndex]);
-    if not (HasLeftBoundary and HasRightBoundary) then
-    begin
-      Result := False;
-      Exit;
-    end;
-  end;
-
-  Result := True;
+  Result := TMarkdownTextSearch.MatchesAt(Needle, FText, CandidateStart + 1, Options);
 end;
 
 function TMarkdownEditorModel.CollectMatches(const Needle: string;
@@ -1306,7 +1269,7 @@ end;
 
 function TMarkdownEditorModel.IsWordChar(const Ch: Char): Boolean;
 begin
-  Result := Ch.IsLetterOrDigit or (Ch = '_');
+  Result := TMarkdownTextSearch.IsWordCharacter(Ch);
 end;
 
 function TMarkdownEditorModel.CategoryOfChar(const Ch: Char): TCharCategory;

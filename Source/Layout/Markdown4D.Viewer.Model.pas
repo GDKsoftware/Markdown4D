@@ -11,6 +11,7 @@ uses
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.DisplayList,
   Markdown4D.Layout.TextAnchor,
+  Markdown4D.Layout.TextSearch,
   Markdown4D.Theme;
 
 type
@@ -84,6 +85,7 @@ type
       FSelectionUnit: TSelectionUnit;
       FUnitRange: TTextRange;
       FHighlightNeedle: string;
+      FHighlightOptions: TMarkdownFindOptions;
       FHighlightRects: TArray<TLayoutRectF>;
       FImageSlots: TDictionary<string, TImageSlot>;
       FImageSlotOrder: TList<string>;
@@ -113,7 +115,6 @@ type
     class function ContinuesWord(const Run, Before: IDisplayTextRun): Boolean; static;
     class function ContinuesLine(const Run, Before: IDisplayTextRun): Boolean; static;
     class function CharacterClassOf(const Character: Char): TCharacterClass; static;
-    class function CaseInsensitiveIndexOf(const Needle, Haystack: string; const StartIndex: Integer): Integer; static;
     function NextMatchAfterSelection(const Matches: TArray<TMarkdownFoundRange>): TMarkdownFoundRange;
     function PreviousMatchBeforeSelection(const Matches: TArray<TMarkdownFoundRange>): TMarkdownFoundRange;
     function HasCaret: Boolean;
@@ -185,30 +186,41 @@ type
     function ImageSlotState(const Source: string): TMarkdownImageSlotState;
     function TryGetImageSize(const Source: string; out Size: TLayoutSizeF): Boolean;
     procedure ExtensionFailed(const Extension: string; const Error: Exception);
-    function FindText(const Needle: string): TArray<TMarkdownFoundRange>;
+    function FindText(const Needle: string): TArray<TMarkdownFoundRange>; overload;
+    function FindText(const Needle: string; const Options: TMarkdownFindOptions): TArray<TMarkdownFoundRange>; overload;
     // How many stops a walk with TrySelectNextMatch makes: a formula counts
     // once, however often the needle occurs in its source.
-    function MatchCount(const Needle: string): Integer;
+    function MatchCount(const Needle: string): Integer; overload;
+    function MatchCount(const Needle: string; const Options: TMarkdownFindOptions): Integer; overload;
+    // Which of those stops the selection covers, counted from 0; -1 when the
+    // selection is not a match.
+    function MatchIndex(const Needle: string; const Options: TMarkdownFindOptions): Integer;
     // Select the first match after the start of the current selection, or
     // from the caret when nothing is selected, or else the first match in the
     // document, so a repeated search walks through every match. A match in a
     // formula selects the whole formula. False when the needle does not
     // occur; the selection is then left as is.
-    function TrySelectNextMatch(const Needle: string; out Match: TMarkdownFoundRange): Boolean;
+    function TrySelectNextMatch(const Needle: string; out Match: TMarkdownFoundRange): Boolean; overload;
+    function TrySelectNextMatch(const Needle: string; const Options: TMarkdownFindOptions;
+                                out Match: TMarkdownFoundRange): Boolean; overload;
     // The same walk backwards: the last match before the start of the
     // selection or the caret, or the last match in the document.
-    function TrySelectPreviousMatch(const Needle: string; out Match: TMarkdownFoundRange): Boolean;
+    function TrySelectPreviousMatch(const Needle: string; out Match: TMarkdownFoundRange): Boolean; overload;
+    function TrySelectPreviousMatch(const Needle: string; const Options: TMarkdownFindOptions;
+                                    out Match: TMarkdownFoundRange): Boolean; overload;
     // Mark every match of the needle, independently of the selection. The
     // marks follow the document through every relayout until they are
     // cleared or the needle is empty. A formula is marked once, however often
     // the needle occurs in its source.
-    procedure HighlightMatches(const Needle: string);
+    procedure HighlightMatches(const Needle: string); overload;
+    procedure HighlightMatches(const Needle: string; const Options: TMarkdownFindOptions); overload;
     procedure ClearHighlights;
     function HighlightCount: Integer;
     function HighlightRectsWithin(const Viewport: TLayoutRectF): TArray<TLayoutRectF>;
-    // The scroll offset that brings the match into view. False when it is in
-    // view already, so stepping through the matches on one screen does not
-    // make the content jump.
+    // The scroll offset that brings the match to the middle of the view, with
+    // the lines around it, as a browser does. False when it is in view
+    // already, so stepping through the matches on one screen does not make the
+    // content jump.
     function TryGetScrollTarget(const Match: TMarkdownFoundRange; out Offset: Single): Boolean;
     function CodeBlockRegions: TArray<TMarkdownCodeBlockRegion>;
     function TryGetCodeBlockAt(const Point: TLayoutPointF; out Region: TMarkdownCodeBlockRegion): Boolean;
@@ -926,35 +938,13 @@ begin
     FOnExtensionError(Self, Extension, Error);
 end;
 
-class function TMarkdownViewerModel.CaseInsensitiveIndexOf(const Needle, Haystack: string;
-  const StartIndex: Integer): Integer;
+function TMarkdownViewerModel.FindText(const Needle: string): TArray<TMarkdownFoundRange>;
 begin
-  const NeedleLength = Length(Needle);
-  const LastStart = Length(Haystack) - NeedleLength + 1;
-
-  for var Start := StartIndex to LastStart do
-  begin
-    var Matches := True;
-    for var Offset := 0 to NeedleLength - 1 do
-    begin
-      if Haystack[Start + Offset].ToUpper <> Needle[Offset + 1].ToUpper then
-      begin
-        Matches := False;
-        Break;
-      end;
-    end;
-
-    if Matches then
-    begin
-      Result := Start;
-      Exit;
-    end;
-  end;
-
-  Result := 0;
+  Result := FindText(Needle, Default(TMarkdownFindOptions));
 end;
 
-function TMarkdownViewerModel.FindText(const Needle: string): TArray<TMarkdownFoundRange>;
+function TMarkdownViewerModel.FindText(const Needle: string;
+  const Options: TMarkdownFindOptions): TArray<TMarkdownFoundRange>;
 begin
   Result := [];
 
@@ -972,22 +962,28 @@ begin
 
     const RunText = Run.Text;
     var Offset := 1;
-    var Found := CaseInsensitiveIndexOf(Needle, RunText, Offset);
+    var Found := TMarkdownTextSearch.IndexOf(Needle, RunText, Offset, Options);
 
     while Found > 0 do
     begin
       Result := Result + [TMarkdownFoundRange.Create(Index, Found, NeedleLength)];
       Offset := Found + NeedleLength;
-      Found := CaseInsensitiveIndexOf(Needle, RunText, Offset);
+      Found := TMarkdownTextSearch.IndexOf(Needle, RunText, Offset, Options);
     end;
   end;
 end;
 
 function TMarkdownViewerModel.TrySelectNextMatch(const Needle: string; out Match: TMarkdownFoundRange): Boolean;
 begin
+  Result := TrySelectNextMatch(Needle, Default(TMarkdownFindOptions), Match);
+end;
+
+function TMarkdownViewerModel.TrySelectNextMatch(const Needle: string; const Options: TMarkdownFindOptions;
+  out Match: TMarkdownFoundRange): Boolean;
+begin
   Match := Default(TMarkdownFoundRange);
 
-  const Matches = FindText(Needle);
+  const Matches = FindText(Needle, Options);
   Result := (Length(Matches) > 0);
   if not Result then
     Exit;
@@ -998,9 +994,15 @@ end;
 
 function TMarkdownViewerModel.TrySelectPreviousMatch(const Needle: string; out Match: TMarkdownFoundRange): Boolean;
 begin
+  Result := TrySelectPreviousMatch(Needle, Default(TMarkdownFindOptions), Match);
+end;
+
+function TMarkdownViewerModel.TrySelectPreviousMatch(const Needle: string; const Options: TMarkdownFindOptions;
+  out Match: TMarkdownFoundRange): Boolean;
+begin
   Match := Default(TMarkdownFoundRange);
 
-  const Matches = FindText(Needle);
+  const Matches = FindText(Needle, Options);
   Result := (Length(Matches) > 0);
   if not Result then
     Exit;
@@ -1107,9 +1109,37 @@ end;
 
 function TMarkdownViewerModel.MatchCount(const Needle: string): Integer;
 begin
-  const Matches = FindText(Needle);
+  Result := MatchCount(Needle, Default(TMarkdownFindOptions));
+end;
+
+function TMarkdownViewerModel.MatchCount(const Needle: string; const Options: TMarkdownFindOptions): Integer;
+begin
+  const Matches = FindText(Needle, Options);
   const Stops = DistinctMatches(Matches);
   Result := Length(Stops);
+end;
+
+function TMarkdownViewerModel.MatchIndex(const Needle: string; const Options: TMarkdownFindOptions): Integer;
+begin
+  Result := -1;
+  if not HasSelection then
+    Exit;
+
+  const Selection = NormalizeSelection;
+  const Matches = FindText(Needle, Options);
+  const Stops = DistinctMatches(Matches);
+
+  for var Index := 0 to High(Stops) do
+  begin
+    const Range = RangeOfMatch(Stops[Index]);
+    const IsSelected = ((ComparePositions(Range.StartPosition, Selection.StartPosition) = 0) and
+                        (ComparePositions(Range.EndPosition, Selection.EndPosition) = 0));
+    if IsSelected then
+    begin
+      Result := Index;
+      Exit;
+    end;
+  end;
 end;
 
 // Matches that select the same range, as several hits in one formula do,
@@ -1139,7 +1169,13 @@ end;
 
 procedure TMarkdownViewerModel.HighlightMatches(const Needle: string);
 begin
+  HighlightMatches(Needle, Default(TMarkdownFindOptions));
+end;
+
+procedure TMarkdownViewerModel.HighlightMatches(const Needle: string; const Options: TMarkdownFindOptions);
+begin
   FHighlightNeedle := Needle;
+  FHighlightOptions := Options;
   RefreshHighlights;
 end;
 
@@ -1175,7 +1211,7 @@ end;
 function TMarkdownViewerModel.TryGetScrollTarget(const Match: TMarkdownFoundRange; out Offset: Single): Boolean;
 begin
   const Bounds = MatchBounds(Match);
-  Offset := Bounds.Top;
+  Offset := Bounds.Top - (FViewportHeight - Bounds.Height) / 2;
   Result := not IsWithinViewport(Bounds);
 end;
 
@@ -1183,7 +1219,7 @@ end;
 // so scrolling through a document full of matches stays cheap.
 procedure TMarkdownViewerModel.RefreshHighlights;
 begin
-  const Matches = FindText(FHighlightNeedle);
+  const Matches = FindText(FHighlightNeedle, FHighlightOptions);
   const Marks = DistinctMatches(Matches);
   SetLength(FHighlightRects, Length(Marks));
 

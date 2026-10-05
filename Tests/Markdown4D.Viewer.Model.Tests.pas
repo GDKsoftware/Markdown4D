@@ -9,6 +9,7 @@ uses
   DUnitX.TestFramework,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Theme,
+  Markdown4D.Layout.TextSearch,
   Markdown4D.Viewer.Model;
 
 type
@@ -235,6 +236,27 @@ type
 
     [Test]
     procedure TryFlush_SelectedTextBecomesOtherNode_ClearsSelection;
+
+    [Test]
+    procedure MatchCount_MatchCase_CountsOnlyExactCase;
+
+    [Test]
+    procedure MatchCount_WholeWord_IgnoresPartialMatches;
+
+    [Test]
+    procedure TrySelectNextMatch_MatchCase_SkipsOtherCase;
+
+    [Test]
+    procedure HighlightMatches_WholeWord_MarksOnlyWholeWords;
+
+    [Test]
+    procedure MatchIndex_SecondMatchSelected_ReturnsOne;
+
+    [Test]
+    procedure MatchIndex_NoMatchSelected_ReturnsMinusOne;
+
+    [Test]
+    procedure TryGetScrollTarget_MatchBelowViewport_CentresIt;
 
     [Test]
     procedure HighlightMatches_SeveralMatches_ReturnsRectPerMatch;
@@ -979,6 +1001,85 @@ begin
   FModel.TryFlush(StartTime + FlushIntervalValue);
 
   Assert.IsFalse(FModel.HasSelection);
+end;
+
+procedure TMarkdownViewerModelTests.MatchCount_MatchCase_CountsOnlyExactCase;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'Alpha alpha ALPHA';
+
+  const Actual = FModel.MatchCount('alpha', TMarkdownFindOptions.Create(True, False));
+
+  Assert.AreEqual(1, Actual);
+end;
+
+procedure TMarkdownViewerModelTests.MatchCount_WholeWord_IgnoresPartialMatches;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'cat category cat';
+
+  const Actual = FModel.MatchCount('cat', TMarkdownFindOptions.Create(False, True));
+
+  Assert.AreEqual(2, Actual);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectNextMatch_MatchCase_SkipsOtherCase;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'Alpha alpha';
+
+  var Match: TMarkdownFoundRange;
+  FModel.TrySelectNextMatch('alpha', TMarkdownFindOptions.Create(True, False), Match);
+
+  Assert.AreEqual(7, Match.StartCharacter);
+end;
+
+procedure TMarkdownViewerModelTests.HighlightMatches_WholeWord_MarksOnlyWholeWords;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'cat category cat';
+
+  FModel.HighlightMatches('cat', TMarkdownFindOptions.Create(False, True));
+
+  Assert.AreEqual(2, FModel.HighlightCount);
+end;
+
+procedure TMarkdownViewerModelTests.MatchIndex_SecondMatchSelected_ReturnsOne;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'alpha beta alpha';
+  var Match: TMarkdownFoundRange;
+  FModel.TrySelectNextMatch('alpha', Match);
+  FModel.TrySelectNextMatch('alpha', Match);
+
+  const Actual = FModel.MatchIndex('alpha', Default(TMarkdownFindOptions));
+
+  Assert.AreEqual(1, Actual);
+end;
+
+procedure TMarkdownViewerModelTests.MatchIndex_NoMatchSelected_ReturnsMinusOne;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'alpha beta alpha';
+  SelectFromTo(60, FirstLineY, 100, FirstLineY);
+
+  const Actual = FModel.MatchIndex('alpha', Default(TMarkdownFindOptions));
+
+  Assert.AreEqual(-1, Actual);
+end;
+
+procedure TMarkdownViewerModelTests.TryGetScrollTarget_MatchBelowViewport_CentresIt;
+begin
+  FModel.SetViewport(DefaultWidth, SmallHeight);
+  FModel.Text := BuildTallMarkdown;
+  const Matches = FModel.FindText('paragraph6');
+
+  var Offset: Single;
+  const ShouldScroll = FModel.TryGetScrollTarget(Matches[0], Offset);
+
+  const MatchTop = 5 * (BaseLineHeight + BlockSpacingValue);
+  Assert.IsTrue(ShouldScroll);
+  AssertSingle(MatchTop - (SmallHeight - BaseLineHeight) / 2, Offset);
 end;
 
 procedure TMarkdownViewerModelTests.HighlightMatches_SeveralMatches_ReturnsRectPerMatch;
