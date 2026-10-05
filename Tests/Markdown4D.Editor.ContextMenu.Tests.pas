@@ -53,9 +53,24 @@ type
 
     [Test]
     procedure Execute_ClipboardCommand_IsLeftToTheHost;
+
+    [Test]
+    [TestCase('Undo', 'Undo,90,True')]
+    [TestCase('Redo', 'Redo,89,True')]
+    [TestCase('Cut', 'Cut,88,True')]
+    [TestCase('Copy', 'Copy,67,True')]
+    [TestCase('Paste', 'Paste,86,True')]
+    [TestCase('Delete', 'DeleteSelection,46,False')]
+    [TestCase('SelectAll', 'SelectAll,65,True')]
+    procedure Build_Item_ShowsTheShortcutTheEditorHandles(const Command: TEditorContextCommand;
+                                                          const KeyCode: Integer;
+                                                          const WithCtrl: Boolean);
   end;
 
 implementation
+
+uses
+  System.Classes;
 
 procedure TMarkdownEditorContextMenuTests.Setup;
 begin
@@ -145,6 +160,18 @@ begin
   Assert.IsFalse(TMarkdownEditorContextMenu.Execute(FModel, TEditorContextCommand.Copy));
   Assert.IsFalse(TMarkdownEditorContextMenu.Execute(FModel, TEditorContextCommand.Cut));
   Assert.IsFalse(TMarkdownEditorContextMenu.Execute(FModel, TEditorContextCommand.Paste));
+end;
+
+procedure TMarkdownEditorContextMenuTests.Build_Item_ShowsTheShortcutTheEditorHandles(
+  const Command: TEditorContextCommand; const KeyCode: Integer; const WithCtrl: Boolean);
+begin
+  var Expected: TShortCut := KeyCode;
+  if WithCtrl then
+    Expected := Expected or scCtrl;
+
+  const Actual = ItemFor(Command, True).ShortCut;
+
+  Assert.AreEqual(Integer(Expected), Integer(Actual));
 end;
 
 end.

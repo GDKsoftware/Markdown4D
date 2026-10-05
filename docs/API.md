@@ -19,6 +19,7 @@ All public enumerations are scoped (`{$SCOPEDENUMS ON}`), so qualify them:
 - [Incremental parser](#incremental-parser)
 - [Viewer components](#viewer-components)
 - [Editor components](#editor-components)
+- [Translating](#translating)
 - [Drawing SVG](#drawing-svg)
 - [Glyph outlines and image decoding](#glyph-outlines-and-image-decoding)
 
@@ -664,6 +665,18 @@ uses
 FEditor.AttachPreview(FPreview);
 FEditor.Text := '# Live preview'#10#10 + 'Type on the left, rendered on the right.';
 ```
+
+## Translating
+
+Every text the viewer and the editor show is a `resourcestring` in unit
+`Markdown4D.Consts`: the context menu captions, the copy button on code blocks
+and the alert titles (`Note`, `Tip`, `Important`, `Warning`, `Caution`). The
+Delphi translation tools and resource DLLs pick them up like the VCL's own
+strings. The alert titles appear in the HTML that `ToHtml` writes as well.
+
+The context menus show each entry's shortcut through the menu item's `ShortCut`,
+so its text (`Ctrl+C`, or `Strg+C` in a German build) comes from Delphi's own
+translated key names.
 
 ## Drawing SVG
 

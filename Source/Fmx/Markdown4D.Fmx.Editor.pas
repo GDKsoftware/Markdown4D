@@ -1223,6 +1223,7 @@ begin
     Entry.Parent := FContextMenu;
     Entry.Text := Item.Caption;
     Entry.Enabled := Item.Enabled;
+    Entry.ShortCut := Item.ShortCut;
     Entry.Tag := Ord(Item.Command);
     Entry.OnClick := HandleContextItemClick;
   end;
