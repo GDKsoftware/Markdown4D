@@ -43,6 +43,7 @@ type
     Strikeout: Boolean;
     class function Create(const FamilyName: string; const Size: Single; const Bold: Boolean = False;
       const Italic: Boolean = False): TMarkdownFontStyle; static;
+    function SameAs(const Other: TMarkdownFontStyle): Boolean;
   end;
 
   ITextMeasurer = interface
@@ -132,6 +133,16 @@ begin
   Result.Italic := Italic;
   Result.Underline := False;
   Result.Strikeout := False;
+end;
+
+function TMarkdownFontStyle.SameAs(const Other: TMarkdownFontStyle): Boolean;
+begin
+  Result := (FamilyName = Other.FamilyName) and
+            (Size = Other.Size) and
+            (Bold = Other.Bold) and
+            (Italic = Other.Italic) and
+            (Underline = Other.Underline) and
+            (Strikeout = Other.Strikeout);
 end;
 
 end.

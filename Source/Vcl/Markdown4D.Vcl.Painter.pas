@@ -12,7 +12,8 @@ uses
   Vcl.Graphics,
   Markdown4D.Image.Rasterizer,
   Markdown4D.Layout.Defaults,
-  Markdown4D.Layout.Interfaces;
+  Markdown4D.Layout.Interfaces,
+  Markdown4D.Layout.MeasureCache;
 
 type
   TMarkdownVclImageResolver = reference to function(const Source: string): TGraphic;
@@ -35,6 +36,11 @@ type
       FSavedStates: TStack<Integer>;
       FFamilyCache: TDictionary<string, string>;
       FMetricsCache: TDictionary<string, TTextMetric>;
+      FMeasureCache: TMarkdownMeasureCache;
+      FLastMetricsFont: TMarkdownFontStyle;
+      FLastMetricsPixelsPerInch: Integer;
+      FLastMetrics: TTextMetric;
+      FHasLastMetrics: Boolean;
       FAppliedFontKey: string;
       FHasAppliedFont: Boolean;
       FImageResolver: TMarkdownVclImageResolver;
@@ -46,6 +52,8 @@ type
     class function LookupFamilyName(const FamilyName: string): string;
     class function IsFamilyInstalled(const FamilyName: string): Boolean;
     function TextMetricsOf(const Font: TMarkdownFontStyle): TTextMetric;
+    function LookupTextMetrics(const Font: TMarkdownFontStyle): TTextMetric;
+    function MeasureCache: TMarkdownMeasureCache;
     procedure FillRectOpaque(const Bounds: TLayoutRectF; const Color: TLayoutColor);
     procedure FillRectBlended(const Bounds: TLayoutRectF; const Color: TLayoutColor);
     procedure DrawResolvedImage(const Bounds: TLayoutRectF; const Graphic: TGraphic; const SourceRect: TLayoutRectF);
@@ -111,6 +119,7 @@ end;
 
 destructor TMarkdownVclPainter.Destroy;
 begin
+  FMeasureCache.Free;
   FMetricsCache.Free;
   FFamilyCache.Free;
   FSavedStates.Free;
@@ -120,11 +129,15 @@ end;
 
 function TMarkdownVclPainter.MeasureText(const Text: string; const Font: TMarkdownFontStyle): TLayoutSizeF;
 begin
+  if MeasureCache.TryGetSize(Text, Font, FPixelsPerInch, Result) then
+    Exit;
+
   ApplyFont(Font);
 
   const Extent = FCanvas.TextExtent(Text);
   const Metrics = TextMetricsOf(Font);
   Result := TLayoutSizeF.Create(Extent.cx, Metrics.tmHeight + Metrics.tmExternalLeading);
+  MeasureCache.Add(Text, Font, FPixelsPerInch, Result);
 end;
 
 function TMarkdownVclPainter.LineHeight(const Font: TMarkdownFontStyle): Single;
@@ -638,7 +651,37 @@ begin
   Result := Screen.Fonts.IndexOf(FamilyName) >= 0;
 end;
 
+// Created on the first measurement: the viewer makes a painter for every paint,
+// and only the one it lays out with measures.
+function TMarkdownVclPainter.MeasureCache: TMarkdownMeasureCache;
+begin
+  if FMeasureCache = nil then
+    FMeasureCache := TMarkdownMeasureCache.Create;
+
+  Result := FMeasureCache;
+end;
+
+// Layout asks for the line height and the baseline of nearly every run, mostly
+// in the font it asked for last; that answer comes without building a key.
 function TMarkdownVclPainter.TextMetricsOf(const Font: TMarkdownFontStyle): TTextMetric;
+begin
+  const IsLastFont = (FHasLastMetrics and (FLastMetricsPixelsPerInch = FPixelsPerInch) and
+                      Font.SameAs(FLastMetricsFont));
+  if IsLastFont then
+  begin
+    Result := FLastMetrics;
+    Exit;
+  end;
+
+  Result := LookupTextMetrics(Font);
+
+  FLastMetricsFont := Font;
+  FLastMetricsPixelsPerInch := FPixelsPerInch;
+  FLastMetrics := Result;
+  FHasLastMetrics := True;
+end;
+
+function TMarkdownVclPainter.LookupTextMetrics(const Font: TMarkdownFontStyle): TTextMetric;
 begin
   const Key = FontKey(Font);
   if FMetricsCache.TryGetValue(Key, Result) then

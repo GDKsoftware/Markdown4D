@@ -21,6 +21,8 @@ uses
   Markdown4D.Theme,
   Markdown4D.Viewer.Model,
   Markdown4D.Viewer.Clicks,
+  Markdown4D.Layout.ResizePacer,
+  Markdown4D.Layout.Pointer,
   Markdown4D.Viewer.ContextMenu,
   Markdown4D.AutoScroll,
   Markdown4D.Vcl.AutoScroll,
@@ -80,6 +82,9 @@ type
       FMeasurePainterLifetime: IPainter;
       FBuffer: TBitmap;
       FFlushTimer: TTimer;
+      FResizeTimer: TTimer;
+      FResizePacer: TMarkdownResizePacer;
+      FAppliedWidth: Integer;
       FLoadedImages: TObjectDictionary<string, TGraphic>;
       FSelecting: Boolean;
       FClickCounter: TMarkdownClickCounter;
@@ -108,6 +113,9 @@ type
     function InvokeOnMainThread(const Action: TThreadProcedure): Boolean;
     procedure HandleModelExtensionError(const Sender: TObject; const Extension: string; const Error: Exception);
     procedure HandleFlushTimer(Sender: TObject);
+    procedure ApplyViewport;
+    procedure ApplyViewportNow;
+    procedure HandleResizeTimer(Sender: TObject);
     procedure ResolvePendingImages;
     procedure ResolvePendingImage(const Source: string);
     function TryResolveImageThroughEvent(const Source, Url: string): Boolean;
@@ -316,6 +324,11 @@ begin
   FFlushTimer.Enabled := False;
   FFlushTimer.Interval := FlushTimerIntervalMilliseconds;
   FFlushTimer.OnTimer := HandleFlushTimer;
+
+  FResizeTimer := TTimer.Create(Self);
+  FResizeTimer.Enabled := False;
+  FResizeTimer.Interval := TMarkdownResizePacer.SettleMilliseconds;
+  FResizeTimer.OnTimer := HandleResizeTimer;
 
   FCopyFeedbackTimer := TTimer.Create(Self);
   FCopyFeedbackTimer.Enabled := False;
@@ -561,7 +574,7 @@ begin
 
   EnsureDesignSample;
 
-  FModel.SetViewport(ClientWidth, ClientHeight);
+  ApplyViewportNow;
   ResolvePendingImages;
   UpdateScrollBar;
   ApplyScrollBarTheme;
@@ -571,7 +584,40 @@ procedure TMarkdownViewer.Resize;
 begin
   inherited Resize;
 
+  ApplyViewport;
+  ResolvePendingImages;
+  UpdateScrollBar;
+  Invalidate;
+end;
+
+procedure TMarkdownViewer.ApplyViewport;
+begin
+  const IsNewWidth = (ClientWidth <> FAppliedWidth);
+  const ReflowsNow = ((not IsNewWidth) or FResizePacer.TryReflowNow(GetTickCount64, FModel.LastLayoutMilliseconds));
+  if ReflowsNow then
+  begin
+    ApplyViewportNow;
+    Exit;
+  end;
+
+  FModel.SetViewport(FAppliedWidth, ClientHeight);
+  FResizeTimer.Enabled := False;
+  FResizeTimer.Enabled := True;
+end;
+
+procedure TMarkdownViewer.ApplyViewportNow;
+begin
+  FResizeTimer.Enabled := False;
+  FAppliedWidth := ClientWidth;
   FModel.SetViewport(ClientWidth, ClientHeight);
+end;
+
+procedure TMarkdownViewer.HandleResizeTimer(Sender: TObject);
+begin
+  if not FResizePacer.TryFlush(GetTickCount64, TMarkdownPointer.IsPrimaryButtonDown) then
+    Exit;
+
+  ApplyViewportNow;
   ResolvePendingImages;
   UpdateScrollBar;
   Invalidate;

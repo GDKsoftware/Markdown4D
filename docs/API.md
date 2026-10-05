@@ -551,6 +551,8 @@ same.
 | `OnMouseDown` / `OnMouseMove` / `OnMouseUp` | the standard mouse events | Every press, move and release, as on any control |
 | `OnExtensionError` | `(const Sender: TObject; const Extension: string; const Error: Exception)` | A block override or a document processor raised. The document shows without what that extension would have drawn or added (see [EXTENSIONS.md](EXTENSIONS.md)) |
 
+The viewer keeps the size of every word it measured, so laying a document out again (a new width, an arriving image, an edited text) costs a fraction of the first layout. When a layout takes longer than a frame, as with very large documents, a new width is laid out once the drag ends rather than on every pixel: when the mouse button is released, or once the width rests and no button is held.
+
 The viewer loads `http(s)` images asynchronously and local images relative to
 `Images.BaseUrl` or the loaded document's folder. Code blocks tagged `pascal`,
 `sql`, `json`, `xml` or `diff` are syntax-highlighted, and the added and removed
@@ -660,8 +662,11 @@ control lives in `Markdown4D.Vcl.Editor`, the FMX control in
 | `OnMouseDown` / `OnMouseMove` / `OnMouseUp` | the standard mouse events | Every press, move and release, as on any control |
 
 `AttachPreview` wires the editor to a `TMarkdownViewer`: edits refresh the
-preview on a short debounce, and the preview keeps its scroll aligned with the
-editor's first visible source line.
+preview after a pause in typing, and the preview keeps its scroll aligned with
+the editor's first visible source line. The pause grows with how long the last
+update took, so a large document does not stall the typing, and a hidden preview
+waits until it shows. Like the viewer, the editor wraps a very large document to a
+new width once a drag ends rather than on every pixel.
 
 ```pascal
 uses

@@ -153,6 +153,10 @@
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.AlertIcons.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.ExtensionCanvas.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.HitTest.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Layout.MeasureCache.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Layout.Pointer.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Layout.ResizePacer.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Editor.PreviewPacer.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.Interfaces.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.Primitives.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.Renderer.pas"/>
