@@ -10,6 +10,7 @@ uses
   Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.DisplayList,
+  Markdown4D.Layout.TextAnchor,
   Markdown4D.Theme;
 
 type
@@ -36,10 +37,7 @@ type
   TMarkdownViewerModel = class(TNoRefCountObject, IMarkdownImageSizeProvider, IMarkdownExtensionErrorSink)
   private
     type
-      TTextPosition = record
-        ItemIndex: Integer;
-        CharacterIndex: Integer;
-      end;
+      TTextPosition = TMarkdownTextPosition;
       TImageSlot = record
         State: TMarkdownImageSlotState;
         Size: TLayoutSizeF;
@@ -47,6 +45,12 @@ type
       TTextRange = record
         StartPosition: TTextPosition;
         EndPosition: TTextPosition;
+      end;
+      TSelectionAnchors = record
+        Anchor: TMarkdownTextAnchor;
+        Extent: TMarkdownTextAnchor;
+        UnitStart: TMarkdownTextAnchor;
+        UnitEnd: TMarkdownTextAnchor;
       end;
       // What a press and a drag select by: characters after a single click,
       // whole words after a double click, whole lines after a triple click.
@@ -85,6 +89,8 @@ type
       FImageSlotOrder: TList<string>;
       FOnExtensionError: TMarkdownExtensionErrorEvent;
     procedure Relayout;
+    function TryCaptureSelection(out Selection: TSelectionAnchors): Boolean;
+    function TryRestoreSelection(const Selection: TSelectionAnchors): Boolean;
     procedure RegisterImageSlots;
     function TryFindTextRunBounds(out FirstIndex, LastIndex: Integer): Boolean;
     function TryResolvePosition(const Point: TLayoutPointF; out Position: TTextPosition): Boolean;
@@ -1267,6 +1273,8 @@ begin
   if FViewportWidth <= 0 then
     Exit;
 
+  var Selection: TSelectionAnchors;
+  const CanKeepSelection = TryCaptureSelection(Selection);
   const Watch = TStopwatch.StartNew;
   const Document = TMarkdown.Parse(FText, TMarkdownDialect.Gfm);
   TLayoutDocumentProcessorRegistry.Process(Document, Self);
@@ -1274,8 +1282,70 @@ begin
   FDisplayList := TMarkdownLayoutEngine.LayoutDocument(Document, FViewportWidth, FTheme, FMeasurer, Self, Self);
   FLastLayoutMilliseconds := Watch.ElapsedMilliseconds;
   Inc(FLayoutCount);
+
+  // A selection whose text the new layout no longer has is dropped, rather
+  // than drawn over whatever text now sits at its old place.
+  const IsSelectionKept = CanKeepSelection and TryRestoreSelection(Selection);
+  if not IsSelectionKept then
+    ClearSelection;
+
   RegisterImageSlots;
   RefreshHighlights;
+end;
+
+function TMarkdownViewerModel.TryCaptureSelection(out Selection: TSelectionAnchors): Boolean;
+begin
+  Selection := Default(TSelectionAnchors);
+  Result := False;
+  if not HasCaret then
+    Exit;
+
+  const Anchors = TMarkdownTextAnchors.Create(FDisplayList);
+  try
+    if not Anchors.TryAnchorOf(FAnchor, Selection.Anchor) then
+      Exit;
+    if not Anchors.TryAnchorOf(FExtent, Selection.Extent) then
+      Exit;
+
+    const HasUnitRange = (FSelectionUnit <> TSelectionUnit.Character);
+    if HasUnitRange then
+    begin
+      if not Anchors.TryAnchorOf(FUnitRange.StartPosition, Selection.UnitStart) then
+        Exit;
+      if not Anchors.TryAnchorOf(FUnitRange.EndPosition, Selection.UnitEnd) then
+        Exit;
+    end;
+
+    Result := True;
+  finally
+    Anchors.Free;
+  end;
+end;
+
+function TMarkdownViewerModel.TryRestoreSelection(const Selection: TSelectionAnchors): Boolean;
+begin
+  Result := False;
+
+  const Anchors = TMarkdownTextAnchors.Create(FDisplayList);
+  try
+    if not Anchors.TryPositionOf(Selection.Anchor, FAnchor) then
+      Exit;
+    if not Anchors.TryPositionOf(Selection.Extent, FExtent) then
+      Exit;
+
+    const HasUnitRange = (FSelectionUnit <> TSelectionUnit.Character);
+    if HasUnitRange then
+    begin
+      if not Anchors.TryPositionOf(Selection.UnitStart, FUnitRange.StartPosition) then
+        Exit;
+      if not Anchors.TryPositionOf(Selection.UnitEnd, FUnitRange.EndPosition) then
+        Exit;
+    end;
+
+    Result := True;
+  finally
+    Anchors.Free;
+  end;
 end;
 
 procedure TMarkdownViewerModel.RegisterImageSlots;
@@ -1381,12 +1451,9 @@ begin
   end;
 end;
 
-// Glyphs that belong to a drawing, such as a formula, are text runs for the
-// painter but not for the reader: selecting, searching and copying skip them.
-// The drawing's source run takes their place.
 function TMarkdownViewerModel.TrySelectableRun(const Index: Integer; out Run: IDisplayTextRun): Boolean;
 begin
-  Result := Supports(FDisplayList.Items[Index], IDisplayTextRun, Run) and (Run.Role <> TDisplayTextRunRole.Drawing);
+  Result := TMarkdownTextAnchors.TrySelectableRun(FDisplayList, Index, Run);
 end;
 
 // A source run is selected whole or not at all: the pointer picks the edge
