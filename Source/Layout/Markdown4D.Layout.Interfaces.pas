@@ -4,6 +4,9 @@ unit Markdown4D.Layout.Interfaces;
 
 interface
 
+uses
+  System.SysUtils;
+
 type
   TLayoutColor = Cardinal;
 
@@ -52,6 +55,11 @@ type
   IMarkdownImageSizeProvider = interface
     ['{B4E7A2D9-6C31-4F58-9E0D-7A15C8B3F642}']
     function TryGetImageSize(const Source: string; out Size: TLayoutSizeF): Boolean;
+  end;
+
+  IMarkdownExtensionErrorSink = interface
+    ['{2CB1D887-F71C-4643-95F9-B7C62C6387DC}']
+    procedure ExtensionFailed(const Extension: string; const Error: Exception);
   end;
 
   IPainter = interface(ITextMeasurer)

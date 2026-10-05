@@ -118,6 +118,7 @@
         <DCCReference Include="Markdown4D.Vcl.ScrollBarTheme.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Image.Tests.pas"/>
         <DCCReference Include="Markdown4D.Tests.Pipeline.Helpers.pas"/>
+        <DCCReference Include="Markdown4D.Tests.FailingExtensions.pas"/>
         <DCCReference Include="Markdown4D.Tests.Vcl.BitmapHelpers.pas"/>
         <DCCReference Include="Markdown4D.Charts.Corpus.pas"/>
         <DCCReference Include="Markdown4D.Extensions.Chart.Tests.pas"/>

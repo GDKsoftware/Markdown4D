@@ -6,6 +6,7 @@ interface
 
 uses
   DUnitX.TestFramework,
+  System.SysUtils,
   System.Classes,
   System.Types,
   System.UITypes,
@@ -50,8 +51,10 @@ type
     var
       FViewer: TMarkdownViewer;
       FExternalTheme: TMarkdownTheme;
+      FReportedSender: TObject;
     class function IsBandUntouched(const Bitmap: TBitmap; const BandHeight: Integer): Boolean;
     procedure PressKey(const Key: Word; const Shift: TShiftState);
+    procedure RecordExtensionError(const Sender: TObject; const Extension: string; const Error: Exception);
 
   public
     [Setup]
@@ -113,13 +116,17 @@ type
 
     [Test]
     procedure Keyboard_PlainCharacter_IsLeftToTheHost;
+
+    [Test]
+    procedure Text_FailingExtension_ReportsErrorWithViewerAsSender;
   end;
 
 implementation
 
 uses
-  System.SysUtils,
-  Markdown4D.Tests.Pipeline.Helpers;
+  Markdown4D.Layout.BlockOverride,
+  Markdown4D.Tests.Pipeline.Helpers,
+  Markdown4D.Tests.FailingExtensions;
 
 type
   // Widens MouseDown/MouseMove/MouseUp from protected to accessible-in-unit, so a
@@ -383,6 +390,26 @@ begin
   finally
     Bitmap.Unmap(Data);
   end;
+end;
+
+procedure TMarkdownFmxViewerTests.Text_FailingExtension_ReportsErrorWithViewerAsSender;
+begin
+  TLayoutDocumentProcessorRegistry.Register(TFailingDocumentProcessor.ProcessorName, TFailingDocumentProcessor.Create);
+  try
+    FViewer.OnExtensionError := RecordExtensionError;
+
+    FViewer.Text := SampleMarkdown;
+
+    Assert.AreSame(FViewer, FReportedSender, 'The viewer, not its internal model, must be the sender');
+  finally
+    TLayoutDocumentProcessorRegistry.Clear;
+  end;
+end;
+
+procedure TMarkdownFmxViewerTests.RecordExtensionError(const Sender: TObject; const Extension: string;
+  const Error: Exception);
+begin
+  FReportedSender := Sender;
 end;
 
 end.

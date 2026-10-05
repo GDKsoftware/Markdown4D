@@ -5,6 +5,7 @@ unit Markdown4D.Vcl.Viewer.Tests;
 interface
 
 uses
+  System.SysUtils,
   System.Classes,
   Vcl.Forms,
   DUnitX.TestFramework,
@@ -34,8 +35,10 @@ type
       GrowthDenominator = 2;
     var
       FHostForm: TForm;
+      FReportedSender: TObject;
     function NewHostedViewer: TTestableVclViewer;
     class function FirstTextRunHeight(const Viewer: TMarkdownViewer): Single; static;
+    procedure RecordExtensionError(const Sender: TObject; const Extension: string; const Error: Exception);
 
   public
     [TearDown]
@@ -70,16 +73,20 @@ type
 
     [Test]
     procedure ScaleForPPI_OnHostForm_ScalesText;
+
+    [Test]
+    procedure Text_FailingExtension_ReportsErrorWithViewerAsSender;
   end;
 
 implementation
 
 uses
-  System.SysUtils,
   System.Types,
   Winapi.Windows,
   Markdown4D.Layout.DisplayList,
-  Markdown4D.Tests.Pipeline.Helpers;
+  Markdown4D.Layout.BlockOverride,
+  Markdown4D.Tests.Pipeline.Helpers,
+  Markdown4D.Tests.FailingExtensions;
 
 function TTestableVclViewer.SimulateWheel(const WheelDelta: Integer): Boolean;
 begin
@@ -234,6 +241,27 @@ begin
   end;
 
   Assert.Fail('The viewer laid out no text run');
+end;
+
+procedure TMarkdownVclViewerTests.Text_FailingExtension_ReportsErrorWithViewerAsSender;
+begin
+  TLayoutDocumentProcessorRegistry.Register(TFailingDocumentProcessor.ProcessorName, TFailingDocumentProcessor.Create);
+  try
+    const Viewer = NewHostedViewer;
+    Viewer.OnExtensionError := RecordExtensionError;
+
+    Viewer.Text := ShortMarkdown;
+
+    Assert.AreSame(Viewer, FReportedSender, 'The viewer, not its internal model, must be the sender');
+  finally
+    TLayoutDocumentProcessorRegistry.Clear;
+  end;
+end;
+
+procedure TMarkdownVclViewerTests.RecordExtensionError(const Sender: TObject; const Extension: string;
+  const Error: Exception);
+begin
+  FReportedSender := Sender;
 end;
 
 end.

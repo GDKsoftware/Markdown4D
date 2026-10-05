@@ -81,16 +81,29 @@ type
 
   TLayoutDocumentProcessorRegistry = class
   private
+    type
+      TRegistration = record
+        Name: string;
+        Processor: IMarkdownDocumentProcessor;
+      end;
     class var
-      FProcessors: TArray<IMarkdownDocumentProcessor>;
+      FRegistrations: TArray<TRegistration>;
+    class procedure RunProcessor(const Registration: TRegistration; const Document: IMarkdownDocument;
+      const Errors: IMarkdownExtensionErrorSink);
 
   public
-    class procedure Register(const Processor: IMarkdownDocumentProcessor);
-    class procedure Process(const Document: IMarkdownDocument);
+    // The name tells a host which extension failed.
+    class procedure Register(const Name: string; const Processor: IMarkdownDocumentProcessor);
+    // With Errors, a processor that raises is reported and skipped; without,
+    // the exception reaches the caller.
+    class procedure Process(const Document: IMarkdownDocument; const Errors: IMarkdownExtensionErrorSink = nil);
     class procedure Clear;
   end;
 
 implementation
+
+uses
+  System.SysUtils;
 
 class procedure TLayoutBlockOverrideRegistry.Register(const Handler: ILayoutBlockOverride; const Priority: Integer);
 begin
@@ -149,25 +162,48 @@ begin
   FNextOrdinal := 0;
 end;
 
-class procedure TLayoutDocumentProcessorRegistry.Register(const Processor: IMarkdownDocumentProcessor);
+class procedure TLayoutDocumentProcessorRegistry.Register(const Name: string;
+  const Processor: IMarkdownDocumentProcessor);
 begin
-  FProcessors := FProcessors + [Processor];
+  var Registration := Default(TRegistration);
+  Registration.Name := Name;
+  Registration.Processor := Processor;
+
+  FRegistrations := FRegistrations + [Registration];
 end;
 
-class procedure TLayoutDocumentProcessorRegistry.Process(const Document: IMarkdownDocument);
+class procedure TLayoutDocumentProcessorRegistry.Process(const Document: IMarkdownDocument;
+  const Errors: IMarkdownExtensionErrorSink);
 begin
   if Document = nil then
     Exit;
 
-  for var Processor in FProcessors do
+  for var Registration in FRegistrations do
   begin
-    Processor.Process(Document);
+    RunProcessor(Registration, Document, Errors);
+  end;
+end;
+
+// Extension code may fail on any input, so every exception counts.
+class procedure TLayoutDocumentProcessorRegistry.RunProcessor(const Registration: TRegistration;
+  const Document: IMarkdownDocument; const Errors: IMarkdownExtensionErrorSink);
+begin
+  try
+    Registration.Processor.Process(Document);
+  except
+    on Error: Exception do
+    begin
+      if not Assigned(Errors) then
+        raise;
+
+      Errors.ExtensionFailed(Registration.Name, Error);
+    end;
   end;
 end;
 
 class procedure TLayoutDocumentProcessorRegistry.Clear;
 begin
-  FProcessors := nil;
+  FRegistrations := nil;
 end;
 
 end.

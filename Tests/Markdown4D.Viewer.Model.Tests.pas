@@ -5,6 +5,7 @@ unit Markdown4D.Viewer.Model.Tests;
 interface
 
 uses
+  System.SysUtils,
   DUnitX.TestFramework,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Theme,
@@ -39,7 +40,11 @@ type
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
       FModel: TMarkdownViewerModel;
+      FReportedSender: TObject;
+      FReportedExtension: string;
+      FReportedMessage: string;
     class function BuildTallMarkdown: string;
+    procedure RecordExtensionError(const Sender: TObject; const Extension: string; const Error: Exception);
     class procedure AssertSingle(const Expected, Actual: Single);
     procedure SelectFromTo(const AnchorX, AnchorY, ExtentX, ExtentY: Single);
     procedure LoadImageDocument;
@@ -251,16 +256,28 @@ type
 
     [Test]
     procedure CodeBlockRegions_OverriddenBlock_IsExcluded;
+
+    [Test]
+    procedure SetText_FailingBlockOverride_ShowsWholeDocument;
+
+    [Test]
+    procedure SetText_FailingDocumentProcessor_ShowsWholeDocument;
+
+    [Test]
+    procedure SetText_FailingBlockOverride_ReportsExtensionError;
+
+    [Test]
+    procedure SetText_FailingDocumentProcessor_ReportsExtensionError;
   end;
 
 implementation
 
 uses
-  System.SysUtils,
   Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.DisplayList,
   Markdown4D.Layout.BlockOverride,
-  Markdown4D.Layout.FakeMeasurer;
+  Markdown4D.Layout.FakeMeasurer,
+  Markdown4D.Tests.FailingExtensions;
 
 type
   // Stands in for the chart/mermaid overrides: claims every code block and
@@ -1050,6 +1067,77 @@ begin
   finally
     TLayoutBlockOverrideRegistry.Clear;
   end;
+end;
+
+procedure TMarkdownViewerModelTests.SetText_FailingBlockOverride_ShowsWholeDocument;
+begin
+  TLayoutBlockOverrideRegistry.Register(TFailingCodeBlockOverride.Create, 100);
+  try
+    FModel.SetViewport(DefaultWidth, DefaultHeight);
+    FModel.Text := '# Title'#10#10 + Fence + #10 + 'code' + #10 + Fence + #10#10 + 'After';
+
+    FModel.SelectAll;
+
+    Assert.AreEqual('Title'#13#10#13#10'code'#13#10#13#10'After', FModel.SelectedText);
+  finally
+    TLayoutBlockOverrideRegistry.Clear;
+  end;
+end;
+
+procedure TMarkdownViewerModelTests.SetText_FailingDocumentProcessor_ShowsWholeDocument;
+begin
+  TLayoutDocumentProcessorRegistry.Register(TFailingDocumentProcessor.ProcessorName, TFailingDocumentProcessor.Create);
+  try
+    FModel.SetViewport(DefaultWidth, DefaultHeight);
+    FModel.Text := '# Title'#10#10'After';
+
+    FModel.SelectAll;
+
+    Assert.AreEqual('Title'#13#10#13#10'After', FModel.SelectedText);
+  finally
+    TLayoutDocumentProcessorRegistry.Clear;
+  end;
+end;
+
+procedure TMarkdownViewerModelTests.SetText_FailingBlockOverride_ReportsExtensionError;
+begin
+  TLayoutBlockOverrideRegistry.Register(TFailingCodeBlockOverride.Create, 100);
+  try
+    FModel.OnExtensionError := RecordExtensionError;
+    FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+    FModel.Text := Fence + #10 + 'code' + #10 + Fence;
+
+    Assert.AreSame(FModel, FReportedSender);
+    Assert.AreEqual(TFailingCodeBlockOverride.OverrideName, FReportedExtension);
+    Assert.AreEqual(TFailingCodeBlockOverride.FailureMessage, FReportedMessage);
+  finally
+    TLayoutBlockOverrideRegistry.Clear;
+  end;
+end;
+
+procedure TMarkdownViewerModelTests.SetText_FailingDocumentProcessor_ReportsExtensionError;
+begin
+  TLayoutDocumentProcessorRegistry.Register(TFailingDocumentProcessor.ProcessorName, TFailingDocumentProcessor.Create);
+  try
+    FModel.OnExtensionError := RecordExtensionError;
+    FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+    FModel.Text := 'text';
+
+    Assert.AreEqual(TFailingDocumentProcessor.ProcessorName, FReportedExtension);
+    Assert.AreEqual(TFailingDocumentProcessor.FailureMessage, FReportedMessage);
+  finally
+    TLayoutDocumentProcessorRegistry.Clear;
+  end;
+end;
+
+procedure TMarkdownViewerModelTests.RecordExtensionError(const Sender: TObject; const Extension: string;
+  const Error: Exception);
+begin
+  FReportedSender := Sender;
+  FReportedExtension := Extension;
+  FReportedMessage := Error.Message;
 end;
 
 class function TMarkdownViewerModelTests.BuildTallMarkdown: string;

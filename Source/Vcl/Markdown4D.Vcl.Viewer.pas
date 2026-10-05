@@ -42,6 +42,8 @@ type
   // through this unit.
   TMarkdownViewerImageSettings = Markdown4D.Viewer.ImageSettings.TMarkdownViewerImageSettings;
 
+  TMarkdownExtensionErrorEvent = Markdown4D.Viewer.Model.TMarkdownExtensionErrorEvent;
+
   // Vetoes or permits one remote image, starting from Images.AllowRemote. Use it
   // to decide per address, for instance to allow only hosts the application
   // knows.
@@ -100,9 +102,11 @@ type
       FOnResolveImage: TMarkdownResolveImageEvent;
       FOnRemoteImageRequest: TMarkdownRemoteImageEvent;
       FOnScroll: TNotifyEvent;
+      FOnExtensionError: TMarkdownExtensionErrorEvent;
     class constructor Create;
     class destructor Destroy;
     function InvokeOnMainThread(const Action: TThreadProcedure): Boolean;
+    procedure HandleModelExtensionError(const Sender: TObject; const Extension: string; const Error: Exception);
     procedure HandleFlushTimer(Sender: TObject);
     procedure ResolvePendingImages;
     procedure ResolvePendingImage(const Source: string);
@@ -234,6 +238,7 @@ type
     property OnRemoteImageRequest: TMarkdownRemoteImageEvent read FOnRemoteImageRequest
       write FOnRemoteImageRequest;
     property OnScroll: TNotifyEvent read FOnScroll write FOnScroll;
+    property OnExtensionError: TMarkdownExtensionErrorEvent read FOnExtensionError write FOnExtensionError;
   end;
 
 implementation
@@ -290,6 +295,7 @@ begin
   FMeasurePainter := TMarkdownVclPainter.Create(FMeasureBitmap.Canvas, ContentPixelsPerInch);
   FMeasurePainterLifetime := FMeasurePainter;
   FModel := TMarkdownViewerModel.Create(FTheme, FMeasurePainterLifetime);
+  FModel.OnExtensionError := HandleModelExtensionError;
 
   FBuffer := TBitmap.Create;
 
@@ -383,6 +389,13 @@ begin
 
   FModel.AppendMarkdown(Markdown, Int64(GetTickCount64));
   FFlushTimer.Enabled := True;
+end;
+
+procedure TMarkdownViewer.HandleModelExtensionError(const Sender: TObject; const Extension: string;
+  const Error: Exception);
+begin
+  if Assigned(FOnExtensionError) then
+    FOnExtensionError(Self, Extension, Error);
 end;
 
 procedure TMarkdownViewer.HandleFlushTimer(Sender: TObject);
