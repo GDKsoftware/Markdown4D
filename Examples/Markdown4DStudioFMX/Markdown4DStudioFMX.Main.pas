@@ -277,6 +277,7 @@ type
     procedure FlushPreview;
     procedure EditorFindNext(const Needle: string);
     function EditorFindMatchCount(const Needle: string): Integer;
+    function EditorFindMatchIndex(const Needle: string): Integer;
     procedure EditorHighlightMatches(const Needle: string);
     function EditorReplaceCurrent(const Needle, Replacement: string): Boolean;
     function EditorReplaceAll(const Needle, Replacement: string): Integer;
@@ -284,6 +285,7 @@ type
     procedure PreviewFindPrevious(const Needle: string);
     procedure PreviewHighlightMatches(const Needle: string);
     function PreviewHighlightCount: Integer;
+    function PreviewFindMatchIndex(const Needle: string): Integer;
     function PreviewLayoutCount: Integer;
     procedure BeginSwap;
     procedure EndSwap;
@@ -1898,6 +1900,11 @@ begin
   Result := mdEditor.FindMatchCount(Needle);
 end;
 
+function TMarkdown4DStudioFMXForm.EditorFindMatchIndex(const Needle: string): Integer;
+begin
+  Result := mdEditor.FindMatchIndex(Needle, Default(TMarkdownFindOptions));
+end;
+
 procedure TMarkdown4DStudioFMXForm.PreviewFindText(const Needle: string);
 begin
   mdPreview.FindText(Needle);
@@ -1916,6 +1923,11 @@ end;
 function TMarkdown4DStudioFMXForm.PreviewHighlightCount: Integer;
 begin
   Result := mdPreview.HighlightCount;
+end;
+
+function TMarkdown4DStudioFMXForm.PreviewFindMatchIndex(const Needle: string): Integer;
+begin
+  Result := mdPreview.FindMatchIndex(Needle, Default(TMarkdownFindOptions));
 end;
 
 function TMarkdown4DStudioFMXForm.PreviewLayoutCount: Integer;

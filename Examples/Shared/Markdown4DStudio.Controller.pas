@@ -46,7 +46,7 @@ type
     procedure RememberPosition(const Document: IPadDocument);
     procedure ApplyRememberedPosition(const Document: IPadDocument);
     procedure ShowPreviewFindCount;
-    class function MatchCountCaption(const Total: Integer): string; static;
+    class function MatchCaption(const Index, Total: Integer): string; static;
   public
     constructor Create(const Editor: IPadEditorView; const Shell: IPadShell;
       const SessionFileName: string);
@@ -572,7 +572,8 @@ begin
   end;
 
   const Total = FEditor.EditorFindMatchCount(Needle);
-  FShell.SetFindCount(MatchCountCaption(Total));
+  const Index = FEditor.EditorFindMatchIndex(Needle);
+  FShell.SetFindCount(MatchCaption(Index, Total));
 end;
 
 procedure TPadController.ExecuteFind;
@@ -582,6 +583,7 @@ begin
     Exit;
 
   FEditor.PreviewFindText(Needle);
+  ShowPreviewFindCount;
 end;
 
 procedure TPadController.ExecuteFindPrevious;
@@ -592,6 +594,7 @@ begin
     Exit;
 
   FEditor.PreviewFindPrevious(Needle);
+  ShowPreviewFindCount;
 end;
 
 procedure TPadController.UpdatePreviewFindCount;
@@ -608,7 +611,8 @@ procedure TPadController.ShowPreviewFindCount;
 begin
   FPreviewLayoutCount := FEditor.PreviewLayoutCount;
 
-  const IsSearching = (FShell.PreviewFindNeedle <> '');
+  const Needle = FShell.PreviewFindNeedle;
+  const IsSearching = (Needle <> '');
   if not IsSearching then
   begin
     FShell.SetPreviewFindCount(EmptyFindCaption);
@@ -616,17 +620,23 @@ begin
   end;
 
   const Total = FEditor.PreviewHighlightCount;
-  const Caption = MatchCountCaption(Total);
+  const Index = FEditor.PreviewFindMatchIndex(Needle);
+  const Caption = MatchCaption(Index, Total);
   FShell.SetPreviewFindCount(Caption);
 end;
 
-class function TPadController.MatchCountCaption(const Total: Integer): string;
+// Where the selection is among the matches once it is one of them, as a
+// browser shows it; until then only how many there are.
+class function TPadController.MatchCaption(const Index, Total: Integer): string;
 begin
   const HasNone = (Total = 0);
   const HasOne = (Total = 1);
+  const IsOnMatch = (Index >= 0);
 
   if HasNone then
     Result := NoMatchCaption
+  else if IsOnMatch then
+    Result := Format(MatchPositionFormat, [Index + 1, Total])
   else if HasOne then
     Result := SingleMatchCaption
   else

@@ -26,6 +26,7 @@ type
     FPreviewHighlightedNeedle: string;
     FPreviewPreviousNeedle: string;
     FPreviewLayoutCount: Integer;
+    FPreviewMatchIndex: Integer;
     function GetEditorText: string;
     procedure SetEditorText(const Value: string);
     function MergeEditorText(const Value: string): Boolean;
@@ -40,6 +41,7 @@ type
     procedure FlushPreview;
     procedure EditorFindNext(const Needle: string);
     function EditorFindMatchCount(const Needle: string): Integer;
+    function EditorFindMatchIndex(const Needle: string): Integer;
     procedure EditorHighlightMatches(const Needle: string);
     function EditorReplaceCurrent(const Needle, Replacement: string): Boolean;
     function EditorReplaceAll(const Needle, Replacement: string): Integer;
@@ -47,6 +49,7 @@ type
     procedure PreviewFindPrevious(const Needle: string);
     procedure PreviewHighlightMatches(const Needle: string);
     function PreviewHighlightCount: Integer;
+    function PreviewFindMatchIndex(const Needle: string): Integer;
     function PreviewLayoutCount: Integer;
     procedure BeginSwap;
     procedure EndSwap;
@@ -59,6 +62,7 @@ type
     property PreviewHighlightedNeedle: string read FPreviewHighlightedNeedle;
     property PreviewPreviousNeedle: string read FPreviewPreviousNeedle;
     property PreviewLayouts: Integer read FPreviewLayoutCount write FPreviewLayoutCount;
+    property PreviewMatchIndex: Integer read FPreviewMatchIndex write FPreviewMatchIndex;
     property VisibleLine: Integer read FFirstVisibleSourceLine write FFirstVisibleSourceLine;
   end;
 
@@ -76,6 +80,7 @@ type
     FReplaceValue: string;
     FPreviewNeedle: string;
     FPreviewFindCount: string;
+    FFindCount: string;
     FCloseChoice: TPadCloseChoice;
     procedure RebuildTabs;
     procedure SetDocumentTitle(const Name: string);
@@ -115,6 +120,7 @@ type
     property ReplaceValue: string read FReplaceValue write FReplaceValue;
     property PreviewNeedle: string read FPreviewNeedle write FPreviewNeedle;
     property PreviewFindCount: string read FPreviewFindCount;
+    property FindCount: string read FFindCount;
   end;
 
   [TestFixture]
@@ -181,6 +187,12 @@ type
     procedure PreviewFindPrevious_SearchesBackwards;
 
     [Test]
+    procedure FindInEditor_MatchSelected_ShowsItsPosition;
+
+    [Test]
+    procedure PreviewFind_MatchSelected_ShowsItsPosition;
+
+    [Test]
     procedure Tick_PreviewLaidOutAgain_RecountsPreviewMatches;
 
     [Test]
@@ -221,6 +233,7 @@ begin
   inherited Create;
 
   FModel := TMarkdownEditorModel.Create;
+  FPreviewMatchIndex := -1;
 end;
 
 destructor TFakeEditorView.Destroy;
@@ -292,12 +305,19 @@ end;
 
 procedure TFakeEditorView.EditorFindNext(const Needle: string);
 begin
-  FModel.FindNext(Needle, FModel.CaretPosition);
+  const Found = FModel.FindNext(Needle, FModel.CaretPosition);
+  if Found >= 0 then
+    FModel.SetSelection(Found, Length(Needle));
 end;
 
 function TFakeEditorView.EditorFindMatchCount(const Needle: string): Integer;
 begin
   Result := FModel.FindMatchCount(Needle);
+end;
+
+function TFakeEditorView.EditorFindMatchIndex(const Needle: string): Integer;
+begin
+  Result := FModel.FindMatchIndex(Needle, Default(TMarkdownFindOptions));
 end;
 
 procedure TFakeEditorView.EditorHighlightMatches(const Needle: string);
@@ -335,6 +355,11 @@ end;
 function TFakeEditorView.PreviewHighlightCount: Integer;
 begin
   Result := FModel.FindMatchCount(FPreviewHighlightedNeedle);
+end;
+
+function TFakeEditorView.PreviewFindMatchIndex(const Needle: string): Integer;
+begin
+  Result := FPreviewMatchIndex;
 end;
 
 function TFakeEditorView.PreviewLayoutCount: Integer;
@@ -407,7 +432,7 @@ end;
 
 procedure TFakeShell.SetFindCount(const Value: string);
 begin
-  // The find label is not asserted on.
+  FFindCount := Value;
 end;
 
 procedure TFakeShell.SetPreviewFindCount(const Value: string);
@@ -700,6 +725,29 @@ begin
   FController.ExecuteFindPrevious;
 
   Assert.AreEqual('line', FEditorView.PreviewPreviousNeedle);
+end;
+
+procedure TPadControllerTests.FindInEditor_MatchSelected_ShowsItsPosition;
+begin
+  OpenSampleFile;
+  FView.EditorCaret := 0;
+  FShell.FindNeedle := 'line';
+
+  FController.FindInEditor;
+
+  Assert.AreEqual('1 of 3', FShell.FindCount);
+end;
+
+procedure TPadControllerTests.PreviewFind_MatchSelected_ShowsItsPosition;
+begin
+  OpenSampleFile;
+  FShell.PreviewNeedle := 'line';
+  FController.UpdatePreviewFindCount;
+  FEditorView.PreviewMatchIndex := 1;
+
+  FController.ExecuteFind;
+
+  Assert.AreEqual('2 of 3', FShell.PreviewFindCount);
 end;
 
 procedure TPadControllerTests.Tick_PreviewLaidOutAgain_RecountsPreviewMatches;

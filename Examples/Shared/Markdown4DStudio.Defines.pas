@@ -91,6 +91,7 @@ const
   RecentNoneCaption = '(none)';
   CloseDocumentPromptFormat = 'Save changes to %s before closing?';
   MatchCountFormat = '%d matches';
+  MatchPositionFormat = '%d of %d';
   SingleMatchCaption = '1 match';
   NoMatchCaption = 'No matches';
   EmptyFindCaption = '';
