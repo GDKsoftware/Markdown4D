@@ -26,6 +26,7 @@ uses
   Markdown4D.Editor.Highlighter,
   Markdown4D.Editor.Sync,
   Markdown4D.Viewer.Lifetime,
+  Markdown4D.Viewer.Clicks,
   Markdown4D.AutoScroll,
   Markdown4D.Vcl.AutoScroll,
   Markdown4D.Vcl.Painter,
@@ -77,6 +78,7 @@ type
       FDragOffset: Integer;
       FContextMenu: TPopupMenu;
       FClickCount: Integer;
+      FClickGesture: TMarkdownClickGesture;
       FLastClickTicks: Cardinal;
       FLastClickPos: TPoint;
       FDragPoint: TPoint;
@@ -133,6 +135,7 @@ type
     function BeginSelectionDrag(const X, Y, Offset: Integer): Boolean;
     procedure UpdateSelectionDrag(const X, Y: Integer);
     function FinishSelectionDrag(const X, Y: Integer): Boolean;
+    procedure RaiseClick(const Kind: TMarkdownClickKind);
     procedure ShowContextMenu(const X, Y: Integer);
     procedure HandleContextItemClick(Sender: TObject);
     function ClipboardHasText: Boolean;
@@ -289,6 +292,11 @@ type
     property Visible;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
     property OnScroll: TNotifyEvent read FOnScroll write FOnScroll;
+    property OnClick;
+    property OnDblClick;
+    property OnMouseDown;
+    property OnMouseMove;
+    property OnMouseUp;
     property OnAutoScrollChange: TNotifyEvent read FOnAutoScrollChange write FOnAutoScrollChange;
     property OnSyncScroll: TMarkdownSyncScrollEvent read FOnSyncScroll write FOnSyncScroll;
   end;
@@ -322,7 +330,8 @@ begin
 
   FLifetime := TMarkdownViewerLifetime.Create;
 
-  ControlStyle := ControlStyle + [csOpaque, csCaptureMouse];
+  // The control decides itself which release is a click; see RaiseClick.
+  ControlStyle := ControlStyle + [csOpaque, csCaptureMouse] - [csClickEvents];
   Width := DefaultControlWidth;
   Height := DefaultControlHeight;
   TabStop := True;
@@ -1628,6 +1637,7 @@ procedure TMarkdownEditor.MouseDown(Button: TMouseButton; Shift: TShiftState; X,
 begin
   inherited MouseDown(Button, Shift, X, Y);
 
+  FClickGesture.PressElsewhere;
   if FAutoScroller.TryHandlePress(Button, X, Y) then
     Exit;
 
@@ -1661,7 +1671,10 @@ begin
   const Offset = OffsetFromPoint(X, Y);
 
   if BeginSelectionDrag(X, Y, Offset) then
+  begin
+    FClickGesture.PressInText(X, Y, TMarkdownClickCounter.SingleClick);
     Exit;
+  end;
 
   if ssShift in Shift then
   begin
@@ -1672,12 +1685,14 @@ begin
     FClickCount := 1;
     FLastClickTicks := GetTickCount;
     FLastClickPos := TPoint.Create(X, Y);
+    FClickGesture.PressInText(X, Y, TMarkdownClickCounter.SingleClick);
     UpdateCaret;
     Invalidate;
     Exit;
   end;
 
   FClickCount := RegisterClick(X, Y);
+  FClickGesture.PressInText(X, Y, FClickCount);
 
   case FClickCount of
     2:
@@ -1738,12 +1753,29 @@ begin
   if Button <> TMouseButton.mbLeft then
     Exit;
 
-  if FinishSelectionDrag(X, Y) then
-    Exit;
+  const ClickKind = FClickGesture.Release(X, Y, DragThresholdPx);
 
-  FSelecting := False;
-  if FAutoScrollTimer <> nil then
-    FAutoScrollTimer.Enabled := False;
+  if not FinishSelectionDrag(X, Y) then
+  begin
+    FSelecting := False;
+    if FAutoScrollTimer <> nil then
+      FAutoScrollTimer.Enabled := False;
+  end;
+
+  RaiseClick(ClickKind);
+end;
+
+// Raised last, once the press is fully handled, so a handler may open a modal
+// window or free the form.
+procedure TMarkdownEditor.RaiseClick(const Kind: TMarkdownClickKind);
+begin
+  case Kind of
+    TMarkdownClickKind.None        : ;
+    TMarkdownClickKind.Click       : Click;
+    TMarkdownClickKind.DoubleClick : DblClick;
+  else
+    raise ENotSupportedException.CreateFmt('Unhandled click kind: %d', [Ord(Kind)]);
+  end;
 end;
 
 function TMarkdownEditor.RegisterClick(const X, Y: Integer): Integer;

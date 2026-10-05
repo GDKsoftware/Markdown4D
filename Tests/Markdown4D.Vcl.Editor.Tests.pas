@@ -33,6 +33,7 @@ type
     function CurrentPixelsPerInch: Integer;
     procedure SimulateMiddlePress;
     procedure SimulateKeyFromMessageLoop(const Key: Word);
+    procedure SendMouse(const Message: Cardinal; const X, Y: Integer);
   end;
 
   [TestFixture]
@@ -56,6 +57,10 @@ type
       ScaleTolerance = 0.05;
       GrowthNumerator = 3;
       GrowthDenominator = 2;
+      ClickText = 'alpha';
+      ClickX = 20;
+      ClickY = 8;
+      DragDistance = 40;
       PreviewScrollTarget = 40;
       ClipboardAttempts = 20;
       ClipboardPauseMilliseconds = 25;
@@ -64,10 +69,15 @@ type
       FHostForm: TForm;
       FFormKeyCount: Integer;
       FAutoScrollChangeCount: Integer;
+      FClickCount: Integer;
+      FDoubleClickCount: Integer;
     function NewHostedEditor(const ControlHeight: Integer): TTestableVclEditor;
     function NewEditorOnPreviewingForm: TTestableVclEditor;
     procedure RecordFormKey(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure RecordAutoScrollChange(Sender: TObject);
+    function NewClickRecordingEditor: TTestableVclEditor;
+    procedure RecordClick(Sender: TObject);
+    procedure RecordDoubleClick(Sender: TObject);
     function NewHostedPreview(const Editor: TMarkdownEditor): TMarkdownViewer;
     class function ManyLines(const Count: Integer): string; static;
     class function OneWrappedLine: string; static;
@@ -266,6 +276,18 @@ type
     procedure ShortcutKey_WithoutAutoScroll_ReachesTheForm;
 
     [Test]
+    procedure Click_InText_RaisesOnClickOnce;
+
+    [Test]
+    procedure Drag_PastThreshold_RaisesNoClick;
+
+    [Test]
+    procedure DoubleClick_InText_RaisesOnDblClickOnReleaseAndKeepsWord;
+
+    [Test]
+    procedure Click_EndingAutoScroll_RaisesNoClick;
+
+    [Test]
     procedure FocusMessages_ShowAndHideCaretWithoutError;
 
     [Test]
@@ -362,6 +384,16 @@ begin
     Perform(WM_KEYDOWN, Key, 0);
 end;
 
+procedure TTestableVclEditor.SendMouse(const Message: Cardinal; const X, Y: Integer);
+begin
+  const IsPressed = ((Message = WM_LBUTTONDOWN) or (Message = WM_LBUTTONDBLCLK) or (Message = WM_MOUSEMOVE));
+  var Keys: WPARAM := 0;
+  if IsPressed then
+    Keys := MK_LBUTTON;
+
+  Perform(Message, Keys, MakeLParam(X, Y));
+end;
+
 procedure TTestableVclEditor.ForcePixelsPerInch(const Value: Integer);
 begin
   ScaleForPPI(Value);
@@ -385,6 +417,8 @@ begin
 
   FFormKeyCount := 0;
   FAutoScrollChangeCount := 0;
+  FClickCount := 0;
+  FDoubleClickCount := 0;
 end;
 
 function TMarkdownVclEditorTests.NewHostedEditor(const ControlHeight: Integer): TTestableVclEditor;
@@ -1399,6 +1433,75 @@ end;
 procedure TMarkdownVclEditorTests.RecordAutoScrollChange(Sender: TObject);
 begin
   Inc(FAutoScrollChangeCount);
+end;
+
+procedure TMarkdownVclEditorTests.Click_InText_RaisesOnClickOnce;
+begin
+  const Editor = NewClickRecordingEditor;
+
+  Editor.SendMouse(WM_LBUTTONDOWN, ClickX, ClickY);
+  Editor.SendMouse(WM_LBUTTONUP, ClickX, ClickY);
+
+  Assert.AreEqual(1, FClickCount);
+  Assert.AreEqual(0, FDoubleClickCount);
+end;
+
+procedure TMarkdownVclEditorTests.Drag_PastThreshold_RaisesNoClick;
+begin
+  const Editor = NewClickRecordingEditor;
+
+  Editor.SendMouse(WM_LBUTTONDOWN, ClickX, ClickY);
+  Editor.SendMouse(WM_MOUSEMOVE, ClickX + DragDistance, ClickY);
+  Editor.SendMouse(WM_LBUTTONUP, ClickX + DragDistance, ClickY);
+
+  Assert.AreEqual(0, FClickCount, 'A drag selects text and is no click');
+end;
+
+procedure TMarkdownVclEditorTests.DoubleClick_InText_RaisesOnDblClickOnReleaseAndKeepsWord;
+begin
+  const Editor = NewClickRecordingEditor;
+  Editor.SendMouse(WM_LBUTTONDOWN, ClickX, ClickY);
+  Editor.SendMouse(WM_LBUTTONUP, ClickX, ClickY);
+
+  Editor.SendMouse(WM_LBUTTONDBLCLK, ClickX, ClickY);
+  const DoubleClicksWhilePressed = FDoubleClickCount;
+  Editor.SendMouse(WM_LBUTTONUP, ClickX, ClickY);
+
+  Assert.AreEqual(0, DoubleClicksWhilePressed, 'The double click comes on release');
+  Assert.AreEqual(1, FDoubleClickCount);
+  Assert.AreEqual(1, FClickCount, 'The second press of a double click is no extra click');
+  Assert.AreEqual(ClickText, Editor.SelectedText);
+end;
+
+procedure TMarkdownVclEditorTests.Click_EndingAutoScroll_RaisesNoClick;
+begin
+  const Editor = NewEditorOnPreviewingForm;
+  Editor.OnClick := RecordClick;
+  Editor.SimulateMiddlePress;
+
+  Editor.SendMouse(WM_LBUTTONDOWN, ClickX, ClickY);
+  Editor.SendMouse(WM_LBUTTONUP, ClickX, ClickY);
+
+  Assert.IsFalse(Editor.IsAutoScrolling);
+  Assert.AreEqual(0, FClickCount, 'The click that ends autoscroll is no click in the text');
+end;
+
+function TMarkdownVclEditorTests.NewClickRecordingEditor: TTestableVclEditor;
+begin
+  Result := NewHostedEditor(ShortHostHeight);
+  Result.Text := ClickText;
+  Result.OnClick := RecordClick;
+  Result.OnDblClick := RecordDoubleClick;
+end;
+
+procedure TMarkdownVclEditorTests.RecordClick(Sender: TObject);
+begin
+  Inc(FClickCount);
+end;
+
+procedure TMarkdownVclEditorTests.RecordDoubleClick(Sender: TObject);
+begin
+  Inc(FDoubleClickCount);
 end;
 
 end.

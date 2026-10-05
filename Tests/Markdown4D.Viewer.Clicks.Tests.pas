@@ -47,6 +47,41 @@ type
     procedure RegisterPress_AfterTripleClick_StartsOver;
   end;
 
+  [TestFixture]
+  TMarkdownClickGestureTests = class
+  private
+    const
+      PressX = 40.0;
+      PressY = 20.0;
+      DragThreshold = 5.0;
+    var
+      FGesture: TMarkdownClickGesture;
+    function ReleaseAt(const X: Single): TMarkdownClickKind;
+
+  public
+    [Setup]
+    procedure Setup;
+
+    [Test]
+    [TestCase('SingleClick', '1,Click')]
+    [TestCase('DoubleClick', '2,DoubleClick')]
+    [TestCase('TripleClick', '3,Click')]
+    procedure Release_AfterPressInText_ReportsKindByClickCount(const ClickCount: Integer;
+                                                                 const Expected: TMarkdownClickKind);
+
+    [Test]
+    [TestCase('WithinThreshold', '5,Click')]
+    [TestCase('PastThreshold', '6,None')]
+    procedure Release_AfterMove_IsClickOnlyWithinDragThreshold(const Distance: Single;
+                                                                 const Expected: TMarkdownClickKind);
+
+    [Test]
+    procedure Release_AfterPressElsewhere_IsNone;
+
+    [Test]
+    procedure Release_Twice_ReportsOnlyOnce;
+  end;
+
 implementation
 
 procedure TMarkdownClickCounterTests.Setup;
@@ -116,6 +151,56 @@ begin
   const Count = Press(StartTime + 300, PressX, False);
 
   Assert.AreEqual(TMarkdownClickCounter.SingleClick, Count);
+end;
+
+procedure TMarkdownClickGestureTests.Setup;
+begin
+  FGesture := Default(TMarkdownClickGesture);
+end;
+
+function TMarkdownClickGestureTests.ReleaseAt(const X: Single): TMarkdownClickKind;
+begin
+  Result := FGesture.Release(X, PressY, DragThreshold);
+end;
+
+procedure TMarkdownClickGestureTests.Release_AfterPressInText_ReportsKindByClickCount(const ClickCount: Integer;
+  const Expected: TMarkdownClickKind);
+begin
+  FGesture.PressInText(PressX, PressY, ClickCount);
+
+  const Actual = ReleaseAt(PressX);
+
+  Assert.AreEqual<TMarkdownClickKind>(Expected, Actual);
+end;
+
+procedure TMarkdownClickGestureTests.Release_AfterMove_IsClickOnlyWithinDragThreshold(const Distance: Single;
+  const Expected: TMarkdownClickKind);
+begin
+  FGesture.PressInText(PressX, PressY, TMarkdownClickCounter.SingleClick);
+
+  const Actual = ReleaseAt(PressX + Distance);
+
+  Assert.AreEqual<TMarkdownClickKind>(Expected, Actual);
+end;
+
+procedure TMarkdownClickGestureTests.Release_AfterPressElsewhere_IsNone;
+begin
+  FGesture.PressInText(PressX, PressY, TMarkdownClickCounter.SingleClick);
+  FGesture.PressElsewhere;
+
+  const Actual = ReleaseAt(PressX);
+
+  Assert.AreEqual<TMarkdownClickKind>(TMarkdownClickKind.None, Actual);
+end;
+
+procedure TMarkdownClickGestureTests.Release_Twice_ReportsOnlyOnce;
+begin
+  FGesture.PressInText(PressX, PressY, TMarkdownClickCounter.SingleClick);
+  ReleaseAt(PressX);
+
+  const Actual = ReleaseAt(PressX);
+
+  Assert.AreEqual<TMarkdownClickKind>(TMarkdownClickKind.None, Actual);
 end;
 
 end.

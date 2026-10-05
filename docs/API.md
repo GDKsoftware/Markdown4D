@@ -546,6 +546,9 @@ same.
 | `OnRemoteImageRequest` | `(const Sender: TObject; const Url: string; var Allow: Boolean)` | About to fetch a remote image. `Allow` arrives holding `Images.AllowRemote`; clear it to refuse this address |
 | `OnScroll` | `TNotifyEvent` | The scroll position changes |
 | `OnAutoScrollChange` | `TNotifyEvent` | Autoscroll starts or stops |
+| `OnClick` | `TNotifyEvent` | A click in the text, on release. Not for a link, the copy button of a code block, the scroll bar, a drag that selects text or the click that ends autoscroll |
+| `OnDblClick` | `TNotifyEvent` | A double click in the text, on release of the second click, with the same exceptions. The word it selected stays selected. The second click raises no `OnClick` |
+| `OnMouseDown` / `OnMouseMove` / `OnMouseUp` | the standard mouse events | Every press, move and release, as on any control |
 | `OnExtensionError` | `(const Sender: TObject; const Extension: string; const Error: Exception)` | A block override or a document processor raised. The document shows without what that extension would have drawn or added (see [EXTENSIONS.md](EXTENSIONS.md)) |
 
 The viewer loads `http(s)` images asynchronously and local images relative to
@@ -652,6 +655,9 @@ control lives in `Markdown4D.Vcl.Editor`, the FMX control in
 | `OnChange` | `TNotifyEvent` | The text changes |
 | `OnScroll` | `TNotifyEvent` | The editor scrolls |
 | `OnAutoScrollChange` | `TNotifyEvent` | Autoscroll starts or stops |
+| `OnClick` | `TNotifyEvent` | A click in the text, on release. Not for a fold marker, the scroll bar, a drag that selects or moves text or the click that ends autoscroll |
+| `OnDblClick` | `TNotifyEvent` | A double click in the text, on release of the second click, with the same exceptions. The second click raises no `OnClick` |
+| `OnMouseDown` / `OnMouseMove` / `OnMouseUp` | the standard mouse events | Every press, move and release, as on any control |
 
 `AttachPreview` wires the editor to a `TMarkdownViewer`: edits refresh the
 preview on a short debounce, and the preview keeps its scroll aligned with the
