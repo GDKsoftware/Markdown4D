@@ -28,7 +28,7 @@ begin
   if ButtonsSwapped then
     PrimaryButton := VK_RBUTTON;
 
-  Result := (GetKeyState(PrimaryButton) < 0);
+  Result := (GetAsyncKeyState(PrimaryButton) < 0);
 {$ELSE}
   Result := False;
 {$ENDIF}
