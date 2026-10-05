@@ -106,6 +106,7 @@ type
       FAtLineStart: Boolean;
       FPendingBlank: Boolean;
       FHasContent: Boolean;
+      FAfterOpener: Boolean;
     class function TagInfoOf(const Name: string): TTagInfo; static;
     class function EscapeText(const Value: string): string; static;
     class function DecodeEntities(const Value: string): string; static;
@@ -113,6 +114,7 @@ type
     class function FormatDestination(const Value: string): string; static;
     function LinePrefix: string;
     procedure Write(const Value: string);
+    procedure WriteOpener(const Value: string);
     procedure StartLine;
     procedure StartBlock;
     procedure SkipTo(const ClosingTag: string);
@@ -334,16 +336,17 @@ begin
         Continue;
       end;
 
-      if InWhitespace and (Builder.Length > 0) then
+      if InWhitespace then
         Builder.Append(' ');
 
       InWhitespace := False;
       Builder.Append(Value[Index]);
     end;
 
+    if InWhitespace then
+      Builder.Append(' ');
+
     Result := Builder.ToString;
-    if InWhitespace and (Result <> '') then
-      Result := Result + ' ';
   finally
     Builder.Free;
   end;
@@ -385,6 +388,13 @@ begin
   FOutput.Append(Value);
   FAtLineStart := False;
   FHasContent := True;
+  FAfterOpener := False;
+end;
+
+procedure TSubsetConverter.WriteOpener(const Value: string);
+begin
+  Write(Value);
+  FAfterOpener := True;
 end;
 
 procedure TSubsetConverter.StartLine;
@@ -715,7 +725,7 @@ begin
     StartBlock;
 
   if Info.Opener <> '' then
-    Write(Info.Opener);
+    WriteOpener(Info.Opener);
 
   if Info.Kind = TTagKind.Anchor then
   begin
@@ -723,7 +733,7 @@ begin
     Tag.Attributes.TryGetValue('href', Destination);
     if Destination.Trim <> '' then
     begin
-      Write('[');
+      WriteOpener('[');
       FOpen.Add(TOpenTag.Create(Tag.Name, Info.Kind, Format('](%s)', [FormatDestination(Destination)])));
       Exit;
     end;
@@ -820,11 +830,16 @@ begin
       Continue;
     end;
 
-    const Text = NormalizeWhitespace(DecodeEntities(ReadText));
-    if Text.Trim <> '' then
-      Write(EscapeText(Text))
-    else if (Text <> '') and not FAtLineStart then
-      Write(' ');
+    var Text := NormalizeWhitespace(DecodeEntities(ReadText));
+
+    // A space at the start of a line would indent it, and one right after **
+    // or [ stops markdown from seeing the emphasis or the link.
+    const DropsLeadingSpace = (FAtLineStart or FAfterOpener);
+    if DropsLeadingSpace then
+      Text := Text.TrimLeft;
+
+    if Text <> '' then
+      Write(EscapeText(Text));
   end;
 
   // Close whatever the document left open.

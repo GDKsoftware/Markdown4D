@@ -92,6 +92,16 @@ type
     procedure Convert_WhitespaceOnly_ReturnsEmpty;
 
     [Test]
+    [TestCase('AfterStrongInParagraph', '<p><b>bold</b> and more</p>|**bold** and more', '|')]
+    [TestCase('AfterEmphasisAndCode', '<p><i>slanted</i> and <code>c</code> after</p>|*slanted* and `c` after', '|')]
+    [TestCase('AfterStrongInDiv', '<div><b>bold</b> and more</div>|**bold** and more', '|')]
+    [TestCase('BetweenTwoTags', '<p><b>a</b> <i>b</i></p>|**a** *b*', '|')]
+    [TestCase('AfterImage', '<p><img src="a.png" alt="a"> caption</p>|![a](a.png) caption', '|')]
+    [TestCase('AtStartOfParagraph', '<p> text</p>|text', '|')]
+    [TestCase('InsideOpeningTag', '<p>a <b> bold</b></p>|a **bold**', '|')]
+    procedure Convert_SpaceNextToTag_MatchesHtml(const Html, Expected: string);
+
+    [Test]
     procedure IsEmpty_MarkupWithoutContent_IsTrue;
 
     [Test]
@@ -261,6 +271,11 @@ procedure TMarkdownHtmlSubsetTests.Convert_WhitespaceOnly_ReturnsEmpty;
 begin
   AssertConverts('<p>   </p>', '');
   AssertConverts('<div></div>', '');
+end;
+
+procedure TMarkdownHtmlSubsetTests.Convert_SpaceNextToTag_MatchesHtml(const Html, Expected: string);
+begin
+  AssertConverts(Html, Expected);
 end;
 
 procedure TMarkdownHtmlSubsetTests.IsEmpty_MarkupWithoutContent_IsTrue;
