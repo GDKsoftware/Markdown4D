@@ -637,6 +637,7 @@ control lives in `Markdown4D.Vcl.Editor`, the FMX control in
 | `Text` | `string` | The markdown source |
 | `ThemePreset` | `TMarkdownThemePreset` | `Light` / `Dark` |
 | `ShowLineNumbers` | `Boolean` | Gutter line numbers (default `False`) |
+| `Zoom` | `Integer` | In percent, as in the viewer: the text, its line height and the gutter grow with it, with the same keys and levels. The source line at the top of the view stays there. Editor and attached preview zoom independently; a host that wants them together sets one from the other's `OnZoomChange` |
 | `AutoScroll` | `Boolean` | Middle-click autoscroll, as in the viewer. Default `True`, except in the FMX editor on Linux, where the middle button pastes the primary selection |
 
 ### Public members
@@ -646,6 +647,7 @@ control lives in `Markdown4D.Vcl.Editor`, the FMX control in
 | `CaretPosition: Integer` | Read / set the caret offset |
 | `SelectedText: string` | The current selection |
 | `IsAutoScrolling: Boolean` | True while middle-click autoscroll runs |
+| `ZoomIn` / `ZoomOut` / `ResetZoom` | Step `Zoom` to the next level up or down, or back to 100, as the keys do |
 | `SelectRange(const StartOffset, CharacterCount: Integer)` | Select `CharacterCount` characters from `StartOffset`, counted from 0 as the caret is, and scroll them into view |
 | `TryAdoptPreviewSelection: Boolean` | Move the selection the reader made in the attached preview onto the same characters here, leaving the whitespace at its edges out; `False` when the preview holds no selection or is still showing older text |
 | `Theme: TMarkdownTheme` | Assign a custom theme at run time |
@@ -661,6 +663,7 @@ control lives in `Markdown4D.Vcl.Editor`, the FMX control in
 | `OnChange` | `TNotifyEvent` | The text changes |
 | `OnScroll` | `TNotifyEvent` | The editor scrolls |
 | `OnAutoScrollChange` | `TNotifyEvent` | Autoscroll starts or stops |
+| `OnZoomChange` | `TNotifyEvent` | `Zoom` changes and the text has been wrapped at it |
 | `OnClick` | `TNotifyEvent` | A click in the text, on release. Not for a fold marker, the scroll bar, a drag that selects or moves text or the click that ends autoscroll |
 | `OnDblClick` | `TNotifyEvent` | A double click in the text, on release of the second click, with the same exceptions. The second click raises no `OnClick` |
 | `OnMouseDown` / `OnMouseMove` / `OnMouseUp` | the standard mouse events | Every press, move and release, as on any control |

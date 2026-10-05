@@ -41,6 +41,15 @@ type
     procedure Resolve_CtrlY_ReturnsRedo;
 
     [Test]
+    [TestCase('PlusMainKeyboard', '187,ZoomIn')]
+    [TestCase('PlusNumericKeypad', '107,ZoomIn')]
+    [TestCase('MinusMainKeyboard', '189,ZoomOut')]
+    [TestCase('MinusNumericKeypad', '109,ZoomOut')]
+    [TestCase('ZeroMainKeyboard', '48,ResetZoom')]
+    [TestCase('ZeroNumericKeypad', '96,ResetZoom')]
+    procedure Resolve_CtrlZoomKey_ReturnsZoomAction(const Key: Word; const Expected: TEditorKeyAction);
+
+    [Test]
     procedure Resolve_ShiftInsert_ReturnsPaste;
 
     [Test]
@@ -144,6 +153,14 @@ end;
 procedure TMarkdownEditorKeymapTests.Resolve_CtrlY_ReturnsRedo;
 begin
   Assert.AreEqual<TEditorKeyAction>(TEditorKeyAction.Redo, TMarkdownEditorKeymap.Resolve(vkY, [ssCtrl]).Action);
+end;
+
+procedure TMarkdownEditorKeymapTests.Resolve_CtrlZoomKey_ReturnsZoomAction(const Key: Word;
+  const Expected: TEditorKeyAction);
+begin
+  const Actual = TMarkdownEditorKeymap.Resolve(Key, [ssCtrl]).Action;
+
+  Assert.AreEqual<TEditorKeyAction>(Expected, Actual);
 end;
 
 procedure TMarkdownEditorKeymapTests.Resolve_ShiftInsert_ReturnsPaste;

@@ -22,7 +22,7 @@ type
     procedure SimulateMouseMove(const X, Y: Single; const Shift: TShiftState);
     procedure SimulateMouseUp(const X, Y: Single; const Shift: TShiftState);
     procedure SimulateKeyDown(const Key: Word; const KeyChar: WideChar; const Shift: TShiftState);
-    function SimulateWheel(const WheelDelta: Integer): Boolean;
+    function SimulateWheel(const WheelDelta: Integer; const Shift: TShiftState = []): Boolean;
     procedure SimulateEnter;
     procedure SimulateExit;
     procedure PumpAutoScrollTimer;
@@ -55,6 +55,7 @@ type
     var
       FEditor: TMarkdownEditor;
       FAutoScrollChangeCount: Integer;
+      FZoomChangeCount: Integer;
       FClickCount: Integer;
       FDoubleClickCount: Integer;
       FSavedClipboard: IInterface;
@@ -62,6 +63,7 @@ type
     class function ManyLines(const Count: Integer): string; static;
     function NewOverflowingEditor: TTestableFmxEditor;
     procedure RecordAutoScrollChange(Sender: TObject);
+    procedure RecordZoomChange(Sender: TObject);
     function NewClickRecordingEditor: TTestableFmxEditor;
     procedure RecordClick(Sender: TObject);
     procedure RecordDoubleClick(Sender: TObject);
@@ -70,6 +72,20 @@ type
     procedure RestoreClipboard;
 
   public
+    [Test]
+    procedure CtrlWheel_Up_ZoomsInOneLevel;
+
+    [Test]
+    [TestCase('MainKeyboard', '187')]
+    [TestCase('NumericKeypad', '107')]
+    procedure Keyboard_CtrlPlus_ZoomsInOneLevel(const Key: Word);
+
+    [Test]
+    procedure Keyboard_CtrlZero_ResetsZoom;
+
+    [Test]
+    procedure Zoom_Changed_RaisesOnZoomChange;
+
     [Setup]
     procedure Setup;
 
@@ -306,10 +322,10 @@ begin
   KeyDown(KeyValue, CharValue, Shift);
 end;
 
-function TTestableFmxEditor.SimulateWheel(const WheelDelta: Integer): Boolean;
+function TTestableFmxEditor.SimulateWheel(const WheelDelta: Integer; const Shift: TShiftState): Boolean;
 begin
   var Handled := False;
-  MouseWheel([], WheelDelta, Handled);
+  MouseWheel(Shift, WheelDelta, Handled);
   Result := Handled;
 end;
 
@@ -1215,6 +1231,69 @@ end;
 procedure TMarkdownFmxEditorTests.RecordAutoScrollChange(Sender: TObject);
 begin
   Inc(FAutoScrollChangeCount);
+end;
+
+procedure TMarkdownFmxEditorTests.RecordZoomChange(Sender: TObject);
+begin
+  Inc(FZoomChangeCount);
+end;
+
+procedure TMarkdownFmxEditorTests.CtrlWheel_Up_ZoomsInOneLevel;
+begin
+  const Editor = NewOverflowingEditor;
+  try
+    const Handled = Editor.SimulateWheel(120, [ssCtrl]);
+
+    Assert.IsTrue(Handled);
+    Assert.AreEqual(110, Editor.Zoom);
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.Keyboard_CtrlPlus_ZoomsInOneLevel(const Key: Word);
+begin
+  const Editor = NewOverflowingEditor;
+  try
+    const TextBefore = Editor.Text;
+
+    Editor.SimulateKeyDown(Key, #0, [ssCtrl]);
+
+    Assert.AreEqual(110, Editor.Zoom);
+    Assert.AreEqual(TextBefore, Editor.Text);
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.Keyboard_CtrlZero_ResetsZoom;
+begin
+  const Editor = NewOverflowingEditor;
+  try
+    Editor.Zoom := 200;
+
+    Editor.SimulateKeyDown(vk0, #0, [ssCtrl]);
+
+    Assert.AreEqual(100, Editor.Zoom);
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.Zoom_Changed_RaisesOnZoomChange;
+begin
+  FZoomChangeCount := 0;
+  const Editor = NewOverflowingEditor;
+  try
+    Editor.OnZoomChange := RecordZoomChange;
+
+    Editor.Zoom := 150;
+    Editor.Zoom := 150;
+
+    Assert.AreEqual(1, FZoomChangeCount);
+  finally
+    Editor.Free;
+  end;
 end;
 
 procedure TMarkdownFmxEditorTests.Click_InText_RaisesOnClickOnce;

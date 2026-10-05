@@ -24,7 +24,8 @@ type
     DeleteWordLeft, DeleteWordRight,
     InsertLineBreak, Indent, Outdent,
     SelectAll, Copy, Cut, Paste, Undo, Redo,
-    Bold, Italic, Link);
+    Bold, Italic, Link,
+    ZoomIn, ZoomOut, ResetZoom);
 
   TEditorKeyStroke = record
     Action: TEditorKeyAction;
@@ -129,6 +130,12 @@ begin
       Action := TEditorKeyAction.DeleteWordRight;
     vkInsert:
       Action := TEditorKeyAction.Copy;
+    vkEqual, vkAdd:
+      Action := TEditorKeyAction.ZoomIn;
+    vkMinus, vkSubtract:
+      Action := TEditorKeyAction.ZoomOut;
+    vk0, vkNumpad0:
+      Action := TEditorKeyAction.ResetZoom;
   end;
 
   Result := TEditorKeyStroke.Create(Action, Extend);

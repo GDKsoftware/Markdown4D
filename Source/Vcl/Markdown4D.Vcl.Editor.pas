@@ -29,6 +29,7 @@ uses
   Markdown4D.Viewer.Clicks,
   Markdown4D.Editor.PreviewPacer,
   Markdown4D.Layout.ResizePacer,
+  Markdown4D.Layout.Zoom,
   Markdown4D.Layout.Pointer,
   Markdown4D.AutoScroll,
   Markdown4D.Vcl.AutoScroll,
@@ -92,6 +93,10 @@ type
       FWrapTimer: TTimer;
       FWrapPacer: TMarkdownResizePacer;
       FLastWrapMilliseconds: Int64;
+      FZoom: Integer;
+      FPendingZoom: Integer;
+      FZoomTimer: TTimer;
+      FZoomPacer: TMarkdownResizePacer;
       FAppliedWrapWidth: Integer;
       FPreviewDirty: Boolean;
       FUpdatingPreview: Boolean;
@@ -106,6 +111,7 @@ type
       FOnChange: TNotifyEvent;
       FOnScroll: TNotifyEvent;
       FOnAutoScrollChange: TNotifyEvent;
+      FOnZoomChange: TNotifyEvent;
       FOnSyncScroll: TMarkdownSyncScrollEvent;
     class constructor Create;
     class destructor Destroy;
@@ -157,6 +163,10 @@ type
     function GutterWidthPx(const Painter: IPainter; const PixelsPerInch: Integer): Integer;
     function FoldGutterWidthPx(const PixelsPerInch: Integer): Integer;
     function CodeFont: TMarkdownFontStyle;
+    procedure SetZoom(const Value: Integer);
+    procedure StepZoom(const Percent: Integer);
+    procedure ApplyZoomNow;
+    procedure HandleZoomTimer(Sender: TObject);
     function LineHeightPx: Integer;
     function VisibleLineCount: Integer;
     function TextLeftPx: Integer;
@@ -232,6 +242,9 @@ type
     // Inserts Value at the caret, replacing the selection when there is one.
     procedure InsertText(const Value: string);
     procedure SelectAll;
+    procedure ZoomIn;
+    procedure ZoomOut;
+    procedure ResetZoom;
     // Puts the selection on CharacterCount characters starting at StartOffset,
     // counted from 0 as the caret is, and shows them.
     procedure SelectRange(const StartOffset, CharacterCount: Integer);
@@ -289,6 +302,11 @@ type
     property ShowLineNumbers: Boolean read FShowLineNumbers write SetShowLineNumbers default False;
     // Spaces inserted by Tab and removed by Shift+Tab.
     property IndentWidth: Integer read FIndentWidth write FIndentWidth default DefaultIndentWidth;
+    // In percent: the text, its line height and the gutter grow with it.
+    // Ctrl+wheel and Ctrl+Plus/Minus step through the levels browsers use,
+    // Ctrl+0 resets it. The line at the top of the view stays there.
+    property Zoom: Integer read FPendingZoom write SetZoom default TMarkdownZoom.DefaultPercent;
+    property OnZoomChange: TNotifyEvent read FOnZoomChange write FOnZoomChange;
     // Link an editor to a viewer at design time to get a live preview and, when
     // SyncScroll is on, two-way scroll synchronisation between the panes.
     property Preview: TMarkdownViewer read FPreview write SetPreview;
@@ -384,6 +402,13 @@ begin
   FWrapTimer.Enabled := False;
   FWrapTimer.Interval := TMarkdownResizePacer.SettleMilliseconds;
   FWrapTimer.OnTimer := HandleWrapTimer;
+
+  FZoom := TMarkdownZoom.DefaultPercent;
+  FPendingZoom := TMarkdownZoom.DefaultPercent;
+  FZoomTimer := TTimer.Create(Self);
+  FZoomTimer.Enabled := False;
+  FZoomTimer.Interval := TMarkdownResizePacer.SettleMilliseconds;
+  FZoomTimer.OnTimer := HandleZoomTimer;
 
   FAutoScrollTimer := TTimer.Create(Self);
   FAutoScrollTimer.Enabled := False;
@@ -1389,9 +1414,72 @@ begin
     Result := 0;
 end;
 
+procedure TMarkdownEditor.SetZoom(const Value: Integer);
+begin
+  FPendingZoom := TMarkdownZoom.Clamp(Value);
+  ApplyZoomNow;
+end;
+
+procedure TMarkdownEditor.ZoomIn;
+begin
+  StepZoom(TMarkdownZoom.StepIn(FPendingZoom));
+end;
+
+procedure TMarkdownEditor.ZoomOut;
+begin
+  StepZoom(TMarkdownZoom.StepOut(FPendingZoom));
+end;
+
+procedure TMarkdownEditor.ResetZoom;
+begin
+  StepZoom(TMarkdownZoom.DefaultPercent);
+end;
+
+// A long text waits until the wheel rests, so turning it several notches
+// wraps the text once.
+procedure TMarkdownEditor.StepZoom(const Percent: Integer);
+begin
+  FPendingZoom := TMarkdownZoom.Clamp(Percent);
+
+  const RewrapsNow = (
+                      FZoomPacer.TryReflowNow(GetTickCount64, FLastWrapMilliseconds));
+  if RewrapsNow then
+  begin
+    ApplyZoomNow;
+    Exit;
+  end;
+
+  FZoomTimer.Enabled := False;
+  FZoomTimer.Enabled := True;
+end;
+
+procedure TMarkdownEditor.ApplyZoomNow;
+begin
+  FZoomTimer.Enabled := False;
+
+  const IsChange = (FZoom <> FPendingZoom);
+  if not IsChange then
+    Exit;
+
+  const TopLine = FirstVisibleSourceLine;
+  FZoom := FPendingZoom;
+  RecomputeMetrics;
+  ScrollToSourceLine(TopLine);
+
+  if Assigned(FOnZoomChange) then
+    FOnZoomChange(Self);
+end;
+
+procedure TMarkdownEditor.HandleZoomTimer(Sender: TObject);
+begin
+  if FZoomPacer.TryFlush(GetTickCount64, False) then
+    ApplyZoomNow;
+end;
+
 function TMarkdownEditor.CodeFont: TMarkdownFontStyle;
 begin
   Result := FTheme.CodeFont;
+  Result.Size := Result.Size * FZoom / TMarkdownZoom.DefaultPercent;
 end;
 
 function TMarkdownEditor.LineHeightPx: Integer;
@@ -1925,6 +2013,17 @@ begin
     Exit;
   end;
 
+  if ssCtrl in Shift then
+  begin
+    if WheelDelta > 0 then
+      ZoomIn
+    else
+      ZoomOut;
+
+    Result := True;
+    Exit;
+  end;
+
   const Notches = WheelDelta / WHEEL_DELTA;
   SetScrollOffset(FScrollOffset - Round(Notches * WheelLinesPerNotch * LineHeightPx));
   Result := True;
@@ -1998,6 +2097,12 @@ begin
       CutToClipboard;
     TEditorKeyAction.Paste:
       PasteFromClipboard;
+    TEditorKeyAction.ZoomIn:
+      ZoomIn;
+    TEditorKeyAction.ZoomOut:
+      ZoomOut;
+    TEditorKeyAction.ResetZoom:
+      ResetZoom;
   else
     Result := False;
   end;
