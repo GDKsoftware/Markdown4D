@@ -183,6 +183,7 @@ type
     class function IsMermaidInfoString(const InfoString: string): Boolean;
   public
     const
+      ExtensionName = 'markdown4d.mermaid';
       MermaidInfoString = 'mermaid';
       MermaidModelExtensionKey = 'markdown4d.mermaid.model';
       MermaidProcessorPriority = TMarkdownPriorities.ExtensionProcessor;

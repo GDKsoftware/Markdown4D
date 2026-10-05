@@ -5,6 +5,7 @@ unit Markdown4D.Viewer.Model;
 interface
 
 uses
+  System.SysUtils,
   System.Generics.Collections,
   Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Interfaces,
@@ -27,7 +28,12 @@ type
     class function Create(const Rect: TLayoutRectF; const Text: string): TMarkdownCodeBlockRegion; static;
   end;
 
-  TMarkdownViewerModel = class(TNoRefCountObject, IMarkdownImageSizeProvider)
+  // Raised when a block override or a document processor fails. The document
+  // shows without what that extension would have drawn or added.
+  TMarkdownExtensionErrorEvent = procedure(const Sender: TObject; const Extension: string;
+    const Error: Exception) of object;
+
+  TMarkdownViewerModel = class(TNoRefCountObject, IMarkdownImageSizeProvider, IMarkdownExtensionErrorSink)
   private
     type
       TTextPosition = record
@@ -76,6 +82,7 @@ type
       FHighlightRects: TArray<TLayoutRectF>;
       FImageSlots: TDictionary<string, TImageSlot>;
       FImageSlotOrder: TList<string>;
+      FOnExtensionError: TMarkdownExtensionErrorEvent;
     procedure Relayout;
     procedure RegisterImageSlots;
     function TryFindTextRunBounds(out FirstIndex, LastIndex: Integer): Boolean;
@@ -170,6 +177,7 @@ type
     procedure NotifyImageFailed(const Source: string);
     function ImageSlotState(const Source: string): TMarkdownImageSlotState;
     function TryGetImageSize(const Source: string; out Size: TLayoutSizeF): Boolean;
+    procedure ExtensionFailed(const Extension: string; const Error: Exception);
     function FindText(const Needle: string): TArray<TMarkdownFoundRange>;
     // How many stops a walk with TrySelectNextMatch makes: a formula counts
     // once, however often the needle occurs in its source.
@@ -206,12 +214,12 @@ type
     property ShouldAutoFollow: Boolean read GetShouldAutoFollow;
     property FlushIntervalMilliseconds: Cardinal read GetFlushIntervalMilliseconds write SetFlushIntervalMilliseconds;
     property ScrollOffset: Single read GetScrollOffset write SetScrollOffset;
+    property OnExtensionError: TMarkdownExtensionErrorEvent read FOnExtensionError write FOnExtensionError;
   end;
 
 implementation
 
 uses
-  System.SysUtils,
   System.Math,
   System.Character,
   Markdown4D,
@@ -902,6 +910,12 @@ begin
     Size := Slot.Size;
 end;
 
+procedure TMarkdownViewerModel.ExtensionFailed(const Extension: string; const Error: Exception);
+begin
+  if Assigned(FOnExtensionError) then
+    FOnExtensionError(Self, Extension, Error);
+end;
+
 class function TMarkdownViewerModel.CaseInsensitiveIndexOf(const Needle, Haystack: string;
   const StartIndex: Integer): Integer;
 begin
@@ -1250,9 +1264,9 @@ begin
     Exit;
 
   const Document = TMarkdown.Parse(FText, TMarkdownDialect.Gfm);
-  TLayoutDocumentProcessorRegistry.Process(Document);
+  TLayoutDocumentProcessorRegistry.Process(Document, Self);
 
-  FDisplayList := TMarkdownLayoutEngine.LayoutDocument(Document, FViewportWidth, FTheme, FMeasurer, Self);
+  FDisplayList := TMarkdownLayoutEngine.LayoutDocument(Document, FViewportWidth, FTheme, FMeasurer, Self, Self);
   Inc(FLayoutCount);
   RegisterImageSlots;
   RefreshHighlights;

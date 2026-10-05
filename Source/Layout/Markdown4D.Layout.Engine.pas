@@ -28,10 +28,12 @@ type
   public
     class function LayoutDocument(const Document: IMarkdownDocument; const AvailableWidth: Single;
       const Theme: TMarkdownTheme; const Measurer: ITextMeasurer;
-      const ImageSizes: IMarkdownImageSizeProvider = nil): IMarkdownDisplayList;
+      const ImageSizes: IMarkdownImageSizeProvider = nil;
+      const ExtensionErrors: IMarkdownExtensionErrorSink = nil): IMarkdownDisplayList;
     class function UpdateLayout(const Previous: IMarkdownDisplayList; const Document: IMarkdownDocument;
       const ChangedRange: TLayoutBlockRange; const Theme: TMarkdownTheme; const Measurer: ITextMeasurer;
-      const ImageSizes: IMarkdownImageSizeProvider = nil): IMarkdownDisplayList;
+      const ImageSizes: IMarkdownImageSizeProvider = nil;
+      const ExtensionErrors: IMarkdownExtensionErrorSink = nil): IMarkdownDisplayList;
     class procedure RegisterBlockOverride(const Handler: ILayoutBlockOverride; const Priority: Integer);
     class procedure ClearBlockOverrides;
   end;
@@ -296,6 +298,7 @@ type
       FWidth: Single;
       FItems: TList<IDisplayItem>;
       FImageSizes: IMarkdownImageSizeProvider;
+      FExtensionErrors: IMarkdownExtensionErrorSink;
       FCommands: TList<TLayoutCommand>;
       FCollector: TInlineAtomCollector;
       FCurrentY: Single;
@@ -311,7 +314,8 @@ type
     procedure JoinListItemRuns(const Command: TLayoutCommand; const FirstItemIndex: Integer);
     procedure JoinLeafRuns(const ListDepth, FirstItemIndex: Integer; const Leading, Trailing: TDisplayTextJoin);
     procedure ProcessBlock(const Command: TLayoutCommand);
-    procedure ApplyBlockOverride(const Command: TLayoutCommand; const Handler: ILayoutBlockOverride);
+    function TryApplyBlockOverride(const Command: TLayoutCommand; const Handler: ILayoutBlockOverride): Boolean;
+    procedure DropItemsFrom(const FirstItemIndex: Integer);
     procedure ProcessListItem(const Command: TLayoutCommand);
     procedure EmitListMarker(const Command: TLayoutCommand);
     procedure EmitTaskCheckbox(const Command: TLayoutCommand; const Marker: IMarkdownCustomInline);
@@ -354,7 +358,8 @@ type
 
   public
     constructor Create(const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Width: Single;
-      const Items: TList<IDisplayItem>; const ImageSizes: IMarkdownImageSizeProvider);
+      const Items: TList<IDisplayItem>; const ImageSizes: IMarkdownImageSizeProvider;
+      const ExtensionErrors: IMarkdownExtensionErrorSink);
     destructor Destroy; override;
     function RecomputeBlock(const Node: IMarkdownNode; const Index: Integer; var Y: Single;
       const PreviousBelow: Single): TLayoutBlockInfo;
@@ -374,13 +379,14 @@ end;
 
 class function TMarkdownLayoutEngine.LayoutDocument(const Document: IMarkdownDocument; const AvailableWidth: Single;
   const Theme: TMarkdownTheme; const Measurer: ITextMeasurer;
-  const ImageSizes: IMarkdownImageSizeProvider): IMarkdownDisplayList;
+  const ImageSizes: IMarkdownImageSizeProvider;
+  const ExtensionErrors: IMarkdownExtensionErrorSink): IMarkdownDisplayList;
 begin
   ValidateLayoutArguments(Document, AvailableWidth, Theme, Measurer);
 
   const Items = TList<IDisplayItem>.Create;
   try
-    const Worker = TLayoutWorker.Create(Theme, Measurer, AvailableWidth, Items, ImageSizes);
+    const Worker = TLayoutWorker.Create(Theme, Measurer, AvailableWidth, Items, ImageSizes, ExtensionErrors);
     try
       const BlockCount = Document.ChildCount;
       var Blocks: TArray<TLayoutBlockInfo>;
@@ -415,7 +421,8 @@ end;
 
 class function TMarkdownLayoutEngine.UpdateLayout(const Previous: IMarkdownDisplayList;
   const Document: IMarkdownDocument; const ChangedRange: TLayoutBlockRange; const Theme: TMarkdownTheme;
-  const Measurer: ITextMeasurer; const ImageSizes: IMarkdownImageSizeProvider): IMarkdownDisplayList;
+  const Measurer: ITextMeasurer; const ImageSizes: IMarkdownImageSizeProvider;
+  const ExtensionErrors: IMarkdownExtensionErrorSink): IMarkdownDisplayList;
 begin
   if Previous = nil then
     raise EMarkdownError.Create('Previous display list is required for incremental layout');
@@ -432,7 +439,7 @@ begin
 
   const Items = TList<IDisplayItem>.Create;
   try
-    const Worker = TLayoutWorker.Create(Theme, Measurer, Previous.Width, Items, ImageSizes);
+    const Worker = TLayoutWorker.Create(Theme, Measurer, Previous.Width, Items, ImageSizes, ExtensionErrors);
     try
       var Blocks: TArray<TLayoutBlockInfo>;
       SetLength(Blocks, TotalBlockCount);
@@ -514,7 +521,8 @@ begin
 end;
 
 constructor TLayoutWorker.Create(const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Width: Single;
-  const Items: TList<IDisplayItem>; const ImageSizes: IMarkdownImageSizeProvider);
+  const Items: TList<IDisplayItem>; const ImageSizes: IMarkdownImageSizeProvider;
+  const ExtensionErrors: IMarkdownExtensionErrorSink);
 begin
   inherited Create;
 
@@ -523,6 +531,7 @@ begin
   FWidth := Width;
   FItems := Items;
   FImageSizes := ImageSizes;
+  FExtensionErrors := ExtensionErrors;
   FCommands := TList<TLayoutCommand>.Create;
   FCollector := TInlineAtomCollector.Create(FMeasurer, FTheme, FImageSizes, ContentRight);
 end;
@@ -759,11 +768,9 @@ end;
 procedure TLayoutWorker.ProcessBlock(const Command: TLayoutCommand);
 begin
   var Handler: ILayoutBlockOverride;
-  if TLayoutBlockOverrideRegistry.TryFind(Command.Node, Handler) then
-  begin
-    ApplyBlockOverride(Command, Handler);
+  const HasOverride = TLayoutBlockOverrideRegistry.TryFind(Command.Node, Handler);
+  if HasOverride and TryApplyBlockOverride(Command, Handler) then
     Exit;
-  end;
 
   case Command.Node.Kind of
     TMarkdownNodeKind.Paragraph:
@@ -787,21 +794,45 @@ begin
       EmitMathBlock(Command);
   else
     // PushBlock only ever enqueues genuine block-level nodes (document children,
-    // block-quote children, list-item children), and a registered block override
-    // is already handled above, so reaching here means an unrecognised node kind
-    // was pushed as a block: a programming error, not a document to render.
+    // block-quote children, list-item children), and a block override that
+    // succeeded is already handled above, so reaching here means an unrecognised
+    // node kind was pushed as a block: a programming error, not a document to render.
     raise EMarkdownError.CreateFmt('Unhandled block node kind: %d', [Ord(Command.Node.Kind)]);
   end;
 end;
 
-procedure TLayoutWorker.ApplyBlockOverride(const Command: TLayoutCommand; const Handler: ILayoutBlockOverride);
+// Extension code may fail on any input, so every exception counts. With an
+// error sink the block then falls back to plain markdown.
+function TLayoutWorker.TryApplyBlockOverride(const Command: TLayoutCommand; const Handler: ILayoutBlockOverride): Boolean;
 begin
+  const FirstItemIndex = FItems.Count;
   const AvailableWidth = ContentRight - Command.X;
-  var Context: ILayoutBlockContext := TLayoutBlockContext.Create(FMeasurer, FTheme, AvailableWidth, FItems, Command.Node);
+  const Context: ILayoutBlockContext = TLayoutBlockContext.Create(FMeasurer, FTheme, AvailableWidth, FItems,
+    Command.Node);
 
-  const Height = Handler.LayoutBlock(Command.Node, FCurrentY, Context);
+  try
+    const Height = Handler.LayoutBlock(Command.Node, FCurrentY, Context);
+    FCurrentY := FCurrentY + Height;
+    Result := True;
+  except
+    on Error: Exception do
+    begin
+      if not Assigned(FExtensionErrors) then
+        raise;
 
-  FCurrentY := FCurrentY + Height;
+      DropItemsFrom(FirstItemIndex);
+      FExtensionErrors.ExtensionFailed(Handler.Name, Error);
+      Result := False;
+    end;
+  end;
+end;
+
+procedure TLayoutWorker.DropItemsFrom(const FirstItemIndex: Integer);
+begin
+  const DroppedCount = FItems.Count - FirstItemIndex;
+  const HasDroppedItems = (DroppedCount > 0);
+  if HasDroppedItems then
+    FItems.DeleteRange(FirstItemIndex, DroppedCount);
 end;
 
 procedure TLayoutWorker.ProcessListItem(const Command: TLayoutCommand);

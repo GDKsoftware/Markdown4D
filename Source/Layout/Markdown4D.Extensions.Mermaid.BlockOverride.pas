@@ -21,7 +21,6 @@ type
     class function TryResolveModel(const Node: IMarkdownNode; out Model: IMermaidModel): Boolean;
   public
     const
-      OverrideName = 'markdown4d.mermaid';
       OverridePriority = TMarkdownPriorities.ExtensionLayoutOverride;
     class procedure RegisterOverride;
   end;
@@ -39,13 +38,13 @@ begin
     Exit;
 
   TMarkdownLayoutEngine.RegisterBlockOverride(TMermaidBlockOverride.Create, OverridePriority);
-  TLayoutDocumentProcessorRegistry.Register(TMermaidExtension.CreateDocumentProcessor);
+  TLayoutDocumentProcessorRegistry.Register(TMermaidExtension.ExtensionName, TMermaidExtension.CreateDocumentProcessor);
   FRegistered := True;
 end;
 
 function TMermaidBlockOverride.GetName: string;
 begin
-  Result := OverrideName;
+  Result := TMermaidExtension.ExtensionName;
 end;
 
 class function TMermaidBlockOverride.TryResolveModel(const Node: IMarkdownNode; out Model: IMermaidModel): Boolean;

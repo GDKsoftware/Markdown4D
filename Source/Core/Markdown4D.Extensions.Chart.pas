@@ -77,6 +77,7 @@ type
   TChartExtension = class(TInterfacedObject, IMarkdownExtension)
   public
     const
+      ExtensionName = 'markdown4d.chart';
       ChartTypeKey = 'type';
       ChartTypeValue = 'chart';
       ChartDataKey = 'data';
