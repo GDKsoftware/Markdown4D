@@ -26,6 +26,8 @@ type
     procedure SimulateEnter;
     procedure SimulateExit;
     procedure PumpAutoScrollTimer;
+    procedure SimulateMiddlePress;
+    function SimulateDialogKey(const Key: Word): Word;
   end;
 
   [TestFixture]
@@ -46,9 +48,12 @@ type
       PreviewScrollTarget = 40;
     var
       FEditor: TMarkdownEditor;
+      FAutoScrollChangeCount: Integer;
       FSavedClipboard: IInterface;
       FClipboardReplaced: Boolean;
     class function ManyLines(const Count: Integer): string; static;
+    function NewOverflowingEditor: TTestableFmxEditor;
+    procedure RecordAutoScrollChange(Sender: TObject);
     class function OneWrappedLine: string; static;
     procedure ReplaceClipboardWithFake;
     procedure RestoreClipboard;
@@ -204,6 +209,18 @@ type
     procedure AutoScrollTimer_DuringDragOutside_ExtendsSelection;
 
     [Test]
+    procedure MiddlePress_OverflowingContent_IsAutoScrolling;
+
+    [Test]
+    procedure AutoScrollChange_StartAndStop_RaisedForBoth;
+
+    [Test]
+    procedure DialogKey_DuringAutoScroll_EndsItAndTakesTheKey;
+
+    [Test]
+    procedure DialogKey_WithoutAutoScroll_LeavesTheKey;
+
+    [Test]
     procedure FocusEnterExit_TogglesCaretWithoutError;
 
     [Test]
@@ -281,6 +298,19 @@ end;
 procedure TTestableFmxEditor.SimulateExit;
 begin
   DoExit;
+end;
+
+procedure TTestableFmxEditor.SimulateMiddlePress;
+begin
+  MouseDown(TMouseButton.mbMiddle, [], 10, 10);
+end;
+
+// The form offers F-keys and Ctrl or Alt combinations to the focused
+// control's DialogKey before its menus and action lists.
+function TTestableFmxEditor.SimulateDialogKey(const Key: Word): Word;
+begin
+  Result := Key;
+  DialogKey(Result, []);
 end;
 
 procedure TTestableFmxEditor.PumpAutoScrollTimer;
@@ -1082,6 +1112,74 @@ begin
   finally
     Editor.Free;
   end;
+end;
+
+procedure TMarkdownFmxEditorTests.MiddlePress_OverflowingContent_IsAutoScrolling;
+begin
+  const Editor = NewOverflowingEditor;
+  try
+    Editor.SimulateMiddlePress;
+
+    Assert.IsTrue(Editor.IsAutoScrolling);
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.AutoScrollChange_StartAndStop_RaisedForBoth;
+begin
+  FAutoScrollChangeCount := 0;
+  const Editor = NewOverflowingEditor;
+  try
+    Editor.OnAutoScrollChange := RecordAutoScrollChange;
+
+    Editor.SimulateMiddlePress;
+    Editor.SimulateKeyDown(vkDown, #0, []);
+
+    Assert.AreEqual(2, FAutoScrollChangeCount);
+    Assert.IsFalse(Editor.IsAutoScrolling);
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.DialogKey_DuringAutoScroll_EndsItAndTakesTheKey;
+begin
+  const Editor = NewOverflowingEditor;
+  try
+    Editor.SimulateMiddlePress;
+
+    const RemainingKey = Editor.SimulateDialogKey(vkF3);
+
+    Assert.IsFalse(Editor.IsAutoScrolling, 'The key must end autoscroll');
+    Assert.AreEqual(0, Integer(RemainingKey), 'The key that ends autoscroll must not reach a shortcut');
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.DialogKey_WithoutAutoScroll_LeavesTheKey;
+begin
+  const Editor = NewOverflowingEditor;
+  try
+    const RemainingKey = Editor.SimulateDialogKey(vkF3);
+
+    Assert.AreEqual(Integer(vkF3), Integer(RemainingKey));
+  finally
+    Editor.Free;
+  end;
+end;
+
+function TMarkdownFmxEditorTests.NewOverflowingEditor: TTestableFmxEditor;
+begin
+  Result := TTestableFmxEditor.Create(nil);
+  Result.Height := ShortHeight;
+  Result.Text := ManyLines(ManyLineCount);
+end;
+
+procedure TMarkdownFmxEditorTests.RecordAutoScrollChange(Sender: TObject);
+begin
+  Inc(FAutoScrollChangeCount);
 end;
 
 end.

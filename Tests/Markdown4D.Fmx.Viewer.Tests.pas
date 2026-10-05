@@ -52,8 +52,12 @@ type
       FViewer: TMarkdownViewer;
       FExternalTheme: TMarkdownTheme;
       FReportedSender: TObject;
+      FAutoScrollChangeCount: Integer;
     class function IsBandUntouched(const Bitmap: TBitmap; const BandHeight: Integer): Boolean;
     procedure PressKey(const Key: Word; const Shift: TShiftState);
+    procedure StartAutoScroll;
+    function PressDialogKey(const Key: Word): Word;
+    procedure RecordAutoScrollChange(Sender: TObject);
     procedure RecordExtensionError(const Sender: TObject; const Extension: string; const Error: Exception);
 
   public
@@ -119,6 +123,18 @@ type
 
     [Test]
     procedure Text_FailingExtension_ReportsErrorWithViewerAsSender;
+
+    [Test]
+    procedure MiddlePress_OverflowingContent_IsAutoScrolling;
+
+    [Test]
+    procedure AutoScrollChange_StartAndStop_RaisedForBoth;
+
+    [Test]
+    procedure DialogKey_DuringAutoScroll_EndsItAndTakesTheKey;
+
+    [Test]
+    procedure DialogKey_WithoutAutoScroll_LeavesTheKey;
   end;
 
 implementation
@@ -147,6 +163,8 @@ begin
 
   FExternalTheme.Free;
   FExternalTheme := nil;
+
+  FAutoScrollChangeCount := 0;
 end;
 
 procedure TMarkdownFmxViewerTests.NewViewer_HasEmptySelectedText;
@@ -410,6 +428,62 @@ procedure TMarkdownFmxViewerTests.RecordExtensionError(const Sender: TObject; co
   const Error: Exception);
 begin
   FReportedSender := Sender;
+end;
+
+procedure TMarkdownFmxViewerTests.MiddlePress_OverflowingContent_IsAutoScrolling;
+begin
+  StartAutoScroll;
+
+  Assert.IsTrue(FViewer.IsAutoScrolling);
+end;
+
+procedure TMarkdownFmxViewerTests.AutoScrollChange_StartAndStop_RaisedForBoth;
+begin
+  FViewer.OnAutoScrollChange := RecordAutoScrollChange;
+
+  StartAutoScroll;
+  PressKey(vkDown, []);
+
+  Assert.AreEqual(2, FAutoScrollChangeCount);
+  Assert.IsFalse(FViewer.IsAutoScrolling);
+end;
+
+// The form offers F-keys and Ctrl or Alt combinations to the focused
+// control's DialogKey before its menus and action lists.
+procedure TMarkdownFmxViewerTests.DialogKey_DuringAutoScroll_EndsItAndTakesTheKey;
+begin
+  StartAutoScroll;
+
+  const RemainingKey = PressDialogKey(vkF3);
+
+  Assert.IsFalse(FViewer.IsAutoScrolling, 'The key must end autoscroll');
+  Assert.AreEqual(0, Integer(RemainingKey), 'The key that ends autoscroll must not reach a shortcut');
+end;
+
+procedure TMarkdownFmxViewerTests.DialogKey_WithoutAutoScroll_LeavesTheKey;
+begin
+  FViewer.Text := TMarkdownTestPipelineHelpers.ManyParagraphs(TallParagraphCount);
+
+  const RemainingKey = PressDialogKey(vkF3);
+
+  Assert.AreEqual(Integer(vkF3), Integer(RemainingKey));
+end;
+
+procedure TMarkdownFmxViewerTests.StartAutoScroll;
+begin
+  FViewer.Text := TMarkdownTestPipelineHelpers.ManyParagraphs(TallParagraphCount);
+  TMarkdownViewerAccess(FViewer).MouseDown(TMouseButton.mbMiddle, [], 10, 10);
+end;
+
+function TMarkdownFmxViewerTests.PressDialogKey(const Key: Word): Word;
+begin
+  Result := Key;
+  TMarkdownViewerAccess(FViewer).DialogKey(Result, []);
+end;
+
+procedure TMarkdownFmxViewerTests.RecordAutoScrollChange(Sender: TObject);
+begin
+  Inc(FAutoScrollChangeCount);
 end;
 
 end.

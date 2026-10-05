@@ -105,6 +105,7 @@ type
       FRows: TArray<TVisualRow>;
       FOnChange: TNotifyEvent;
       FOnScroll: TNotifyEvent;
+      FOnAutoScrollChange: TNotifyEvent;
       FOnSyncScroll: TMarkdownSyncScrollEvent;
     procedure CreateCaretTimer;
     procedure CreatePreviewTimer;
@@ -170,6 +171,7 @@ type
     procedure ScrollCaretIntoView;
     procedure RedrawContent;
     function GetAutoScroll: Boolean;
+    function GetIsAutoScrolling: Boolean;
     procedure PaintAutoScrollOrigin;
     procedure SetAutoScroll(const Value: Boolean);
     function CanAutoScroll: Boolean;
@@ -207,6 +209,7 @@ type
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Single); override;
     procedure MouseWheel(Shift: TShiftState; WheelDelta: Integer; var Handled: Boolean); override;
     procedure KeyDown(var Key: Word; var KeyChar: WideChar; Shift: TShiftState); override;
+    procedure DialogKey(var Key: Word; Shift: TShiftState); override;
 
   public
     constructor Create(Owner: TComponent); override;
@@ -259,6 +262,7 @@ type
     function ReplaceAll(const Needle, Replacement: string; const Options: TMarkdownFindOptions): Integer;
     property CaretPosition: Integer read GetCaretPosition write SetCaretPosition;
     property SelectedText: string read GetSelectedText;
+    property IsAutoScrolling: Boolean read GetIsAutoScrolling;
     property Theme: TMarkdownTheme read FTheme write SetTheme;
 
   published
@@ -292,6 +296,7 @@ type
     property Width;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
     property OnScroll: TNotifyEvent read FOnScroll write FOnScroll;
+    property OnAutoScrollChange: TNotifyEvent read FOnAutoScrollChange write FOnAutoScrollChange;
     property OnSyncScroll: TMarkdownSyncScrollEvent read FOnSyncScroll write FOnSyncScroll;
   end;
 
@@ -1621,6 +1626,11 @@ begin
   Result := FAutoScroller.Enabled;
 end;
 
+function TMarkdownEditor.GetIsAutoScrolling: Boolean;
+begin
+  Result := FAutoScroller.IsActive;
+end;
+
 procedure TMarkdownEditor.SetAutoScroll(const Value: Boolean);
 begin
   FAutoScroller.Enabled := Value;
@@ -1639,6 +1649,9 @@ end;
 procedure TMarkdownEditor.AutoScrollChanged;
 begin
   RedrawContent;
+
+  if Assigned(FOnAutoScrollChange) then
+    FOnAutoScrollChange(Self);
 end;
 
 procedure TMarkdownEditor.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Single);
@@ -1889,6 +1902,20 @@ begin
     FModel.Insert(KeyChar);
     KeyChar := #0;
   end;
+end;
+
+// The form offers F-keys and Ctrl or Alt combinations here before its menus
+// and action lists, so the key that ends autoscroll reaches none of them.
+procedure TMarkdownEditor.DialogKey(var Key: Word; Shift: TShiftState);
+begin
+  if FAutoScroller.IsActive then
+  begin
+    FAutoScroller.Stop;
+    Key := 0;
+    Exit;
+  end;
+
+  inherited DialogKey(Key, Shift);
 end;
 
 function TMarkdownEditor.HandleKey(const Key: Word; const Shift: TShiftState): Boolean;

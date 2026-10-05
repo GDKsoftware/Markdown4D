@@ -102,6 +102,7 @@ type
       FOnResolveImage: TMarkdownResolveImageEvent;
       FOnRemoteImageRequest: TMarkdownRemoteImageEvent;
       FOnScroll: TNotifyEvent;
+      FOnAutoScrollChange: TNotifyEvent;
       FOnExtensionError: TMarkdownExtensionErrorEvent;
     procedure CreateFlushTimer;
     procedure CreateCopyFeedbackTimer;
@@ -130,6 +131,7 @@ type
     procedure CopyCodeToClipboard(const Text: string);
     procedure SelectForPress(const Point: TLayoutPointF; const X, Y: Single; const IsDoubleClick: Boolean);
     function GetAutoScroll: Boolean;
+    function GetIsAutoScrolling: Boolean;
     procedure SetAutoScroll(const Value: Boolean);
     function CanAutoScroll: Boolean;
     procedure AutoScrollBy(const Delta: Single);
@@ -175,6 +177,7 @@ type
     procedure DoMouseLeave; override;
     procedure DoExit; override;
     procedure KeyDown(var Key: Word; var KeyChar: WideChar; Shift: TShiftState); override;
+    procedure DialogKey(var Key: Word; Shift: TShiftState); override;
 
   public
     constructor Create(Owner: TComponent); override;
@@ -208,6 +211,7 @@ type
     // its scroll mapping went stale.
     property LayoutCount: Integer read GetLayoutCount;
     property SelectedText: string read GetSelectedText;
+    property IsAutoScrolling: Boolean read GetIsAutoScrolling;
 
   published
     property Text: string read GetText write SetText stored IsTextStored;
@@ -238,6 +242,7 @@ type
     property OnRemoteImageRequest: TMarkdownRemoteImageEvent read FOnRemoteImageRequest
       write FOnRemoteImageRequest;
     property OnScroll: TNotifyEvent read FOnScroll write FOnScroll;
+    property OnAutoScrollChange: TNotifyEvent read FOnAutoScrollChange write FOnAutoScrollChange;
     property OnExtensionError: TMarkdownExtensionErrorEvent read FOnExtensionError write FOnExtensionError;
   end;
 
@@ -841,6 +846,20 @@ begin
   end;
 end;
 
+// The form offers F-keys and Ctrl or Alt combinations here before its menus
+// and action lists, so the key that ends autoscroll reaches none of them.
+procedure TMarkdownViewer.DialogKey(var Key: Word; Shift: TShiftState);
+begin
+  if FAutoScroller.IsActive then
+  begin
+    FAutoScroller.Stop;
+    Key := 0;
+    Exit;
+  end;
+
+  inherited DialogKey(Key, Shift);
+end;
+
 function TMarkdownViewer.HandleKey(const Key: Word; const Shift: TShiftState): Boolean;
 begin
   Result := True;
@@ -897,6 +916,11 @@ begin
   Result := FAutoScroller.Enabled;
 end;
 
+function TMarkdownViewer.GetIsAutoScrolling: Boolean;
+begin
+  Result := FAutoScroller.IsActive;
+end;
+
 procedure TMarkdownViewer.SetAutoScroll(const Value: Boolean);
 begin
   FAutoScroller.Enabled := Value;
@@ -915,6 +939,9 @@ end;
 procedure TMarkdownViewer.AutoScrollChanged;
 begin
   RedrawContent;
+
+  if Assigned(FOnAutoScrollChange) then
+    FOnAutoScrollChange(Self);
 end;
 
 procedure TMarkdownViewer.SetScrollPosition(const Value: Single);

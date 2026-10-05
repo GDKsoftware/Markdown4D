@@ -102,6 +102,7 @@ type
       FOnResolveImage: TMarkdownResolveImageEvent;
       FOnRemoteImageRequest: TMarkdownRemoteImageEvent;
       FOnScroll: TNotifyEvent;
+      FOnAutoScrollChange: TNotifyEvent;
       FOnExtensionError: TMarkdownExtensionErrorEvent;
     class constructor Create;
     class destructor Destroy;
@@ -140,11 +141,13 @@ type
     procedure CopyCodeToClipboard(const Text: string);
     procedure SelectForPress(const Point: TLayoutPointF; const X, Y: Integer; const IsDoubleClick: Boolean);
     function GetAutoScroll: Boolean;
+    function GetIsAutoScrolling: Boolean;
     procedure PaintAutoScrollOrigin;
     procedure SetAutoScroll(const Value: Boolean);
     function CanAutoScroll: Boolean;
     procedure AutoScrollBy(const Delta: Single);
     procedure AutoScrollChanged;
+    procedure CNKeyDown(var Message: TWMKeyDown); message CN_KEYDOWN;
     procedure WMKillFocus(var Message: TWMKillFocus); message WM_KILLFOCUS;
     procedure WMCaptureChanged(var Message: TMessage); message WM_CAPTURECHANGED;
     procedure HandleCopyFeedbackTimer(Sender: TObject);
@@ -214,6 +217,7 @@ type
     // its scroll mapping went stale.
     property LayoutCount: Integer read GetLayoutCount;
     property SelectedText: string read GetSelectedText;
+    property IsAutoScrolling: Boolean read GetIsAutoScrolling;
 
   published
     property Text: string read GetText write SetText stored IsTextStored;
@@ -238,6 +242,7 @@ type
     property OnRemoteImageRequest: TMarkdownRemoteImageEvent read FOnRemoteImageRequest
       write FOnRemoteImageRequest;
     property OnScroll: TNotifyEvent read FOnScroll write FOnScroll;
+    property OnAutoScrollChange: TNotifyEvent read FOnAutoScrollChange write FOnAutoScrollChange;
     property OnExtensionError: TMarkdownExtensionErrorEvent read FOnExtensionError write FOnExtensionError;
   end;
 
@@ -859,6 +864,11 @@ begin
   Result := FAutoScroller.Enabled;
 end;
 
+function TMarkdownViewer.GetIsAutoScrolling: Boolean;
+begin
+  Result := FAutoScroller.IsActive;
+end;
+
 procedure TMarkdownViewer.SetAutoScroll(const Value: Boolean);
 begin
   FAutoScroller.Enabled := Value;
@@ -877,6 +887,23 @@ end;
 procedure TMarkdownViewer.AutoScrollChanged;
 begin
   Invalidate;
+
+  if Assigned(FOnAutoScrollChange) then
+    FOnAutoScrollChange(Self);
+end;
+
+// The message loop sends a key here before menu and action shortcuts and before
+// the form's KeyPreview, so the key that ends autoscroll reaches none of them.
+procedure TMarkdownViewer.CNKeyDown(var Message: TWMKeyDown);
+begin
+  if FAutoScroller.IsActive then
+  begin
+    FAutoScroller.Stop;
+    Message.Result := 1;
+    Exit;
+  end;
+
+  inherited;
 end;
 
 procedure TMarkdownViewer.WMKillFocus(var Message: TWMKillFocus);

@@ -95,6 +95,7 @@ type
       FRows: TArray<TVisualRow>;
       FOnChange: TNotifyEvent;
       FOnScroll: TNotifyEvent;
+      FOnAutoScrollChange: TNotifyEvent;
       FOnSyncScroll: TMarkdownSyncScrollEvent;
     class constructor Create;
     class destructor Destroy;
@@ -182,9 +183,11 @@ type
     procedure WMEraseBkgnd(var Message: TWMEraseBkgnd); message WM_ERASEBKGND;
     procedure WMGetDlgCode(var Message: TWMGetDlgCode); message WM_GETDLGCODE;
     procedure WMSetFocus(var Message: TWMSetFocus); message WM_SETFOCUS;
+    procedure CNKeyDown(var Message: TWMKeyDown); message CN_KEYDOWN;
     procedure WMKillFocus(var Message: TWMKillFocus); message WM_KILLFOCUS;
     procedure WMCaptureChanged(var Message: TMessage); message WM_CAPTURECHANGED;
     function GetAutoScroll: Boolean;
+    function GetIsAutoScrolling: Boolean;
     procedure PaintAutoScrollOrigin;
     procedure SetAutoScroll(const Value: Boolean);
     function CanAutoScroll: Boolean;
@@ -258,6 +261,7 @@ type
     function ReplaceAll(const Needle, Replacement: string; const Options: TMarkdownFindOptions): Integer;
     property CaretPosition: Integer read GetCaretPosition write SetCaretPosition;
     property SelectedText: string read GetSelectedText;
+    property IsAutoScrolling: Boolean read GetIsAutoScrolling;
     property Theme: TMarkdownTheme read FTheme write SetTheme;
 
   published
@@ -285,6 +289,7 @@ type
     property Visible;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
     property OnScroll: TNotifyEvent read FOnScroll write FOnScroll;
+    property OnAutoScrollChange: TNotifyEvent read FOnAutoScrollChange write FOnAutoScrollChange;
     property OnSyncScroll: TMarkdownSyncScrollEvent read FOnSyncScroll write FOnSyncScroll;
   end;
 
@@ -1943,6 +1948,20 @@ begin
   Invalidate;
 end;
 
+// The message loop sends a key here before menu and action shortcuts and before
+// the form's KeyPreview, so the key that ends autoscroll reaches none of them.
+procedure TMarkdownEditor.CNKeyDown(var Message: TWMKeyDown);
+begin
+  if FAutoScroller.IsActive then
+  begin
+    FAutoScroller.Stop;
+    Message.Result := 1;
+    Exit;
+  end;
+
+  inherited;
+end;
+
 procedure TMarkdownEditor.WMKillFocus(var Message: TWMKillFocus);
 begin
   inherited;
@@ -1978,6 +1997,11 @@ begin
   Result := FAutoScroller.Enabled;
 end;
 
+function TMarkdownEditor.GetIsAutoScrolling: Boolean;
+begin
+  Result := FAutoScroller.IsActive;
+end;
+
 procedure TMarkdownEditor.SetAutoScroll(const Value: Boolean);
 begin
   FAutoScroller.Enabled := Value;
@@ -2004,6 +2028,9 @@ procedure TMarkdownEditor.AutoScrollChanged;
 begin
   FAutoScrollRemainder := 0;
   Invalidate;
+
+  if Assigned(FOnAutoScrollChange) then
+    FOnAutoScrollChange(Self);
 end;
 
 function TMarkdownEditor.GetText: string;
