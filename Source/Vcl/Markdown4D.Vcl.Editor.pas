@@ -27,6 +27,9 @@ uses
   Markdown4D.Editor.Sync,
   Markdown4D.Viewer.Lifetime,
   Markdown4D.Viewer.Clicks,
+  Markdown4D.Editor.PreviewPacer,
+  Markdown4D.Layout.ResizePacer,
+  Markdown4D.Layout.Pointer,
   Markdown4D.AutoScroll,
   Markdown4D.Vcl.AutoScroll,
   Markdown4D.Vcl.Painter,
@@ -85,6 +88,10 @@ type
       FAutoScrollTimer: TTimer;
       FPreview: TMarkdownViewer;
       FPreviewTimer: TTimer;
+      FPreviewPacer: TMarkdownPreviewPacer;
+      FWrapTimer: TTimer;
+      FWrapPacer: TMarkdownResizePacer;
+      FAppliedWrapWidth: Integer;
       FPreviewDirty: Boolean;
       FUpdatingPreview: Boolean;
       FSync: TMarkdownEditorSync;
@@ -103,6 +110,7 @@ type
     class destructor Destroy;
     procedure HandleModelChange(const Sender: TObject; const Range: TEditorReplaceRange);
     procedure HandlePreviewTimer(Sender: TObject);
+    class function HasPendingKeystrokes: Boolean; static;
     procedure HandleAutoScrollTimer(Sender: TObject);
     function RegisterClick(const X, Y: Integer): Integer;
     procedure UpdateSelectionToPoint(const X, Y: Integer);
@@ -119,6 +127,9 @@ type
     procedure RenderContent(const TargetCanvas: TCanvas; const TargetWidth, TargetHeight, PixelsPerInch,
       ScrollY: Integer);
     procedure RebuildRows;
+    procedure ApplyWrapWidth;
+    procedure ApplyWrapWidthNow;
+    procedure HandleWrapTimer(Sender: TObject);
     function WrapWidthPx: Integer;
     function RowCount: Integer;
     function RowIndexOfOffset(const Offset: Integer): Integer;
@@ -308,6 +319,7 @@ uses
   Markdown4D.DesignSample,
   System.SysUtils,
   System.Math,
+  System.Diagnostics,
   System.UITypes,
   Vcl.Clipbrd,
   Vcl.Forms,
@@ -363,6 +375,11 @@ begin
   FPreviewTimer.Enabled := False;
   FPreviewTimer.Interval := PreviewDebounceIntervalMilliseconds;
   FPreviewTimer.OnTimer := HandlePreviewTimer;
+
+  FWrapTimer := TTimer.Create(Self);
+  FWrapTimer.Enabled := False;
+  FWrapTimer.Interval := TMarkdownResizePacer.SettleMilliseconds;
+  FWrapTimer.OnTimer := HandleWrapTimer;
 
   FAutoScrollTimer := TTimer.Create(Self);
   FAutoScrollTimer.Enabled := False;
@@ -578,6 +595,7 @@ begin
   if FPreview = nil then
     Exit;
 
+  const Watch = TStopwatch.StartNew;
   const PreviousOffset = FPreview.ScrollOffset;
 
   FUpdatingPreview := True;
@@ -589,6 +607,8 @@ begin
 
   UpdateSync;
   RestorePreviewScroll(PreviousOffset);
+
+  FPreviewPacer.UpdateTook(Watch.ElapsedMilliseconds);
 end;
 
 procedure TMarkdownEditor.RestorePreviewScroll(const PreviousOffset: Single);
@@ -851,12 +871,26 @@ end;
 
 procedure TMarkdownEditor.HandlePreviewTimer(Sender: TObject);
 begin
-  FPreviewTimer.Enabled := False;
-  if not FLifetime.IsAlive then
+  const HasWork = (FLifetime.IsAlive and FPreviewDirty);
+  if not HasWork then
+  begin
+    FPreviewTimer.Enabled := False;
+    Exit;
+  end;
+
+  // A hidden preview and keystrokes still on their way both let the update
+  // wait; the timer keeps checking until neither holds.
+  const IsPreviewHidden = ((FPreview <> nil) and not FPreview.Showing);
+  if IsPreviewHidden or HasPendingKeystrokes then
     Exit;
 
-  if FPreviewDirty then
-    FlushPreview;
+  FlushPreview;
+end;
+
+class function TMarkdownEditor.HasPendingKeystrokes: Boolean;
+begin
+  var Message: TMsg;
+  Result := PeekMessage(Message, 0, WM_KEYFIRST, WM_KEYLAST, PM_NOREMOVE);
 end;
 
 procedure TMarkdownEditor.SchedulePreviewUpdate;
@@ -866,6 +900,7 @@ begin
 
   FPreviewDirty := True;
   FPreviewTimer.Enabled := False;
+  FPreviewTimer.Interval := FPreviewPacer.DelayMilliseconds;
   FPreviewTimer.Enabled := True;
 end;
 
@@ -1620,7 +1655,43 @@ procedure TMarkdownEditor.Resize;
 begin
   inherited Resize;
 
+  ApplyWrapWidth;
+  UpdateScrollBar;
+  Invalidate;
+end;
+
+// Wrapping a long document again at every pixel of a splitter drag lags
+// behind the mouse, so a slow rewrap waits until the width settles.
+procedure TMarkdownEditor.ApplyWrapWidth;
+begin
+  const IsNewWidth = (WrapWidthPx <> FAppliedWrapWidth);
+  const RewrapsNow = ((not IsNewWidth) or FWrapPacer.TryReflowNow(GetTickCount64));
+  if RewrapsNow then
+  begin
+    ApplyWrapWidthNow;
+    Exit;
+  end;
+
+  FWrapTimer.Enabled := False;
+  FWrapTimer.Enabled := True;
+end;
+
+procedure TMarkdownEditor.ApplyWrapWidthNow;
+begin
+  FWrapTimer.Enabled := False;
+
+  const Watch = TStopwatch.StartNew;
+  FAppliedWrapWidth := WrapWidthPx;
   RebuildRows;
+  FWrapPacer.LayoutTook(Watch.ElapsedMilliseconds);
+end;
+
+procedure TMarkdownEditor.HandleWrapTimer(Sender: TObject);
+begin
+  if not FWrapPacer.TryFlush(GetTickCount64, TMarkdownPointer.IsPrimaryButtonDown) then
+    Exit;
+
+  ApplyWrapWidthNow;
   UpdateScrollBar;
   Invalidate;
 end;

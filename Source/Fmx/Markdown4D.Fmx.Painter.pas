@@ -12,7 +12,8 @@ uses
   FMX.Graphics,
   FMX.TextLayout,
   Markdown4D.Layout.Defaults,
-  Markdown4D.Layout.Interfaces;
+  Markdown4D.Layout.Interfaces,
+  Markdown4D.Layout.MeasureCache;
 
 type
   TMarkdownFmxImageResolver = reference to function(const Source: string): TBitmap;
@@ -35,13 +36,17 @@ type
       FPixelsPerInch: Integer;
       FLayout: TTextLayout;
       FSavedStates: TStack<TCanvasSaveState>;
-      FMeasureCache: TDictionary<string, TLayoutSizeF>;
+      FMeasureCache: TMarkdownMeasureCache;
       FLineHeightCache: TDictionary<string, Single>;
+      FLastLineHeightFont: TMarkdownFontStyle;
+      FLastLineHeight: Single;
+      FHasLastLineHeight: Boolean;
       FAppliedFontKey: string;
       FHasAppliedFont: Boolean;
       FImageResolver: TMarkdownFmxImageResolver;
       FBrokenImageQuery: TMarkdownFmxBrokenImageQuery;
     function ResolveFamilyName(const FamilyName: string): string;
+    function LookupLineHeight(const Font: TMarkdownFontStyle): Single;
     function FontKey(const Font: TMarkdownFontStyle): string;
     procedure ConfigureLayout(const Font: TMarkdownFontStyle; const Text: string);
     procedure ApplyCanvasFont(const Font: TMarkdownFontStyle);
@@ -96,7 +101,7 @@ begin
   FPixelsPerInch := PixelsPerInch;
   FLayout := TTextLayoutManager.DefaultTextLayout.Create(Canvas);
   FSavedStates := TStack<TCanvasSaveState>.Create;
-  FMeasureCache := TDictionary<string, TLayoutSizeF>.Create;
+  FMeasureCache := TMarkdownMeasureCache.Create;
   FLineHeightCache := TDictionary<string, Single>.Create;
 end;
 
@@ -112,16 +117,33 @@ end;
 
 function TMarkdownFmxPainter.MeasureText(const Text: string; const Font: TMarkdownFontStyle): TLayoutSizeF;
 begin
-  const Key = FontKey(Font) + '|' + Text;
-  if FMeasureCache.TryGetValue(Key, Result) then
+  if FMeasureCache.TryGetSize(Text, Font, FPixelsPerInch, Result) then
     Exit;
 
   ConfigureLayout(Font, Text);
   Result := TLayoutSizeF.Create(FLayout.TextWidth, LineHeight(Font));
-  FMeasureCache.Add(Key, Result);
+  FMeasureCache.Add(Text, Font, FPixelsPerInch, Result);
 end;
 
+// Layout asks for the line height and the baseline of nearly every run, mostly
+// in the font it asked for last; that answer comes without building a key.
 function TMarkdownFmxPainter.LineHeight(const Font: TMarkdownFontStyle): Single;
+begin
+  const IsLastFont = (FHasLastLineHeight and Font.SameAs(FLastLineHeightFont));
+  if IsLastFont then
+  begin
+    Result := FLastLineHeight;
+    Exit;
+  end;
+
+  Result := LookupLineHeight(Font);
+
+  FLastLineHeightFont := Font;
+  FLastLineHeight := Result;
+  FHasLastLineHeight := True;
+end;
+
+function TMarkdownFmxPainter.LookupLineHeight(const Font: TMarkdownFontStyle): Single;
 begin
   const Key = FontKey(Font);
   if FLineHeightCache.TryGetValue(Key, Result) then

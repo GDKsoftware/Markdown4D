@@ -57,6 +57,9 @@ type
 
     [Test]
     procedure Render_MermaidDiamondNode_BorderIsAntiAliased;
+
+    [Test]
+    procedure MeasureText_AfterPixelsPerInchChange_MeasuresAtTheNewScale;
   end;
 
 implementation
@@ -355,6 +358,28 @@ begin
     Result := Seen.Count;
   finally
     Seen.Free;
+  end;
+end;
+
+procedure TMarkdownVclRenderTests.MeasureText_AfterPixelsPerInchChange_MeasuresAtTheNewScale;
+begin
+  const Bitmap = TBitmap.Create;
+  try
+    Bitmap.SetSize(1, 1);
+    const Painter = TMarkdownVclPainter.Create(Bitmap.Canvas, 96);
+    const PainterLifetime: IPainter = Painter;
+    const Font = TMarkdownFontStyle.Create('Segoe UI', 12);
+    const NormalWidth = Painter.MeasureText('Measured twice', Font).Width;
+    const NormalLineHeight = Painter.LineHeight(Font);
+
+    Painter.PixelsPerInch := 192;
+    const ScaledWidth = Painter.MeasureText('Measured twice', Font).Width;
+    const ScaledLineHeight = Painter.LineHeight(Font);
+
+    Assert.IsTrue(ScaledWidth > NormalWidth * 1.8, 'A width measured at 96 dpi must not be reused at 192 dpi');
+    Assert.IsTrue(ScaledLineHeight > NormalLineHeight * 1.8, 'A line height from 96 dpi must not be reused at 192 dpi');
+  finally
+    Bitmap.Free;
   end;
 end;
 

@@ -72,6 +72,7 @@ type
       FScrollOffset: Single;
       FDisplayList: IMarkdownDisplayList;
       FLayoutCount: Integer;
+      FLastLayoutMilliseconds: Int64;
       FShouldAutoFollow: Boolean;
       FSelectionActive: Boolean;
       FAnchor: TTextPosition;
@@ -210,6 +211,8 @@ type
     property FullText: string read GetFullText;
     property DisplayList: IMarkdownDisplayList read GetDisplayList;
     property LayoutCount: Integer read GetLayoutCount;
+    // How long the last layout took, so a host can pace work that lays out again.
+    property LastLayoutMilliseconds: Int64 read FLastLayoutMilliseconds;
     property IsDirty: Boolean read GetIsDirty;
     property ShouldAutoFollow: Boolean read GetShouldAutoFollow;
     property FlushIntervalMilliseconds: Cardinal read GetFlushIntervalMilliseconds write SetFlushIntervalMilliseconds;
@@ -221,6 +224,7 @@ implementation
 
 uses
   System.Math,
+  System.Diagnostics,
   System.Character,
   Markdown4D,
   Markdown4D.Defines,
@@ -1263,10 +1267,12 @@ begin
   if FViewportWidth <= 0 then
     Exit;
 
+  const Watch = TStopwatch.StartNew;
   const Document = TMarkdown.Parse(FText, TMarkdownDialect.Gfm);
   TLayoutDocumentProcessorRegistry.Process(Document, Self);
 
   FDisplayList := TMarkdownLayoutEngine.LayoutDocument(Document, FViewportWidth, FTheme, FMeasurer, Self, Self);
+  FLastLayoutMilliseconds := Watch.ElapsedMilliseconds;
   Inc(FLayoutCount);
   RegisterImageSlots;
   RefreshHighlights;

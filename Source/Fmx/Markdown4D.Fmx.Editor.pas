@@ -26,6 +26,9 @@ uses
   Markdown4D.Editor.Sync,
   Markdown4D.Viewer.Lifetime,
   Markdown4D.Viewer.Clicks,
+  Markdown4D.Editor.PreviewPacer,
+  Markdown4D.Layout.ResizePacer,
+  Markdown4D.Layout.Pointer,
   Markdown4D.Viewer.ScrollBar,
   Markdown4D.Fmx.Painter,
   Markdown4D.AutoScroll,
@@ -96,6 +99,10 @@ type
       FCaretVisible: Boolean;
       FPreview: TMarkdownViewer;
       FPreviewTimer: TTimer;
+      FPreviewPacer: TMarkdownPreviewPacer;
+      FWrapTimer: TTimer;
+      FWrapPacer: TMarkdownResizePacer;
+      FAppliedWrapWidth: Single;
       FPreviewDirty: Boolean;
       FUpdatingPreview: Boolean;
       FSync: TMarkdownEditorSync;
@@ -135,6 +142,10 @@ type
     procedure RenderContent(const Target: TCanvas; const TargetWidth, TargetHeight, ScrollY: Single;
       const DrawCaret: Boolean);
     procedure RebuildRows;
+    procedure CreateWrapTimer;
+    procedure ApplyWrapWidth;
+    procedure ApplyWrapWidthNow;
+    procedure HandleWrapTimer(Sender: TObject);
     function WrapWidthPx: Single;
     function RowCount: Integer;
     function RowIndexOfOffset(const Offset: Integer): Integer;
@@ -317,6 +328,7 @@ uses
   Markdown4D.DesignSample,
   System.SysUtils,
   System.Math,
+  System.Diagnostics,
   System.Rtti,
   FMX.Platform,
   Markdown4D,
@@ -361,6 +373,7 @@ begin
   FCaretVisible := True;
   CreateCaretTimer;
   CreatePreviewTimer;
+  CreateWrapTimer;
   CreateAutoScrollTimer;
 
   RebuildRows;
@@ -414,6 +427,18 @@ begin
   FPreviewTimer.Enabled := False;
   FPreviewTimer.Interval := PreviewDebounceIntervalMilliseconds;
   FPreviewTimer.OnTimer := HandlePreviewTimer;
+end;
+
+procedure TMarkdownEditor.CreateWrapTimer;
+begin
+  var TimerService: IFMXTimerService;
+  if not TPlatformServices.Current.SupportsPlatformService(IFMXTimerService, TimerService) then
+    Exit;
+
+  FWrapTimer := TTimer.Create(Self);
+  FWrapTimer.Enabled := False;
+  FWrapTimer.Interval := TMarkdownResizePacer.SettleMilliseconds;
+  FWrapTimer.OnTimer := HandleWrapTimer;
 end;
 
 procedure TMarkdownEditor.CreateAutoScrollTimer;
@@ -605,6 +630,7 @@ begin
   if FPreview = nil then
     Exit;
 
+  const Watch = TStopwatch.StartNew;
   const PreviousOffset = FPreview.ScrollOffset;
 
   FUpdatingPreview := True;
@@ -616,6 +642,8 @@ begin
 
   UpdateSync;
   RestorePreviewScroll(PreviousOffset);
+
+  FPreviewPacer.UpdateTook(Watch.ElapsedMilliseconds);
 end;
 
 procedure TMarkdownEditor.RestorePreviewScroll(const PreviousOffset: Single);
@@ -888,12 +916,20 @@ end;
 
 procedure TMarkdownEditor.HandlePreviewTimer(Sender: TObject);
 begin
-  FPreviewTimer.Enabled := False;
-  if not FLifetime.IsAlive then
+  const HasWork = (FLifetime.IsAlive and FPreviewDirty);
+  if not HasWork then
+  begin
+    FPreviewTimer.Enabled := False;
+    Exit;
+  end;
+
+  // A hidden preview lets the update wait; the timer keeps checking until it
+  // shows.
+  const IsPreviewHidden = ((FPreview <> nil) and not FPreview.ParentedVisible);
+  if IsPreviewHidden then
     Exit;
 
-  if FPreviewDirty then
-    FlushPreview;
+  FlushPreview;
 end;
 
 procedure TMarkdownEditor.SchedulePreviewUpdate;
@@ -909,6 +945,7 @@ begin
   end;
 
   FPreviewTimer.Enabled := False;
+  FPreviewTimer.Interval := FPreviewPacer.DelayMilliseconds;
   FPreviewTimer.Enabled := True;
 end;
 
@@ -1606,7 +1643,48 @@ procedure TMarkdownEditor.Resize;
 begin
   inherited Resize;
 
+  ApplyWrapWidth;
+  RedrawContent;
+end;
+
+// Wrapping a long document again at every pixel of a splitter drag lags
+// behind the mouse, so a slow rewrap waits until the width settles. Without
+// a timer to finish it later, the width always applies at once.
+procedure TMarkdownEditor.ApplyWrapWidth;
+begin
+  const NotReady = (FRowModel = nil) or (FMeasurePainter = nil);
+  if NotReady then
+    Exit;
+
+  const IsNewWidth = not SameValue(WrapWidthPx, FAppliedWrapWidth);
+  const RewrapsNow = ((not IsNewWidth) or (FWrapTimer = nil) or FWrapPacer.TryReflowNow(TThread.GetTickCount64));
+  if RewrapsNow then
+  begin
+    ApplyWrapWidthNow;
+    Exit;
+  end;
+
+  FWrapTimer.Enabled := False;
+  FWrapTimer.Enabled := True;
+end;
+
+procedure TMarkdownEditor.ApplyWrapWidthNow;
+begin
+  if FWrapTimer <> nil then
+    FWrapTimer.Enabled := False;
+
+  const Watch = TStopwatch.StartNew;
+  FAppliedWrapWidth := WrapWidthPx;
   RebuildRows;
+  FWrapPacer.LayoutTook(Watch.ElapsedMilliseconds);
+end;
+
+procedure TMarkdownEditor.HandleWrapTimer(Sender: TObject);
+begin
+  if not FWrapPacer.TryFlush(TThread.GetTickCount64, TMarkdownPointer.IsPrimaryButtonDown) then
+    Exit;
+
+  ApplyWrapWidthNow;
   RedrawContent;
 end;
 

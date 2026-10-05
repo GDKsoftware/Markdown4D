@@ -20,6 +20,8 @@ uses
   Markdown4D.Theme,
   Markdown4D.Viewer.Model,
   Markdown4D.Viewer.Clicks,
+  Markdown4D.Layout.ResizePacer,
+  Markdown4D.Layout.Pointer,
   Markdown4D.AutoScroll,
   Markdown4D.Fmx.AutoScroll,
   Markdown4D.Viewer.ContextMenu,
@@ -79,6 +81,9 @@ type
       FMeasurePainterLifetime: IPainter;
       FLoadedImages: TObjectDictionary<string, TBitmap>;
       FFlushTimer: TTimer;
+      FResizeTimer: TTimer;
+      FResizePacer: TMarkdownResizePacer;
+      FAppliedWidth: Single;
       FCopyFeedbackTimer: TTimer;
       FSelecting: Boolean;
       FClickCounter: TMarkdownClickCounter;
@@ -104,6 +109,7 @@ type
       FOnAutoScrollChange: TNotifyEvent;
       FOnExtensionError: TMarkdownExtensionErrorEvent;
     procedure CreateFlushTimer;
+    procedure CreateResizeTimer;
     procedure CreateCopyFeedbackTimer;
     function InvokeOnMainThread(const Action: TThreadProcedure): Boolean;
     procedure HandleModelExtensionError(const Sender: TObject; const Extension: string; const Error: Exception);
@@ -111,6 +117,8 @@ type
     procedure FlushImmediately;
     procedure RedrawContent;
     procedure ApplyViewport;
+    procedure ApplyViewportNow;
+    procedure HandleResizeTimer(Sender: TObject);
     procedure ScrollToBottom;
     procedure SetScrollPosition(const Value: Single);
     procedure ScrollToMatch(const Match: TMarkdownFoundRange);
@@ -303,10 +311,11 @@ begin
   FModel.OnExtensionError := HandleModelExtensionError;
 
   CreateFlushTimer;
+  CreateResizeTimer;
   CreateCopyFeedbackTimer;
 
   TMarkdownViewerShared.RegisterDefaultHighlighters;
-  ApplyViewport;
+  ApplyViewportNow;
 end;
 
 procedure TMarkdownViewer.CreateFlushTimer;
@@ -319,6 +328,18 @@ begin
   FFlushTimer.Enabled := False;
   FFlushTimer.Interval := FlushTimerIntervalMilliseconds;
   FFlushTimer.OnTimer := HandleFlushTimer;
+end;
+
+procedure TMarkdownViewer.CreateResizeTimer;
+begin
+  var TimerService: IFMXTimerService;
+  if not TPlatformServices.Current.SupportsPlatformService(IFMXTimerService, TimerService) then
+    Exit;
+
+  FResizeTimer := TTimer.Create(Self);
+  FResizeTimer.Enabled := False;
+  FResizeTimer.Interval := TMarkdownResizePacer.SettleMilliseconds;
+  FResizeTimer.OnTimer := HandleResizeTimer;
 end;
 
 procedure TMarkdownViewer.CreateCopyFeedbackTimer;
@@ -646,9 +667,41 @@ begin
   RedrawContent;
 end;
 
+// Without a timer to finish it later, a new width applies at once.
 procedure TMarkdownViewer.ApplyViewport;
 begin
+  FResizePacer.LayoutTook(FModel.LastLayoutMilliseconds);
+  const IsNewWidth = not SameValue(Width, FAppliedWidth);
+  const ReflowsNow = ((not IsNewWidth) or (FResizeTimer = nil) or
+                      FResizePacer.TryReflowNow(TThread.GetTickCount64));
+  if ReflowsNow then
+  begin
+    ApplyViewportNow;
+    Exit;
+  end;
+
+  FModel.SetViewport(FAppliedWidth, Height);
+  FResizeTimer.Enabled := False;
+  FResizeTimer.Enabled := True;
+end;
+
+procedure TMarkdownViewer.ApplyViewportNow;
+begin
+  if FResizeTimer <> nil then
+    FResizeTimer.Enabled := False;
+
+  FAppliedWidth := Width;
   FModel.SetViewport(Width, Height);
+end;
+
+procedure TMarkdownViewer.HandleResizeTimer(Sender: TObject);
+begin
+  if not FResizePacer.TryFlush(TThread.GetTickCount64, TMarkdownPointer.IsPrimaryButtonDown) then
+    Exit;
+
+  ApplyViewportNow;
+  ResolvePendingImages;
+  RedrawContent;
 end;
 
 procedure TMarkdownViewer.RedrawContent;

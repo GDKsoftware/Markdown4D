@@ -76,6 +76,9 @@ type
 
     [Test]
     procedure TextMetricCache_RepeatedMeasurement_IsStableAndFast;
+
+    [Test]
+    procedure LineHeight_AlternatingFonts_KeepsEachFontsHeight;
   end;
 
 implementation
@@ -408,6 +411,25 @@ begin
   const Channels = TAlphaColorRec(Color);
   Result := (Channels.R >= StrongChannelFloor) and (Channels.G <= WeakChannelCeiling) and
     (Channels.B <= WeakChannelCeiling);
+end;
+
+procedure TMarkdownFmxRenderTests.LineHeight_AlternatingFonts_KeepsEachFontsHeight;
+begin
+  const Bitmap = TBitmap.Create(1, 1);
+  try
+    const Painter: IPainter = TMarkdownFmxPainter.Create(Bitmap.Canvas);
+    const SmallFont = TMarkdownFontStyle.Create('Segoe UI', 10);
+    const LargeFont = TMarkdownFontStyle.Create('Segoe UI', 30);
+
+    const SmallFirst = Painter.LineHeight(SmallFont);
+    const LargeBetween = Painter.LineHeight(LargeFont);
+    const SmallAgain = Painter.LineHeight(SmallFont);
+
+    Assert.IsTrue(LargeBetween > SmallFirst * 2, 'The larger font must get its own line height');
+    Assert.AreEqual(Double(SmallFirst), Double(SmallAgain), 'Asking again must answer the same height');
+  finally
+    Bitmap.Free;
+  end;
 end;
 
 end.
