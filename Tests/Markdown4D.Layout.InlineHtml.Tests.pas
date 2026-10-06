@@ -44,6 +44,7 @@ type
     [TestCase('sub', 'sub,Subscript')]
     [TestCase('sup', 'sup,Superscript')]
     [TestCase('small', 'small,Small')]
+    [TestCase('mark', 'mark,Mark')]
     [TestCase('br', 'br,LineBreak')]
     [TestCase('a', 'a,Link')]
     [TestCase('span', 'span,Hidden')]

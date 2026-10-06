@@ -305,7 +305,8 @@ Selected properties: `BaseFont`, `CodeFont`, `MathFont`, `HeadingFonts[Level]`,
 `TableBorderColor`, `ThematicBreakColor`, `MathErrorColor`, `BlockSpacing`,
 `ListIndent`, `ContentPadding`, the `Chart*` colours and `ChartPalette`,
 `TokenColors[Kind]` for code highlighting, `DiffInsertedBackgroundColor` and
-`DiffDeletedBackgroundColor` for the lines of a `diff` block, and
+`DiffDeletedBackgroundColor` for the lines of a `diff` block,
+`MarkBackgroundColor` behind text in a `<mark>` tag, and
 `AlertColors[Kind]` for GitHub alerts. Colours are `TLayoutColor`
 (`$AARRGGBB`). Chart sizing and axis-label formatting are not part of the
 theme; see [Chart layout options](EXTENSIONS.md#chart-layout-options).
@@ -594,7 +595,8 @@ A tag inside a paragraph, heading or table cell is never painted either. The
 viewer follows the subset GitHub renders: `b`/`strong` bold, `i`/`em`/`var`
 italic, `code`/`kbd`/`samp`/`tt` in the code font, `s`/`del`/`strike` struck
 through, `ins` underlined, `sub` and `sup` smaller and below or above the
-baseline, `small` smaller, `br` a line break and `a href` a link. A comment
+baseline, `small` smaller, `mark` on `Theme.MarkBackgroundColor`, `br` a line
+break and `a href` a link. A comment
 shows nothing, and any other tag disappears while its text stays, `u` among
 them, as on GitHub. The document itself keeps the tags, so the editor and the
 markdown writer see them as written.

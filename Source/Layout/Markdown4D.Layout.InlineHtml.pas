@@ -8,7 +8,7 @@ type
   // What a tag inside a paragraph does to the text after it, following the
   // subset GitHub renders. Hidden tags show nothing themselves; the text
   // between them stays.
-  TInlineHtmlEffect = (Hidden, Bold, Italic, Code, Strikethrough, Underline, Subscript, Superscript, Small,
+  TInlineHtmlEffect = (Hidden, Bold, Italic, Code, Strikethrough, Underline, Subscript, Superscript, Small, Mark,
     LineBreak, Link);
 
   TInlineHtmlTag = record
@@ -85,6 +85,8 @@ begin
     Result := TInlineHtmlEffect.Superscript
   else if MatchText(Name, ['small']) then
     Result := TInlineHtmlEffect.Small
+  else if MatchText(Name, ['mark']) then
+    Result := TInlineHtmlEffect.Mark
   else if MatchText(Name, ['br']) then
     Result := TInlineHtmlEffect.LineBreak
   else if MatchText(Name, ['a']) then

@@ -46,6 +46,7 @@ type
         MathErrorColor: TLayoutColor;
         DiffInsertedBackgroundColor: TLayoutColor;
         DiffDeletedBackgroundColor: TLayoutColor;
+        MarkBackgroundColor: TLayoutColor;
         AlertColors: TAlertColorArray;
         BlockSpacing: Single;
         ListIndent: Single;
@@ -128,6 +129,8 @@ type
       LightDiffDeletedBackgroundColor = $FFFFEBE9;
       DarkDiffInsertedBackgroundColor = $262EA043;
       DarkDiffDeletedBackgroundColor = $26F85149;
+      LightMarkBackgroundColor = $FFFFF8C5;
+      DarkMarkBackgroundColor = $26BB8009;
       LightAlertColors: TAlertColorArray = ($FF0969DA, $FF1A7F37, $FF8250DF, $FF9A6700, $FFCF222E);
       DarkAlertColors: TAlertColorArray = ($FF4493F8, $FF3FB950, $FFAB7DF8, $FFD29922, $FFF85149);
       AlertColorCount = Ord(High(TMarkdownAlertKind)) + 1;
@@ -137,6 +140,7 @@ type
       MathErrorColorKey = 'mathErrorColor';
       DiffInsertedBackgroundColorKey = 'diffInsertedBackgroundColor';
       DiffDeletedBackgroundColorKey = 'diffDeletedBackgroundColor';
+      MarkBackgroundColorKey = 'markBackgroundColor';
       AlertColorsKey = 'alertColors';
       HeadingFontsKey = 'headingFonts';
       HeadingSpacingsAboveKey = 'headingSpacingsAbove';
@@ -199,6 +203,7 @@ type
       FMathErrorColor: TLayoutColor;
       FDiffInsertedBackgroundColor: TLayoutColor;
       FDiffDeletedBackgroundColor: TLayoutColor;
+      FMarkBackgroundColor: TLayoutColor;
       FAlertColors: TAlertColorArray;
       FBlockSpacing: Single;
       FListIndent: Single;
@@ -301,6 +306,8 @@ type
       write FDiffInsertedBackgroundColor;
     property DiffDeletedBackgroundColor: TLayoutColor read FDiffDeletedBackgroundColor
       write FDiffDeletedBackgroundColor;
+    // The highlight behind text in a <mark> tag.
+    property MarkBackgroundColor: TLayoutColor read FMarkBackgroundColor write FMarkBackgroundColor;
     // The bar, icon and title colour of each kind of alert.
     property AlertColors[const Kind: TMarkdownAlertKind]: TLayoutColor read GetAlertColor write SetAlertColor;
     property BlockSpacing: Single read FBlockSpacing write FBlockSpacing;
@@ -363,6 +370,7 @@ begin
   Result.FMathErrorColor := DarkMathErrorColor;
   Result.FDiffInsertedBackgroundColor := DarkDiffInsertedBackgroundColor;
   Result.FDiffDeletedBackgroundColor := DarkDiffDeletedBackgroundColor;
+  Result.FMarkBackgroundColor := DarkMarkBackgroundColor;
   Result.FAlertColors := DarkAlertColors;
   Result.FChartBackgroundColor := DarkBackgroundColor;
   Result.FChartGridLineColor := $FF30363D;
@@ -416,6 +424,7 @@ begin
   FMathErrorColor := LightMathErrorColor;
   FDiffInsertedBackgroundColor := LightDiffInsertedBackgroundColor;
   FDiffDeletedBackgroundColor := LightDiffDeletedBackgroundColor;
+  FMarkBackgroundColor := LightMarkBackgroundColor;
   FAlertColors := LightAlertColors;
   FChartBackgroundColor := LightBackgroundColor;
   FChartGridLineColor := $FFE5E7EB;
@@ -507,6 +516,7 @@ begin
     AddColorPair(Root, MathErrorColorKey, FMathErrorColor);
     AddColorPair(Root, DiffInsertedBackgroundColorKey, FDiffInsertedBackgroundColor);
     AddColorPair(Root, DiffDeletedBackgroundColorKey, FDiffDeletedBackgroundColor);
+    AddColorPair(Root, MarkBackgroundColorKey, FMarkBackgroundColor);
     Root.AddPair(AlertColorsKey, AlertColorsToJson);
 
     AddSinglePair(Root, BlockSpacingKey, FBlockSpacing);
@@ -686,6 +696,7 @@ begin
       Defaults.FDiffInsertedBackgroundColor);
     Result.DiffDeletedBackgroundColor := ReadColorOrDefault(Root, DiffDeletedBackgroundColorKey,
       Defaults.FDiffDeletedBackgroundColor);
+    Result.MarkBackgroundColor := ReadColorOrDefault(Root, MarkBackgroundColorKey, Defaults.FMarkBackgroundColor);
     Result.AlertColors := ReadAlertColors(Root, Defaults.FAlertColors);
   finally
     Defaults.Free;
@@ -729,6 +740,7 @@ begin
   FMathErrorColor := Data.MathErrorColor;
   FDiffInsertedBackgroundColor := Data.DiffInsertedBackgroundColor;
   FDiffDeletedBackgroundColor := Data.DiffDeletedBackgroundColor;
+  FMarkBackgroundColor := Data.MarkBackgroundColor;
   FAlertColors := Data.AlertColors;
 
   FBlockSpacing := Data.BlockSpacing;

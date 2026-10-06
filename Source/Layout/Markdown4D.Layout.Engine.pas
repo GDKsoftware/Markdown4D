@@ -90,6 +90,8 @@ type
     CodeSpan: Boolean;
     // How far a superscript (up) or subscript (down) sits from the baseline.
     BaselineShift: Single;
+    // The colour behind marked text; zero for none.
+    Highlight: TLayoutColor;
   end;
 
   TInlineStyle = record
@@ -98,6 +100,7 @@ type
     Attribution: IMarkdownNode;
     CodeSpan: Boolean;
     BaselineShift: Single;
+    Highlight: TLayoutColor;
   end;
 
   // A tag inside a paragraph that styles the siblings after it, with the style
@@ -155,6 +158,7 @@ type
       FGroupStartOffset: Integer;
       FGroupCodeSpan: Boolean;
       FGroupBaselineShift: Single;
+      FGroupHighlight: TLayoutColor;
       FLineJoin: TDisplayTextJoin;
     procedure AddWordLike(const Atom: TInlineAtom);
     procedure ForceBreakWord(const Atom: TInlineAtom);
@@ -1867,6 +1871,7 @@ begin
     Atom.Color := Style.Color;
     Atom.CodeSpan := Style.CodeSpan;
     Atom.BaselineShift := Style.BaselineShift;
+    Atom.Highlight := Style.Highlight;
     Atom.Node := Attribution;
     Atom.SourceNode := Leaf;
     Atom.StartOffset := Start - 1;
@@ -2099,6 +2104,8 @@ begin
       end;
     TInlineHtmlEffect.Small:
       Result.Font.Size := Style.Font.Size * SmallScale;
+    TInlineHtmlEffect.Mark:
+      Result.Highlight := FTheme.MarkBackgroundColor;
     TInlineHtmlEffect.Link:
       begin
         // An anchor without href only marks a place; its text stays as it is.
@@ -2547,6 +2554,7 @@ begin
   FGroupStartOffset := Atom.StartOffset;
   FGroupCodeSpan := Atom.CodeSpan;
   FGroupBaselineShift := Atom.BaselineShift;
+  FGroupHighlight := Atom.Highlight;
 end;
 
 procedure TInlineWrapper.AppendToGroup(const Atom: TInlineAtom);
@@ -2568,6 +2576,10 @@ begin
   if FGroupCodeSpan then
     EmitCodeSpanChip(Bounds);
 
+  const IsMarked = (FGroupHighlight <> 0);
+  if IsMarked then
+    FItems.Add(TDisplayRectangle.Create(Bounds, FGroupNode, FGroupHighlight, 0, 0));
+
   const Run: IDisplayTextRun = TDisplayTextRun.Create(Bounds, FGroupNode, FGroupText, FGroupFont, FGroupColor,
     RunBaseline, FGroupStartOffset, TDisplayTextRunRole.Text, FGroupSourceNode);
   FItems.Add(TakeLineJoin(Run));
@@ -2588,7 +2600,7 @@ function TInlineWrapper.SameRunStyle(const Atom: TInlineAtom): Boolean;
 begin
   Result := FGroupFont.Equals(Atom.Font) and (FGroupColor = Atom.Color) and (FGroupNode = Atom.Node) and
     (FGroupSourceNode = Atom.SourceNode) and (FGroupCodeSpan = Atom.CodeSpan) and
-    (FGroupBaselineShift = Atom.BaselineShift);
+    (FGroupBaselineShift = Atom.BaselineShift) and (FGroupHighlight = Atom.Highlight);
 end;
 
 function TMarkdownFontStyleHelper.Equals(const Other: TMarkdownFontStyle): Boolean;

@@ -280,6 +280,9 @@ type
     procedure InlineHtml_Code_UsesTheCodeFont;
 
     [Test]
+    procedure InlineHtml_Mark_HighlightsTheText;
+
+    [Test]
     procedure Text_TocMarker_ShowsTheHeadingsInsteadOfTheMarker;
 
     [Test]
@@ -1209,6 +1212,28 @@ begin
   FModel.Text := 'press <kbd>Ctrl</kbd>';
 
   Assert.AreEqual(FTheme.CodeFont.FamilyName, RunShowing('Ctrl').Font.FamilyName);
+end;
+
+procedure TMarkdownViewerModelTests.InlineHtml_Mark_HighlightsTheText;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := 'a <mark>marked</mark> word';
+
+  const Marked = RunShowing('marked').Bounds;
+  var IsHighlighted := False;
+  for var Index := 0 to FModel.DisplayList.ItemCount - 1 do
+  begin
+    var Rectangle: IDisplayRectangle;
+    if not Supports(FModel.DisplayList.Items[Index], IDisplayRectangle, Rectangle) then
+      Continue;
+
+    const Bounds = Rectangle.Bounds;
+    const CoversRun = ((Bounds.Left <= Marked.Left) and (Bounds.Right >= Marked.Right));
+    if CoversRun and (Rectangle.FillColor = FTheme.MarkBackgroundColor) then
+      IsHighlighted := True;
+  end;
+  Assert.IsTrue(IsHighlighted);
 end;
 
 procedure TMarkdownViewerModelTests.Text_TocMarker_ShowsTheHeadingsInsteadOfTheMarker;
