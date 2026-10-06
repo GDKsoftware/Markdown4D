@@ -9,6 +9,7 @@ interface
 
 resourcestring
   CopyMenuCaption = 'Copy';
+  CopyAsMarkdownMenuCaption = 'Copy as Markdown';
   CutMenuCaption = 'Cut';
   PasteMenuCaption = 'Paste';
   DeleteMenuCaption = 'Delete';

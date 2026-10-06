@@ -76,6 +76,11 @@ type
     procedure Keyboard_CtrlA_SelectsWholeDocument;
 
     [Test]
+    [TestCase('On', 'True,**bold**')]
+    [TestCase('Off', 'False,bold')]
+    procedure Keyboard_CtrlShiftC_CopiesMarkdownWhenOffered(const CopyAsMarkdown: Boolean; const Expected: string);
+
+    [Test]
     procedure CtrlWheel_Up_ZoomsInOneLevel;
 
     [Test]
@@ -151,7 +156,8 @@ uses
   Markdown4D.Layout.DisplayList,
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Tests.Pipeline.Helpers,
-  Markdown4D.Tests.FailingExtensions;
+  Markdown4D.Tests.FailingExtensions,
+  Markdown4D.Tests.VclClipboard;
 
 function TTestableVclViewer.SimulateWheel(const WheelDelta: Integer; const Shift: TShiftState): Boolean;
 begin
@@ -230,6 +236,24 @@ begin
 
   Assert.IsTrue(Viewer.SimulateWheel(-WHEEL_DELTA), 'A scrollable viewer should claim the wheel');
   Assert.IsTrue(Viewer.ScrollOffset > 0, 'The wheel should have scrolled the content down');
+end;
+
+procedure TMarkdownVclViewerTests.Keyboard_CtrlShiftC_CopiesMarkdownWhenOffered(const CopyAsMarkdown: Boolean;
+  const Expected: string);
+begin
+  if not TVclTestClipboard.IsAccessible then
+    Assert.Pass('The clipboard is held by another process');
+
+  const Viewer = NewHostedViewer;
+  Viewer.Text := 'A **bold** word';
+  Viewer.CopyAsMarkdown := CopyAsMarkdown;
+  Viewer.FindText('bold');
+
+  Viewer.SimulateKeyDown(Ord('C'), [ssCtrl, ssShift]);
+
+  var Copied: string;
+  Assert.IsTrue(TVclTestClipboard.TryGetText(Copied));
+  Assert.AreEqual(Expected, Copied);
 end;
 
 procedure TMarkdownVclViewerTests.CtrlWheel_Up_ZoomsInOneLevel;

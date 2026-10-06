@@ -260,6 +260,15 @@ type
     procedure TryGetScrollTarget_MatchBelowViewport_CentresIt;
 
     [Test]
+    procedure SelectedMarkdown_WordInBold_TakesTheMarksAlong;
+
+    [Test]
+    procedure SelectedMarkdown_SelectAll_ReturnsTheWholeSource;
+
+    [Test]
+    procedure SelectedMarkdown_NoSelection_IsEmpty;
+
+    [Test]
     procedure Zoom_NewModel_IsDefault;
 
     [Test]
@@ -1102,6 +1111,39 @@ begin
   const MatchTop = 5 * (BaseLineHeight + BlockSpacingValue);
   Assert.IsTrue(ShouldScroll);
   AssertSingle(MatchTop - (SmallHeight - BaseLineHeight) / 2, Offset);
+end;
+
+procedure TMarkdownViewerModelTests.SelectedMarkdown_WordInBold_TakesTheMarksAlong;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'A **bold** word';
+  var Match: TMarkdownFoundRange;
+  FModel.TrySelectNextMatch('bold', Match);
+
+  const Actual = FModel.SelectedMarkdown;
+
+  Assert.AreEqual('**bold**', Actual);
+end;
+
+procedure TMarkdownViewerModelTests.SelectedMarkdown_SelectAll_ReturnsTheWholeSource;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'See [the docs][ref].'#10#10'[ref]: docs.md';
+  FModel.SelectAll;
+
+  const Actual = FModel.SelectedMarkdown;
+
+  Assert.AreEqual('See [the docs][ref].' + sLineBreak + sLineBreak + '[ref]: docs.md', Actual);
+end;
+
+procedure TMarkdownViewerModelTests.SelectedMarkdown_NoSelection_IsEmpty;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'A **bold** word';
+
+  const Actual = FModel.SelectedMarkdown;
+
+  Assert.AreEqual('', Actual);
 end;
 
 procedure TMarkdownViewerModelTests.Zoom_NewModel_IsDefault;

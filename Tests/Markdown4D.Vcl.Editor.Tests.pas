@@ -12,7 +12,8 @@ uses
   Markdown4D.Editor.Model,
   Markdown4D.Theme,
   Markdown4D.Vcl.Viewer,
-  Markdown4D.Vcl.Editor;
+  Markdown4D.Vcl.Editor,
+  Markdown4D.Tests.VclClipboard;
 
 type
   TTestableVclEditor = class(TMarkdownEditor)
@@ -63,8 +64,6 @@ type
       ClickY = 8;
       DragDistance = 40;
       PreviewScrollTarget = 40;
-      ClipboardAttempts = 20;
-      ClipboardPauseMilliseconds = 25;
     var
       FEditor: TMarkdownEditor;
       FHostForm: TForm;
@@ -85,9 +84,6 @@ type
     class function ManyLines(const Count: Integer): string; static;
     class function OneWrappedLine: string; static;
     class function ContentHeightOf(const Editor: TMarkdownEditor): Integer; static;
-    class function ClipboardIsAccessible: Boolean; static;
-    class function TrySetClipboardText(const Value: string): Boolean; static;
-    class function TryGetClipboardText(out Value: string): Boolean; static;
 
   public
     [Test]
@@ -469,60 +465,6 @@ end;
 
 // Any process on the machine may hold the clipboard for a moment, and a test
 // that loses that race says nothing about the editor, so it waits its turn.
-class function TMarkdownVclEditorTests.ClipboardIsAccessible: Boolean;
-begin
-  for var Attempt := 1 to ClipboardAttempts do
-  begin
-    try
-      Clipboard.Open;
-      Clipboard.Close;
-      Result := True;
-      Exit;
-    except
-      on EClipboardException do
-        Sleep(ClipboardPauseMilliseconds);
-    end;
-  end;
-
-  Result := False;
-end;
-
-class function TMarkdownVclEditorTests.TryGetClipboardText(out Value: string): Boolean;
-begin
-  Value := '';
-
-  for var Attempt := 1 to ClipboardAttempts do
-  begin
-    try
-      Value := Clipboard.AsText;
-      Result := True;
-      Exit;
-    except
-      on EClipboardException do
-        Sleep(ClipboardPauseMilliseconds);
-    end;
-  end;
-
-  Result := False;
-end;
-
-class function TMarkdownVclEditorTests.TrySetClipboardText(const Value: string): Boolean;
-begin
-  for var Attempt := 1 to ClipboardAttempts do
-  begin
-    try
-      Clipboard.AsText := Value;
-      Result := True;
-      Exit;
-    except
-      on EClipboardException do
-        Sleep(ClipboardPauseMilliseconds);
-    end;
-  end;
-
-  Result := False;
-end;
-
 procedure TMarkdownVclEditorTests.NewEditor_ConstructsWithoutForm;
 begin
   Assert.AreEqual('', FEditor.Text);
@@ -1115,11 +1057,11 @@ end;
 
 procedure TMarkdownVclEditorTests.CtrlC_CopiesSelectionToClipboard;
 begin
-  if not ClipboardIsAccessible then
+  if not TVclTestClipboard.IsAccessible then
     Assert.Pass('Clipboard service unavailable in this test session');
 
   var Saved: string;
-  TryGetClipboardText(Saved);
+  TVclTestClipboard.TryGetText(Saved);
 
   const Editor = TTestableVclEditor.Create(nil);
   try
@@ -1128,23 +1070,23 @@ begin
     Editor.SimulateKeyDown(Ord('C'), [ssCtrl]);
 
     var Copied: string;
-    if not TryGetClipboardText(Copied) then
+    if not TVclTestClipboard.TryGetText(Copied) then
       Assert.Pass('Clipboard held by another process throughout this test');
 
     Assert.AreEqual('copy target', Copied);
   finally
     Editor.Free;
-    TrySetClipboardText(Saved);
+    TVclTestClipboard.TrySetText(Saved);
   end;
 end;
 
 procedure TMarkdownVclEditorTests.CtrlX_CutsSelectionToClipboard;
 begin
-  if not ClipboardIsAccessible then
+  if not TVclTestClipboard.IsAccessible then
     Assert.Pass('Clipboard service unavailable in this test session');
 
   var Saved: string;
-  TryGetClipboardText(Saved);
+  TVclTestClipboard.TryGetText(Saved);
 
   const Editor = TTestableVclEditor.Create(nil);
   try
@@ -1153,28 +1095,28 @@ begin
     Editor.SimulateKeyDown(Ord('X'), [ssCtrl]);
 
     var Cut: string;
-    if not TryGetClipboardText(Cut) then
+    if not TVclTestClipboard.TryGetText(Cut) then
       Assert.Pass('Clipboard held by another process throughout this test');
 
     Assert.AreEqual('cut target', Cut);
     Assert.AreEqual('', Editor.Text);
   finally
     Editor.Free;
-    TrySetClipboardText(Saved);
+    TVclTestClipboard.TrySetText(Saved);
   end;
 end;
 
 procedure TMarkdownVclEditorTests.CtrlV_PastesClipboardText;
 begin
-  if not ClipboardIsAccessible then
+  if not TVclTestClipboard.IsAccessible then
     Assert.Pass('Clipboard service unavailable in this test session');
 
   var Saved: string;
-  TryGetClipboardText(Saved);
+  TVclTestClipboard.TryGetText(Saved);
 
   const Editor = TTestableVclEditor.Create(nil);
   try
-    if not TrySetClipboardText('pasted') then
+    if not TVclTestClipboard.TrySetText('pasted') then
       Assert.Pass('Clipboard held by another process throughout this test');
 
     Editor.Text := '';
@@ -1183,7 +1125,7 @@ begin
     Assert.AreEqual('pasted', Editor.Text);
   finally
     Editor.Free;
-    TrySetClipboardText(Saved);
+    TVclTestClipboard.TrySetText(Saved);
   end;
 end;
 

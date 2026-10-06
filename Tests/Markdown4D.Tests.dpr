@@ -32,6 +32,8 @@ uses
   Markdown4D.Layout.ResizePacer.Tests in 'Markdown4D.Layout.ResizePacer.Tests.pas',
   Markdown4D.Layout.TextAnchor.Tests in 'Markdown4D.Layout.TextAnchor.Tests.pas',
   Markdown4D.Layout.Zoom.Tests in 'Markdown4D.Layout.Zoom.Tests.pas',
+  Markdown4D.Layout.SelectedMarkdown.Tests in 'Markdown4D.Layout.SelectedMarkdown.Tests.pas',
+  Markdown4D.Tests.VclClipboard in 'Markdown4D.Tests.VclClipboard.pas',
   Markdown4D.Editor.PreviewPacer.Tests in 'Markdown4D.Editor.PreviewPacer.Tests.pas',
   Markdown4D.Layout.Renderer.Tests in 'Markdown4D.Layout.Renderer.Tests.pas',
   Markdown4D.Theme.Tests in 'Markdown4D.Theme.Tests.pas',

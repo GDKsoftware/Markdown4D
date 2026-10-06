@@ -76,6 +76,7 @@ type
       FViewportHeight: Single;
       FScrollOffset: Single;
       FDisplayList: IMarkdownDisplayList;
+      FDocument: IMarkdownDocument;
       FLayoutCount: Integer;
       FLastLayoutMilliseconds: Int64;
       FShouldAutoFollow: Boolean;
@@ -102,6 +103,8 @@ type
     function TryRestoreSelection(const Selection: TSelectionAnchors): Boolean;
     procedure RegisterImageSlots;
     function TryFindTextRunBounds(out FirstIndex, LastIndex: Integer): Boolean;
+    function TryGetEverythingRange(out Range: TTextRange): Boolean;
+    function IsEverythingSelected: Boolean;
     function TryResolvePosition(const Point: TLayoutPointF; out Position: TTextPosition): Boolean;
     function NearestCharacterBoundary(const Run: IDisplayTextRun; const X: Single): Integer;
     function TrySelectableRun(const Index: Integer; out Run: IDisplayTextRun): Boolean;
@@ -188,6 +191,10 @@ type
     // there is no selection, or when the runs it covers carry no source of
     // their own, as happens inside a diagram an extension drew.
     function TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean;
+    // The markdown behind the selection, for Copy as Markdown; empty without a
+    // selection. A selection of everything gives the whole source, including
+    // lines that render nothing.
+    function SelectedMarkdown: string;
     function PendingImageSources: TArray<string>;
     procedure NotifyImageArrived(const Source: string; const Size: TLayoutSizeF);
     procedure NotifyImageFailed(const Source: string);
@@ -260,6 +267,7 @@ uses
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Layout.Engine,
   Markdown4D.Layout.SourceMapping,
+  Markdown4D.Layout.SelectedMarkdown,
   Markdown4D.Layout.Zoom;
 
 class function TMarkdownFoundRange.Create(const ItemIndex, StartCharacter,
@@ -692,23 +700,35 @@ end;
 
 function TMarkdownViewerModel.SelectAll: Boolean;
 begin
+  var Range: TTextRange;
+  Result := TryGetEverythingRange(Range);
+  if not Result then
+    Exit;
+
+  FAnchor := Range.StartPosition;
+  FExtent := Range.EndPosition;
+  FSelectionActive := True;
+end;
+
+// From the first character of the first run to the last character of the last.
+function TMarkdownViewerModel.TryGetEverythingRange(out Range: TTextRange): Boolean;
+begin
+  Range := Default(TTextRange);
+
   var FirstIndex, LastIndex: Integer;
   Result := TryFindTextRunBounds(FirstIndex, LastIndex);
   if not Result then
     Exit;
 
   var LastRun: IDisplayTextRun;
-  if not TrySelectableRun(LastIndex, LastRun) then
-  begin
-    Result := False;
+  Result := TrySelectableRun(LastIndex, LastRun);
+  if not Result then
     Exit;
-  end;
 
-  FAnchor.ItemIndex := FirstIndex;
-  FAnchor.CharacterIndex := 0;
-  FExtent.ItemIndex := LastIndex;
-  FExtent.CharacterIndex := Length(LastRun.Text);
-  FSelectionActive := True;
+  Range.StartPosition.ItemIndex := FirstIndex;
+  Range.StartPosition.CharacterIndex := 0;
+  Range.EndPosition.ItemIndex := LastIndex;
+  Range.EndPosition.CharacterIndex := Length(LastRun.Text);
 end;
 
 function TMarkdownViewerModel.HasSelection: Boolean;
@@ -818,6 +838,35 @@ begin
     Result := CopiedSpace
   else
     Result := '';
+end;
+
+function TMarkdownViewerModel.SelectedMarkdown: string;
+begin
+  Result := '';
+  if not HasSelection then
+    Exit;
+
+  if IsEverythingSelected then
+  begin
+    Result := TMarkdownSelectedSource.WithPlatformLineBreaks(FText);
+    Exit;
+  end;
+
+  var Segment: TMarkdownSegment;
+  if TryGetSelectionSourceSegment(Segment) then
+    Result := TMarkdownSelectedSource.Extract(FText, FDocument, Segment);
+end;
+
+function TMarkdownViewerModel.IsEverythingSelected: Boolean;
+begin
+  var Everything: TTextRange;
+  Result := TryGetEverythingRange(Everything);
+  if not Result then
+    Exit;
+
+  const Selection = NormalizeSelection;
+  Result := ((ComparePositions(Selection.StartPosition, Everything.StartPosition) = 0) and
+             (ComparePositions(Selection.EndPosition, Everything.EndPosition) = 0));
 end;
 
 function TMarkdownViewerModel.TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean;
@@ -1328,6 +1377,7 @@ begin
   const Watch = TStopwatch.StartNew;
   const Document = TMarkdown.Parse(FText, TMarkdownDialect.Gfm);
   TLayoutDocumentProcessorRegistry.Process(Document, Self);
+  FDocument := Document;
   RefreshZoomedTheme;
 
   FDisplayList := TMarkdownLayoutEngine.LayoutDocument(Document, FViewportWidth, LayoutTheme, FMeasurer, Self,
