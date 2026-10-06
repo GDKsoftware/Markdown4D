@@ -137,6 +137,12 @@ type
     procedure Click_OnLink_RaisesOnlyOnLinkClick;
 
     [Test]
+    procedure Click_OnLinkToHeading_ScrollsThereInsteadOfOnLinkClick;
+
+    [Test]
+    procedure Click_OnLinkToUnknownAnchor_RaisesOnLinkClick;
+
+    [Test]
     procedure Drag_PastThreshold_RaisesNoClick;
 
     [Test]
@@ -504,6 +510,29 @@ begin
 
   Assert.AreEqual(1, FClickCount);
   Assert.AreEqual(0, FDoubleClickCount);
+end;
+
+procedure TMarkdownVclViewerTests.Click_OnLinkToHeading_ScrollsThereInsteadOfOnLinkClick;
+begin
+  const Viewer = NewClickRecordingViewer('[down](#target)'#10#10'one'#10#10'two'#10#10'three'#10#10'four'#10#10'five'#10#10'six'#10#10'## Target');
+  const Center = FirstTextRunCenter(Viewer);
+
+  Viewer.SendMouse(WM_LBUTTONDOWN, Center.X, Center.Y);
+  Viewer.SendMouse(WM_LBUTTONUP, Center.X, Center.Y);
+
+  Assert.AreEqual(0, FLinkClickCount);
+  Assert.IsTrue(Viewer.ScrollOffset > 0, 'The viewer should have scrolled to the heading');
+end;
+
+procedure TMarkdownVclViewerTests.Click_OnLinkToUnknownAnchor_RaisesOnLinkClick;
+begin
+  const Viewer = NewClickRecordingViewer('[down](#nowhere)');
+  const Center = FirstTextRunCenter(Viewer);
+
+  Viewer.SendMouse(WM_LBUTTONDOWN, Center.X, Center.Y);
+  Viewer.SendMouse(WM_LBUTTONUP, Center.X, Center.Y);
+
+  Assert.AreEqual(1, FLinkClickCount);
 end;
 
 procedure TMarkdownVclViewerTests.Click_OnLink_RaisesOnlyOnLinkClick;

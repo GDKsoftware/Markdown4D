@@ -260,6 +260,15 @@ type
     procedure TryGetScrollTarget_MatchBelowViewport_CentresIt;
 
     [Test]
+    procedure TryGetAnchorOffset_HeadingFarDown_ReturnsItsTop;
+
+    [Test]
+    procedure TryGetAnchorOffset_PercentEncodedAnchor_FindsHeading;
+
+    [Test]
+    procedure TryGetAnchorOffset_UnknownAnchor_ReturnsFalse;
+
+    [Test]
     procedure SelectedMarkdown_WordInBold_TakesTheMarksAlong;
 
     [Test]
@@ -1111,6 +1120,42 @@ begin
   const MatchTop = 5 * (BaseLineHeight + BlockSpacingValue);
   Assert.IsTrue(ShouldScroll);
   AssertSingle(MatchTop - (SmallHeight - BaseLineHeight) / 2, Offset);
+end;
+
+procedure TMarkdownViewerModelTests.TryGetAnchorOffset_HeadingFarDown_ReturnsItsTop;
+begin
+  FModel.SetViewport(DefaultWidth, SmallHeight);
+  FModel.Text := BuildTallMarkdown + #10#10'## Target';
+  const HeadingRun = FModel.DisplayList.Items[FModel.FindText('Target')[0].ItemIndex];
+
+  var Offset: Single;
+  const IsFound = FModel.TryGetAnchorOffset('#target', Offset);
+
+  Assert.IsTrue(IsFound);
+  AssertSingle(HeadingRun.Bounds.Top, Offset);
+end;
+
+procedure TMarkdownViewerModelTests.TryGetAnchorOffset_PercentEncodedAnchor_FindsHeading;
+begin
+  const Size = 'Gr'#$00F6#$00DF'e';
+  FModel.SetViewport(DefaultWidth, SmallHeight);
+  FModel.Text := BuildTallMarkdown + #10#10'## ' + Size;
+
+  var Offset: Single;
+  const IsFound = FModel.TryGetAnchorOffset('#gr%C3%B6%C3%9Fe', Offset);
+
+  Assert.IsTrue(IsFound);
+end;
+
+procedure TMarkdownViewerModelTests.TryGetAnchorOffset_UnknownAnchor_ReturnsFalse;
+begin
+  FModel.SetViewport(DefaultWidth, SmallHeight);
+  FModel.Text := BuildTallMarkdown;
+
+  var Offset: Single;
+  const IsFound = FModel.TryGetAnchorOffset('#nowhere', Offset);
+
+  Assert.IsFalse(IsFound);
 end;
 
 procedure TMarkdownViewerModelTests.SelectedMarkdown_WordInBold_TakesTheMarksAlong;

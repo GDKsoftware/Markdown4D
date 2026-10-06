@@ -42,13 +42,23 @@ type
 
     [Test]
     procedure FromDocument_NilDocument_RaisesMarkdownError;
+
+    [Test]
+    procedure TryFindHeading_DuplicateAnchor_FindsThatHeading;
+
+    [Test]
+    procedure TryFindHeading_UmlautAndAmpersand_FindsHeading;
+
+    [Test]
+    procedure TryFindHeading_UnknownAnchor_ReturnsFalse;
   end;
 
 implementation
 
 uses
   Markdown4D,
-  Markdown4D.Defines;
+  Markdown4D.Defines,
+  Markdown4D.Ast.Interfaces;
 
 procedure TMarkdownTocTests.FromDocument_SampleDocument_BuildsNestedHeadingTree;
 begin
@@ -130,6 +140,40 @@ begin
   const Reference = Toc.Entries[1];
   Assert.AreEqual(8, Reference.SourceLine);
   Assert.AreEqual(9, Reference.Children[0].SourceLine);
+end;
+
+procedure TMarkdownTocTests.TryFindHeading_DuplicateAnchor_FindsThatHeading;
+begin
+  const Document = TMarkdown.Parse(SampleDocument);
+  const Expected = TMarkdownToc.FromDocument(Document).Entries[0].Children[1].SourceLine;
+
+  var Heading: IMarkdownHeading;
+  const IsFound = TMarkdownToc.TryFindHeading(Document, 'getting-started-1', Heading);
+
+  Assert.IsTrue(IsFound);
+  Assert.AreEqual(Expected, Heading.SourceLine);
+end;
+
+procedure TMarkdownTocTests.TryFindHeading_UmlautAndAmpersand_FindsHeading;
+begin
+  const Size = 'Gr'#$00F6#$00DF'e';
+  const Document = TMarkdown.Parse('# Intro'#10#10'## ' + Size + ' & Gewicht');
+
+  var Heading: IMarkdownHeading;
+  const IsFound = TMarkdownToc.TryFindHeading(Document, 'gr'#$00F6#$00DF'e--gewicht', Heading);
+
+  Assert.IsTrue(IsFound);
+  Assert.AreEqual(2, Heading.Level);
+end;
+
+procedure TMarkdownTocTests.TryFindHeading_UnknownAnchor_ReturnsFalse;
+begin
+  const Document = TMarkdown.Parse(SampleDocument);
+
+  var Heading: IMarkdownHeading;
+  const IsFound = TMarkdownToc.TryFindHeading(Document, 'nowhere', Heading);
+
+  Assert.IsFalse(IsFound);
 end;
 
 procedure TMarkdownTocTests.FromDocument_NilDocument_RaisesMarkdownError;

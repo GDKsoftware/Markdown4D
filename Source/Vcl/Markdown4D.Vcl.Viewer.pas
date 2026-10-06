@@ -59,6 +59,7 @@ type
     const
       DefaultControlWidth = 300;
       DefaultControlHeight = 200;
+      AnchorMark = '#';
       SelectionFillColor = TLayoutColor($402F81F7);
       MatchFillColor = TLayoutColor($55E3B341);
       CopyButtonWidth = 54;
@@ -235,6 +236,10 @@ type
     function HighlightCount: Integer;
     procedure CopySelectionToClipboard;
     procedure CopySelectionAsMarkdown;
+    // Scrolls the heading a link like #getting-started points at to the top.
+    // A click on such a link does this itself; OnLinkClick is raised only for
+    // an anchor the document does not have.
+    function ScrollToAnchor(const Anchor: string): Boolean;
     // The markdown behind the selection: within one line with the markup
     // around it, over several lines whole lines, a table whole.
     property SelectedMarkdown: string read GetSelectedMarkdown;
@@ -961,8 +966,23 @@ begin
 
   var ReleasedUrl: string;
   const IsSameLink = TryFindLinkUrl(ContentPointOf(X, Y), ReleasedUrl) and (ReleasedUrl = PressedUrl);
-  if IsSameLink and Assigned(FOnLinkClick) then
+  if not IsSameLink then
+    Exit;
+
+  const IsFollowedHere = (PressedUrl.StartsWith(AnchorMark) and ScrollToAnchor(PressedUrl));
+  if IsFollowedHere then
+    Exit;
+
+  if Assigned(FOnLinkClick) then
     FOnLinkClick(Self, PressedUrl);
+end;
+
+function TMarkdownViewer.ScrollToAnchor(const Anchor: string): Boolean;
+begin
+  var Offset: Single;
+  Result := FModel.TryGetAnchorOffset(Anchor, Offset);
+  if Result then
+    SetScrollPosition(Offset);
 end;
 
 // Raised last, once the press is fully handled, so a handler may open a modal
