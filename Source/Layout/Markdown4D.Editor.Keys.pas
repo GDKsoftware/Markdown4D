@@ -94,7 +94,7 @@ end;
 
 class function TMarkdownEditorKeymap.ResolveControl(const Key: Word; const Extend: Boolean): TEditorKeyStroke;
 begin
-  var Action := TEditorKeyAction.None;
+  var Action: TEditorKeyAction;
 
   case Key of
     vkA:
