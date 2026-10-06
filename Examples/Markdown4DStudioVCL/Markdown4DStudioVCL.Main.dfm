@@ -181,6 +181,22 @@ object Markdown4DStudioVCLForm: TMarkdown4DStudioVCLForm
       ExplicitTop = 4
       ExplicitHeight = 15
     end
+    object lblChars: TLabel
+      AlignWithMargins = True
+      Left = 344
+      Top = 0
+      Width = 160
+      Height = 22
+      Margins.Left = 8
+      Margins.Top = 0
+      Margins.Right = 0
+      Margins.Bottom = 0
+      Align = alLeft
+      AutoSize = False
+      Caption = 'lblChars'
+      Transparent = True
+      Layout = tlCenter
+    end
   end
   object pnlToc: TPanel
     Left = 0

@@ -86,6 +86,7 @@ const
     'Cancel: keep editing and decide later.';
   StatusPositionFormat = 'Ln %d, Col %d';
   StatusWordsFormat = '%d words';
+  StatusCharactersFormat = '%d characters';
   TitleFormat = '%s - %s';
   UntitledName = 'Untitled';
   RecentNoneCaption = '(none)';

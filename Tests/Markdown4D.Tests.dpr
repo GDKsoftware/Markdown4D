@@ -125,6 +125,7 @@ uses
   Markdown4DStudio.HtmlExport.Tests in 'Markdown4DStudio.HtmlExport.Tests.pas',
   Markdown4DStudio.LinkPolicy.Tests in 'Markdown4DStudio.LinkPolicy.Tests.pas',
   Markdown4DStudio.SplitLayout.Tests in 'Markdown4DStudio.SplitLayout.Tests.pas',
+  Markdown4DStudio.Text.Tests in 'Markdown4DStudio.Text.Tests.pas',
   Markdown4D.Text.UrlSafety.Tests in 'Markdown4D.Text.UrlSafety.Tests.pas',
   Markdown4D.Viewer.ImageSettings.Tests in 'Markdown4D.Viewer.ImageSettings.Tests.pas',
   StreamingMarkdown.Demo.Tests in 'StreamingMarkdown.Demo.Tests.pas',
