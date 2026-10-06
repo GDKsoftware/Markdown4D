@@ -56,6 +56,18 @@ type
     [TestCase('SelectAll', 'SelectAll,65')]
     procedure Build_Item_ShowsTheCtrlShortcutTheViewerHandles(const Command: TViewerContextCommand;
                                                               const KeyCode: Integer);
+
+    [Test]
+    procedure Build_WithSelection_EnablesCopyAsMarkdown;
+
+    [Test]
+    procedure Build_CopyAsMarkdown_ShowsCtrlShiftC;
+
+    [Test]
+    procedure Build_CopyAsMarkdownSwitchedOff_LeavesTheEntryOut;
+
+    [Test]
+    procedure Execute_CopyAsMarkdown_IsLeftToTheHost;
   end;
 
 implementation
@@ -87,7 +99,7 @@ end;
 
 function TMarkdownViewerContextMenuTests.ItemFor(const Command: TViewerContextCommand): TViewerContextItem;
 begin
-  for var Item in TMarkdownViewerContextMenu.Build(FModel) do
+  for var Item in TMarkdownViewerContextMenu.Build(FModel, True) do
   begin
     if Item.Command = Command then
     begin
@@ -135,6 +147,41 @@ procedure TMarkdownViewerContextMenuTests.Execute_SelectAll_SelectsEverything;
 begin
   Assert.IsTrue(TMarkdownViewerContextMenu.Execute(FModel, TViewerContextCommand.SelectAll));
   Assert.AreEqual(SampleMarkdown, FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerContextMenuTests.Build_WithSelection_EnablesCopyAsMarkdown;
+begin
+  SelectFirstWord;
+
+  Assert.IsTrue(ItemFor(TViewerContextCommand.CopyAsMarkdown).Enabled);
+end;
+
+procedure TMarkdownViewerContextMenuTests.Build_CopyAsMarkdown_ShowsCtrlShiftC;
+begin
+  const Expected = scCtrl or scShift or Ord('C');
+
+  const Actual = ItemFor(TViewerContextCommand.CopyAsMarkdown).ShortCut;
+
+  Assert.AreEqual(Integer(Expected), Integer(Actual));
+end;
+
+procedure TMarkdownViewerContextMenuTests.Build_CopyAsMarkdownSwitchedOff_LeavesTheEntryOut;
+begin
+  const Items = TMarkdownViewerContextMenu.Build(FModel, False);
+
+  for var Item in Items do
+  begin
+    const IsCopyAsMarkdown = (Item.Command = TViewerContextCommand.CopyAsMarkdown);
+    Assert.IsFalse(IsCopyAsMarkdown, 'Copy as Markdown must not be offered when it is switched off');
+  end;
+end;
+
+procedure TMarkdownViewerContextMenuTests.Execute_CopyAsMarkdown_IsLeftToTheHost;
+begin
+  SelectFirstWord;
+
+  Assert.IsFalse(TMarkdownViewerContextMenu.Execute(FModel, TViewerContextCommand.CopyAsMarkdown));
+  Assert.AreEqual('alpha', FModel.SelectedText);
 end;
 
 procedure TMarkdownViewerContextMenuTests.Execute_Copy_IsLeftToTheHost;

@@ -512,6 +512,7 @@ same.
 | `ThemePreset` | `TMarkdownThemePreset` | `Light` / `Dark`, editable in the Object Inspector |
 | `Images` | `TMarkdownViewerImageSettings` | How image destinations are resolved and fetched (see below) |
 | `Zoom` | `Integer` | In percent (default `100`, from `25` to `500`). Every font, spacing and image grows with it; the theme the application assigned stays as it is. Ctrl+wheel and Ctrl+Plus/Minus step through the levels browsers use (25, 33, 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400, 500), Ctrl+0 resets it. The line at the top of the view stays there, and a document that lays out slowly waits until the wheel rests |
+| `CopyAsMarkdown` | `Boolean` | Offers `Copy as Markdown` on the context menu and `Ctrl+Shift+C` (default `True`). Off, the menu leaves the entry out and `Ctrl+Shift+C` copies plain text, for an application that keeps the source to itself |
 | `AutoScroll` | `Boolean` | Middle-click autoscroll: the content scrolls faster the further the pointer is from where it was pressed, until the next click, key or wheel turn (default `True`). The key that ends it reaches no shortcut, menu or form handler; only an Alt+letter accelerator in FMX goes to the form first |
 
 ### Public members
@@ -528,6 +529,7 @@ same.
 | `HighlightMatches(const Needle[; const Options])` / `ClearHighlights` | Mark every match, independently of the selection; the marks follow the document as it changes, an empty needle clears them, and a formula is marked once |
 | `HighlightCount: Integer` | How many matches are marked |
 | `CopySelectionToClipboard` | Copy the current selection |
+| `CopySelectionAsMarkdown` / `SelectedMarkdown: string` | Copy, or read, the markdown behind the selection. Within one line that is the selected source with the markup directly around it (selecting *bold* in `**bold**` gives `**bold**`); over several lines whole source lines, so list markers, quote markers and indentation come along; a table always whole; and a selection of everything the whole source. Line ends are the platform's |
 | `SelectAll` | Select the whole document |
 | `ClearSelection` | Drop the selection |
 | `SelectedText: string` | The selected text |
@@ -584,9 +586,9 @@ window scrollbar; the FMX viewer and editor draw a draggable overlay thumb
 whenever their content overflows.
 
 A focused viewer scrolls on the arrow keys, `PgUp` / `PgDn`, `Home` and `End`.
-`Ctrl+A` selects the document, `Ctrl+C` copies the selection. Right-clicking
-opens a `Copy` / `Select All` menu; assigning `PopupMenu` replaces it with the
-host's own menu.
+`Ctrl+A` selects the document, `Ctrl+C` copies the selection and `Ctrl+Shift+C`
+copies its markdown. Right-clicking opens a `Copy` / `Copy as Markdown` /
+`Select All` menu; assigning `PopupMenu` replaces it with the host's own menu.
 
 ### Image settings
 

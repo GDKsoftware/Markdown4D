@@ -102,6 +102,7 @@ contains
   Markdown4D.Layout.TextAnchor in '..\Source\Layout\Markdown4D.Layout.TextAnchor.pas',
   Markdown4D.Layout.TextSearch in '..\Source\Layout\Markdown4D.Layout.TextSearch.pas',
   Markdown4D.Layout.Zoom in '..\Source\Layout\Markdown4D.Layout.Zoom.pas',
+  Markdown4D.Layout.SelectedMarkdown in '..\Source\Layout\Markdown4D.Layout.SelectedMarkdown.pas',
   Markdown4D.Layout.Engine in '..\Source\Layout\Markdown4D.Layout.Engine.pas',
   Markdown4D.Layout.AlertIcons in '..\Source\Layout\Markdown4D.Layout.AlertIcons.pas',
   Markdown4D.Layout.ExtensionCanvas in '..\Source\Layout\Markdown4D.Layout.ExtensionCanvas.pas',

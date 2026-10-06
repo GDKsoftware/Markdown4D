@@ -132,6 +132,11 @@ type
     procedure Keyboard_CtrlA_SelectsWholeDocument;
 
     [Test]
+    [TestCase('On', 'True,**bold**')]
+    [TestCase('Off', 'False,bold')]
+    procedure Keyboard_CtrlShiftC_CopiesMarkdownWhenOffered(const CopyAsMarkdown: Boolean; const Expected: string);
+
+    [Test]
     procedure CtrlWheel_Up_ZoomsInOneLevel;
 
     [Test]
@@ -188,7 +193,8 @@ uses
   Markdown4D.Layout.DisplayList,
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Tests.Pipeline.Helpers,
-  Markdown4D.Tests.FailingExtensions;
+  Markdown4D.Tests.FailingExtensions,
+  Markdown4D.Tests.FmxClipboard;
 
 type
   // Widens MouseDown/MouseMove/MouseUp from protected to accessible-in-unit, so a
@@ -399,6 +405,24 @@ begin
   var PressedKey: Word := Key;
   var PressedChar: WideChar := #0;
   TMarkdownViewerAccess(FViewer).KeyDown(PressedKey, PressedChar, Shift);
+end;
+
+procedure TMarkdownFmxViewerTests.Keyboard_CtrlShiftC_CopiesMarkdownWhenOffered(const CopyAsMarkdown: Boolean;
+  const Expected: string);
+begin
+  var Clipboard: TFmxClipboardSwap;
+  Clipboard.Replace;
+  try
+    FViewer.Text := 'A **bold** word';
+    FViewer.CopyAsMarkdown := CopyAsMarkdown;
+    FViewer.FindText('bold');
+
+    PressKey(vkC, [ssCtrl, ssShift]);
+
+    Assert.AreEqual(Expected, Clipboard.Text);
+  finally
+    Clipboard.Restore;
+  end;
 end;
 
 procedure TMarkdownFmxViewerTests.CtrlWheel_Up_ZoomsInOneLevel;

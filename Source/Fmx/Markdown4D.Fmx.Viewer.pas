@@ -113,6 +113,7 @@ type
       FZoomTimer: TTimer;
       FZoomPacer: TMarkdownResizePacer;
       FPendingZoom: Integer;
+      FCopyAsMarkdown: Boolean;
       FOnExtensionError: TMarkdownExtensionErrorEvent;
     procedure CreateFlushTimer;
     procedure CreateResizeTimer;
@@ -152,6 +153,9 @@ type
     procedure RaiseClick(const Kind: TMarkdownClickKind);
     function GetAutoScroll: Boolean;
     function GetIsAutoScrolling: Boolean;
+    function GetSelectedMarkdown: string;
+    procedure PutOnClipboard(const Text: string);
+    procedure CopyForShortcut(const Shift: TShiftState);
     function GetZoom: Integer;
     procedure SetZoom(const Value: Integer);
     procedure SetAutoScroll(const Value: Boolean);
@@ -227,6 +231,10 @@ type
     procedure ClearHighlights;
     function HighlightCount: Integer;
     procedure CopySelectionToClipboard;
+    procedure CopySelectionAsMarkdown;
+    // The markdown behind the selection: within one line with the markup
+    // around it, over several lines whole lines, a table whole.
+    property SelectedMarkdown: string read GetSelectedMarkdown;
     procedure SelectAll;
     procedure ClearSelection;
     procedure ZoomIn;
@@ -286,6 +294,10 @@ type
     // Ctrl+Plus/Minus step through the levels browsers use, Ctrl+0 resets it.
     property Zoom: Integer read GetZoom write SetZoom default TMarkdownZoom.DefaultPercent;
     property OnZoomChange: TNotifyEvent read FOnZoomChange write FOnZoomChange;
+    // Offers Copy as Markdown on the context menu and Ctrl+Shift+C. Off, the
+    // menu leaves the entry out and Ctrl+Shift+C copies plain text, for an
+    // application that keeps the source to itself.
+    property CopyAsMarkdown: Boolean read FCopyAsMarkdown write FCopyAsMarkdown default True;
     property OnExtensionError: TMarkdownExtensionErrorEvent read FOnExtensionError write FOnExtensionError;
   end;
 
@@ -342,6 +354,7 @@ begin
   CreateZoomTimer;
   CreateCopyFeedbackTimer;
   FPendingZoom := TMarkdownZoom.DefaultPercent;
+  FCopyAsMarkdown := True;
 
   TMarkdownViewerShared.RegisterDefaultHighlighters;
   ApplyViewportNow;
@@ -581,8 +594,33 @@ end;
 
 procedure TMarkdownViewer.CopySelectionToClipboard;
 begin
-  const Selected = FModel.SelectedText;
-  if Selected = '' then
+  PutOnClipboard(FModel.SelectedText);
+end;
+
+procedure TMarkdownViewer.CopySelectionAsMarkdown;
+begin
+  PutOnClipboard(FModel.SelectedMarkdown);
+end;
+
+function TMarkdownViewer.GetSelectedMarkdown: string;
+begin
+  Result := FModel.SelectedMarkdown;
+end;
+
+// Ctrl+Shift+C copies the markdown, unless the application keeps the source
+// to itself; then it copies plain text as Ctrl+C does.
+procedure TMarkdownViewer.CopyForShortcut(const Shift: TShiftState);
+begin
+  const WantsMarkdown = ((ssShift in Shift) and FCopyAsMarkdown);
+  if WantsMarkdown then
+    CopySelectionAsMarkdown
+  else
+    CopySelectionToClipboard;
+end;
+
+procedure TMarkdownViewer.PutOnClipboard(const Text: string);
+begin
+  if Text = '' then
     Exit;
 
   var Clipboard: IFMXClipboardService;
@@ -590,7 +628,7 @@ begin
     Exit;
 
   try
-    Clipboard.SetClipboard(Selected);
+    Clipboard.SetClipboard(Text);
   except
     // IFMXClipboardService has a separate implementation per platform, and none
     // of them documents a shared specific exception for a failed write, so the
@@ -626,7 +664,7 @@ begin
 
   FContextMenu.Clear;
 
-  for var Item in TMarkdownViewerContextMenu.Build(FModel) do
+  for var Item in TMarkdownViewerContextMenu.Build(FModel, FCopyAsMarkdown) do
   begin
     var Entry := TMenuItem.Create(FContextMenu);
     Entry.Parent := FContextMenu;
@@ -656,8 +694,12 @@ begin
     Exit;
   end;
 
-  if Command = TViewerContextCommand.Copy then
-    CopySelectionToClipboard;
+  case Command of
+    TViewerContextCommand.Copy           : CopySelectionToClipboard;
+    TViewerContextCommand.CopyAsMarkdown : CopySelectionAsMarkdown;
+  else
+    raise ENotSupportedException.CreateFmt('Unhandled context command: %d', [Ord(Command)]);
+  end;
 end;
 
 procedure TMarkdownViewer.Paint;
@@ -1038,7 +1080,7 @@ begin
       vkA:
         SelectAll;
       vkC:
-        CopySelectionToClipboard;
+        CopyForShortcut(Shift);
     else
       Result := TryHandleZoomKey(Key);
     end;

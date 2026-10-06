@@ -10,7 +10,8 @@ uses
   DUnitX.TestFramework,
   Markdown4D.Editor.Model,
   Markdown4D.Fmx.Viewer,
-  Markdown4D.Fmx.Editor;
+  Markdown4D.Fmx.Editor,
+  Markdown4D.Tests.FmxClipboard;
 
 type
   TTestableFmxEditor = class(TMarkdownEditor)
@@ -58,8 +59,7 @@ type
       FZoomChangeCount: Integer;
       FClickCount: Integer;
       FDoubleClickCount: Integer;
-      FSavedClipboard: IInterface;
-      FClipboardReplaced: Boolean;
+      FClipboard: TFmxClipboardSwap;
     class function ManyLines(const Count: Integer): string; static;
     function NewOverflowingEditor: TTestableFmxEditor;
     procedure RecordAutoScrollChange(Sender: TObject);
@@ -68,8 +68,6 @@ type
     procedure RecordClick(Sender: TObject);
     procedure RecordDoubleClick(Sender: TObject);
     class function OneWrappedLine: string; static;
-    procedure ReplaceClipboardWithFake;
-    procedure RestoreClipboard;
 
   public
     [Test]
@@ -279,27 +277,6 @@ uses
   FMX.Graphics,
   Markdown4D.Tests.Pipeline.Helpers;
 
-type
-  // In-memory clipboard so the copy/cut/paste tests never touch the real OS
-  // clipboard, which is a shared resource and makes them flaky under contention.
-  TFakeClipboardService = class(TInterfacedObject, IFMXClipboardService)
-  private
-    FValue: TValue;
-  public
-    procedure SetClipboard(Value: TValue);
-    function GetClipboard: TValue;
-  end;
-
-procedure TFakeClipboardService.SetClipboard(Value: TValue);
-begin
-  FValue := Value;
-end;
-
-function TFakeClipboardService.GetClipboard: TValue;
-begin
-  Result := FValue;
-end;
-
 procedure TTestableFmxEditor.SimulateMouseDown(const X, Y: Single; const Shift: TShiftState);
 begin
   MouseDown(TMouseButton.mbLeft, Shift, X, Y);
@@ -397,33 +374,6 @@ begin
     Builder := Builder + Format('L%.2d', [Index]);
   end;
   Result := Builder;
-end;
-
-procedure TMarkdownFmxEditorTests.ReplaceClipboardWithFake;
-begin
-  var Existing: IFMXClipboardService;
-  if TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Existing) then
-  begin
-    FSavedClipboard := Existing;
-    TPlatformServices.Current.RemovePlatformService(IFMXClipboardService);
-  end;
-
-  TPlatformServices.Current.AddPlatformService(IFMXClipboardService, TFakeClipboardService.Create);
-  FClipboardReplaced := True;
-end;
-
-procedure TMarkdownFmxEditorTests.RestoreClipboard;
-begin
-  if not FClipboardReplaced then
-    Exit;
-
-  TPlatformServices.Current.RemovePlatformService(IFMXClipboardService);
-
-  if FSavedClipboard <> nil then
-    TPlatformServices.Current.AddPlatformService(IFMXClipboardService, FSavedClipboard);
-
-  FSavedClipboard := nil;
-  FClipboardReplaced := False;
 end;
 
 procedure TMarkdownFmxEditorTests.NewEditor_ConstructsWithoutForm;
@@ -951,7 +901,7 @@ end;
 
 procedure TMarkdownFmxEditorTests.CtrlC_CopiesSelectionToClipboard;
 begin
-  ReplaceClipboardWithFake;
+  FClipboard.Replace;
   try
     var Service: IFMXClipboardService;
     TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Service);
@@ -966,13 +916,13 @@ begin
       Editor.Free;
     end;
   finally
-    RestoreClipboard;
+    FClipboard.Restore;
   end;
 end;
 
 procedure TMarkdownFmxEditorTests.CtrlX_CutsSelectionToClipboard;
 begin
-  ReplaceClipboardWithFake;
+  FClipboard.Replace;
   try
     var Service: IFMXClipboardService;
     TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Service);
@@ -988,13 +938,13 @@ begin
       Editor.Free;
     end;
   finally
-    RestoreClipboard;
+    FClipboard.Restore;
   end;
 end;
 
 procedure TMarkdownFmxEditorTests.CtrlV_PastesClipboardText;
 begin
-  ReplaceClipboardWithFake;
+  FClipboard.Replace;
   try
     var Service: IFMXClipboardService;
     TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Service);
@@ -1010,7 +960,7 @@ begin
       Editor.Free;
     end;
   finally
-    RestoreClipboard;
+    FClipboard.Restore;
   end;
 end;
 

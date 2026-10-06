@@ -13,7 +13,7 @@ uses
   Markdown4D.Viewer.Model;
 
 type
-  TViewerContextCommand = (Copy, SelectAll);
+  TViewerContextCommand = (Copy, CopyAsMarkdown, SelectAll);
 
   TViewerContextItem = record
     Command: TViewerContextCommand;
@@ -28,7 +28,10 @@ type
   end;
 
   TMarkdownViewerContextMenu = record
-    class function Build(const Model: TMarkdownViewerModel): TArray<TViewerContextItem>; static;
+    // ShowsCopyAsMarkdown leaves the Copy as Markdown entry out when False, for
+    // an application that does not offer the source to its readers.
+    class function Build(const Model: TMarkdownViewerModel;
+                         const ShowsCopyAsMarkdown: Boolean): TArray<TViewerContextItem>; static;
     // Runs the entries that only touch the selection. Copy returns False because
     // it needs the host's clipboard.
     class function Execute(const Model: TMarkdownViewerModel;
@@ -43,6 +46,7 @@ uses
 
 const
   CopyShortCut = scCtrl or vkC;
+  CopyAsMarkdownShortCut = scCtrl or scShift or vkC;
   SelectAllShortCut = scCtrl or vkA;
 
 class function TViewerContextItem.Create(const Command: TViewerContextCommand; const Caption: string;
@@ -55,13 +59,18 @@ begin
   Result.ShortCut := ShortCut;
 end;
 
-class function TMarkdownViewerContextMenu.Build(const Model: TMarkdownViewerModel): TArray<TViewerContextItem>;
+class function TMarkdownViewerContextMenu.Build(const Model: TMarkdownViewerModel;
+  const ShowsCopyAsMarkdown: Boolean): TArray<TViewerContextItem>;
 begin
-  Result := [
-    TViewerContextItem.Create(TViewerContextCommand.Copy, CopyMenuCaption, Model.HasSelection, False, CopyShortCut),
-    TViewerContextItem.Create(TViewerContextCommand.SelectAll, SelectAllMenuCaption, Model.HasSelectableText, True,
-      SelectAllShortCut)
-  ];
+  const HasSelection = Model.HasSelection;
+  Result := [TViewerContextItem.Create(TViewerContextCommand.Copy, CopyMenuCaption, HasSelection, False, CopyShortCut)];
+
+  if ShowsCopyAsMarkdown then
+    Result := Result + [TViewerContextItem.Create(TViewerContextCommand.CopyAsMarkdown, CopyAsMarkdownMenuCaption,
+                                                  HasSelection, False, CopyAsMarkdownShortCut)];
+
+  Result := Result + [TViewerContextItem.Create(TViewerContextCommand.SelectAll, SelectAllMenuCaption,
+                                                Model.HasSelectableText, True, SelectAllShortCut)];
 end;
 
 class function TMarkdownViewerContextMenu.Execute(const Model: TMarkdownViewerModel;
