@@ -183,6 +183,7 @@
         <DCCReference Include="..\Examples\Shared\Markdown4DStudio.Controller.pas"/>
         <DCCReference Include="..\Examples\Shared\StreamingMarkdown.Demo.pas"/>
         <DCCReference Include="Markdown4DStudio.Outline.Tests.pas"/>
+        <DCCReference Include="Markdown4DStudio.Text.Tests.pas"/>
         <DCCReference Include="Markdown4DStudio.Workspace.Tests.pas"/>
         <DCCReference Include="Markdown4DStudio.TabStrip.Tests.pas"/>
         <DCCReference Include="Markdown4DStudio.Session.Tests.pas"/>

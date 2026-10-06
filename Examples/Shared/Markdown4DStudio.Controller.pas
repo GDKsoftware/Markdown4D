@@ -30,6 +30,7 @@ type
     FMapDirty: Boolean;
     FSwapping: Boolean;
     FLastCaret: Integer;
+    FStatusDirty: Boolean;
     FCommands: TPadCommandRegistry;
     FActions: TPadCommandActions;
     FPaletteMatches: TArray<TPadCommandMatch>;
@@ -129,6 +130,7 @@ begin
 
   FEditor := Editor;
   FShell := Shell;
+  FStatusDirty := True;
 
   FWorkspace := TPadWorkspace.Create;
   FSession := TPadSession.Create(TPadSession.ResolvePath(SessionFileName));
@@ -282,6 +284,7 @@ begin
     Exit;
 
   FLastCaret := -1;
+  FStatusDirty := True;
   FMapDirty := True;
 
   FShell.RebuildTabs;
@@ -448,9 +451,11 @@ end;
 procedure TPadController.UpdateStatusBar;
 begin
   const Caret = FEditor.EditorCaret;
-  if Caret = FLastCaret then
+  const IsUnchanged = ((Caret = FLastCaret) and not FStatusDirty);
+  if IsUnchanged then
     Exit;
 
+  FStatusDirty := False;
   FLastCaret := Caret;
 
   const Text = FEditor.EditorText;
@@ -460,8 +465,9 @@ begin
 
   const PositionText = Format(StatusPositionFormat, [Line, Column]);
   const WordsText = Format(StatusWordsFormat, [TPadText.CountWords(Text)]);
+  const CharactersText = Format(StatusCharactersFormat, [TPadText.CountCharacters(Text)]);
 
-  FShell.SetStatus(PositionText, WordsText);
+  FShell.SetStatus(PositionText, WordsText, CharactersText);
 end;
 
 procedure TPadController.NotifyEditorChanged;
@@ -475,6 +481,7 @@ begin
     FActiveDoc.Modified := True;
 
   FMapDirty := True;
+  FStatusDirty := True;
 
   if not WasModified then
     FShell.RebuildTabs;
@@ -809,6 +816,7 @@ begin
   Document.Text := FEditor.EditorText;
   Document.Modified := False;
   FMapDirty := True;
+  FStatusDirty := True;
 
   FShell.RebuildTabs;
   UpdateTitle;

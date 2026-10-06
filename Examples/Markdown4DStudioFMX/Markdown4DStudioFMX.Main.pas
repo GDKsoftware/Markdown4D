@@ -54,6 +54,7 @@ type
     rctStatus: TRectangle;
     lblPos: TLabel;
     lblWords: TLabel;
+    lblChars: TLabel;
     layToc: TLayout;
     txtTocHeader: TText;
     lstToc: TListBox;
@@ -158,7 +159,7 @@ type
     property FSwapping: Boolean read GetSwapping write SetSwapping;
     property FPaletteMatches: TArray<TPadCommandMatch> read GetPaletteMatches;
     procedure SetDocumentTitle(const Name: string);
-    procedure SetStatus(const PositionText, WordsText: string);
+    procedure SetStatus(const PositionText, WordsText, CharactersText: string);
     procedure SetTocCaptions(const Captions: TArray<string>);
     procedure SetActiveTocIndex(const Index: Integer);
     function EditorFindNeedle: string;
@@ -1804,10 +1805,11 @@ begin
   Caption := Format(TitleFormat, [WindowCaption, Name]);
 end;
 
-procedure TMarkdown4DStudioFMXForm.SetStatus(const PositionText, WordsText: string);
+procedure TMarkdown4DStudioFMXForm.SetStatus(const PositionText, WordsText, CharactersText: string);
 begin
   lblPos.Text := PositionText;
   lblWords.Text := WordsText;
+  lblChars.Text := CharactersText;
 end;
 
 procedure TMarkdown4DStudioFMXForm.SetTocCaptions(const Captions: TArray<string>);
@@ -2051,7 +2053,7 @@ begin
   FTabStrip.GlyphColor := FChromeTextColor;
   FTabStrip.Repaint;
 
-  const Labels: TArray<TLabel> = [lblPos, lblWords, lblFindCount, lblPreviewFindCount];
+  const Labels: TArray<TLabel> = [lblPos, lblWords, lblChars, lblFindCount, lblPreviewFindCount];
 
   for var LabelControl in Labels do
   begin

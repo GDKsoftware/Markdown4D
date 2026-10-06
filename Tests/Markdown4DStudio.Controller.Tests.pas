@@ -82,9 +82,13 @@ type
     FPreviewFindCount: string;
     FFindCount: string;
     FCloseChoice: TPadCloseChoice;
+    FStatusPosition: string;
+    FStatusWords: string;
+    FStatusCharacters: string;
+    FStatusCount: Integer;
     procedure RebuildTabs;
     procedure SetDocumentTitle(const Name: string);
-    procedure SetStatus(const PositionText, WordsText: string);
+    procedure SetStatus(const PositionText, WordsText, CharactersText: string);
     procedure ApplyRestoredViewMode(const Mode: TPadViewMode);
     procedure SetTocCaptions(const Captions: TArray<string>);
     procedure SetActiveTocIndex(const Index: Integer);
@@ -121,6 +125,10 @@ type
     property PreviewNeedle: string read FPreviewNeedle write FPreviewNeedle;
     property PreviewFindCount: string read FPreviewFindCount;
     property FindCount: string read FFindCount;
+    property StatusPosition: string read FStatusPosition;
+    property StatusWords: string read FStatusWords;
+    property StatusCharacters: string read FStatusCharacters;
+    property StatusCount: Integer read FStatusCount;
   end;
 
   [TestFixture]
@@ -218,6 +226,18 @@ type
 
     [Test]
     procedure DeletedFile_SaveRecreatesFileAndClearsFlag;
+
+    [Test]
+    procedure Tick_ShowsCharacterAndWordCount;
+
+    [Test]
+    procedure Tick_AfterTextChangeWithoutCaretMove_RefreshesStatus;
+
+    [Test]
+    procedure Tick_WithoutChange_DoesNotResendStatus;
+
+    [Test]
+    procedure ApplyDiskText_RefreshesStatusOnNextTick;
   end;
 
 implementation
@@ -395,9 +415,12 @@ begin
   FTitle := Name;
 end;
 
-procedure TFakeShell.SetStatus(const PositionText, WordsText: string);
+procedure TFakeShell.SetStatus(const PositionText, WordsText, CharactersText: string);
 begin
-  // Status text is not asserted on.
+  FStatusPosition   := PositionText;
+  FStatusWords      := WordsText;
+  FStatusCharacters := CharactersText;
+  Inc(FStatusCount);
 end;
 
 procedure TFakeShell.ApplyRestoredViewMode(const Mode: TPadViewMode);
@@ -883,6 +906,60 @@ begin
   Assert.IsTrue(TFile.Exists(FFileName));
   Assert.IsFalse(FController.ActiveDocument.DiskMissing);
   Assert.IsFalse(FController.ActiveDocument.Modified);
+end;
+
+procedure TPadControllerTests.Tick_ShowsCharacterAndWordCount;
+begin
+  OpenSampleFile;
+  FView.EditorText := 'aa bb aa';
+  FController.NotifyEditorChanged;
+
+  FController.Tick;
+
+  Assert.AreEqual('8 characters', FShell.StatusCharacters);
+  Assert.AreEqual('3 words', FShell.StatusWords);
+end;
+
+procedure TPadControllerTests.Tick_AfterTextChangeWithoutCaretMove_RefreshesStatus;
+begin
+  OpenSampleFile;
+  FView.EditorCaret := 0;
+  FController.Tick;
+
+  FView.EditorText := 'aa bb aa';
+  FView.EditorCaret := 0;
+  FController.NotifyEditorChanged;
+  FController.Tick;
+
+  Assert.AreEqual('8 characters', FShell.StatusCharacters);
+  Assert.AreEqual('3 words', FShell.StatusWords);
+end;
+
+procedure TPadControllerTests.Tick_WithoutChange_DoesNotResendStatus;
+begin
+  OpenSampleFile;
+  FController.Tick;
+  const CountAfterFirstTick = FShell.StatusCount;
+
+  FController.Tick;
+
+  Assert.AreEqual(CountAfterFirstTick, FShell.StatusCount);
+end;
+
+procedure TPadControllerTests.ApplyDiskText_RefreshesStatusOnNextTick;
+begin
+  OpenSampleFile;
+  FView.EditorCaret := 0;
+  FController.Tick;
+  Assert.AreEqual('31 characters', FShell.StatusCharacters);
+
+  WriteExternal(ExternalText);
+  FController.Tick;
+  FController.Tick;
+
+  Assert.AreEqual(0, FView.EditorCaret);
+  Assert.AreEqual('42 characters', FShell.StatusCharacters);
+  Assert.AreEqual('8 words', FShell.StatusWords);
 end;
 
 end.

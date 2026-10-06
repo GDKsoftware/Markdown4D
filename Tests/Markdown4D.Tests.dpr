@@ -114,6 +114,7 @@ uses
   Markdown4DStudio.Controller in '..\Examples\Shared\Markdown4DStudio.Controller.pas',
   StreamingMarkdown.Demo in '..\Examples\Shared\StreamingMarkdown.Demo.pas',
   Markdown4DStudio.Outline.Tests in 'Markdown4DStudio.Outline.Tests.pas',
+  Markdown4DStudio.Text.Tests in 'Markdown4DStudio.Text.Tests.pas',
   Markdown4DStudio.Workspace.Tests in 'Markdown4DStudio.Workspace.Tests.pas',
   Markdown4DStudio.TabStrip.Tests in 'Markdown4DStudio.TabStrip.Tests.pas',
   Markdown4DStudio.Session.Tests in 'Markdown4DStudio.Session.Tests.pas',
