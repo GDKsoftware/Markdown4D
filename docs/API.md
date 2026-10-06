@@ -305,7 +305,8 @@ Selected properties: `BaseFont`, `CodeFont`, `MathFont`, `HeadingFonts[Level]`,
 `TableBorderColor`, `ThematicBreakColor`, `MathErrorColor`, `BlockSpacing`,
 `ListIndent`, `ContentPadding`, the `Chart*` colours and `ChartPalette`,
 `TokenColors[Kind]` for code highlighting, `DiffInsertedBackgroundColor` and
-`DiffDeletedBackgroundColor` for the lines of a `diff` block, and
+`DiffDeletedBackgroundColor` for the lines of a `diff` block,
+`MarkBackgroundColor` behind text in a `<mark>` tag, and
 `AlertColors[Kind]` for GitHub alerts. Colours are `TLayoutColor`
 (`$AARRGGBB`). Chart sizing and axis-label formatting are not part of the
 theme; see [Chart layout options](EXTENSIONS.md#chart-layout-options).
@@ -350,6 +351,16 @@ The HTML renderer writes GitHub's markup, a
 `<p class="markdown-alert-title">`, without GitHub's icon; the markdown writer
 writes the marker back. The viewers draw the bar, an icon and the title in
 `Theme.AlertColors[Kind]` and the text in `Theme.TextColor`.
+
+## Table of contents
+
+GitLab's table of contents marker is part of the GFM dialect. A paragraph at
+the top level of the document that holds nothing but `[[_TOC_]]` or `[TOC]`
+gets a nested list of links to every heading, one link per heading to its
+anchor (see `ScrollToAnchor`). The paragraph stays in the document and carries
+the list: `TMarkdownTocMarkers.TryGetContents(Node, Contents)` in unit
+`Markdown4D.Extensions.Toc`. The viewers draw the list in place of the marker;
+the HTML renderer and the markdown writer keep the marker as text.
 
 ## Math
 
@@ -538,6 +549,7 @@ same.
 | `TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean` | The stretch of markdown the selection was rendered from, so an editor can format exactly those characters; `False` when there is no selection or the runs carry no source |
 | `ContentHeight: Integer` | Laid-out document height, for auto-sizing |
 | `ScrollOffset: Single` | Read / set the vertical scroll position |
+| `ScrollToAnchor(const Anchor: string): Boolean` | Scroll the heading a link such as `#getting-started` points at to the top of the view. Anchors follow GitHub: lower case, punctuation dropped, accented letters kept, every space a dash, and a repeated heading gets `-1`, `-2`. A percent-encoded anchor is decoded first. `False` when the document has no such heading |
 | `LayoutCount: Integer` | Advances on every relayout (first width, resize, arriving images), so a host can notice layout-derived state going stale |
 | `DisplayList: IMarkdownDisplayList` | The rendered primitives, for advanced hosts |
 
@@ -545,7 +557,7 @@ same.
 
 | Event | Signature | Raised when |
 |-------|-----------|-------------|
-| `OnLinkClick` | `(const Sender: TObject; const Url: string)` | A link is clicked |
+| `OnLinkClick` | `(const Sender: TObject; const Url: string)` | A link is clicked. A `#...` link to a heading in the document scrolls there instead and raises nothing |
 | `OnLinkHover` | `(const Sender: TObject; const Url: string)` | The hovered link changes (`''` on leave) |
 | `OnResolveImage` | `(const Sender: TObject; const Url: string; const Picture/Bitmap; var Handled: Boolean)` | An image needs resolving; set `Handled` to supply it yourself |
 | `OnRemoteImageRequest` | `(const Sender: TObject; const Url: string; var Allow: Boolean)` | About to fetch a remote image. `Allow` arrives holding `Images.AllowRemote`; clear it to refuse this address |
@@ -578,6 +590,16 @@ content; any other tag disappears while its content stays, the way a browser
 would show it with the styling removed. The translation is implemented in
 `Markdown4D.Html.Subset` and cached on the AST node, since layout runs again
 on every resize and every streamed chunk.
+
+A tag inside a paragraph, heading or table cell is never painted either. The
+viewer follows the subset GitHub renders: `b`/`strong` bold, `i`/`em`/`var`
+italic, `code`/`kbd`/`samp`/`tt` in the code font, `s`/`del`/`strike` struck
+through, `ins` underlined, `sub` and `sup` smaller and below or above the
+baseline, `small` smaller, `mark` on `Theme.MarkBackgroundColor`, `br` a line
+break and `a href` a link. A comment
+shows nothing, and any other tag disappears while its text stays, `u` among
+them, as on GitHub. The document itself keeps the tags, so the editor and the
+markdown writer see them as written.
 
 The mouse wheel scrolls the control only while its content overflows;
 otherwise the wheel passes through to the parent, so viewers stacked inside a

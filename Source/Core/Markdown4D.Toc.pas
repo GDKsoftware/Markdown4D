@@ -37,6 +37,10 @@ type
   TMarkdownToc = class
   public
     class function FromDocument(const Document: IMarkdownDocument): IMarkdownToc;
+    // The heading a link such as #getting-started-1 points at, by the anchors
+    // FromDocument gives the headings.
+    class function TryFindHeading(const Document: IMarkdownDocument; const Anchor: string;
+                                  out Heading: IMarkdownHeading): Boolean;
   end;
 
 implementation
@@ -91,7 +95,7 @@ type
       FToc: TMarkdownTocInstance;
       FOpenEntries: TList<TMarkdownTocEntry>;
       FAnchorUsage: TDictionary<string, Integer>;
-    procedure CollectHeadings(const Document: IMarkdownDocument);
+    class function HeadingsInOrder(const Document: IMarkdownDocument): TArray<IMarkdownHeading>;
     procedure AddHeading(const Heading: IMarkdownHeading);
     class function ExtractCaption(const Heading: IMarkdownNode): string;
     function ReserveAnchor(const Caption: string): string;
@@ -101,6 +105,8 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+    function TryFindHeading(const Document: IMarkdownDocument; const Anchor: string;
+                            out Heading: IMarkdownHeading): Boolean;
     function Build(const Document: IMarkdownDocument): IMarkdownToc;
   end;
 
@@ -112,6 +118,20 @@ begin
   const Builder = TMarkdownTocBuilder.Create;
   try
     Result := Builder.Build(Document);
+  finally
+    Builder.Free;
+  end;
+end;
+
+class function TMarkdownToc.TryFindHeading(const Document: IMarkdownDocument; const Anchor: string;
+  out Heading: IMarkdownHeading): Boolean;
+begin
+  if Document = nil then
+    raise EMarkdownError.Create('Document must not be nil');
+
+  const Builder = TMarkdownTocBuilder.Create;
+  try
+    Result := Builder.TryFindHeading(Document, Anchor, Heading);
   finally
     Builder.Free;
   end;
@@ -139,11 +159,37 @@ begin
   Result := Toc;
   FToc := Toc;
 
-  CollectHeadings(Document);
+  for var Heading in HeadingsInOrder(Document) do
+  begin
+    AddHeading(Heading);
+  end;
 end;
 
-procedure TMarkdownTocBuilder.CollectHeadings(const Document: IMarkdownDocument);
+// Anchors are numbered in reading order, so the heading is found by handing out
+// the anchors again until one matches.
+function TMarkdownTocBuilder.TryFindHeading(const Document: IMarkdownDocument; const Anchor: string;
+  out Heading: IMarkdownHeading): Boolean;
 begin
+  Heading := nil;
+
+  for var Candidate in HeadingsInOrder(Document) do
+  begin
+    const Caption = ExtractCaption(Candidate);
+    const IsTarget = (ReserveAnchor(Caption) = Anchor);
+    if IsTarget then
+    begin
+      Heading := Candidate;
+      Result := True;
+      Exit;
+    end;
+  end;
+
+  Result := False;
+end;
+
+class function TMarkdownTocBuilder.HeadingsInOrder(const Document: IMarkdownDocument): TArray<IMarkdownHeading>;
+begin
+  const Headings = TList<IMarkdownHeading>.Create;
   const Pending = TStack<IMarkdownNode>.Create;
   try
     PushChildrenReversed(Pending, Document);
@@ -153,12 +199,15 @@ begin
       const Current = Pending.Pop;
 
       if Current.Kind = TMarkdownNodeKind.Heading then
-        AddHeading(Current as IMarkdownHeading)
+        Headings.Add(Current as IMarkdownHeading)
       else
         PushChildrenReversed(Pending, Current);
     end;
+
+    Result := Headings.ToArray;
   finally
     Pending.Free;
+    Headings.Free;
   end;
 end;
 

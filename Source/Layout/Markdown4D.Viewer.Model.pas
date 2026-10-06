@@ -64,6 +64,7 @@ type
       CopiedIndentWidth = 2;
       CopiedSpace = ' ';
       CopiedTab = #9;
+      AnchorMark = '#';
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
@@ -195,6 +196,9 @@ type
     // selection. A selection of everything gives the whole source, including
     // lines that render nothing.
     function SelectedMarkdown: string;
+    // The scroll offset that brings the heading a link like #getting-started
+    // points at to the top of the view. The anchor may be percent-encoded.
+    function TryGetAnchorOffset(const Anchor: string; out Offset: Single): Boolean;
     function PendingImageSources: TArray<string>;
     procedure NotifyImageArrived(const Source: string; const Size: TLayoutSizeF);
     procedure NotifyImageFailed(const Source: string);
@@ -262,12 +266,14 @@ uses
   System.Math,
   System.Diagnostics,
   System.Character,
+  System.NetEncoding,
   Markdown4D,
   Markdown4D.Defines,
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Layout.Engine,
   Markdown4D.Layout.SourceMapping,
   Markdown4D.Layout.SelectedMarkdown,
+  Markdown4D.Toc,
   Markdown4D.Layout.Zoom;
 
 class function TMarkdownFoundRange.Create(const ItemIndex, StartCharacter,
@@ -838,6 +844,36 @@ begin
     Result := CopiedSpace
   else
     Result := '';
+end;
+
+function TMarkdownViewerModel.TryGetAnchorOffset(const Anchor: string; out Offset: Single): Boolean;
+begin
+  Offset := 0;
+  Result := False;
+  if (FDocument = nil) or (FDisplayList = nil) then
+    Exit;
+
+  const Name = TNetEncoding.URL.Decode(Anchor.TrimLeft([AnchorMark]));
+  var Heading: IMarkdownHeading;
+  if not TMarkdownToc.TryFindHeading(FDocument, Name, Heading) then
+    Exit;
+
+  const Segment = Heading.Segment;
+  for var Index := 0 to FDisplayList.ItemCount - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    if not TrySelectableRun(Index, Run) then
+      Continue;
+
+    const Start = Run.SourceNode.Segment.StartOffset;
+    const IsInHeading = ((Start >= Segment.StartOffset) and (Start < Segment.EndOffset));
+    if IsInHeading then
+    begin
+      Offset := Run.Bounds.Top;
+      Result := True;
+      Exit;
+    end;
+  end;
 end;
 
 function TMarkdownViewerModel.SelectedMarkdown: string;

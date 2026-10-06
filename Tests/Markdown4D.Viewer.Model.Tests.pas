@@ -8,6 +8,7 @@ uses
   System.SysUtils,
   DUnitX.TestFramework,
   Markdown4D.Layout.Interfaces,
+  Markdown4D.Layout.DisplayList,
   Markdown4D.Theme,
   Markdown4D.Layout.TextSearch,
   Markdown4D.Layout.Zoom,
@@ -52,6 +53,7 @@ type
     procedure SelectFromTo(const AnchorX, AnchorY, ExtentX, ExtentY: Single);
     procedure LoadImageDocument;
     function AllHighlightRects: TArray<TLayoutRectF>;
+    function RunShowing(const Text: string): IDisplayTextRun;
 
   public
     [Setup]
@@ -92,8 +94,8 @@ type
     [TestCase('HeadingAndParagraph', '# Title'#10'Body~Title'#13#10#13#10'Body', '~', False)]
     [TestCase('TwoHeadings', '# One'#10'## Two~One'#13#10#13#10'Two', '~', False)]
     [TestCase('TwoLists', '- one'#10#10'1. two~'#$2022' one'#13#10#13#10'1. two', '~', False)]
-    [TestCase('InlineCode', 'Ein Satz mit `Code` und **fett** hier.~Ein Satz mit Code und fett hier.', '~', False)]
-    [TestCase('InlineCodeInQuote', '> Zitat mit `Code`.~Zitat mit Code.', '~', False)]
+    [TestCase('InlineCode', 'One line has `Code` and **bold** here.~One line has Code and bold here.', '~', False)]
+    [TestCase('InlineCodeInQuote', '> Quote has `Code`.~Quote has Code.', '~', False)]
     [TestCase('SecondBlockOfListItem', '- one'#10#10'  two~'#$2022' one'#13#10#13#10'  two', '~', False)]
     [TestCase('TextAfterNestedList', '- one'#10#10'  - two'#10#10'  three~'#$2022' one'#13#10#13#10'  '#$2022' two'#13#10#13#10'  three', '~', False)]
     procedure SelectAll_BlockWithSeveralLines_KeepsLinesMarkersAndCells(const Markdown, Expected: string);
@@ -260,6 +262,42 @@ type
     procedure TryGetScrollTarget_MatchBelowViewport_CentresIt;
 
     [Test]
+    procedure InlineHtml_StyleTag_HidesTheTagsAndStylesTheText;
+
+    [Test]
+    procedure InlineHtml_CommentAndUnknownTag_ShowOnlyTheText;
+
+    [Test]
+    procedure InlineHtml_LineBreak_StartsANewLine;
+
+    [Test]
+    procedure InlineHtml_Anchor_IsALink;
+
+    [Test]
+    procedure InlineHtml_SuperscriptAndSubscript_LeaveTheBaseline;
+
+    [Test]
+    procedure InlineHtml_Code_UsesTheCodeFont;
+
+    [Test]
+    procedure InlineHtml_Mark_HighlightsTheText;
+
+    [Test]
+    procedure Text_TocMarker_ShowsTheHeadingsInsteadOfTheMarker;
+
+    [Test]
+    procedure Text_TocMarkerWithoutHeadings_ShowsNothing;
+
+    [Test]
+    procedure TryGetAnchorOffset_HeadingFarDown_ReturnsItsTop;
+
+    [Test]
+    procedure TryGetAnchorOffset_PercentEncodedAnchor_FindsHeading;
+
+    [Test]
+    procedure TryGetAnchorOffset_UnknownAnchor_ReturnsFalse;
+
+    [Test]
     procedure SelectedMarkdown_WordInBold_TakesTheMarksAlong;
 
     [Test]
@@ -342,7 +380,6 @@ implementation
 
 uses
   Markdown4D.Ast.Interfaces,
-  Markdown4D.Layout.DisplayList,
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Layout.FakeMeasurer,
   Markdown4D.Tests.FailingExtensions;
@@ -539,11 +576,11 @@ procedure TMarkdownViewerModelTests.SelectAll_CodeSpanInSmallerFont_CopiesSingle
 begin
   FTheme.CodeFont := TMarkdownFontStyle.Create(FTheme.CodeFont.FamilyName, SmallerCodeFontSize);
   FModel.SetViewport(DefaultWidth, DefaultHeight);
-  FModel.Text := 'Mit `Code` und **fett**.';
+  FModel.Text := 'Has `Code` and **bold**.';
 
   FModel.SelectAll;
 
-  Assert.AreEqual('Mit Code und fett.', FModel.SelectedText);
+  Assert.AreEqual('Has Code and bold.', FModel.SelectedText);
 end;
 
 // The line wraps where the source has no space: between a bracket and the code
@@ -1113,6 +1150,148 @@ begin
   AssertSingle(MatchTop - (SmallHeight - BaseLineHeight) / 2, Offset);
 end;
 
+procedure TMarkdownViewerModelTests.InlineHtml_StyleTag_HidesTheTagsAndStylesTheText;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'A <b>bold</b> word';
+
+  FModel.SelectAll;
+
+  Assert.AreEqual('A bold word', FModel.SelectedText);
+  Assert.IsTrue(RunShowing('bold').Font.Bold);
+end;
+
+procedure TMarkdownViewerModelTests.InlineHtml_CommentAndUnknownTag_ShowOnlyTheText;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'shown<!-- hidden --> and <span>kept</span>';
+
+  FModel.SelectAll;
+
+  Assert.AreEqual('shown and kept', FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.InlineHtml_LineBreak_StartsANewLine;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := 'one<br>two';
+
+  Assert.IsTrue(RunShowing('two').Bounds.Top > RunShowing('one').Bounds.Top);
+end;
+
+procedure TMarkdownViewerModelTests.InlineHtml_Anchor_IsALink;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := 'see <a href="https://example.com">the site</a>';
+
+  var Link: IMarkdownLink;
+  Assert.IsTrue(Supports(RunShowing('the site').Node, IMarkdownLink, Link));
+  Assert.AreEqual('https://example.com', Link.Destination);
+end;
+
+procedure TMarkdownViewerModelTests.InlineHtml_SuperscriptAndSubscript_LeaveTheBaseline;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := 'm<sup>2</sup> H<sub>3</sub>';
+
+  const Base = RunShowing('m');
+  const Raised = RunShowing('2');
+  const Lowered = RunShowing('3');
+  Assert.IsTrue(Raised.Font.Size < Base.Font.Size, 'smaller');
+  Assert.IsTrue(Raised.Bounds.Top < Base.Bounds.Top, 'raised');
+  Assert.IsTrue(Lowered.Bounds.Bottom > Base.Bounds.Bottom, 'lowered');
+end;
+
+procedure TMarkdownViewerModelTests.InlineHtml_Code_UsesTheCodeFont;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := 'press <kbd>Ctrl</kbd>';
+
+  Assert.AreEqual(FTheme.CodeFont.FamilyName, RunShowing('Ctrl').Font.FamilyName);
+end;
+
+procedure TMarkdownViewerModelTests.InlineHtml_Mark_HighlightsTheText;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := 'a <mark>marked</mark> word';
+
+  const Marked = RunShowing('marked').Bounds;
+  var IsHighlighted := False;
+  for var Index := 0 to FModel.DisplayList.ItemCount - 1 do
+  begin
+    var Rectangle: IDisplayRectangle;
+    if not Supports(FModel.DisplayList.Items[Index], IDisplayRectangle, Rectangle) then
+      Continue;
+
+    const Bounds = Rectangle.Bounds;
+    const CoversRun = ((Bounds.Left <= Marked.Left) and (Bounds.Right >= Marked.Right));
+    if CoversRun and (Rectangle.FillColor = FTheme.MarkBackgroundColor) then
+      IsHighlighted := True;
+  end;
+  Assert.IsTrue(IsHighlighted);
+end;
+
+procedure TMarkdownViewerModelTests.Text_TocMarker_ShowsTheHeadingsInsteadOfTheMarker;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := '[[_TOC_]]'#10#10'# Alpha';
+
+  Assert.AreEqual(2, FModel.MatchCount('Alpha'), 'once in the contents, once as the heading');
+  Assert.AreEqual(0, FModel.MatchCount('TOC'));
+end;
+
+procedure TMarkdownViewerModelTests.Text_TocMarkerWithoutHeadings_ShowsNothing;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := '[TOC]'#10#10'Only text';
+
+  Assert.AreEqual(0, FModel.MatchCount('TOC'));
+  Assert.AreEqual(1, FModel.MatchCount('Only text'));
+end;
+
+procedure TMarkdownViewerModelTests.TryGetAnchorOffset_HeadingFarDown_ReturnsItsTop;
+begin
+  FModel.SetViewport(DefaultWidth, SmallHeight);
+  FModel.Text := BuildTallMarkdown + #10#10'## Target';
+  const HeadingRun = FModel.DisplayList.Items[FModel.FindText('Target')[0].ItemIndex];
+
+  var Offset: Single;
+  const IsFound = FModel.TryGetAnchorOffset('#target', Offset);
+
+  Assert.IsTrue(IsFound);
+  AssertSingle(HeadingRun.Bounds.Top, Offset);
+end;
+
+procedure TMarkdownViewerModelTests.TryGetAnchorOffset_PercentEncodedAnchor_FindsHeading;
+begin
+  const Caption = 'Caf'#$00E9;
+  FModel.SetViewport(DefaultWidth, SmallHeight);
+  FModel.Text := BuildTallMarkdown + #10#10'## ' + Caption;
+
+  var Offset: Single;
+  const IsFound = FModel.TryGetAnchorOffset('#caf%C3%A9', Offset);
+
+  Assert.IsTrue(IsFound);
+end;
+
+procedure TMarkdownViewerModelTests.TryGetAnchorOffset_UnknownAnchor_ReturnsFalse;
+begin
+  FModel.SetViewport(DefaultWidth, SmallHeight);
+  FModel.Text := BuildTallMarkdown;
+
+  var Offset: Single;
+  const IsFound = FModel.TryGetAnchorOffset('#nowhere', Offset);
+
+  Assert.IsFalse(IsFound);
+end;
+
 procedure TMarkdownViewerModelTests.SelectedMarkdown_WordInBold_TakesTheMarksAlong;
 begin
   FModel.SetViewport(DefaultWidth, DefaultHeight);
@@ -1460,6 +1639,22 @@ begin
       Result := Result + #10#10;
     Result := Result + Format('paragraph%d', [Index]);
   end;
+end;
+
+function TMarkdownViewerModelTests.RunShowing(const Text: string): IDisplayTextRun;
+begin
+  for var Index := 0 to FModel.DisplayList.ItemCount - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    const IsRun = Supports(FModel.DisplayList.Items[Index], IDisplayTextRun, Run);
+    if IsRun and (Run.Text.Trim = Text) then
+    begin
+      Result := Run;
+      Exit;
+    end;
+  end;
+
+  Assert.Fail(Format('No run shows "%s"', [Text]));
 end;
 
 function TMarkdownViewerModelTests.AllHighlightRects: TArray<TLayoutRectF>;

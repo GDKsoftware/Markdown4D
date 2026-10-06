@@ -25,7 +25,8 @@ uses
   Markdown4D.Text.UrlSafety,
   Markdown4D.Extensions.Gfm,
   Markdown4D.Extensions.Math,
-  Markdown4D.Extensions.Alerts;
+  Markdown4D.Extensions.Alerts,
+  Markdown4D.Extensions.Toc;
 
 type
   TMarkdownPipelineInstance = class(TInterfacedObject, IMarkdownPipeline, IMarkdownPipelineConfigurationProvider)
@@ -253,6 +254,7 @@ begin
     Use(TGfmTagFilterExtension.Create);
     Use(TMathExtension.Create);
     Use(TAlertExtension.Create);
+    Use(TTocExtension.Create);
     FGfmRegistered := True;
   end;
 

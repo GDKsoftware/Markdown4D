@@ -48,10 +48,13 @@ uses
   Markdown4D.Parser.Inlines,
   Markdown4D.Highlighter.Interfaces,
   Markdown4D.Extensions.Alerts,
+  Markdown4D.Extensions.Toc,
   Markdown4D,
+  Markdown4D.Ast,
   Markdown4D.Html.Subset,
   Markdown4D.Layout.AlertIcons,
   Markdown4D.Layout.ExtensionCanvas,
+  Markdown4D.Layout.InlineHtml,
   Markdown4D.Layout.Primitives,
   Markdown4D.Math.Layout;
 
@@ -85,12 +88,27 @@ type
     Source: string;
     AltText: string;
     CodeSpan: Boolean;
+    // How far a superscript (up) or subscript (down) sits from the baseline.
+    BaselineShift: Single;
+    // The colour behind marked text; zero for none.
+    Highlight: TLayoutColor;
   end;
 
   TInlineStyle = record
     Font: TMarkdownFontStyle;
     Color: TLayoutColor;
     Attribution: IMarkdownNode;
+    CodeSpan: Boolean;
+    BaselineShift: Single;
+    Highlight: TLayoutColor;
+  end;
+
+  // A tag inside a paragraph that styles the siblings after it, with the style
+  // to go back to at its closing tag.
+  TInlineHtmlOpening = record
+    Name: string;
+    FrameDepth: Integer;
+    Saved: TInlineStyle;
   end;
 
   TInlineFrame = record
@@ -139,6 +157,8 @@ type
       FGroupSourceNode: IMarkdownNode;
       FGroupStartOffset: Integer;
       FGroupCodeSpan: Boolean;
+      FGroupBaselineShift: Single;
+      FGroupHighlight: TLayoutColor;
       FLineJoin: TDisplayTextJoin;
     procedure AddWordLike(const Atom: TInlineAtom);
     procedure ForceBreakWord(const Atom: TInlineAtom);
@@ -217,10 +237,23 @@ type
 
   TInlineAtomCollector = class
   private
-    FMeasurer: ITextMeasurer;
-    FTheme: TMarkdownTheme;
-    FImageSizes: IMarkdownImageSizeProvider;
-    FContentRight: Single;
+    const
+      ScriptScale = 0.75;
+      SmallScale = 0.85;
+      SuperscriptRise = 0.4;
+      SubscriptDrop = 0.25;
+    var
+      FMeasurer: ITextMeasurer;
+      FTheme: TMarkdownTheme;
+      FImageSizes: IMarkdownImageSizeProvider;
+      FContentRight: Single;
+      FHtmlOpenings: TList<TInlineHtmlOpening>;
+    procedure HandleInlineHtml(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
+      const Child: IMarkdownNode);
+    procedure OpenHtmlStyle(const Frames: TList<TInlineFrame>; const Tag: TInlineHtmlTag);
+    procedure CloseHtmlStyle(const Frames: TList<TInlineFrame>; const Name: string);
+    procedure DropHtmlOpeningsDeeperThan(const FrameDepth: Integer);
+    function StyledBy(const Tag: TInlineHtmlTag; const Style: TInlineStyle): TInlineStyle;
     procedure HandleInlineChild(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
       const Child: IMarkdownNode; const Style: TInlineStyle);
     procedure AppendTextAtoms(const Atoms: TList<TInlineAtom>; const Text: string; const Style: TInlineStyle;
@@ -241,6 +274,7 @@ type
   public
     constructor Create(const Measurer: ITextMeasurer; const Theme: TMarkdownTheme;
       const ImageSizes: IMarkdownImageSizeProvider; const ContentRight: Single);
+    destructor Destroy; override;
     function Collect(const Container: IMarkdownNode; const BaseFont: TMarkdownFontStyle;
       const BaseColor: TLayoutColor): TList<TInlineAtom>;
   end;
@@ -324,6 +358,7 @@ type
     procedure PushQuoteBar(const Command: TLayoutCommand; const BarColor: TLayoutColor);
     procedure EmitQuoteBar(const Command: TLayoutCommand);
     procedure EmitAlertTitle(const Command: TLayoutCommand);
+    procedure LayoutParagraph(const Command: TLayoutCommand);
     procedure PushList(const Command: TLayoutCommand);
     class function TryFindTaskMarker(const ListItem: IMarkdownNode; out Marker: IMarkdownCustomInline): Boolean;
     procedure PushContainerChildren(const Container: IMarkdownNode; const X: Single; const TextColor: TLayoutColor);
@@ -774,7 +809,7 @@ begin
 
   case Command.Node.Kind of
     TMarkdownNodeKind.Paragraph:
-      LayoutInlineBlock(Command.Node, Command.X, FTheme.BaseFont, Command.Color);
+      LayoutParagraph(Command);
     TMarkdownNodeKind.Heading:
       LayoutInlineBlock(Command.Node, Command.X, FTheme.HeadingFonts[(Command.Node as IMarkdownHeading).Level],
         Command.Color);
@@ -983,6 +1018,21 @@ begin
   FItems.Add(TitleRun);
 
   FCurrentY := FCurrentY + LineHeight;
+end;
+
+// A table of contents marker shows the list of links that stands in for it.
+procedure TLayoutWorker.LayoutParagraph(const Command: TLayoutCommand);
+begin
+  var Contents: IMarkdownNode;
+  if not TMarkdownTocMarkers.TryGetContents(Command.Node, Contents) then
+  begin
+    LayoutInlineBlock(Command.Node, Command.X, FTheme.BaseFont, Command.Color);
+    Exit;
+  end;
+
+  var ContentsCommand := Command;
+  ContentsCommand.Node := Contents;
+  PushList(ContentsCommand);
 end;
 
 procedure TLayoutWorker.PushList(const Command: TLayoutCommand);
@@ -1695,6 +1745,14 @@ begin
   FTheme := Theme;
   FImageSizes := ImageSizes;
   FContentRight := ContentRight;
+  FHtmlOpenings := TList<TInlineHtmlOpening>.Create;
+end;
+
+destructor TInlineAtomCollector.Destroy;
+begin
+  FHtmlOpenings.Free;
+
+  inherited Destroy;
 end;
 
 function TInlineAtomCollector.Collect(const Container: IMarkdownNode; const BaseFont: TMarkdownFontStyle;
@@ -1704,6 +1762,7 @@ begin
   try
     const Frames = TList<TInlineFrame>.Create;
     try
+      FHtmlOpenings.Clear;
       var RootStyle := Default(TInlineStyle);
       RootStyle.Font := BaseFont;
       RootStyle.Color := BaseColor;
@@ -1718,6 +1777,7 @@ begin
         if Exhausted then
         begin
           Frames.Delete(LastIndex);
+          DropHtmlOpeningsDeeperThan(Frames.Count);
           Continue;
         end;
 
@@ -1740,8 +1800,10 @@ procedure TInlineAtomCollector.HandleInlineChild(const Atoms: TList<TInlineAtom>
   const Child: IMarkdownNode; const Style: TInlineStyle);
 begin
   case Child.Kind of
-    TMarkdownNodeKind.Text, TMarkdownNodeKind.InlineHtml:
+    TMarkdownNodeKind.Text:
       AppendTextAtoms(Atoms, (Child as IMarkdownText).Literal, Style, Child);
+    TMarkdownNodeKind.InlineHtml:
+      HandleInlineHtml(Atoms, Frames, Child);
     TMarkdownNodeKind.CodeSpan:
       AppendCodeSpanAtoms(Atoms, Child, Style);
     TMarkdownNodeKind.SoftLineBreak:
@@ -1807,6 +1869,9 @@ begin
     Atom.Text := Token;
     Atom.Font := Style.Font;
     Atom.Color := Style.Color;
+    Atom.CodeSpan := Style.CodeSpan;
+    Atom.BaselineShift := Style.BaselineShift;
+    Atom.Highlight := Style.Highlight;
     Atom.Node := Attribution;
     Atom.SourceNode := Leaf;
     Atom.StartOffset := Start - 1;
@@ -1932,6 +1997,128 @@ begin
   var StrikeStyle := Style;
   StrikeStyle.Font.Strikeout := True;
   PushStyledFrame(Frames, Child, StrikeStyle);
+end;
+
+// A subset of tags inside a paragraph styles the text, and no tag is drawn
+// itself. A tag arrives as a sibling of the text it styles, so an opening tag
+// changes the style of the frame the siblings are read in, and its closing tag
+// puts the style back.
+procedure TInlineAtomCollector.HandleInlineHtml(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
+  const Child: IMarkdownNode);
+begin
+  const Tag = TInlineHtmlTag.Parse((Child as IMarkdownText).Literal);
+  if Tag.IsComment then
+    Exit;
+
+  case Tag.Effect of
+    TInlineHtmlEffect.Hidden:
+      Exit;
+    TInlineHtmlEffect.LineBreak:
+      begin
+        if not Tag.IsClosing then
+          AppendHardBreakAtom(Atoms);
+        Exit;
+      end;
+  else
+    // Every other effect styles the text up to the closing tag.
+  end;
+
+  if Tag.IsClosing then
+    CloseHtmlStyle(Frames, Tag.Name)
+  else
+    OpenHtmlStyle(Frames, Tag);
+end;
+
+procedure TInlineAtomCollector.OpenHtmlStyle(const Frames: TList<TInlineFrame>; const Tag: TInlineHtmlTag);
+begin
+  const Depth = Frames.Count;
+  var Frame := Frames[Depth - 1];
+
+  var Opening := Default(TInlineHtmlOpening);
+  Opening.Name := Tag.Name;
+  Opening.FrameDepth := Depth;
+  Opening.Saved := Frame.Style;
+  FHtmlOpenings.Add(Opening);
+
+  Frame.Style := StyledBy(Tag, Frame.Style);
+  Frames[Depth - 1] := Frame;
+end;
+
+// A closing tag without its opening tag in the same frame is ignored; one that
+// closes over tags left open drops those as well.
+procedure TInlineAtomCollector.CloseHtmlStyle(const Frames: TList<TInlineFrame>; const Name: string);
+begin
+  const Depth = Frames.Count;
+
+  for var Index := FHtmlOpenings.Count - 1 downto 0 do
+  begin
+    const Opening = FHtmlOpenings[Index];
+    const IsMatch = ((Opening.FrameDepth = Depth) and (Opening.Name = Name));
+    if not IsMatch then
+      Continue;
+
+    var Frame := Frames[Depth - 1];
+    Frame.Style := Opening.Saved;
+    Frames[Depth - 1] := Frame;
+    FHtmlOpenings.Count := Index;
+    Exit;
+  end;
+end;
+
+procedure TInlineAtomCollector.DropHtmlOpeningsDeeperThan(const FrameDepth: Integer);
+begin
+  while (FHtmlOpenings.Count > 0) and (FHtmlOpenings.Last.FrameDepth > FrameDepth) do
+  begin
+    FHtmlOpenings.Delete(FHtmlOpenings.Count - 1);
+  end;
+end;
+
+function TInlineAtomCollector.StyledBy(const Tag: TInlineHtmlTag; const Style: TInlineStyle): TInlineStyle;
+begin
+  Result := Style;
+  const Ascent = FMeasurer.Baseline(Style.Font);
+
+  case Tag.Effect of
+    TInlineHtmlEffect.Bold:
+      Result.Font.Bold := True;
+    TInlineHtmlEffect.Italic:
+      Result.Font.Italic := True;
+    TInlineHtmlEffect.Code:
+      begin
+        Result.Font := FTheme.CodeFont;
+        Result.CodeSpan := True;
+      end;
+    TInlineHtmlEffect.Strikethrough:
+      Result.Font.Strikeout := True;
+    TInlineHtmlEffect.Underline:
+      Result.Font.Underline := True;
+    TInlineHtmlEffect.Subscript:
+      begin
+        Result.Font.Size := Style.Font.Size * ScriptScale;
+        Result.BaselineShift := Style.BaselineShift - Ascent * SubscriptDrop;
+      end;
+    TInlineHtmlEffect.Superscript:
+      begin
+        Result.Font.Size := Style.Font.Size * ScriptScale;
+        Result.BaselineShift := Style.BaselineShift + Ascent * SuperscriptRise;
+      end;
+    TInlineHtmlEffect.Small:
+      Result.Font.Size := Style.Font.Size * SmallScale;
+    TInlineHtmlEffect.Mark:
+      Result.Highlight := FTheme.MarkBackgroundColor;
+    TInlineHtmlEffect.Link:
+      begin
+        // An anchor without href only marks a place; its text stays as it is.
+        if Tag.Href = '' then
+          Exit;
+
+        Result.Font.Underline := True;
+        Result.Color := FTheme.LinkColor;
+        Result.Attribution := TMarkdownLinkNode.Create(TMarkdownNodeKind.Link, Tag.Href, '');
+      end;
+  else
+    raise EMarkdownError.CreateFmt('Unhandled inline HTML effect: %d', [Ord(Tag.Effect)]);
+  end;
 end;
 
 class procedure TInlineAtomCollector.PushStyledFrame(const Frames: TList<TInlineFrame>; const Node: IMarkdownNode;
@@ -2245,7 +2432,7 @@ begin
     case Atom.Kind of
       TInlineAtomKind.WordToken, TInlineAtomKind.SpaceToken:
         begin
-          const Ascent = FMeasurer.Baseline(Atom.Font);
+          const Ascent = FMeasurer.Baseline(Atom.Font) + Atom.BaselineShift;
           MaxAscent := Max(MaxAscent, Ascent);
           MaxDescent := Max(MaxDescent, FMeasurer.LineHeight(Atom.Font) - Ascent);
         end;
@@ -2366,6 +2553,8 @@ begin
   FGroupSourceNode := Atom.SourceNode;
   FGroupStartOffset := Atom.StartOffset;
   FGroupCodeSpan := Atom.CodeSpan;
+  FGroupBaselineShift := Atom.BaselineShift;
+  FGroupHighlight := Atom.Highlight;
 end;
 
 procedure TInlineWrapper.AppendToGroup(const Atom: TInlineAtom);
@@ -2381,11 +2570,15 @@ begin
 
   const RunBaseline = FMeasurer.Baseline(FGroupFont);
   const RunHeight = FMeasurer.LineHeight(FGroupFont);
-  const Top = FLineTop + (FLineBaseline - RunBaseline);
+  const Top = FLineTop + (FLineBaseline - RunBaseline - FGroupBaselineShift);
   const Bounds = TLayoutRectF.Create(FCursor, Top, FCursor + FGroupWidth, Top + RunHeight);
 
   if FGroupCodeSpan then
     EmitCodeSpanChip(Bounds);
+
+  const IsMarked = (FGroupHighlight <> 0);
+  if IsMarked then
+    FItems.Add(TDisplayRectangle.Create(Bounds, FGroupNode, FGroupHighlight, 0, 0));
 
   const Run: IDisplayTextRun = TDisplayTextRun.Create(Bounds, FGroupNode, FGroupText, FGroupFont, FGroupColor,
     RunBaseline, FGroupStartOffset, TDisplayTextRunRole.Text, FGroupSourceNode);
@@ -2406,7 +2599,8 @@ end;
 function TInlineWrapper.SameRunStyle(const Atom: TInlineAtom): Boolean;
 begin
   Result := FGroupFont.Equals(Atom.Font) and (FGroupColor = Atom.Color) and (FGroupNode = Atom.Node) and
-    (FGroupSourceNode = Atom.SourceNode) and (FGroupCodeSpan = Atom.CodeSpan);
+    (FGroupSourceNode = Atom.SourceNode) and (FGroupCodeSpan = Atom.CodeSpan) and
+    (FGroupBaselineShift = Atom.BaselineShift) and (FGroupHighlight = Atom.Highlight);
 end;
 
 function TMarkdownFontStyleHelper.Equals(const Other: TMarkdownFontStyle): Boolean;

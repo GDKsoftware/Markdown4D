@@ -63,6 +63,12 @@ type
     procedure ContentPadding_SurvivesJsonRoundTrip;
 
     [Test]
+    procedure MarkBackgroundColor_Presets_HaveTheirDefaults;
+
+    [Test]
+    procedure MarkBackgroundColor_SurvivesJsonRoundTrip;
+
+    [Test]
     procedure Scaled_TwoTimes_DoublesFontsAndLengthsKeepsColours;
 
     [Test]
@@ -256,6 +262,40 @@ begin
     Assert.IsTrue(DarkHasEnoughColors);
   finally
     Dark.Free;
+  end;
+end;
+
+procedure TMarkdownThemeTests.MarkBackgroundColor_Presets_HaveTheirDefaults;
+const
+  LightMark = TLayoutColor($FFFFF8C5);
+  DarkMark = TLayoutColor($26BB8009);
+begin
+  const Light = TMarkdownTheme.CreateLight;
+  const Dark = TMarkdownTheme.CreateDark;
+  try
+    Assert.AreEqual<TLayoutColor>(LightMark, Light.MarkBackgroundColor);
+    Assert.AreEqual<TLayoutColor>(DarkMark, Dark.MarkBackgroundColor);
+  finally
+    Dark.Free;
+    Light.Free;
+  end;
+end;
+
+procedure TMarkdownThemeTests.MarkBackgroundColor_SurvivesJsonRoundTrip;
+const
+  OverrideMark = TLayoutColor($FF00FF00);
+begin
+  const Source = TMarkdownTheme.CreateLight;
+  const Loaded = TMarkdownTheme.CreateDark;
+  try
+    Source.MarkBackgroundColor := OverrideMark;
+
+    Loaded.LoadFromJson(Source.SaveToJson);
+
+    Assert.AreEqual<TLayoutColor>(OverrideMark, Loaded.MarkBackgroundColor);
+  finally
+    Loaded.Free;
+    Source.Free;
   end;
 end;
 
