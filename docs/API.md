@@ -351,6 +351,16 @@ The HTML renderer writes GitHub's markup, a
 writes the marker back. The viewers draw the bar, an icon and the title in
 `Theme.AlertColors[Kind]` and the text in `Theme.TextColor`.
 
+## Table of contents
+
+GitLab's table of contents marker is part of the GFM dialect. A paragraph at
+the top level of the document that holds nothing but `[[_TOC_]]` or `[TOC]`
+gets a nested list of links to every heading, one link per heading to its
+anchor (see `ScrollToAnchor`). The paragraph stays in the document and carries
+the list: `TMarkdownTocMarkers.TryGetContents(Node, Contents)` in unit
+`Markdown4D.Extensions.Toc`. The viewers draw the list in place of the marker;
+the HTML renderer and the markdown writer keep the marker as text.
+
 ## Math
 
 Formulas are part of the GFM dialect, so `TMarkdown.Parse(Source,

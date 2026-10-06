@@ -260,6 +260,12 @@ type
     procedure TryGetScrollTarget_MatchBelowViewport_CentresIt;
 
     [Test]
+    procedure Text_TocMarker_ShowsTheHeadingsInsteadOfTheMarker;
+
+    [Test]
+    procedure Text_TocMarkerWithoutHeadings_ShowsNothing;
+
+    [Test]
     procedure TryGetAnchorOffset_HeadingFarDown_ReturnsItsTop;
 
     [Test]
@@ -1120,6 +1126,26 @@ begin
   const MatchTop = 5 * (BaseLineHeight + BlockSpacingValue);
   Assert.IsTrue(ShouldScroll);
   AssertSingle(MatchTop - (SmallHeight - BaseLineHeight) / 2, Offset);
+end;
+
+procedure TMarkdownViewerModelTests.Text_TocMarker_ShowsTheHeadingsInsteadOfTheMarker;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := '[[_TOC_]]'#10#10'# Alpha';
+
+  Assert.AreEqual(2, FModel.MatchCount('Alpha'), 'once in the contents, once as the heading');
+  Assert.AreEqual(0, FModel.MatchCount('TOC'));
+end;
+
+procedure TMarkdownViewerModelTests.Text_TocMarkerWithoutHeadings_ShowsNothing;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := '[TOC]'#10#10'Only text';
+
+  Assert.AreEqual(0, FModel.MatchCount('TOC'));
+  Assert.AreEqual(1, FModel.MatchCount('Only text'));
 end;
 
 procedure TMarkdownViewerModelTests.TryGetAnchorOffset_HeadingFarDown_ReturnsItsTop;

@@ -96,6 +96,7 @@
         <DCCReference Include="..\Source\Core\Markdown4D.Highlighter.Diff.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Consts.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Extensions.Alerts.pas"/>
+        <DCCReference Include="..\Source\Core\Markdown4D.Extensions.Toc.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Extensions.Interfaces.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Extensions.Sample.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Highlighter.Interfaces.pas"/>

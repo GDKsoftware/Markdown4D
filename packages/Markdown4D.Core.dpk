@@ -46,6 +46,7 @@ contains
   Markdown4D.Highlighter.Diff in '..\Source\Core\Markdown4D.Highlighter.Diff.pas',
   Markdown4D.Consts in '..\Source\Core\Markdown4D.Consts.pas',
   Markdown4D.Extensions.Alerts in '..\Source\Core\Markdown4D.Extensions.Alerts.pas',
+  Markdown4D.Extensions.Toc in '..\Source\Core\Markdown4D.Extensions.Toc.pas',
   Markdown4D.Extensions.Interfaces in '..\Source\Core\Markdown4D.Extensions.Interfaces.pas',
   Markdown4D.Extensions.Sample in '..\Source\Core\Markdown4D.Extensions.Sample.pas',
   Markdown4D.Highlighter.Interfaces in '..\Source\Core\Markdown4D.Highlighter.Interfaces.pas',

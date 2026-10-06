@@ -48,6 +48,7 @@ uses
   Markdown4D.Parser.Inlines,
   Markdown4D.Highlighter.Interfaces,
   Markdown4D.Extensions.Alerts,
+  Markdown4D.Extensions.Toc,
   Markdown4D,
   Markdown4D.Html.Subset,
   Markdown4D.Layout.AlertIcons,
@@ -324,6 +325,7 @@ type
     procedure PushQuoteBar(const Command: TLayoutCommand; const BarColor: TLayoutColor);
     procedure EmitQuoteBar(const Command: TLayoutCommand);
     procedure EmitAlertTitle(const Command: TLayoutCommand);
+    procedure LayoutParagraph(const Command: TLayoutCommand);
     procedure PushList(const Command: TLayoutCommand);
     class function TryFindTaskMarker(const ListItem: IMarkdownNode; out Marker: IMarkdownCustomInline): Boolean;
     procedure PushContainerChildren(const Container: IMarkdownNode; const X: Single; const TextColor: TLayoutColor);
@@ -774,7 +776,7 @@ begin
 
   case Command.Node.Kind of
     TMarkdownNodeKind.Paragraph:
-      LayoutInlineBlock(Command.Node, Command.X, FTheme.BaseFont, Command.Color);
+      LayoutParagraph(Command);
     TMarkdownNodeKind.Heading:
       LayoutInlineBlock(Command.Node, Command.X, FTheme.HeadingFonts[(Command.Node as IMarkdownHeading).Level],
         Command.Color);
@@ -983,6 +985,21 @@ begin
   FItems.Add(TitleRun);
 
   FCurrentY := FCurrentY + LineHeight;
+end;
+
+// A table of contents marker shows the list of links that stands in for it.
+procedure TLayoutWorker.LayoutParagraph(const Command: TLayoutCommand);
+begin
+  var Contents: IMarkdownNode;
+  if not TMarkdownTocMarkers.TryGetContents(Command.Node, Contents) then
+  begin
+    LayoutInlineBlock(Command.Node, Command.X, FTheme.BaseFont, Command.Color);
+    Exit;
+  end;
+
+  var ContentsCommand := Command;
+  ContentsCommand.Node := Contents;
+  PushList(ContentsCommand);
 end;
 
 procedure TLayoutWorker.PushList(const Command: TLayoutCommand);
