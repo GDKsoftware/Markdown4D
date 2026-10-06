@@ -94,8 +94,8 @@ type
     [TestCase('HeadingAndParagraph', '# Title'#10'Body~Title'#13#10#13#10'Body', '~', False)]
     [TestCase('TwoHeadings', '# One'#10'## Two~One'#13#10#13#10'Two', '~', False)]
     [TestCase('TwoLists', '- one'#10#10'1. two~'#$2022' one'#13#10#13#10'1. two', '~', False)]
-    [TestCase('InlineCode', 'Ein Satz mit `Code` und **fett** hier.~Ein Satz mit Code und fett hier.', '~', False)]
-    [TestCase('InlineCodeInQuote', '> Zitat mit `Code`.~Zitat mit Code.', '~', False)]
+    [TestCase('InlineCode', 'One line has `Code` and **bold** here.~One line has Code and bold here.', '~', False)]
+    [TestCase('InlineCodeInQuote', '> Quote has `Code`.~Quote has Code.', '~', False)]
     [TestCase('SecondBlockOfListItem', '- one'#10#10'  two~'#$2022' one'#13#10#13#10'  two', '~', False)]
     [TestCase('TextAfterNestedList', '- one'#10#10'  - two'#10#10'  three~'#$2022' one'#13#10#13#10'  '#$2022' two'#13#10#13#10'  three', '~', False)]
     procedure SelectAll_BlockWithSeveralLines_KeepsLinesMarkersAndCells(const Markdown, Expected: string);
@@ -573,11 +573,11 @@ procedure TMarkdownViewerModelTests.SelectAll_CodeSpanInSmallerFont_CopiesSingle
 begin
   FTheme.CodeFont := TMarkdownFontStyle.Create(FTheme.CodeFont.FamilyName, SmallerCodeFontSize);
   FModel.SetViewport(DefaultWidth, DefaultHeight);
-  FModel.Text := 'Mit `Code` und **fett**.';
+  FModel.Text := 'Has `Code` and **bold**.';
 
   FModel.SelectAll;
 
-  Assert.AreEqual('Mit Code und fett.', FModel.SelectedText);
+  Assert.AreEqual('Has Code and bold.', FModel.SelectedText);
 end;
 
 // The line wraps where the source has no space: between a bracket and the code
@@ -1246,12 +1246,12 @@ end;
 
 procedure TMarkdownViewerModelTests.TryGetAnchorOffset_PercentEncodedAnchor_FindsHeading;
 begin
-  const Size = 'Gr'#$00F6#$00DF'e';
+  const Caption = 'Caf'#$00E9;
   FModel.SetViewport(DefaultWidth, SmallHeight);
-  FModel.Text := BuildTallMarkdown + #10#10'## ' + Size;
+  FModel.Text := BuildTallMarkdown + #10#10'## ' + Caption;
 
   var Offset: Single;
-  const IsFound = FModel.TryGetAnchorOffset('#gr%C3%B6%C3%9Fe', Offset);
+  const IsFound = FModel.TryGetAnchorOffset('#caf%C3%A9', Offset);
 
   Assert.IsTrue(IsFound);
 end;

@@ -548,7 +548,7 @@ same.
 | `TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean` | The stretch of markdown the selection was rendered from, so an editor can format exactly those characters; `False` when there is no selection or the runs carry no source |
 | `ContentHeight: Integer` | Laid-out document height, for auto-sizing |
 | `ScrollOffset: Single` | Read / set the vertical scroll position |
-| `ScrollToAnchor(const Anchor: string): Boolean` | Scroll the heading a link such as `#getting-started` points at to the top of the view. Anchors follow GitHub: lower case, punctuation dropped, letters such as umlauts kept, every space a dash, and a repeated heading gets `-1`, `-2`. A percent-encoded anchor is decoded first. `False` when the document has no such heading |
+| `ScrollToAnchor(const Anchor: string): Boolean` | Scroll the heading a link such as `#getting-started` points at to the top of the view. Anchors follow GitHub: lower case, punctuation dropped, accented letters kept, every space a dash, and a repeated heading gets `-1`, `-2`. A percent-encoded anchor is decoded first. `False` when the document has no such heading |
 | `LayoutCount: Integer` | Advances on every relayout (first width, resize, arriving images), so a host can notice layout-derived state going stale |
 | `DisplayList: IMarkdownDisplayList` | The rendered primitives, for advanced hosts |
 

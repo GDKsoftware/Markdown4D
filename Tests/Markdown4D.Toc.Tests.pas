@@ -47,7 +47,7 @@ type
     procedure TryFindHeading_DuplicateAnchor_FindsThatHeading;
 
     [Test]
-    procedure TryFindHeading_UmlautAndAmpersand_FindsHeading;
+    procedure TryFindHeading_AccentsAndAmpersand_FindsHeading;
 
     [Test]
     procedure TryFindHeading_UnknownAnchor_ReturnsFalse;
@@ -154,13 +154,13 @@ begin
   Assert.AreEqual(Expected, Heading.SourceLine);
 end;
 
-procedure TMarkdownTocTests.TryFindHeading_UmlautAndAmpersand_FindsHeading;
+procedure TMarkdownTocTests.TryFindHeading_AccentsAndAmpersand_FindsHeading;
 begin
-  const Size = 'Gr'#$00F6#$00DF'e';
-  const Document = TMarkdown.Parse('# Intro'#10#10'## ' + Size + ' & Gewicht');
+  const Caption = 'Caf'#$00E9' & Cr'#$00E8'me';
+  const Document = TMarkdown.Parse('# Intro'#10#10'## ' + Caption);
 
   var Heading: IMarkdownHeading;
-  const IsFound = TMarkdownToc.TryFindHeading(Document, 'gr'#$00F6#$00DF'e--gewicht', Heading);
+  const IsFound = TMarkdownToc.TryFindHeading(Document, 'caf'#$00E9'--cr'#$00E8'me', Heading);
 
   Assert.IsTrue(IsFound);
   Assert.AreEqual(2, Heading.Level);
