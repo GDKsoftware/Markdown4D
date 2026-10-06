@@ -19,7 +19,7 @@ type
 
   public
     [Test]
-    [TestCase('GitLab', '[[_TOC_]]')]
+    [TestCase('Underscores', '[[_TOC_]]')]
     [TestCase('Short', '[TOC]')]
     procedure Parse_TocMarker_StandsInAListOfLinksToTheHeadings(const Marker: string);
 

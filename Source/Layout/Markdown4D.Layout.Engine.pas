@@ -1999,10 +1999,10 @@ begin
   PushStyledFrame(Frames, Child, StrikeStyle);
 end;
 
-// GitHub draws a subset of tags inside a paragraph and none of the tags
-// themselves. A tag arrives as a sibling of the text it styles, so an opening
-// tag changes the style of the frame the siblings are read in, and its closing
-// tag puts the style back.
+// A subset of tags inside a paragraph styles the text, and no tag is drawn
+// itself. A tag arrives as a sibling of the text it styles, so an opening tag
+// changes the style of the frame the siblings are read in, and its closing tag
+// puts the style back.
 procedure TInlineAtomCollector.HandleInlineHtml(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
   const Child: IMarkdownNode);
 begin

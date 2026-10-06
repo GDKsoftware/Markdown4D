@@ -49,7 +49,7 @@ type
     [TestCase('a', 'a,Link')]
     [TestCase('span', 'span,Hidden')]
     [TestCase('u', 'u,Hidden')]
-    procedure Effect_TagName_FollowsGitHub(const Name: string; const Expected: TInlineHtmlEffect);
+    procedure Effect_TagName_ReturnsItsEffect(const Name: string; const Expected: TInlineHtmlEffect);
   end;
 
 implementation
@@ -79,7 +79,7 @@ begin
   Assert.IsTrue(Tag.IsComment);
 end;
 
-procedure TInlineHtmlTagTests.Effect_TagName_FollowsGitHub(const Name: string; const Expected: TInlineHtmlEffect);
+procedure TInlineHtmlTagTests.Effect_TagName_ReturnsItsEffect(const Name: string; const Expected: TInlineHtmlEffect);
 begin
   const Tag = TInlineHtmlTag.Parse(Format('<%s>', [Name]));
 

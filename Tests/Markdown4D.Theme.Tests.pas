@@ -63,7 +63,7 @@ type
     procedure ContentPadding_SurvivesJsonRoundTrip;
 
     [Test]
-    procedure MarkBackgroundColor_Presets_FollowGitHub;
+    procedure MarkBackgroundColor_Presets_HaveTheirDefaults;
 
     [Test]
     procedure MarkBackgroundColor_SurvivesJsonRoundTrip;
@@ -265,16 +265,16 @@ begin
   end;
 end;
 
-procedure TMarkdownThemeTests.MarkBackgroundColor_Presets_FollowGitHub;
+procedure TMarkdownThemeTests.MarkBackgroundColor_Presets_HaveTheirDefaults;
 const
-  GitHubLightMark = TLayoutColor($FFFFF8C5);
-  GitHubDarkMark = TLayoutColor($26BB8009);
+  LightMark = TLayoutColor($FFFFF8C5);
+  DarkMark = TLayoutColor($26BB8009);
 begin
   const Light = TMarkdownTheme.CreateLight;
   const Dark = TMarkdownTheme.CreateDark;
   try
-    Assert.AreEqual<TLayoutColor>(GitHubLightMark, Light.MarkBackgroundColor);
-    Assert.AreEqual<TLayoutColor>(GitHubDarkMark, Dark.MarkBackgroundColor);
+    Assert.AreEqual<TLayoutColor>(LightMark, Light.MarkBackgroundColor);
+    Assert.AreEqual<TLayoutColor>(DarkMark, Dark.MarkBackgroundColor);
   finally
     Dark.Free;
     Light.Free;

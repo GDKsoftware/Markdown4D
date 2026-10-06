@@ -19,8 +19,8 @@ type
     class function TryGetContents(const Node: IMarkdownNode; out Contents: IMarkdownNode): Boolean; static;
   end;
 
-  // GitLab's table of contents: a paragraph that holds nothing but [[_TOC_]]
-  // or [TOC] shows a nested list of links to every heading of the document.
+  // A table of contents: a paragraph that holds nothing but [[_TOC_]] or [TOC]
+  // shows a nested list of links to every heading of the document.
   TTocExtension = class(TInterfacedObject, IMarkdownExtension)
   public
     procedure Setup(const Pipeline: IMarkdownPipelineBuilder);
