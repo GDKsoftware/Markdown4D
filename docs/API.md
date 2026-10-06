@@ -590,6 +590,15 @@ would show it with the styling removed. The translation is implemented in
 `Markdown4D.Html.Subset` and cached on the AST node, since layout runs again
 on every resize and every streamed chunk.
 
+A tag inside a paragraph, heading or table cell is never painted either. The
+viewer follows the subset GitHub renders: `b`/`strong` bold, `i`/`em`/`var`
+italic, `code`/`kbd`/`samp`/`tt` in the code font, `s`/`del`/`strike` struck
+through, `ins` underlined, `sub` and `sup` smaller and below or above the
+baseline, `small` smaller, `br` a line break and `a href` a link. A comment
+shows nothing, and any other tag disappears while its text stays, `u` among
+them, as on GitHub. The document itself keeps the tags, so the editor and the
+markdown writer see them as written.
+
 The mouse wheel scrolls the control only while its content overflows;
 otherwise the wheel passes through to the parent, so viewers stacked inside a
 scroll box scroll the list they sit in. The VCL controls carry the native

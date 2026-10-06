@@ -8,6 +8,7 @@ uses
   System.SysUtils,
   DUnitX.TestFramework,
   Markdown4D.Layout.Interfaces,
+  Markdown4D.Layout.DisplayList,
   Markdown4D.Theme,
   Markdown4D.Layout.TextSearch,
   Markdown4D.Layout.Zoom,
@@ -52,6 +53,7 @@ type
     procedure SelectFromTo(const AnchorX, AnchorY, ExtentX, ExtentY: Single);
     procedure LoadImageDocument;
     function AllHighlightRects: TArray<TLayoutRectF>;
+    function RunShowing(const Text: string): IDisplayTextRun;
 
   public
     [Setup]
@@ -260,6 +262,24 @@ type
     procedure TryGetScrollTarget_MatchBelowViewport_CentresIt;
 
     [Test]
+    procedure InlineHtml_StyleTag_HidesTheTagsAndStylesTheText;
+
+    [Test]
+    procedure InlineHtml_CommentAndUnknownTag_ShowOnlyTheText;
+
+    [Test]
+    procedure InlineHtml_LineBreak_StartsANewLine;
+
+    [Test]
+    procedure InlineHtml_Anchor_IsALink;
+
+    [Test]
+    procedure InlineHtml_SuperscriptAndSubscript_LeaveTheBaseline;
+
+    [Test]
+    procedure InlineHtml_Code_UsesTheCodeFont;
+
+    [Test]
     procedure Text_TocMarker_ShowsTheHeadingsInsteadOfTheMarker;
 
     [Test]
@@ -357,7 +377,6 @@ implementation
 
 uses
   Markdown4D.Ast.Interfaces,
-  Markdown4D.Layout.DisplayList,
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Layout.FakeMeasurer,
   Markdown4D.Tests.FailingExtensions;
@@ -1128,6 +1147,70 @@ begin
   AssertSingle(MatchTop - (SmallHeight - BaseLineHeight) / 2, Offset);
 end;
 
+procedure TMarkdownViewerModelTests.InlineHtml_StyleTag_HidesTheTagsAndStylesTheText;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'A <b>bold</b> word';
+
+  FModel.SelectAll;
+
+  Assert.AreEqual('A bold word', FModel.SelectedText);
+  Assert.IsTrue(RunShowing('bold').Font.Bold);
+end;
+
+procedure TMarkdownViewerModelTests.InlineHtml_CommentAndUnknownTag_ShowOnlyTheText;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'shown<!-- hidden --> and <span>kept</span>';
+
+  FModel.SelectAll;
+
+  Assert.AreEqual('shown and kept', FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.InlineHtml_LineBreak_StartsANewLine;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := 'one<br>two';
+
+  Assert.IsTrue(RunShowing('two').Bounds.Top > RunShowing('one').Bounds.Top);
+end;
+
+procedure TMarkdownViewerModelTests.InlineHtml_Anchor_IsALink;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := 'see <a href="https://example.com">the site</a>';
+
+  var Link: IMarkdownLink;
+  Assert.IsTrue(Supports(RunShowing('the site').Node, IMarkdownLink, Link));
+  Assert.AreEqual('https://example.com', Link.Destination);
+end;
+
+procedure TMarkdownViewerModelTests.InlineHtml_SuperscriptAndSubscript_LeaveTheBaseline;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := 'm<sup>2</sup> H<sub>3</sub>';
+
+  const Base = RunShowing('m');
+  const Raised = RunShowing('2');
+  const Lowered = RunShowing('3');
+  Assert.IsTrue(Raised.Font.Size < Base.Font.Size, 'smaller');
+  Assert.IsTrue(Raised.Bounds.Top < Base.Bounds.Top, 'raised');
+  Assert.IsTrue(Lowered.Bounds.Bottom > Base.Bounds.Bottom, 'lowered');
+end;
+
+procedure TMarkdownViewerModelTests.InlineHtml_Code_UsesTheCodeFont;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := 'press <kbd>Ctrl</kbd>';
+
+  Assert.AreEqual(FTheme.CodeFont.FamilyName, RunShowing('Ctrl').Font.FamilyName);
+end;
+
 procedure TMarkdownViewerModelTests.Text_TocMarker_ShowsTheHeadingsInsteadOfTheMarker;
 begin
   FModel.SetViewport(DefaultWidth, DefaultHeight);
@@ -1531,6 +1614,22 @@ begin
       Result := Result + #10#10;
     Result := Result + Format('paragraph%d', [Index]);
   end;
+end;
+
+function TMarkdownViewerModelTests.RunShowing(const Text: string): IDisplayTextRun;
+begin
+  for var Index := 0 to FModel.DisplayList.ItemCount - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    const IsRun = Supports(FModel.DisplayList.Items[Index], IDisplayTextRun, Run);
+    if IsRun and (Run.Text.Trim = Text) then
+    begin
+      Result := Run;
+      Exit;
+    end;
+  end;
+
+  Assert.Fail(Format('No run shows "%s"', [Text]));
 end;
 
 function TMarkdownViewerModelTests.AllHighlightRects: TArray<TLayoutRectF>;
