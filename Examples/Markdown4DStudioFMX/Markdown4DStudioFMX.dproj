@@ -70,6 +70,8 @@ $(PostBuildEvent)]]></PostBuildEvent>
         <DCC_Namespace>Data.Win;Datasnap.Win;Web.Win;Soap.Win;Xml.Win;$(DCC_Namespace)</DCC_Namespace>
         <BT_BuildType>Debug</BT_BuildType>
         <Manifest_File>$(BDS)\bin\default_app.manifest</Manifest_File>
+        <PostBuildEvent><![CDATA[copy /Y "$(BDS)\bin64\sk4d.dll" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\"
+]]></PostBuildEvent>
         <UWP_DelphiLogo44>$(BDS)\bin\Artwork\Windows\UWP\delphi_UwpDefault_44.png</UWP_DelphiLogo44>
         <UWP_DelphiLogo150>$(BDS)\bin\Artwork\Windows\UWP\delphi_UwpDefault_150.png</UWP_DelphiLogo150>
     </PropertyGroup>
@@ -119,6 +121,7 @@ $(PostBuildEvent)]]></PostBuildEvent>
         <DCCReference Include="..\Shared\Markdown4DStudio.Defines.pas"/>
         <DCCReference Include="..\Shared\Markdown4DStudio.Text.pas"/>
         <DCCReference Include="..\Shared\Markdown4DStudio.Outline.pas"/>
+        <DCCReference Include="..\Shared\Markdown4DStudio.SplitLayout.pas"/>
         <DCCReference Include="Markdown4DStudioFMX.Defines.pas"/>
         <DCCReference Include="..\Shared\Markdown4DStudio.Shell.pas"/>
         <DCCReference Include="..\Shared\Markdown4DStudio.CommandLine.pas"/>
@@ -1142,7 +1145,7 @@ $(PostBuildEvent)]]></PostBuildEvent>
         <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
         <PreLinkEvent/>
         <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
-        <PostBuildEvent>copy /Y &quot;$(BDS)\bin\sk4d.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;
+        <PostBuildEvent>copy /Y &quot;$(BDS)\bin64\sk4d.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;
 </PostBuildEvent>
         <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
     </PropertyGroup>
@@ -1160,7 +1163,7 @@ $(PostBuildEvent)]]></PostBuildEvent>
         <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
         <PreLinkEvent/>
         <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
-        <PostBuildEvent>copy /Y &quot;$(BDS)\bin\sk4d.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;
+        <PostBuildEvent>copy /Y &quot;$(BDS)\bin64\sk4d.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;
 </PostBuildEvent>
         <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
     </PropertyGroup>
