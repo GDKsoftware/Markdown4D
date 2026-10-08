@@ -747,6 +747,33 @@ uses
 TMermaidBlockOverride.RegisterOverride;
 ```
 
+### Emoji shortcodes
+
+`TGfmEmojiExtension` (unit `Markdown4D.Extensions.Gfm`) turns GitHub shortcodes
+such as `:smile:` and `:rocket:` into the emoji character. `UseGfm` registers it,
+so `TMarkdown` with the GFM dialect and the Studio preview convert shortcodes out
+of the box; a pipeline with only `UseCommonMark` leaves them alone. It is a plain
+inline parser on the trigger `:` with priority 450, just below the autolinks, and
+needs no renderer hook. The rules:
+
+- The name is one or more of `a-z`, `0-9`, `_`, `+` and `-` between two colons,
+  on one line. A space, an upper-case letter or a line break means no shortcode.
+- The character before the opening colon may not be an ASCII letter or digit, so
+  `abc:smile:`, `10:30:00` and `a:b:c` stay text. After a space, punctuation,
+  another colon or a non-ASCII letter a shortcode is fine: `:smile::rocket:`
+  gives two emoji.
+- The name must be in the gemoji table (`Markdown4D.Emoji.Shortcodes`, generated
+  by `tools/Generate-EmojiShortcodes.ps1`). An unknown code such as
+  `:doesnotexist:`, or a GitHub custom code without a Unicode character such as
+  `:octocat:`, stays exactly as typed.
+- Code spans, link destinations and autolinks are parsed first, so a shortcode
+  inside them is never converted.
+
+The emoji is an ordinary text node whose segment covers the whole shortcode, so
+source mapping from the viewer points at the shortcode in the editor. `TMarkdown.ToMarkdown`
+writes the emoji character back, not the shortcode. The VCL viewer draws through
+GDI, which may show an emoji in one colour or, without a suitable font, as a box.
+
 ## Lifetime and threading rules
 
 - Extensions are stateless and reusable. `Setup` runs once when the pipeline

@@ -28,6 +28,11 @@ type
     procedure Setup(const Pipeline: IMarkdownPipelineBuilder);
   end;
 
+  TGfmEmojiExtension = class(TInterfacedObject, IMarkdownExtension)
+  public
+    procedure Setup(const Pipeline: IMarkdownPipelineBuilder);
+  end;
+
   TGfmTagFilterExtension = class(TInterfacedObject, IMarkdownExtension)
   public
     procedure Setup(const Pipeline: IMarkdownPipelineBuilder);
@@ -81,6 +86,8 @@ const
   WwwAutolinkPriority = 480;
   UrlAutolinkPriority = 470;
   EmailAutolinkPriority = 460;
+  EmojiShortcodeTriggers = ':';
+  EmojiShortcodePriority = 450;
   StrikethroughDelimiterCharacter = '~';
   StrikethroughMinimumLength = 2;
   StrikethroughOpenTag = '<del>';
@@ -116,6 +123,12 @@ begin
     UrlAutolinkPriority);
   Pipeline.RegisterInlineParser(TGfmInlineParser.Create(TGfmInlineKind.EmailAutolink), EmailAutolinkTriggers,
     EmailAutolinkPriority);
+end;
+
+procedure TGfmEmojiExtension.Setup(const Pipeline: IMarkdownPipelineBuilder);
+begin
+  Pipeline.RegisterInlineParser(TGfmInlineParser.Create(TGfmInlineKind.EmojiShortcode), EmojiShortcodeTriggers,
+    EmojiShortcodePriority);
 end;
 
 procedure TGfmTagFilterExtension.Setup(const Pipeline: IMarkdownPipelineBuilder);

@@ -80,6 +80,7 @@
         <DCCReference Include="Markdown4D.Color.Names.Tests.pas"/>
         <DCCReference Include="Markdown4D.Extensions.Alerts.Tests.pas"/>
         <DCCReference Include="Markdown4D.Extensions.Toc.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Extensions.Emoji.Tests.pas"/>
         <DCCReference Include="Markdown4D.Math.Layout.Tests.pas"/>
         <DCCReference Include="Markdown4D.Math.Integration.Tests.pas"/>
         <DCCReference Include="Markdown4D.Writer.RoundTrip.Tests.pas"/>

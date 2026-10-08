@@ -101,6 +101,7 @@ type
       OpenersBottomBucketsPerChar = 6;
       MaxMathDelimiterLength = 2;
       BacktickMathCloser = Backtick + Dollar;
+      ShortcodeDelimiter = ':';
       // Anchored with \G instead of ^ so each pattern can be matched in place at
       // the current index. Copying the remainder of the content first would cost
       // a full copy per '<', which is quadratic on a paragraph carrying many.
@@ -166,6 +167,8 @@ type
     function TryScanEmailDomain(out DomainEnd: Integer): Boolean;
     function TryConsumePrecedingChars(const Count: Integer): Boolean;
     procedure RemoveTrailingInlineNode;
+    function TryParseEmojiShortcode: Boolean;
+    function TryScanShortcodeName(out CloseIndex: Integer): Boolean;
     function TryParseMath: Boolean;
     function TryParseBacktickMath: Boolean;
     function DollarRunLength(const StartIndex: Integer): Integer;
@@ -180,6 +183,7 @@ type
     class function IsAsciiAlphaNumeric(const Value: Char): Boolean;
     class function IsAsciiLetter(const Value: Char): Boolean;
     class function IsEmailUserChar(const Value: Char): Boolean;
+    class function IsShortcodeNameChar(const Value: Char): Boolean;
     procedure ProcessEmphasis(const StackBottom: TInlineDelimiter);
     function FirstDelimiterAbove(const StackBottom: TInlineDelimiter): TInlineDelimiter;
     function FindOpener(const Closer, StackBottom: TInlineDelimiter): TInlineDelimiter;
@@ -253,12 +257,13 @@ type
     function TryParse(const Context: IMarkdownInlineParserContext): Boolean;
   end;
 
-  TGfmInlineKind = (TaskListMarker, WwwAutolink, UrlAutolink, EmailAutolink);
+  TGfmInlineKind = (TaskListMarker, WwwAutolink, UrlAutolink, EmailAutolink, EmojiShortcode);
 
   TGfmInlineParser = class(TInterfacedObject, IMarkdownInlineParser)
   private
     const
-      Names: array[TGfmInlineKind] of string = ('tasklistmarker', 'wwwautolink', 'urlautolink', 'emailautolink');
+      Names: array[TGfmInlineKind] of string = ('tasklistmarker', 'wwwautolink', 'urlautolink', 'emailautolink',
+        'emojishortcode');
     var
       FKind: TGfmInlineKind;
 
@@ -277,6 +282,7 @@ implementation
 uses
   System.Character,
   System.Math,
+  Markdown4D.Emoji.Shortcodes,
   Markdown4D.Text.Unescape;
 
 constructor TInlineChainNode.Create(const Value: IMarkdownNode);
@@ -1191,6 +1197,45 @@ begin
   RemoveInlineChainNode(FLastInline);
 end;
 
+// An emoji shortcode such as ":smile:" may not be glued to an ASCII letter or
+// digit, so times like "10:30:00" and words like "abc:smile:" stay text. Only
+// names in the gemoji table are replaced; unknown codes remain literal.
+function TInlineParser.TryParseEmojiShortcode: Boolean;
+begin
+  const IsGluedToWord = (FIndex > 1) and IsAsciiAlphaNumeric(FContent[FIndex - 1]);
+  if IsGluedToWord then
+    Exit(False);
+
+  var CloseIndex: Integer;
+  if not TryScanShortcodeName(CloseIndex) then
+    Exit(False);
+
+  const Name = Copy(FContent, FIndex + 1, CloseIndex - FIndex - 1);
+  var Emoji: string;
+  if not TEmojiShortcodes.TryDecode(Name, Emoji) then
+    Exit(False);
+
+  BufferText(Emoji, FIndex, CloseIndex + 1);
+  FIndex := CloseIndex + 1;
+
+  Result := True;
+end;
+
+function TInlineParser.TryScanShortcodeName(out CloseIndex: Integer): Boolean;
+begin
+  const NameStart = FIndex + 1;
+  CloseIndex := NameStart;
+
+  while (CloseIndex <= Length(FContent)) and IsShortcodeNameChar(FContent[CloseIndex]) do
+  begin
+    Inc(CloseIndex);
+  end;
+
+  const HasName = (CloseIndex > NameStart);
+  const IsClosed = (CloseIndex <= Length(FContent)) and (FContent[CloseIndex] = ShortcodeDelimiter);
+  Result := HasName and IsClosed;
+end;
+
 // Inline math follows the Pandoc and Markdig rules: the opening dollar run may
 // not be glued to a preceding word and may not be followed by whitespace, the
 // closing run may not be preceded by whitespace and may not be glued to a
@@ -1486,6 +1531,11 @@ end;
 class function TInlineParser.IsEmailUserChar(const Value: Char): Boolean;
 begin
   Result := IsAsciiAlphaNumeric(Value) or CharInSet(Value, ['.', '-', '_', '+']);
+end;
+
+class function TInlineParser.IsShortcodeNameChar(const Value: Char): Boolean;
+begin
+  Result := CharInSet(Value, ['a'..'z', '0'..'9', '_', '+', '-']);
 end;
 
 procedure TInlineParser.ProcessEmphasis(const StackBottom: TInlineDelimiter);
@@ -2001,6 +2051,8 @@ begin
       Result := Engine.TryParseWwwAutolink;
     TGfmInlineKind.UrlAutolink:
       Result := Engine.TryParseUrlAutolink;
+    TGfmInlineKind.EmojiShortcode:
+      Result := Engine.TryParseEmojiShortcode;
   else
     Result := Engine.TryParseEmailAutolink;
   end;

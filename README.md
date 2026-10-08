@@ -55,7 +55,7 @@ no DLL of its own, no package manager involved. Delphi 12 Athens and Delphi
 
 | Area | What you get |
 |------|-------------|
-| CommonMark 0.31.2 + GFM | 652/652 official examples; tables, task lists, strikethrough, extended autolinks, GitHub alerts |
+| CommonMark 0.31.2 + GFM | 652/652 official examples; tables, task lists, strikethrough, extended autolinks, emoji shortcodes, GitHub alerts |
 | Public AST | Typed node interfaces, a visitor, and a round-trip writer back to clean markdown |
 | Incremental parser | Reparses only the changed region, which is what keeps an editor fast and a stream practical |
 | VCL & FMX viewer and editor | One API on both frameworks: theming, selection by word and line, find, middle-click autoscroll, syntax-highlighted source, a live preview |
