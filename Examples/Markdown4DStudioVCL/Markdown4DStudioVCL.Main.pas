@@ -34,6 +34,7 @@ uses
   Markdown4DStudio.FileWatcher,
   Markdown4DStudio.Shell,
   Markdown4DStudio.Controller,
+  Markdown4DStudio.PdfExport,
   Markdown4DStudioVCL.Defines,
   Markdown4DStudioVCL.ToolButton;
 
@@ -49,6 +50,7 @@ type
     dlgOpen: TOpenDialog;
     dlgSave: TSaveDialog;
     dlgSaveHtml: TSaveDialog;
+    dlgSavePdf: TSaveDialog;
     tmrTick: TTimer;
     popRecent: TPopupMenu;
     mdEditor: TMarkdownEditor;
@@ -163,6 +165,7 @@ type
     function PromptOpenFile(out FileName: string): Boolean;
     function PromptSaveFile(const SuggestedName: string; out FileName: string): Boolean;
     function PromptExportHtml(const SuggestedName: string; out FileName: string): Boolean;
+    function PromptExportPdf(const SuggestedName: string; out FileName: string): Boolean;
     function ConfirmClose: TPadCloseChoice;
     function ConfirmCloseDocument(const DocName: string): TPadCloseChoice;
     function ConfirmSaveOverChangedFile(const DocName: string): TPadConflictChoice;
@@ -202,8 +205,10 @@ type
     procedure ExecuteFormatCommand(const Command: TEditorCommand);
     procedure AdoptPreviewSelection;
     procedure DoExportHtml;
+    procedure DoExportPdf;
     procedure DoCopyHtml;
     procedure CopyHtmlToClipboard(const Fragment: string);
+    function CreatePdfPageRenderer: IPadPdfPageRenderer;
     function SetClipboardHtml(const CfHtml: Cardinal; const Bytes: TArray<Byte>): Boolean;
     procedure SetClipboardPlainText(const Fragment: string);
     procedure HandleThemeClick(Sender: TObject);
@@ -329,9 +334,126 @@ uses
   Markdown4DStudio.Workspace,
   Markdown4DStudio.LinkPolicy,
   Markdown4DStudio.SingleInstance,
-  Markdown4DStudio.HtmlExport;
+  Markdown4DStudio.HtmlExport,
+  Markdown4D.Layout.Interfaces,
+  Markdown4D.Layout.DisplayList,
+  Markdown4D.Layout.Defaults,
+  Markdown4D.Layout.Renderer,
+  Markdown4D.Vcl.Painter;
 
 {$R *.dfm}
+
+type
+  // Rasterises PDF pages with the VCL painter, drawing the images the preview
+  // has already loaded, or its placeholders for those still loading or broken.
+  TVclPdfPageRenderer = class(TInterfacedObject, IMarkdownImageSizeProvider, IPadPdfPageRenderer)
+  private
+    FPreview: TMarkdownViewer;
+    FMeasureBitmap: TBitmap;
+    FMeasurer: IPainter;
+    procedure PaintSlice(const Bitmap: TBitmap; const DisplayList: IMarkdownDisplayList;
+      const Slice: TPadPdfPageSlice; const BackgroundColor: TLayoutColor);
+    class function ReadPixels(const Bitmap: TBitmap): TPadPdfPageImage; static;
+
+  public
+    constructor Create(const Preview: TMarkdownViewer);
+    destructor Destroy; override;
+    function TryGetImageSize(const Source: string; out Size: TLayoutSizeF): Boolean;
+    function Measurer: ITextMeasurer;
+    function RenderPage(const DisplayList: IMarkdownDisplayList; const Slice: TPadPdfPageSlice;
+      const BackgroundColor: TLayoutColor): TPadPdfPageImage;
+  end;
+
+constructor TVclPdfPageRenderer.Create(const Preview: TMarkdownViewer);
+begin
+  inherited Create;
+  FPreview := Preview;
+  FMeasureBitmap := TBitmap.Create;
+  FMeasureBitmap.SetSize(1, 1);
+  FMeasurer := TMarkdownVclPainter.Create(FMeasureBitmap.Canvas, ReferencePixelsPerInch);
+end;
+
+destructor TVclPdfPageRenderer.Destroy;
+begin
+  FMeasurer := nil;
+  FMeasureBitmap.Free;
+  inherited Destroy;
+end;
+
+function TVclPdfPageRenderer.TryGetImageSize(const Source: string; out Size: TLayoutSizeF): Boolean;
+begin
+  Size := Default(TLayoutSizeF);
+
+  const Graphic = FPreview.ResolveLoadedImage(Source);
+  Result := (Graphic <> nil) and not Graphic.Empty;
+  if Result then
+    Size := TLayoutSizeF.Create(Graphic.Width, Graphic.Height);
+end;
+
+function TVclPdfPageRenderer.Measurer: ITextMeasurer;
+begin
+  Result := FMeasurer;
+end;
+
+function TVclPdfPageRenderer.RenderPage(const DisplayList: IMarkdownDisplayList; const Slice: TPadPdfPageSlice;
+  const BackgroundColor: TLayoutColor): TPadPdfPageImage;
+begin
+  const Bitmap = TBitmap.Create;
+  try
+    Bitmap.PixelFormat := pf24bit;
+    Bitmap.SetSize(TPadPdfGeometry.ContentWidthPx, TPadPdfGeometry.ContentHeightPx);
+    Bitmap.Canvas.Brush.Color := clWhite;
+    Bitmap.Canvas.FillRect(Rect(0, 0, Bitmap.Width, Bitmap.Height));
+
+    PaintSlice(Bitmap, DisplayList, Slice, BackgroundColor);
+    Result := ReadPixels(Bitmap);
+  finally
+    Bitmap.Free;
+  end;
+end;
+
+// Shifts the window origin so the slice lands at the top of the bitmap, the
+// way the viewer scrolls its buffer.
+procedure TVclPdfPageRenderer.PaintSlice(const Bitmap: TBitmap; const DisplayList: IMarkdownDisplayList;
+  const Slice: TPadPdfPageSlice; const BackgroundColor: TLayoutColor);
+begin
+  const Painter = TMarkdownVclPainter.Create(Bitmap.Canvas, ReferencePixelsPerInch);
+  const PainterLifetime: IPainter = Painter;
+  Painter.ImageResolver := FPreview.ResolveLoadedImage;
+  Painter.BrokenImageQuery := FPreview.IsImageBroken;
+
+  SetWindowOrgEx(Bitmap.Canvas.Handle, 0, Round(Slice.Top), nil);
+  try
+    const Viewport = TLayoutRectF.Create(0, Slice.Top, Bitmap.Width, Slice.Bottom);
+    TMarkdownDisplayListRenderer.Render(DisplayList, PainterLifetime, Viewport, BackgroundColor);
+  finally
+    SetWindowOrgEx(Bitmap.Canvas.Handle, 0, 0, nil);
+  end;
+end;
+
+// A 24-bit scan line holds blue, green and red; the PDF wants red first.
+class function TVclPdfPageRenderer.ReadPixels(const Bitmap: TBitmap): TPadPdfPageImage;
+const
+  BytesPerPixel = 3;
+begin
+  Result.Width := Bitmap.Width;
+  Result.Height := Bitmap.Height;
+  SetLength(Result.Pixels, Result.Width * Result.Height * BytesPerPixel);
+
+  var Target := 0;
+  for var Y := 0 to Bitmap.Height - 1 do
+  begin
+    const Row = PByteArray(Bitmap.ScanLine[Y]);
+    for var X := 0 to Bitmap.Width - 1 do
+    begin
+      const Source = X * BytesPerPixel;
+      Result.Pixels[Target]     := Row[Source + 2];
+      Result.Pixels[Target + 1] := Row[Source + 1];
+      Result.Pixels[Target + 2] := Row[Source];
+      Inc(Target, BytesPerPixel);
+    end;
+  end;
+end;
 
 constructor TMarkdown4DStudioVCLForm.Create(Owner: TComponent);
 begin
@@ -655,6 +777,8 @@ begin
       ExecuteFormatCommand(TEditorCommand.Table);
     Ord('E'):
       DoExportHtml;
+    Ord('P'):
+      DoExportPdf;
     Ord('C'):
       DoCopyHtml;
     Ord('S'):
@@ -871,6 +995,26 @@ begin
   Result := dlgSaveHtml.Execute;
   if Result then
     FileName := dlgSaveHtml.FileName;
+end;
+
+procedure TMarkdown4DStudioVCLForm.DoExportPdf;
+begin
+  FController.ExportPdf;
+end;
+
+function TMarkdown4DStudioVCLForm.PromptExportPdf(const SuggestedName: string; out FileName: string): Boolean;
+begin
+  if SuggestedName <> '' then
+    dlgSavePdf.FileName := SuggestedName;
+
+  Result := dlgSavePdf.Execute;
+  if Result then
+    FileName := dlgSavePdf.FileName;
+end;
+
+function TMarkdown4DStudioVCLForm.CreatePdfPageRenderer: IPadPdfPageRenderer;
+begin
+  Result := TVclPdfPageRenderer.Create(mdPreview);
 end;
 
 procedure TMarkdown4DStudioVCLForm.DoCopyHtml;
@@ -1789,6 +1933,7 @@ begin
       SwitchToDocument(FWorkspace.ActiveIndex);
     end;
   Result.ExportHtml := procedure begin DoExportHtml; end;
+  Result.ExportPdf := procedure begin DoExportPdf; end;
   Result.CopyHtml := procedure begin DoCopyHtml; end;
   Result.ViewEditorOnly := procedure begin SetViewMode(TPadViewMode.EditorOnly); end;
   Result.ViewSplit := procedure begin SetViewMode(TPadViewMode.Split); end;

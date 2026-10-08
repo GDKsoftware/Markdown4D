@@ -173,6 +173,7 @@
         <DCCReference Include="..\Examples\Shared\Markdown4DStudio.TabStrip.pas"/>
         <DCCReference Include="..\Examples\Shared\Markdown4DStudio.FileWatcher.pas"/>
         <DCCReference Include="..\Examples\Shared\Markdown4DStudio.HtmlExport.pas"/>
+        <DCCReference Include="..\Examples\Shared\Markdown4DStudio.PdfExport.pas"/>
         <DCCReference Include="..\Examples\Shared\Markdown4DStudio.LinkPolicy.pas"/>
         <DCCReference Include="..\Examples\Shared\Markdown4DStudio.Defines.pas"/>
         <DCCReference Include="..\Examples\Shared\Markdown4DStudio.Text.pas"/>
@@ -193,6 +194,7 @@
         <DCCReference Include="Markdown4DStudio.FileWatcher.Tests.pas"/>
         <DCCReference Include="Markdown4DStudio.Controller.Tests.pas"/>
         <DCCReference Include="Markdown4DStudio.HtmlExport.Tests.pas"/>
+        <DCCReference Include="Markdown4DStudio.PdfExport.Tests.pas"/>
         <DCCReference Include="Markdown4DStudio.LinkPolicy.Tests.pas"/>
         <DCCReference Include="Markdown4DStudio.SplitLayout.Tests.pas"/>
         <DCCReference Include="Markdown4D.Text.UrlSafety.Tests.pas"/>

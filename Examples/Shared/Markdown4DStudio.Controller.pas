@@ -92,6 +92,7 @@ type
     procedure ExecuteFindPrevious;
     procedure UpdatePreviewFindCount;
     procedure ExportHtml;
+    procedure ExportPdf;
     procedure CopyHtml;
     function QueryClose: Boolean;
 
@@ -119,6 +120,7 @@ uses
   Markdown4DStudio.Text,
   Markdown4DStudio.Outline,
   Markdown4DStudio.HtmlExport,
+  Markdown4DStudio.PdfExport,
   Markdown4DStudio.Workspace,
   Markdown4DStudio.SessionSync;
 
@@ -660,6 +662,31 @@ begin
 
   const Html = TMarkdownHtmlExport.BuildDocument(FEditor.EditorText, Title, FShell.DarkThemeActive);
   TFile.WriteAllText(FileName, Html, TEncoding.UTF8);
+end;
+
+procedure TPadController.ExportPdf;
+begin
+  if FActiveDoc <> nil then
+    FActiveDoc.Text := FEditor.EditorText;
+
+  var Title := UntitledName;
+  if FActiveDoc <> nil then
+    Title := FActiveDoc.DisplayName;
+
+  const SuggestedName = TPath.ChangeExtension(Title, '.' + PdfExtension);
+
+  var FileName: string;
+  if not FShell.PromptExportPdf(SuggestedName, FileName) then
+    Exit;
+
+  try
+    const Renderer = FShell.CreatePdfPageRenderer;
+    const Pdf = TPadPdfExport.BuildDocument(FEditor.EditorText, Renderer);
+    TFile.WriteAllBytes(FileName, Pdf);
+  except
+    on E: Exception do
+      FShell.ShowSaveError(FileName, E.Message);
+  end;
 end;
 
 procedure TPadController.CopyHtml;

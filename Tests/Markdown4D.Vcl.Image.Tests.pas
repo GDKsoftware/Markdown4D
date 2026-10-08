@@ -73,6 +73,12 @@ type
 
     [Test]
     procedure SvgImage_ViaNativeRasterizer_RendersRealSvg;
+
+    [Test]
+    procedure ResolveLoadedImage_LocalFileImage_ReturnsLoadedGraphic;
+
+    [Test]
+    procedure ResolveLoadedImage_UnknownSource_ReturnsNil;
   end;
 
 implementation
@@ -125,6 +131,31 @@ begin
     Format('Expected at least %d red pixels but found %d', [MinimumImagePixels, Measurement.MatchCount]));
   Assert.IsTrue(Measurement.ExtentWidth <= MaximumTrueSizeExtent,
     Format('Expected red extent of at most %d pixels but found %d', [MaximumTrueSizeExtent, Measurement.ExtentWidth]));
+end;
+
+procedure TMarkdownVclImageTests.ResolveLoadedImage_LocalFileImage_ReturnsLoadedGraphic;
+begin
+  WriteRedPng;
+  FViewer.Images.BaseUrl := FTempFolder;
+  FViewer.Text := ImageMarkdown;
+  PaintViewer.Free;
+
+  const Graphic = FViewer.ResolveLoadedImage(ImageFileName);
+
+  Assert.IsNotNull(Graphic, 'the preview did not hand out the image it loaded');
+  Assert.AreEqual(ImagePixelSize, Graphic.Width);
+  Assert.AreEqual(ImagePixelSize, Graphic.Height);
+  Assert.IsFalse(FViewer.IsImageBroken(ImageFileName));
+end;
+
+procedure TMarkdownVclImageTests.ResolveLoadedImage_UnknownSource_ReturnsNil;
+begin
+  FViewer.Text := ImageMarkdown;
+  PaintViewer.Free;
+
+  const Graphic = FViewer.ResolveLoadedImage('never-referenced.png');
+
+  Assert.IsNull(Graphic);
 end;
 
 procedure TMarkdownVclImageTests.LocalFileImage_RelativeToLoadedFile_Draws;

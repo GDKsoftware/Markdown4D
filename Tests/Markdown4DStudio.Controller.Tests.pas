@@ -7,7 +7,10 @@ interface
 uses
   DUnitX.TestFramework,
   Markdown4D.Editor.Model,
+  Markdown4D.Layout.Interfaces,
+  Markdown4D.Layout.DisplayList,
   Markdown4DStudio.Session,
+  Markdown4DStudio.PdfExport,
   Markdown4DStudio.Shell,
   Markdown4DStudio.EditorView,
   Markdown4DStudio.Controller;
@@ -66,11 +69,28 @@ type
     property VisibleLine: Integer read FFirstVisibleSourceLine write FFirstVisibleSourceLine;
   end;
 
+  // Paints every PDF page as a single white pixel; the controller tests only
+  // care that a PDF reaches the disk.
+  TFakeControllerPdfRenderer = class(TInterfacedObject, IMarkdownImageSizeProvider, IPadPdfPageRenderer)
+  strict private
+    FMeasurer: ITextMeasurer;
+    function TryGetImageSize(const Source: string; out Size: TLayoutSizeF): Boolean;
+    function Measurer: ITextMeasurer;
+    function RenderPage(const DisplayList: IMarkdownDisplayList; const Slice: TPadPdfPageSlice;
+      const BackgroundColor: TLayoutColor): TPadPdfPageImage;
+
+  public
+    constructor Create;
+  end;
+
   // Records what the controller asked the chrome to do and replays canned
   // answers for the dialogs.
   TFakeShell = class(TInterfacedObject, IPadShell)
   strict private
     FTitle: string;
+    FPdfExportAccepted: Boolean;
+    FPdfExportFileName: string;
+    FSuggestedPdfName: string;
     FRebuildTabsCount: Integer;
     FConflictChoice: TPadConflictChoice;
     FConflictPromptCount: Integer;
@@ -99,17 +119,22 @@ type
     function PromptOpenFile(out FileName: string): Boolean;
     function PromptSaveFile(const SuggestedName: string; out FileName: string): Boolean;
     function PromptExportHtml(const SuggestedName: string; out FileName: string): Boolean;
+    function PromptExportPdf(const SuggestedName: string; out FileName: string): Boolean;
     function ConfirmClose: TPadCloseChoice;
     function ConfirmCloseDocument(const DocName: string): TPadCloseChoice;
     function ConfirmSaveOverChangedFile(const DocName: string): TPadConflictChoice;
     procedure ShowOpenError(const FileName, ErrorMessage: string);
     procedure ShowSaveError(const FileName, ErrorMessage: string);
     procedure CopyHtmlToClipboard(const Fragment: string);
+    function CreatePdfPageRenderer: IPadPdfPageRenderer;
     procedure CloseApplication;
 
   public
     constructor Create;
     property Title: string read FTitle;
+    property PdfExportAccepted: Boolean read FPdfExportAccepted write FPdfExportAccepted;
+    property PdfExportFileName: string read FPdfExportFileName write FPdfExportFileName;
+    property SuggestedPdfName: string read FSuggestedPdfName;
     property RebuildTabsCount: Integer read FRebuildTabsCount;
     property SaveErrorCount: Integer read FSaveErrorCount;
     property OpenErrorCount: Integer read FOpenErrorCount;
@@ -218,6 +243,15 @@ type
 
     [Test]
     procedure DeletedFile_SaveRecreatesFileAndClearsFlag;
+
+    [Test]
+    procedure ExportPdf_Cancelled_WritesNoFileAndShowsNoError;
+
+    [Test]
+    procedure ExportPdf_Confirmed_WritesValidPdf;
+
+    [Test]
+    procedure ExportPdf_UnwritablePath_ReportsSaveErrorOnce;
   end;
 
 implementation
@@ -226,7 +260,8 @@ uses
   System.SysUtils,
   System.Classes,
   System.IOUtils,
-  System.DateUtils;
+  System.DateUtils,
+  Markdown4D.Layout.FakeMeasurer;
 
 constructor TFakeEditorView.Create;
 begin
@@ -377,6 +412,32 @@ begin
   Dec(FSwapDepth);
 end;
 
+constructor TFakeControllerPdfRenderer.Create;
+begin
+  inherited Create;
+
+  FMeasurer := TFakeTextMeasurer.Create;
+end;
+
+function TFakeControllerPdfRenderer.TryGetImageSize(const Source: string; out Size: TLayoutSizeF): Boolean;
+begin
+  Size := Default(TLayoutSizeF);
+  Result := False;
+end;
+
+function TFakeControllerPdfRenderer.Measurer: ITextMeasurer;
+begin
+  Result := FMeasurer;
+end;
+
+function TFakeControllerPdfRenderer.RenderPage(const DisplayList: IMarkdownDisplayList;
+  const Slice: TPadPdfPageSlice; const BackgroundColor: TLayoutColor): TPadPdfPageImage;
+begin
+  Result.Width := 1;
+  Result.Height := 1;
+  Result.Pixels := [$FF, $FF, $FF];
+end;
+
 constructor TFakeShell.Create;
 begin
   inherited Create;
@@ -473,6 +534,15 @@ begin
   Result := False;
 end;
 
+function TFakeShell.PromptExportPdf(const SuggestedName: string; out FileName: string): Boolean;
+begin
+  FSuggestedPdfName := SuggestedName;
+  FileName := '';
+  Result := FPdfExportAccepted;
+  if Result then
+    FileName := FPdfExportFileName;
+end;
+
 function TFakeShell.ConfirmClose: TPadCloseChoice;
 begin
   Result := FCloseChoice;
@@ -502,6 +572,11 @@ end;
 procedure TFakeShell.CopyHtmlToClipboard(const Fragment: string);
 begin
   // The clipboard is not part of these tests.
+end;
+
+function TFakeShell.CreatePdfPageRenderer: IPadPdfPageRenderer;
+begin
+  Result := TFakeControllerPdfRenderer.Create;
 end;
 
 procedure TFakeShell.CloseApplication;
@@ -883,6 +958,51 @@ begin
   Assert.IsTrue(TFile.Exists(FFileName));
   Assert.IsFalse(FController.ActiveDocument.DiskMissing);
   Assert.IsFalse(FController.ActiveDocument.Modified);
+end;
+
+procedure TPadControllerTests.ExportPdf_Cancelled_WritesNoFileAndShowsNoError;
+begin
+  OpenSampleFile;
+  const PdfFileName = TPath.ChangeExtension(FFileName, '.pdf');
+  FShell.PdfExportFileName := PdfFileName;
+  FShell.PdfExportAccepted := False;
+
+  FController.ExportPdf;
+
+  Assert.IsFalse(TFile.Exists(PdfFileName));
+  Assert.AreEqual(0, FShell.SaveErrorCount);
+end;
+
+procedure TPadControllerTests.ExportPdf_Confirmed_WritesValidPdf;
+begin
+  OpenSampleFile;
+  const PdfFileName = TPath.ChangeExtension(FFileName, '.pdf');
+  FShell.PdfExportFileName := PdfFileName;
+  FShell.PdfExportAccepted := True;
+  try
+    FController.ExportPdf;
+
+    const Header = TEncoding.ASCII.GetString(TFile.ReadAllBytes(PdfFileName), 0, 5);
+    Assert.AreEqual('%PDF-', Header);
+    Assert.AreEqual(TPath.GetFileName(PdfFileName), FShell.SuggestedPdfName);
+    Assert.AreEqual(0, FShell.SaveErrorCount);
+  finally
+    if TFile.Exists(PdfFileName) then
+      TFile.Delete(PdfFileName);
+  end;
+end;
+
+procedure TPadControllerTests.ExportPdf_UnwritablePath_ReportsSaveErrorOnce;
+begin
+  OpenSampleFile;
+  const MissingFolder = TPath.Combine(TPath.GetTempPath, TPath.GetGUIDFileName);
+  FShell.PdfExportFileName := TPath.Combine(MissingFolder, 'Export.pdf');
+  FShell.PdfExportAccepted := True;
+
+  FController.ExportPdf;
+
+  Assert.AreEqual(1, FShell.SaveErrorCount);
+  Assert.IsFalse(TDirectory.Exists(MissingFolder));
 end;
 
 end.

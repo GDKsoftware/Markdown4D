@@ -12,6 +12,7 @@ uses
   Markdown4DStudio.TabStrip in '..\Shared\Markdown4DStudio.TabStrip.pas',
   Markdown4DStudio.FileWatcher in '..\Shared\Markdown4DStudio.FileWatcher.pas',
   Markdown4DStudio.HtmlExport in '..\Shared\Markdown4DStudio.HtmlExport.pas',
+  Markdown4DStudio.PdfExport in '..\Shared\Markdown4DStudio.PdfExport.pas',
   Markdown4DStudio.LinkPolicy in '..\Shared\Markdown4DStudio.LinkPolicy.pas',
   Markdown4DStudio.CommandSet in '..\Shared\Markdown4DStudio.CommandSet.pas',
   Markdown4DStudio.SessionSync in '..\Shared\Markdown4DStudio.SessionSync.pas',

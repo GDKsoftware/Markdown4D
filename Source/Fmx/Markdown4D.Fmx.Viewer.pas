@@ -179,8 +179,6 @@ type
     procedure ApplyLoadedBitmap(const Source: string; const Bitmap: TBitmap);
     procedure ApplyFailedImage(const Source: string);
     procedure StoreLoadedImage(const Source: string; const Bitmap: TBitmap);
-    function ResolveLoadedImage(const Source: string): TBitmap;
-    function IsImageBroken(const Source: string): Boolean;
     function GetContentHeight: Integer;
     function GetScrollOffset: Single;
     function GetDisplayList: IMarkdownDisplayList;
@@ -249,6 +247,11 @@ type
     // rendered from, so an editor can put its own selection on those same
     // characters before a formatting command runs.
     function TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean;
+    // The decoded image the preview shows for Source, or nil while it loads or
+    // after it failed. The image stays owned by the viewer: use it only
+    // synchronously and never free it.
+    function ResolveLoadedImage(const Source: string): TBitmap;
+    function IsImageBroken(const Source: string): Boolean;
     property Theme: TMarkdownTheme read FTheme write SetTheme;
     property ContentHeight: Integer read GetContentHeight;
     property ScrollOffset: Single read GetScrollOffset write SetScrollPosition;

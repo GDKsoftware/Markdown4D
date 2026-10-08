@@ -9,7 +9,8 @@ unit Markdown4DStudio.Shell;
 interface
 
 uses
-  Markdown4DStudio.Session;
+  Markdown4DStudio.Session,
+  Markdown4DStudio.PdfExport;
 
 type
   // Outcome of the "save before closing?" prompt.
@@ -48,6 +49,7 @@ type
     function PromptOpenFile(out FileName: string): Boolean;
     function PromptSaveFile(const SuggestedName: string; out FileName: string): Boolean;
     function PromptExportHtml(const SuggestedName: string; out FileName: string): Boolean;
+    function PromptExportPdf(const SuggestedName: string; out FileName: string): Boolean;
     function ConfirmClose: TPadCloseChoice;
     function ConfirmCloseDocument(const DocName: string): TPadCloseChoice;
     function ConfirmSaveOverChangedFile(const DocName: string): TPadConflictChoice;
@@ -55,6 +57,9 @@ type
     procedure ShowSaveError(const FileName, ErrorMessage: string);
     // Clipboard mechanism differs per framework (Win32 CF_HTML vs IFMXClipboardService).
     procedure CopyHtmlToClipboard(const Fragment: string);
+    // Rasterises PDF pages with the framework's painter and the images the
+    // preview has loaded.
+    function CreatePdfPageRenderer: IPadPdfPageRenderer;
     procedure CloseApplication;
   end;
 

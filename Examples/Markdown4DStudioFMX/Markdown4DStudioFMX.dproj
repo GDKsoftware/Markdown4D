@@ -111,6 +111,7 @@ $(PostBuildEvent)]]></PostBuildEvent>
         <DCCReference Include="..\Shared\Markdown4DStudio.Fmx.WinFrame.pas"/>
         <DCCReference Include="..\Shared\Markdown4DStudio.FileWatcher.pas"/>
         <DCCReference Include="..\Shared\Markdown4DStudio.HtmlExport.pas"/>
+        <DCCReference Include="..\Shared\Markdown4DStudio.PdfExport.pas"/>
         <DCCReference Include="..\Shared\Markdown4DStudio.LinkPolicy.pas"/>
         <DCCReference Include="..\Shared\Markdown4DStudio.CommandSet.pas"/>
         <DCCReference Include="..\Shared\Markdown4DStudio.SessionSync.pas"/>

@@ -37,6 +37,7 @@ uses
   Markdown4DStudio.FileWatcher,
   Markdown4DStudio.Shell,
   Markdown4DStudio.Controller,
+  Markdown4DStudio.PdfExport,
   Markdown4DStudioFMX.Defines;
 
 type
@@ -70,6 +71,7 @@ type
     dlgOpen: TOpenDialog;
     dlgSave: TSaveDialog;
     dlgSaveHtml: TSaveDialog;
+    dlgSavePdf: TSaveDialog;
     procedure HandleTitleBarMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState;
       X, Y: Single);
     procedure HandleTitleBarDblClick(Sender: TObject);
@@ -173,12 +175,14 @@ type
     function PromptOpenFile(out FileName: string): Boolean;
     function PromptSaveFile(const SuggestedName: string; out FileName: string): Boolean;
     function PromptExportHtml(const SuggestedName: string; out FileName: string): Boolean;
+    function PromptExportPdf(const SuggestedName: string; out FileName: string): Boolean;
     function ConfirmClose: TPadCloseChoice;
     function ConfirmCloseDocument(const DocName: string): TPadCloseChoice;
     function ConfirmSaveOverChangedFile(const DocName: string): TPadConflictChoice;
     procedure ShowOpenError(const FileName, ErrorMessage: string);
     procedure ShowSaveError(const FileName, ErrorMessage: string);
     procedure CopyHtmlToClipboard(const Fragment: string);
+    function CreatePdfPageRenderer: IPadPdfPageRenderer;
     procedure CloseApplication;
     procedure BuildToolbar;
     procedure FocusEditor;
@@ -248,6 +252,7 @@ type
     procedure CloseDocumentAt(const Index: Integer);
     procedure HandleExportClick(Sender: TObject);
     procedure DoExportHtml;
+    procedure DoExportPdf;
     procedure HandleCopyHtmlClick(Sender: TObject);
     procedure DoCopyHtml;
     procedure HandleBoldClick(Sender: TObject);
@@ -347,7 +352,130 @@ uses
   Markdown4DStudio.LinkPolicy,
   Markdown4DStudio.HtmlExport,
   Markdown4D.Extensions.Chart.BlockOverride,
-  Markdown4D.Extensions.Mermaid.BlockOverride;
+  Markdown4D.Extensions.Mermaid.BlockOverride,
+  System.Math.Vectors,
+  Markdown4D.Layout.Interfaces,
+  Markdown4D.Layout.DisplayList,
+  Markdown4D.Layout.Renderer,
+  Markdown4D.Fmx.Painter;
+
+type
+  // Rasterises PDF pages with the FMX painter, drawing the images the preview
+  // has already loaded, or its placeholders for those still loading or broken.
+  TFmxPdfPageRenderer = class(TInterfacedObject, IMarkdownImageSizeProvider, IPadPdfPageRenderer)
+  private
+    FPreview: TMarkdownViewer;
+    FMeasureBitmap: FMX.Graphics.TBitmap;
+    FMeasurer: IPainter;
+    procedure PaintSlice(const Bitmap: FMX.Graphics.TBitmap; const DisplayList: IMarkdownDisplayList;
+      const Slice: TPadPdfPageSlice; const BackgroundColor: TLayoutColor);
+    class function ReadPixels(const Bitmap: FMX.Graphics.TBitmap): TPadPdfPageImage; static;
+
+  public
+    constructor Create(const Preview: TMarkdownViewer);
+    destructor Destroy; override;
+    function TryGetImageSize(const Source: string; out Size: TLayoutSizeF): Boolean;
+    function Measurer: ITextMeasurer;
+    function RenderPage(const DisplayList: IMarkdownDisplayList; const Slice: TPadPdfPageSlice;
+      const BackgroundColor: TLayoutColor): TPadPdfPageImage;
+  end;
+
+constructor TFmxPdfPageRenderer.Create(const Preview: TMarkdownViewer);
+begin
+  inherited Create;
+  FPreview := Preview;
+  FMeasureBitmap := FMX.Graphics.TBitmap.Create(1, 1);
+  FMeasurer := TMarkdownFmxPainter.Create(FMeasureBitmap.Canvas);
+end;
+
+destructor TFmxPdfPageRenderer.Destroy;
+begin
+  FMeasurer := nil;
+  FMeasureBitmap.Free;
+  inherited Destroy;
+end;
+
+function TFmxPdfPageRenderer.TryGetImageSize(const Source: string; out Size: TLayoutSizeF): Boolean;
+begin
+  Size := Default(TLayoutSizeF);
+
+  const Bitmap = FPreview.ResolveLoadedImage(Source);
+  Result := (Bitmap <> nil) and not Bitmap.IsEmpty;
+  if Result then
+    Size := TLayoutSizeF.Create(Bitmap.Width, Bitmap.Height);
+end;
+
+function TFmxPdfPageRenderer.Measurer: ITextMeasurer;
+begin
+  Result := FMeasurer;
+end;
+
+function TFmxPdfPageRenderer.RenderPage(const DisplayList: IMarkdownDisplayList; const Slice: TPadPdfPageSlice;
+  const BackgroundColor: TLayoutColor): TPadPdfPageImage;
+begin
+  const Bitmap = FMX.Graphics.TBitmap.Create(TPadPdfGeometry.ContentWidthPx, TPadPdfGeometry.ContentHeightPx);
+  try
+    PaintSlice(Bitmap, DisplayList, Slice, BackgroundColor);
+    Result := ReadPixels(Bitmap);
+  finally
+    Bitmap.Free;
+  end;
+end;
+
+// Shifts the canvas so the slice lands at the top of the bitmap, the way the
+// viewer scrolls its content.
+procedure TFmxPdfPageRenderer.PaintSlice(const Bitmap: FMX.Graphics.TBitmap; const DisplayList: IMarkdownDisplayList;
+  const Slice: TPadPdfPageSlice; const BackgroundColor: TLayoutColor);
+begin
+  const Canvas = Bitmap.Canvas;
+  if not Canvas.BeginScene then
+    raise EInvalidOperation.Create('Could not draw on the PDF page bitmap');
+  try
+    Canvas.Clear(TAlphaColors.White);
+    Canvas.SetMatrix(TMatrix.CreateTranslation(0, -Slice.Top));
+
+    const Painter = TMarkdownFmxPainter.Create(Canvas);
+    const PainterLifetime: IPainter = Painter;
+    Painter.ImageResolver := FPreview.ResolveLoadedImage;
+    Painter.BrokenImageQuery := FPreview.IsImageBroken;
+
+    const Viewport = TLayoutRectF.Create(0, Slice.Top, Bitmap.Width, Slice.Bottom);
+    TMarkdownDisplayListRenderer.Render(DisplayList, PainterLifetime, Viewport, BackgroundColor);
+  finally
+    Canvas.EndScene;
+  end;
+end;
+
+// The PDF wants red, green and blue without alpha; the page is opaque white
+// underneath, so the alpha can be dropped.
+class function TFmxPdfPageRenderer.ReadPixels(const Bitmap: FMX.Graphics.TBitmap): TPadPdfPageImage;
+const
+  BytesPerPixel = 3;
+begin
+  Result.Width := Bitmap.Width;
+  Result.Height := Bitmap.Height;
+  SetLength(Result.Pixels, Result.Width * Result.Height * BytesPerPixel);
+
+  var Data: TBitmapData;
+  if not Bitmap.Map(TMapAccess.Read, Data) then
+    raise EInvalidOperation.Create('Could not read the PDF page bitmap');
+  try
+    var Target := 0;
+    for var Y := 0 to Bitmap.Height - 1 do
+    begin
+      for var X := 0 to Bitmap.Width - 1 do
+      begin
+        const Pixel = TAlphaColorRec(Data.GetPixel(X, Y));
+        Result.Pixels[Target]     := Pixel.R;
+        Result.Pixels[Target + 1] := Pixel.G;
+        Result.Pixels[Target + 2] := Pixel.B;
+        Inc(Target, BytesPerPixel);
+      end;
+    end;
+  finally
+    Bitmap.Unmap(Data);
+  end;
+end;
 
 constructor TMarkdown4DStudioFMXForm.Create(Owner: TComponent);
 begin
@@ -767,6 +895,7 @@ begin
       SwitchToDocument(FWorkspace.ActiveIndex);
     end;
   Result.ExportHtml := procedure begin DoExportHtml; end;
+  Result.ExportPdf := procedure begin DoExportPdf; end;
   Result.CopyHtml := procedure begin DoCopyHtml; end;
   Result.ViewEditorOnly := procedure begin SetViewMode(TPadViewMode.EditorOnly); end;
   Result.ViewSplit := procedure begin SetViewMode(TPadViewMode.Split); end;
@@ -881,6 +1010,8 @@ begin
       ExecuteFormatCommand(TEditorCommand.Table);
     vkE:
       DoExportHtml;
+    vkP:
+      DoExportPdf;
     vkC:
       DoCopyHtml;
     vkS:
@@ -1485,6 +1616,26 @@ begin
   Result := dlgSaveHtml.Execute;
   if Result then
     FileName := dlgSaveHtml.FileName;
+end;
+
+procedure TMarkdown4DStudioFMXForm.DoExportPdf;
+begin
+  FController.ExportPdf;
+end;
+
+function TMarkdown4DStudioFMXForm.PromptExportPdf(const SuggestedName: string; out FileName: string): Boolean;
+begin
+  if SuggestedName <> '' then
+    dlgSavePdf.FileName := SuggestedName;
+
+  Result := dlgSavePdf.Execute;
+  if Result then
+    FileName := dlgSavePdf.FileName;
+end;
+
+function TMarkdown4DStudioFMXForm.CreatePdfPageRenderer: IPadPdfPageRenderer;
+begin
+  Result := TFmxPdfPageRenderer.Create(mdPreview);
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleCopyHtmlClick(Sender: TObject);
