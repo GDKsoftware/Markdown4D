@@ -48,7 +48,7 @@ application responds again. The VCL loader registers through
 ## Build outputs
 
 - BPL (Win32) → `$(BDSCOMMONDIR)\Bpl` (e.g. `C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl`), the standard shared package folder, which is always on the IDE's package search path, so design-time packages and their runtime dependencies load without any PATH configuration
-- BPL (Win64x) → `$(BDSCOMMONDIR)\Bpl\Win64x`, kept out of the Win32 folder because the BPL file names are identical across platforms
+- BPL (Win64, Win64x) → `$(BDSCOMMONDIR)\Bpl\Win64` and `$(BDSCOMMONDIR)\Bpl\Win64x`, kept out of the Win32 folder because the BPL file names are identical across platforms
 - DCP → `packages\dcp\<Platform>\<Config>`
 - DCU → `packages\<Platform>\<Config>`
 
@@ -70,12 +70,15 @@ msbuild packages\Markdown4D.Vcl.Design.dproj  /t:Build /p:Config=Release /p:Plat
 msbuild packages\Markdown4D.Fmx.Design.dproj  /t:Build /p:Config=Release /p:Platform=Win32
 ```
 
-The `Core`, `Vcl` and `Vcl.Design` packages also target **Win64x** (for 64-bit
-package consumers and the 64-bit IDE); build them the same way with
-`/p:Platform=Win64x`.
+The runtime packages `Core`, `Vcl` and `Fmx` also target **Win64** and
+**Win64x**; build them the same way with `/p:Platform=Win64` or
+`/p:Platform=Win64x`. The IDE greys out a component on the palette when its
+runtime package does not list the project's target platform. `Vcl.Design` also
+targets Win64x, for the 64-bit IDE.
 
 `build.bat` in the repository root also builds all five packages (Release,
-Win32) plus the three Win64x VCL packages as part of the standard build.
+Win32), the three runtime packages for Win64 and Win64x, and `Vcl.Design` for
+Win64x as part of the standard build.
 
 ## Palette icons
 
@@ -108,7 +111,8 @@ is **not** performed by the automated build.
    `TMarkdownViewer` and `TMarkdownEditor` were registered.
 4. Add the DCP output folder to the library path so projects can find the
    runtime `.dcp`s: Tools ▸ Options ▸ Language ▸ Delphi ▸ Library ▸ *Library
-   path* (Win32) → add `...\packages\dcp\Win32\Release`.
+   path* (Win32) → add `...\packages\dcp\Win32\Release`, and the same for each
+   64-bit platform you target (`...\packages\dcp\Win64\Release`).
 5. Applications linked without runtime packages (the default) need nothing
    extra. Only when an application is built WITH runtime packages and runs
    outside the IDE do the runtime BPLs need to be findable: copy them next to

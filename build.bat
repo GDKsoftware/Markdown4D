@@ -134,18 +134,29 @@ for %%K in (
 )
 
 echo.
-echo === Building VCL packages ^(Release, Win64x^) ===
-for %%K in (
-    "%ROOT%packages\Markdown4D.Core.dproj"
-    "%ROOT%packages\Markdown4D.Vcl.dproj"
-    "%ROOT%packages\Markdown4D.Vcl.Design.dproj"
-) do (
-    msbuild "%%~K" /t:Build /p:Config=Release /p:Platform=Win64x /v:m
-    if errorlevel 1 (
-        echo.
-        echo === PACKAGE BUILD FAILED ^(Win64x^): %%~nxK ===
-        exit /b 1
+echo === Building runtime packages ^(Release, Win64 and Win64x^) ===
+for %%A in (Win64 Win64x) do (
+    for %%K in (
+        "%ROOT%packages\Markdown4D.Core.dproj"
+        "%ROOT%packages\Markdown4D.Vcl.dproj"
+        "%ROOT%packages\Markdown4D.Fmx.dproj"
+    ) do (
+        msbuild "%%~K" /t:Build /p:Config=Release /p:Platform=%%A /v:m
+        if errorlevel 1 (
+            echo.
+            echo === PACKAGE BUILD FAILED ^(%%A^): %%~nxK ===
+            exit /b 1
+        )
     )
+)
+
+echo.
+echo === Building VCL design package ^(Release, Win64x^) ===
+msbuild "%ROOT%packages\Markdown4D.Vcl.Design.dproj" /t:Build /p:Config=Release /p:Platform=Win64x /v:m
+if errorlevel 1 (
+    echo.
+    echo === PACKAGE BUILD FAILED ^(Win64x^): Markdown4D.Vcl.Design.dproj ===
+    exit /b 1
 )
 
 echo.
