@@ -13,16 +13,11 @@ type
     procedure CountCharacters_EmptyText_ReturnsZero;
 
     [Test]
-    procedure CountCharacters_IncludesSpaces;
-
-    [Test]
-    procedure CountCharacters_IgnoresLf;
-
-    [Test]
-    procedure CountCharacters_IgnoresCrLf;
-
-    [Test]
-    procedure CountCharacters_CountsMarkdownSymbols;
+    [TestCase('Includes spaces', 'Hallo wereld,12')]
+    [TestCase('Ignores LF', 'Hallo wereld'#10'# Hi,16')]
+    [TestCase('Ignores CRLF', 'ab'#13#10'cd,4')]
+    [TestCase('Counts markdown symbols', '**x**,5')]
+    procedure CountCharacters_ReturnsExpectedCount(const Text: string; const Expected: Integer);
 
     [Test]
     procedure CountCharacters_SurrogatePairCountsAsOne;
@@ -46,32 +41,11 @@ begin
   Assert.AreEqual(0, Actual);
 end;
 
-procedure TPadTextTests.CountCharacters_IncludesSpaces;
+procedure TPadTextTests.CountCharacters_ReturnsExpectedCount(const Text: string; const Expected: Integer);
 begin
-  const Actual = TPadText.CountCharacters('Hallo wereld');
+  const Actual = TPadText.CountCharacters(Text);
 
-  Assert.AreEqual(12, Actual);
-end;
-
-procedure TPadTextTests.CountCharacters_IgnoresLf;
-begin
-  const Actual = TPadText.CountCharacters('Hallo wereld'#10'# Hi');
-
-  Assert.AreEqual(16, Actual);
-end;
-
-procedure TPadTextTests.CountCharacters_IgnoresCrLf;
-begin
-  const Actual = TPadText.CountCharacters('ab'#13#10'cd');
-
-  Assert.AreEqual(4, Actual);
-end;
-
-procedure TPadTextTests.CountCharacters_CountsMarkdownSymbols;
-begin
-  const Actual = TPadText.CountCharacters('**x**');
-
-  Assert.AreEqual(5, Actual);
+  Assert.AreEqual(Expected, Actual);
 end;
 
 procedure TPadTextTests.CountCharacters_SurrogatePairCountsAsOne;

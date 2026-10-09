@@ -283,7 +283,6 @@ begin
   if FActiveDoc = nil then
     Exit;
 
-  FLastCaret := -1;
   FStatusDirty := True;
   FMapDirty := True;
 

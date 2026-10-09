@@ -137,6 +137,9 @@ type
     const
       OriginalText = 'first line'#10'second line'#10'third line';
       ExternalText = 'first line'#10'second line'#10'third line'#10'fourth line';
+      CountedText = 'aa bb aa';
+      CountedTextCharacters = '8 characters';
+      CountedTextWords = '3 words';
     var
       FEditorView: TFakeEditorView;
       FShell: TFakeShell;
@@ -911,13 +914,13 @@ end;
 procedure TPadControllerTests.Tick_ShowsCharacterAndWordCount;
 begin
   OpenSampleFile;
-  FView.EditorText := 'aa bb aa';
+  FView.EditorText := CountedText;
   FController.NotifyEditorChanged;
 
   FController.Tick;
 
-  Assert.AreEqual('8 characters', FShell.StatusCharacters);
-  Assert.AreEqual('3 words', FShell.StatusWords);
+  Assert.AreEqual(CountedTextCharacters, FShell.StatusCharacters);
+  Assert.AreEqual(CountedTextWords, FShell.StatusWords);
 end;
 
 procedure TPadControllerTests.Tick_AfterTextChangeWithoutCaretMove_RefreshesStatus;
@@ -926,13 +929,13 @@ begin
   FView.EditorCaret := 0;
   FController.Tick;
 
-  FView.EditorText := 'aa bb aa';
+  FView.EditorText := CountedText;
   FView.EditorCaret := 0;
   FController.NotifyEditorChanged;
   FController.Tick;
 
-  Assert.AreEqual('8 characters', FShell.StatusCharacters);
-  Assert.AreEqual('3 words', FShell.StatusWords);
+  Assert.AreEqual(CountedTextCharacters, FShell.StatusCharacters);
+  Assert.AreEqual(CountedTextWords, FShell.StatusWords);
 end;
 
 procedure TPadControllerTests.Tick_WithoutChange_DoesNotResendStatus;
