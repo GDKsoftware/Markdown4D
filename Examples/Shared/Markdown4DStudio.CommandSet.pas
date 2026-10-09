@@ -26,6 +26,7 @@ type
     CloseDocument: TPadCommandAction;
     NextTab: TPadCommandAction;
     ExportHtml: TPadCommandAction;
+    ExportPdf: TPadCommandAction;
     CopyHtml: TPadCommandAction;
     ViewEditorOnly: TPadCommandAction;
     ViewSplit: TPadCommandAction;
@@ -74,6 +75,7 @@ begin
   Registry.Register(CmdCloseName, CatFile, CmdCloseShortcut, Actions.CloseDocument);
   Registry.Register(CmdNextTabName, CatFile, CmdNextTabShortcut, Actions.NextTab);
   Registry.Register(CmdExportName, CatFile, CmdExportShortcut, Actions.ExportHtml);
+  Registry.Register(CmdExportPdfName, CatFile, CmdExportPdfShortcut, Actions.ExportPdf);
   Registry.Register(CmdCopyHtmlName, CatFile, CmdCopyHtmlShortcut, Actions.CopyHtml);
 
   Registry.Register(CmdViewEditorName, CatView, CmdViewEditorShortcut, Actions.ViewEditorOnly);

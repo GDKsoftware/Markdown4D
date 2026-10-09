@@ -181,6 +181,7 @@ type
     procedure StoreLoadedImage(const Source: string; const Bitmap: TBitmap);
     function ResolveLoadedImage(const Source: string): TBitmap;
     function IsImageBroken(const Source: string): Boolean;
+    class procedure DeletePartialExport(const FileName: string); static;
     function GetContentHeight: Integer;
     function GetScrollOffset: Single;
     function GetDisplayList: IMarkdownDisplayList;
@@ -249,6 +250,11 @@ type
     // rendered from, so an editor can put its own selection on those same
     // characters before a formatting command runs.
     function TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean;
+    // Writes the document as an A4 PDF, a page as an image at 200 dpi. It is
+    // always laid out in the built-in light theme at 100 %, whatever Theme
+    // and Zoom say; an image shows as it does in the view at that moment.
+    procedure ExportToPdf(const FileName: string); overload;
+    procedure ExportToPdf(const Stream: TStream); overload;
     property Theme: TMarkdownTheme read FTheme write SetTheme;
     property ContentHeight: Integer read GetContentHeight;
     property ScrollOffset: Single read GetScrollOffset write SetScrollPosition;
@@ -323,7 +329,10 @@ uses
   Markdown4D.Layout.Defaults,
   Markdown4D.Layout.HitTest,
   Markdown4D.Layout.Renderer,
-  Markdown4D.Viewer.Shared;
+  Markdown4D.Viewer.Shared,
+  Markdown4D.Export.Pdf,
+  Markdown4D.Export.Pdf.Interfaces,
+  Markdown4D.Fmx.PdfRasterizer;
 
 
 constructor TMarkdownViewer.Create(Owner: TComponent);
@@ -1788,6 +1797,39 @@ end;
 function TMarkdownViewer.TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean;
 begin
   Result := FModel.TryGetSelectionSourceSegment(Segment);
+end;
+
+// A half-written PDF would not open, so a failed export leaves no file behind.
+procedure TMarkdownViewer.ExportToPdf(const FileName: string);
+begin
+  const Stream = TFileStream.Create(FileName, fmCreate);
+  try
+    try
+      ExportToPdf(Stream);
+    finally
+      Stream.Free;
+    end;
+  except
+    DeletePartialExport(FileName);
+    raise;
+  end;
+end;
+
+// The export error stays the one the caller sees, so a file that cannot be removed is left behind.
+class procedure TMarkdownViewer.DeletePartialExport(const FileName: string);
+begin
+  try
+    TFile.Delete(FileName);
+  except
+    on EInOutError do
+      Exit;
+  end;
+end;
+
+procedure TMarkdownViewer.ExportToPdf(const Stream: TStream);
+begin
+  const Rasterizer: IMarkdownPdfPageRasterizer = TMarkdownFmxPdfRasterizer.Create(ResolveLoadedImage, IsImageBroken);
+  TMarkdownPdfExporter.Export(FModel.FullText, Rasterizer, Stream, FModel);
 end;
 
 end.

@@ -43,6 +43,7 @@ contains
   Markdown4D.Fmx.AutoScroll in '..\Source\Fmx\Markdown4D.Fmx.AutoScroll.pas',
   Markdown4D.Fmx.AutoScroll.Cursors in '..\Source\Fmx\Markdown4D.Fmx.AutoScroll.Cursors.pas',
   Markdown4D.Fmx.Editor in '..\Source\Fmx\Markdown4D.Fmx.Editor.pas',
-  Markdown4D.Fmx.MathFont in '..\Source\Fmx\Markdown4D.Fmx.MathFont.pas';
+  Markdown4D.Fmx.MathFont in '..\Source\Fmx\Markdown4D.Fmx.MathFont.pas',
+  Markdown4D.Fmx.PdfRasterizer in '..\Source\Fmx\Markdown4D.Fmx.PdfRasterizer.pas';
 
 end.

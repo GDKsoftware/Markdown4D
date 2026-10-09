@@ -96,6 +96,7 @@ const
   NoMatchCaption = 'No matches';
   EmptyFindCaption = '';
   HtmlExtension = 'html';
+  PdfExtension = 'pdf';
 
   // Command palette entries: display name + shortcut label
   CmdNewName = 'New tab';
@@ -166,6 +167,8 @@ const
   CmdTableShortcut = 'Ctrl+Shift+T';
   CmdExportName = 'Export HTML...';
   CmdExportShortcut = 'Ctrl+Shift+E';
+  CmdExportPdfName = 'Export PDF...';
+  CmdExportPdfShortcut = 'Ctrl+Shift+P';
   CmdCopyHtmlName = 'Copy HTML';
   CmdCopyHtmlShortcut = 'Ctrl+Shift+C';
 

@@ -31,6 +31,9 @@ type
     function SaveEditState: IMarkdownEditorState;
     procedure LoadEditState(const State: IMarkdownEditorState);
     procedure FlushPreview;
+    // Writes what the preview shows as a PDF; raises when the file cannot be
+    // written.
+    procedure ExportPreviewToPdf(const FileName: string);
     // Find: highlight/advance in the editor, count matches, and search the
     // rendered preview. Needles come from the form's find edits (via IPadShell).
     procedure EditorFindNext(const Needle: string);

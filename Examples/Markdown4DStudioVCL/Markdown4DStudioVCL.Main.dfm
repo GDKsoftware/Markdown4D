@@ -287,6 +287,12 @@ object Markdown4DStudioVCLForm: TMarkdown4DStudioVCLForm
     Left = 1020
     Top = 120
   end
+  object dlgSavePdf: TSaveDialog
+    DefaultExt = 'pdf'
+    Filter = 'PDF files (*.pdf)|*.pdf|All files (*.*)|*.*'
+    Left = 1080
+    Top = 120
+  end
   object tmrTick: TTimer
     Enabled = False
     Interval = 100

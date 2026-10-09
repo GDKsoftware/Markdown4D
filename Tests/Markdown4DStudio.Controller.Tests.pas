@@ -27,6 +27,9 @@ type
     FPreviewPreviousNeedle: string;
     FPreviewLayoutCount: Integer;
     FPreviewMatchIndex: Integer;
+    FExportedPdfFileName: string;
+    FFlushCountAtPdfExport: Integer;
+    FFailsPdfExport: Boolean;
     function GetEditorText: string;
     procedure SetEditorText(const Value: string);
     function MergeEditorText(const Value: string): Boolean;
@@ -39,6 +42,7 @@ type
     function SaveEditState: IMarkdownEditorState;
     procedure LoadEditState(const State: IMarkdownEditorState);
     procedure FlushPreview;
+    procedure ExportPreviewToPdf(const FileName: string);
     procedure EditorFindNext(const Needle: string);
     function EditorFindMatchCount(const Needle: string): Integer;
     function EditorFindMatchIndex(const Needle: string): Integer;
@@ -58,6 +62,9 @@ type
     constructor Create;
     destructor Destroy; override;
     property FlushCount: Integer read FFlushCount;
+    property ExportedPdfFileName: string read FExportedPdfFileName;
+    property FlushCountAtPdfExport: Integer read FFlushCountAtPdfExport;
+    property FailsPdfExport: Boolean read FFailsPdfExport write FFailsPdfExport;
     property HighlightedNeedle: string read FHighlightedNeedle;
     property PreviewHighlightedNeedle: string read FPreviewHighlightedNeedle;
     property PreviewPreviousNeedle: string read FPreviewPreviousNeedle;
@@ -82,6 +89,8 @@ type
     FPreviewFindCount: string;
     FFindCount: string;
     FCloseChoice: TPadCloseChoice;
+    FPdfFileName: string;
+    FSuggestedPdfName: string;
     procedure RebuildTabs;
     procedure SetDocumentTitle(const Name: string);
     procedure SetStatus(const PositionText, WordsText: string);
@@ -99,6 +108,7 @@ type
     function PromptOpenFile(out FileName: string): Boolean;
     function PromptSaveFile(const SuggestedName: string; out FileName: string): Boolean;
     function PromptExportHtml(const SuggestedName: string; out FileName: string): Boolean;
+    function PromptExportPdf(const SuggestedName: string; out FileName: string): Boolean;
     function ConfirmClose: TPadCloseChoice;
     function ConfirmCloseDocument(const DocName: string): TPadCloseChoice;
     function ConfirmSaveOverChangedFile(const DocName: string): TPadConflictChoice;
@@ -121,6 +131,8 @@ type
     property PreviewNeedle: string read FPreviewNeedle write FPreviewNeedle;
     property PreviewFindCount: string read FPreviewFindCount;
     property FindCount: string read FFindCount;
+    property PdfFileName: string read FPdfFileName write FPdfFileName;
+    property SuggestedPdfName: string read FSuggestedPdfName;
   end;
 
   [TestFixture]
@@ -218,6 +230,18 @@ type
 
     [Test]
     procedure DeletedFile_SaveRecreatesFileAndClearsFlag;
+
+    [Test]
+    procedure ExportPdf_Cancelled_ExportsNothingAndShowsNoError;
+
+    [Test]
+    procedure ExportPdf_Confirmed_FlushesPreviewAndExportsToChosenFile;
+
+    [Test]
+    procedure ExportPdf_OpenDocument_SuggestsDocumentNameWithPdfExtension;
+
+    [Test]
+    procedure ExportPdf_WriteFails_ReportsSaveError;
   end;
 
 implementation
@@ -301,6 +325,15 @@ end;
 procedure TFakeEditorView.FlushPreview;
 begin
   Inc(FFlushCount);
+end;
+
+procedure TFakeEditorView.ExportPreviewToPdf(const FileName: string);
+begin
+  if FFailsPdfExport then
+    raise EFCreateError.CreateFmt('Cannot create file "%s"', [FileName]);
+
+  FExportedPdfFileName := FileName;
+  FFlushCountAtPdfExport := FFlushCount;
 end;
 
 procedure TFakeEditorView.EditorFindNext(const Needle: string);
@@ -471,6 +504,13 @@ function TFakeShell.PromptExportHtml(const SuggestedName: string; out FileName: 
 begin
   FileName := '';
   Result := False;
+end;
+
+function TFakeShell.PromptExportPdf(const SuggestedName: string; out FileName: string): Boolean;
+begin
+  FSuggestedPdfName := SuggestedName;
+  FileName := FPdfFileName;
+  Result := FPdfFileName <> '';
 end;
 
 function TFakeShell.ConfirmClose: TPadCloseChoice;
@@ -883,6 +923,56 @@ begin
   Assert.IsTrue(TFile.Exists(FFileName));
   Assert.IsFalse(FController.ActiveDocument.DiskMissing);
   Assert.IsFalse(FController.ActiveDocument.Modified);
+end;
+
+procedure TPadControllerTests.ExportPdf_Cancelled_ExportsNothingAndShowsNoError;
+begin
+  OpenSampleFile;
+  FShell.PdfFileName := '';
+
+  FController.ExportPdf;
+
+  Assert.AreEqual('', FEditorView.ExportedPdfFileName);
+  Assert.AreEqual(0, FShell.SaveErrorCount);
+end;
+
+procedure TPadControllerTests.ExportPdf_Confirmed_FlushesPreviewAndExportsToChosenFile;
+begin
+  OpenSampleFile;
+  const FlushesBefore = FEditorView.FlushCount;
+  const PdfFileName = TPath.ChangeExtension(FFileName, '.pdf');
+  FShell.PdfFileName := PdfFileName;
+
+  FController.ExportPdf;
+
+  Assert.AreEqual(PdfFileName, FEditorView.ExportedPdfFileName);
+  Assert.IsTrue(FEditorView.FlushCountAtPdfExport > FlushesBefore, 'the preview was not brought up to date first');
+  Assert.AreEqual(0, FShell.SaveErrorCount);
+end;
+
+procedure TPadControllerTests.ExportPdf_OpenDocument_SuggestsDocumentNameWithPdfExtension;
+begin
+  OpenSampleFile;
+  const Expected = TPath.ChangeExtension(TPath.GetFileName(FFileName), '.pdf');
+
+  FController.ExportPdf;
+
+  Assert.AreEqual(Expected, FShell.SuggestedPdfName);
+end;
+
+procedure TPadControllerTests.ExportPdf_WriteFails_ReportsSaveError;
+begin
+  OpenSampleFile;
+  FShell.PdfFileName := TPath.ChangeExtension(FFileName, '.pdf');
+  FEditorView.FailsPdfExport := True;
+
+  Assert.WillNotRaise(
+    procedure
+    begin
+      FController.ExportPdf;
+    end);
+
+  Assert.AreEqual(1, FShell.SaveErrorCount);
 end;
 
 end.

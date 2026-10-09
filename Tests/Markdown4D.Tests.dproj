@@ -141,6 +141,15 @@
         <DCCReference Include="Markdown4D.Viewer.Extensions.Cluster1.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Wedge.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Polygon.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Tests.PdfReader.pas"/>
+        <DCCReference Include="Markdown4D.Tests.FakeImageSizes.pas"/>
+        <DCCReference Include="Markdown4D.Tests.FakePdfRasterizer.pas"/>
+        <DCCReference Include="Markdown4D.Export.Pagination.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Export.Pdf.Writer.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Export.Pdf.ScaledImageSizes.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Export.Pdf.Tests.pas"/>
+        <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.PdfRasterizer.pas"/>
+        <DCCReference Include="Markdown4D.Vcl.PdfRasterizer.Tests.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Keys.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.Actions.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Editor.InlineStyle.pas"/>

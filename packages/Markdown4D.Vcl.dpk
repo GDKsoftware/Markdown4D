@@ -43,6 +43,7 @@ contains
   Markdown4D.Vcl.Viewer in '..\Source\Vcl\Markdown4D.Vcl.Viewer.pas',
   Markdown4D.Vcl.AutoScroll in '..\Source\Vcl\Markdown4D.Vcl.AutoScroll.pas',
   Markdown4D.Vcl.Editor in '..\Source\Vcl\Markdown4D.Vcl.Editor.pas',
-  Markdown4D.Vcl.MathFont in '..\Source\Vcl\Markdown4D.Vcl.MathFont.pas';
+  Markdown4D.Vcl.MathFont in '..\Source\Vcl\Markdown4D.Vcl.MathFont.pas',
+  Markdown4D.Vcl.PdfRasterizer in '..\Source\Vcl\Markdown4D.Vcl.PdfRasterizer.pas';
 
 end.

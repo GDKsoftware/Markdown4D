@@ -60,6 +60,12 @@ type
 
     [Test]
     procedure IndentCommand_InvokesIndent;
+
+    [Test]
+    procedure ExportPdfCommand_InvokesExportPdf;
+
+    [Test]
+    procedure ExportPdfCommand_SitsInFileRightAfterExportHtmlWithItsShortcut;
   end;
 
 implementation
@@ -88,6 +94,7 @@ begin
   Result.CloseDocument := procedure begin FFired := 'Close'; end;
   Result.NextTab := procedure begin FFired := 'NextTab'; end;
   Result.ExportHtml := procedure begin FFired := 'Export'; end;
+  Result.ExportPdf := procedure begin FFired := 'ExportPdf'; end;
   Result.CopyHtml := procedure begin FFired := 'CopyHtml'; end;
   Result.ViewEditorOnly := procedure begin FFired := 'ViewEditor'; end;
   Result.ViewSplit := procedure begin FFired := 'ViewSplit'; end;
@@ -127,7 +134,7 @@ end;
 procedure TPadCommandSetTests.Register_AddsEveryCommand;
 begin
   TPadCommandSet.Register(FRegistry, BuildActions);
-  Assert.AreEqual(35, FRegistry.Count);
+  Assert.AreEqual(36, FRegistry.Count);
 end;
 
 procedure TPadCommandSetTests.NewCommand_InvokesNewDocument;
@@ -189,6 +196,32 @@ begin
   TPadCommandSet.Register(FRegistry, BuildActions);
   Invoke(CmdIndentName);
   Assert.AreEqual('Indent', FFired);
+end;
+
+procedure TPadCommandSetTests.ExportPdfCommand_InvokesExportPdf;
+begin
+  TPadCommandSet.Register(FRegistry, BuildActions);
+  Invoke(CmdExportPdfName);
+  Assert.AreEqual('ExportPdf', FFired);
+end;
+
+procedure TPadCommandSetTests.ExportPdfCommand_SitsInFileRightAfterExportHtmlWithItsShortcut;
+begin
+  TPadCommandSet.Register(FRegistry, BuildActions);
+
+  const Commands = FRegistry.Commands;
+  var ExportHtmlIndex := -1;
+  for var Index := 0 to High(Commands) do
+  begin
+    if Commands[Index].Name = CmdExportName then
+      ExportHtmlIndex := Index;
+  end;
+
+  Assert.IsTrue(ExportHtmlIndex >= 0, 'Export HTML is missing from the palette');
+  const ExportPdf = Commands[ExportHtmlIndex + 1];
+  Assert.AreEqual('Export PDF...', ExportPdf.Name);
+  Assert.AreEqual(CatFile, ExportPdf.Category);
+  Assert.AreEqual('Ctrl+Shift+P', ExportPdf.ShortcutText);
 end;
 
 procedure TPadCommandSetTests.FormatCommand_AdvertisesTheShortcutTheFormBinds(const Name, Expected: string);

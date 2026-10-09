@@ -547,6 +547,7 @@ same.
 | `IsAutoScrolling: Boolean` | True while middle-click autoscroll runs |
 | `ZoomIn` / `ZoomOut` / `ResetZoom` | Step `Zoom` to the next level up or down, or back to 100, as the keys do |
 | `TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean` | The stretch of markdown the selection was rendered from, so an editor can format exactly those characters; `False` when there is no selection or the runs carry no source |
+| `ExportToPdf(const FileName: string)` / `ExportToPdf(const Stream: TStream)` | Write the document as an A4 PDF (see [PDF export](#pdf-export)). The file variant creates or overwrites the file and removes it again when the export fails; both raise when the PDF cannot be written |
 | `ContentHeight: Integer` | Laid-out document height, for auto-sizing |
 | `ScrollOffset: Single` | Read / set the vertical scroll position |
 | `ScrollToAnchor(const Anchor: string): Boolean` | Scroll the heading a link such as `#getting-started` points at to the top of the view. Anchors follow GitHub: lower case, punctuation dropped, accented letters kept, every space a dash, and a repeated heading gets `-1`, `-2`. A percent-encoded anchor is decoded first. `False` when the document has no such heading |
@@ -611,6 +612,55 @@ A focused viewer scrolls on the arrow keys, `PgUp` / `PgDn`, `Home` and `End`.
 `Ctrl+A` selects the document, `Ctrl+C` copies the selection and `Ctrl+Shift+C`
 copies its markdown. Right-clicking opens a `Copy` / `Copy as Markdown` /
 `Select All` menu; assigning `PopupMenu` replaces it with the host's own menu.
+
+### PDF export
+
+`ExportToPdf` writes what the viewer shows as a PDF 1.4 file without a printer
+driver or any other dependency:
+
+- Every page is A4 with a margin of 2 cm all round, without header, footer or
+  page numbers. The content is laid out on the remaining 170 mm and runs on
+  over as many pages as it needs.
+- Every page is one image, rasterized at 200 dpi, so the text in the PDF cannot
+  be selected or searched.
+- The document is always laid out in the built-in light preset
+  (`TMarkdownTheme.CreateLight`) at 100 %, scaled to 200 dpi. A theme the host
+  assigned through `Theme` or `ThemePreset`, a dark one included, and the
+  current `Zoom` do not count: paper is dark text on a light background.
+- Tables, code blocks, formulas, charts and mermaid diagrams come out as in the
+  view; charts and diagrams need their block overrides registered, as for the
+  view (see [EXTENSIONS.md](EXTENSIONS.md)).
+- An image shows as the view has it at that moment: a loaded image is drawn,
+  one that is still loading is an empty frame, and one that failed is a frame
+  with a cross.
+- A page ends between two blocks where it can. A block that does not fit moves
+  to the next page whole; one taller than a page, such as a long code block or
+  table, is broken between its lines or rows.
+- A failing block override or document processor is reported through
+  `OnExtensionError`, as in the view, and the PDF leaves it out.
+
+The work is done by framework-neutral units in `Source\Layout`, which a host
+can also use on its own:
+
+| Unit | Contents |
+|------|----------|
+| `Markdown4D.Export.Pdf` | `TMarkdownPdfExporter.Export(Markdown, Rasterizer, Stream[, ExtensionErrors])` lays the document out, paginates and writes it; `BuildLayout` returns the display list a PDF shows |
+| `Markdown4D.Export.Pagination` | `TMarkdownPagination.Paginate(DisplayList, PageHeight)` splits a display list into `TMarkdownPageSlice` bands |
+| `Markdown4D.Export.Pdf.Writer` | `TMarkdownPdfWriter`, a minimal PDF writer that adds one Flate-compressed RGB image per page to a stream |
+| `Markdown4D.Export.Pdf.Geometry` | `TMarkdownPdfPageGeometry`: page and margin sizes in points, the content area in pixels at 200 dpi |
+| `Markdown4D.Export.Pdf.Interfaces` | `IMarkdownPdfPageRasterizer`, which a framework implements to measure text and paint one page, and `TMarkdownPdfPageImage` |
+| `Markdown4D.Export.Pdf.Errors` | `EMarkdownPdfExportError`, raised for invalid input to these units |
+
+The rasterizers are `TMarkdownVclPdfRasterizer` (`Markdown4D.Vcl.PdfRasterizer`)
+and `TMarkdownFmxPdfRasterizer` (`Markdown4D.Fmx.PdfRasterizer`).
+
+```pascal
+procedure TMainForm.ExportClick(Sender: TObject);
+begin
+  if SaveDialog.Execute then
+    Viewer.ExportToPdf(SaveDialog.FileName);
+end;
+```
 
 ### Image settings
 

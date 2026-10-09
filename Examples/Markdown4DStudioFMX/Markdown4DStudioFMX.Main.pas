@@ -70,6 +70,7 @@ type
     dlgOpen: TOpenDialog;
     dlgSave: TSaveDialog;
     dlgSaveHtml: TSaveDialog;
+    dlgSavePdf: TSaveDialog;
     procedure HandleTitleBarMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState;
       X, Y: Single);
     procedure HandleTitleBarDblClick(Sender: TObject);
@@ -173,6 +174,7 @@ type
     function PromptOpenFile(out FileName: string): Boolean;
     function PromptSaveFile(const SuggestedName: string; out FileName: string): Boolean;
     function PromptExportHtml(const SuggestedName: string; out FileName: string): Boolean;
+    function PromptExportPdf(const SuggestedName: string; out FileName: string): Boolean;
     function ConfirmClose: TPadCloseChoice;
     function ConfirmCloseDocument(const DocName: string): TPadCloseChoice;
     function ConfirmSaveOverChangedFile(const DocName: string): TPadConflictChoice;
@@ -248,6 +250,7 @@ type
     procedure CloseDocumentAt(const Index: Integer);
     procedure HandleExportClick(Sender: TObject);
     procedure DoExportHtml;
+    procedure DoExportPdf;
     procedure HandleCopyHtmlClick(Sender: TObject);
     procedure DoCopyHtml;
     procedure HandleBoldClick(Sender: TObject);
@@ -275,6 +278,7 @@ type
     function SaveEditState: IMarkdownEditorState;
     procedure LoadEditState(const State: IMarkdownEditorState);
     procedure FlushPreview;
+    procedure ExportPreviewToPdf(const FileName: string);
     procedure EditorFindNext(const Needle: string);
     function EditorFindMatchCount(const Needle: string): Integer;
     function EditorFindMatchIndex(const Needle: string): Integer;
@@ -767,6 +771,7 @@ begin
       SwitchToDocument(FWorkspace.ActiveIndex);
     end;
   Result.ExportHtml := procedure begin DoExportHtml; end;
+  Result.ExportPdf := procedure begin DoExportPdf; end;
   Result.CopyHtml := procedure begin DoCopyHtml; end;
   Result.ViewEditorOnly := procedure begin SetViewMode(TPadViewMode.EditorOnly); end;
   Result.ViewSplit := procedure begin SetViewMode(TPadViewMode.Split); end;
@@ -881,6 +886,8 @@ begin
       ExecuteFormatCommand(TEditorCommand.Table);
     vkE:
       DoExportHtml;
+    vkP:
+      DoExportPdf;
     vkC:
       DoCopyHtml;
     vkS:
@@ -1487,6 +1494,21 @@ begin
     FileName := dlgSaveHtml.FileName;
 end;
 
+procedure TMarkdown4DStudioFMXForm.DoExportPdf;
+begin
+  FController.ExportPdf;
+end;
+
+function TMarkdown4DStudioFMXForm.PromptExportPdf(const SuggestedName: string; out FileName: string): Boolean;
+begin
+  if SuggestedName <> '' then
+    dlgSavePdf.FileName := SuggestedName;
+
+  Result := dlgSavePdf.Execute;
+  if Result then
+    FileName := dlgSavePdf.FileName;
+end;
+
 procedure TMarkdown4DStudioFMXForm.HandleCopyHtmlClick(Sender: TObject);
 begin
   DoCopyHtml;
@@ -1743,6 +1765,11 @@ end;
 procedure TMarkdown4DStudioFMXForm.FlushPreview;
 begin
   mdEditor.FlushPreview;
+end;
+
+procedure TMarkdown4DStudioFMXForm.ExportPreviewToPdf(const FileName: string);
+begin
+  mdPreview.ExportToPdf(FileName);
 end;
 
 procedure TMarkdown4DStudioFMXForm.BeginSwap;

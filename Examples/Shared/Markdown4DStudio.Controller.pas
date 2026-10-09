@@ -46,6 +46,7 @@ type
     procedure RememberPosition(const Document: IPadDocument);
     procedure ApplyRememberedPosition(const Document: IPadDocument);
     procedure ShowPreviewFindCount;
+    function ExportTitle: string;
     class function MatchCaption(const Index, Total: Integer): string; static;
   public
     constructor Create(const Editor: IPadEditorView; const Shell: IPadShell;
@@ -92,6 +93,7 @@ type
     procedure ExecuteFindPrevious;
     procedure UpdatePreviewFindCount;
     procedure ExportHtml;
+    procedure ExportPdf;
     procedure CopyHtml;
     function QueryClose: Boolean;
 
@@ -648,10 +650,7 @@ begin
   if FActiveDoc <> nil then
     FActiveDoc.Text := FEditor.EditorText;
 
-  var Title := UntitledName;
-  if FActiveDoc <> nil then
-    Title := FActiveDoc.DisplayName;
-
+  const Title = ExportTitle;
   const SuggestedName = TPath.ChangeExtension(Title, '.' + HtmlExtension);
 
   var FileName: string;
@@ -660,6 +659,36 @@ begin
 
   const Html = TMarkdownHtmlExport.BuildDocument(FEditor.EditorText, Title, FShell.DarkThemeActive);
   TFile.WriteAllText(FileName, Html, TEncoding.UTF8);
+end;
+
+// The preview is brought up to date with the editor first, so the PDF holds
+// what was typed last; a file that cannot be written is reported, not raised.
+procedure TPadController.ExportPdf;
+begin
+  const SuggestedName = TPath.ChangeExtension(ExportTitle, '.' + PdfExtension);
+
+  var FileName: string;
+  if not FShell.PromptExportPdf(SuggestedName, FileName) then
+    Exit;
+
+  FEditor.FlushPreview;
+  try
+    FEditor.ExportPreviewToPdf(FileName);
+  except
+    on E: Exception do
+      FShell.ShowSaveError(FileName, E.Message);
+  end;
+end;
+
+function TPadController.ExportTitle: string;
+begin
+  if FActiveDoc = nil then
+  begin
+    Result := UntitledName;
+    Exit;
+  end;
+
+  Result := FActiveDoc.DisplayName;
 end;
 
 procedure TPadController.CopyHtml;

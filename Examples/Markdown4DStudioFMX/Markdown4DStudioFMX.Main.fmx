@@ -306,4 +306,10 @@ object Markdown4DStudioFMXForm: TMarkdown4DStudioFMXForm
     Left = 280
     Top = 16
   end
+  object dlgSavePdf: TSaveDialog
+    DefaultExt = 'pdf'
+    Filter = 'PDF files (*.pdf)|*.pdf|All files (*.*)|*.*'
+    Left = 352
+    Top = 16
+  end
 end

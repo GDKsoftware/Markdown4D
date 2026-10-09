@@ -49,6 +49,7 @@ type
     dlgOpen: TOpenDialog;
     dlgSave: TSaveDialog;
     dlgSaveHtml: TSaveDialog;
+    dlgSavePdf: TSaveDialog;
     tmrTick: TTimer;
     popRecent: TPopupMenu;
     mdEditor: TMarkdownEditor;
@@ -163,6 +164,7 @@ type
     function PromptOpenFile(out FileName: string): Boolean;
     function PromptSaveFile(const SuggestedName: string; out FileName: string): Boolean;
     function PromptExportHtml(const SuggestedName: string; out FileName: string): Boolean;
+    function PromptExportPdf(const SuggestedName: string; out FileName: string): Boolean;
     function ConfirmClose: TPadCloseChoice;
     function ConfirmCloseDocument(const DocName: string): TPadCloseChoice;
     function ConfirmSaveOverChangedFile(const DocName: string): TPadConflictChoice;
@@ -202,6 +204,7 @@ type
     procedure ExecuteFormatCommand(const Command: TEditorCommand);
     procedure AdoptPreviewSelection;
     procedure DoExportHtml;
+    procedure DoExportPdf;
     procedure DoCopyHtml;
     procedure CopyHtmlToClipboard(const Fragment: string);
     function SetClipboardHtml(const CfHtml: Cardinal; const Bytes: TArray<Byte>): Boolean;
@@ -236,6 +239,7 @@ type
     function SaveEditState: IMarkdownEditorState;
     procedure LoadEditState(const State: IMarkdownEditorState);
     procedure FlushPreview;
+    procedure ExportPreviewToPdf(const FileName: string);
     procedure EditorFindNext(const Needle: string);
     function EditorFindMatchCount(const Needle: string): Integer;
     function EditorFindMatchIndex(const Needle: string): Integer;
@@ -655,6 +659,8 @@ begin
       ExecuteFormatCommand(TEditorCommand.Table);
     Ord('E'):
       DoExportHtml;
+    Ord('P'):
+      DoExportPdf;
     Ord('C'):
       DoCopyHtml;
     Ord('S'):
@@ -871,6 +877,21 @@ begin
   Result := dlgSaveHtml.Execute;
   if Result then
     FileName := dlgSaveHtml.FileName;
+end;
+
+procedure TMarkdown4DStudioVCLForm.DoExportPdf;
+begin
+  FController.ExportPdf;
+end;
+
+function TMarkdown4DStudioVCLForm.PromptExportPdf(const SuggestedName: string; out FileName: string): Boolean;
+begin
+  if SuggestedName <> '' then
+    dlgSavePdf.FileName := SuggestedName;
+
+  Result := dlgSavePdf.Execute;
+  if Result then
+    FileName := dlgSavePdf.FileName;
 end;
 
 procedure TMarkdown4DStudioVCLForm.DoCopyHtml;
@@ -1322,6 +1343,11 @@ end;
 procedure TMarkdown4DStudioVCLForm.FlushPreview;
 begin
   mdEditor.FlushPreview;
+end;
+
+procedure TMarkdown4DStudioVCLForm.ExportPreviewToPdf(const FileName: string);
+begin
+  mdPreview.ExportToPdf(FileName);
 end;
 
 procedure TMarkdown4DStudioVCLForm.BeginSwap;
@@ -1789,6 +1815,7 @@ begin
       SwitchToDocument(FWorkspace.ActiveIndex);
     end;
   Result.ExportHtml := procedure begin DoExportHtml; end;
+  Result.ExportPdf := procedure begin DoExportPdf; end;
   Result.CopyHtml := procedure begin DoCopyHtml; end;
   Result.ViewEditorOnly := procedure begin SetViewMode(TPadViewMode.EditorOnly); end;
   Result.ViewSplit := procedure begin SetViewMode(TPadViewMode.Split); end;
