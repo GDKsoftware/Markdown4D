@@ -55,6 +55,7 @@ type
     mdPreview: TMarkdownViewer;
     lblPos: TLabel;
     lblWords: TLabel;
+    lblChars: TLabel;
     edtEditorFind: TEdit;
     lblFindCount: TLabel;
     edtFind: TEdit;
@@ -148,7 +149,7 @@ type
     property FSwapping: Boolean read GetSwapping write SetSwapping;
     property FPaletteMatches: TArray<TPadCommandMatch> read GetPaletteMatches;
     procedure SetDocumentTitle(const Name: string);
-    procedure SetStatus(const PositionText, WordsText: string);
+    procedure SetStatus(const PositionText, WordsText, CharactersText: string);
     procedure SetTocCaptions(const Captions: TArray<string>);
     procedure SetActiveTocIndex(const Index: Integer);
     function EditorFindNeedle: string;
@@ -1578,6 +1579,7 @@ begin
   pnlStatus.Color := Chrome.ToolbarColor;
   lblPos.Font.Color := Chrome.IconColor;
   lblWords.Font.Color := Chrome.IconColor;
+  lblChars.Font.Color := Chrome.IconColor;
   lblPreviewFindCount.Font.Color := Chrome.IconColor;
 
   pnlFind.Color := Chrome.ToolbarColor;
@@ -1624,10 +1626,11 @@ begin
   Caption := Format(TitleFormat, [WindowCaption, Name]);
 end;
 
-procedure TMarkdown4DStudioVCLForm.SetStatus(const PositionText, WordsText: string);
+procedure TMarkdown4DStudioVCLForm.SetStatus(const PositionText, WordsText, CharactersText: string);
 begin
   lblPos.Caption := PositionText;
   lblWords.Caption := WordsText;
+  lblChars.Caption := CharactersText;
 end;
 
 procedure TMarkdown4DStudioVCLForm.SetTocCaptions(const Captions: TArray<string>);

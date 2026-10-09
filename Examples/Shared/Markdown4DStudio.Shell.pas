@@ -24,7 +24,7 @@ type
     // Chrome the controller refreshes after model changes.
     procedure RebuildTabs;
     procedure SetDocumentTitle(const Name: string);
-    procedure SetStatus(const PositionText, WordsText: string);
+    procedure SetStatus(const PositionText, WordsText, CharactersText: string);
     procedure ApplyRestoredViewMode(const Mode: TPadViewMode);
 
     // Contents outline: the form owns the list control (and any framework-

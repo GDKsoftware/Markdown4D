@@ -154,6 +154,15 @@ object Markdown4DStudioFMXForm: TMarkdown4DStudioFMXForm
       Size.Height = 26.000000000000000000
       Size.PlatformDefault = False
     end
+    object lblChars: TLabel
+      Align = Left
+      Margins.Left = 6.000000000000000000
+      Position.X = 318.000000000000000000
+      Size.Width = 150.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      Text = 'lblChars'
+    end
   end
   object layToc: TLayout
     Align = Left

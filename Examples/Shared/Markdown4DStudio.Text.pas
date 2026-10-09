@@ -9,6 +9,7 @@ type
     class procedure ComputeLineColumn(const Text: string; const Offset: Integer;
       out Line, Column: Integer); static;
     class function CountWords(const Text: string): Integer; static;
+    class function CountCharacters(const Text: string): Integer; static;
   end;
 
 implementation
@@ -52,6 +53,30 @@ begin
       InsideWord := True;
       Inc(Result);
     end;
+  end;
+end;
+
+class function TPadText.CountCharacters(const Text: string): Integer;
+begin
+  Result := 0;
+
+  var Index := 1;
+  const TextLength = Length(Text);
+  while Index <= TextLength do
+  begin
+    const Current = Text[Index];
+    const IsLineBreak = ((Current = #13) or (Current = #10));
+    const IsSurrogatePair = ((Index < TextLength) and
+                             Current.IsHighSurrogate and
+                             Text[Index + 1].IsLowSurrogate);
+
+    if not IsLineBreak then
+      Inc(Result);
+
+    if IsSurrogatePair then
+      Inc(Index, 2)
+    else
+      Inc(Index);
   end;
 end;
 
