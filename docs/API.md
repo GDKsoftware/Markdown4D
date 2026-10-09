@@ -296,8 +296,10 @@ end;
 
 Unit `Markdown4D.Theme`. `TMarkdownTheme` holds every colour, font and metric
 the layout engine uses. Construct one with `CreateLight`, `CreateDark` or
-`CreatePreset(TMarkdownThemePreset)`; you own the instance and must `Free` it
-(the viewer/editor take ownership when you assign their `Theme` property).
+`CreatePreset(TMarkdownThemePreset)`; you own the instance and must `Free` it.
+Assigning it to the `Theme` property of the viewer or editor does not transfer
+ownership: keep it alive while the control uses it and free it yourself. Only
+the theme a control creates for its `ThemePreset` is freed by the control.
 
 Selected properties: `BaseFont`, `CodeFont`, `MathFont`, `HeadingFonts[Level]`,
 `TextColor`, `BackgroundColor`, `LinkColor`, `CodeTextColor`,
@@ -530,7 +532,7 @@ same.
 
 | Member | Description |
 |--------|-------------|
-| `Theme: TMarkdownTheme` | Assign a fully customised theme at run time (the control takes ownership) |
+| `Theme: TMarkdownTheme` | Assign a fully customised theme at run time; the caller keeps ownership and frees it after the control |
 | `AppendMarkdown(const Markdown: string)` | Append text and repaint; thread-safe, debounced |
 | `LoadFromFile(const FileName)` / `LoadFromStream(const Stream)` | Load a document |
 | `FindText(const Needle[; const Options]): Boolean` | Select the next match and scroll it to the middle of the view when it is out of sight; a repeated search moves on to the following match and wraps to the first after the last. `TMarkdownFindOptions` (unit `Markdown4D.Layout.TextSearch`) adds `MatchCase` and `WholeWord`, as in the editor |
