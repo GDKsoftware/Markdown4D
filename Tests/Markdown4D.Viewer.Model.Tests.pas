@@ -182,6 +182,15 @@ type
     procedure ImageSlotState_UnknownSource_ReturnsUnknown;
 
     [Test]
+    procedure RequestImages_WithoutLayout_MakesSourcesPending;
+
+    [Test]
+    procedure RequestImages_KnownSource_KeepsItsState;
+
+    [Test]
+    procedure AreImagesSettled_OnlyOnceEverySourceLoadedOrFailed;
+
+    [Test]
     procedure FindText_IsCaseInsensitive_ReturnsRangesWithinRun;
 
     [Test]
@@ -817,6 +826,45 @@ begin
 
   const IsUnknown = (FModel.ImageSlotState('missing.png') = TMarkdownImageSlotState.Unknown);
   Assert.IsTrue(IsUnknown);
+end;
+
+procedure TMarkdownViewerModelTests.RequestImages_WithoutLayout_MakesSourcesPending;
+begin
+  FModel.RequestImages([ImageSource, 'other.png', ImageSource]);
+
+  const Pending = FModel.PendingImageSources;
+  Assert.AreEqual(2, Integer(Length(Pending)));
+  Assert.AreEqual(ImageSource, Pending[0]);
+  Assert.AreEqual('other.png', Pending[1]);
+  Assert.IsTrue(FModel.ImageSlotState(ImageSource) = TMarkdownImageSlotState.Requested);
+end;
+
+procedure TMarkdownViewerModelTests.RequestImages_KnownSource_KeepsItsState;
+begin
+  LoadImageDocument;
+  FModel.NotifyImageArrived(ImageSource, TLayoutSizeF.Create(LoadedImageWidth, LoadedImageHeight));
+
+  FModel.RequestImages([ImageSource]);
+
+  Assert.IsTrue(FModel.ImageSlotState(ImageSource) = TMarkdownImageSlotState.Loaded);
+  Assert.AreEqual(0, Integer(Length(FModel.PendingImageSources)));
+end;
+
+procedure TMarkdownViewerModelTests.AreImagesSettled_OnlyOnceEverySourceLoadedOrFailed;
+begin
+  const Sources: TArray<string> = [ImageSource, 'other.png'];
+  FModel.RequestImages(Sources);
+  const SettledWhilePending = FModel.AreImagesSettled(Sources);
+
+  FModel.NotifyImageArrived(ImageSource, TLayoutSizeF.Create(LoadedImageWidth, LoadedImageHeight));
+  const SettledWithOnePending = FModel.AreImagesSettled(Sources);
+
+  FModel.NotifyImageFailed('other.png');
+  const SettledWhenDone = FModel.AreImagesSettled(Sources);
+
+  Assert.IsFalse(SettledWhilePending);
+  Assert.IsFalse(SettledWithOnePending);
+  Assert.IsTrue(SettledWhenDone);
 end;
 
 procedure TMarkdownViewerModelTests.FindText_IsCaseInsensitive_ReturnsRangesWithinRun;

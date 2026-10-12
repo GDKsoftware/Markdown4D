@@ -554,6 +554,36 @@ same.
 | `ScrollToAnchor(const Anchor: string): Boolean` | Scroll the heading a link such as `#getting-started` points at to the top of the view. Anchors follow GitHub: lower case, punctuation dropped, accented letters kept, every space a dash, and a repeated heading gets `-1`, `-2`. A percent-encoded anchor is decoded first. `False` when the document has no such heading |
 | `LayoutCount: Integer` | Advances on every relayout (first width, resize, arriving images), so a host can notice layout-derived state going stale |
 | `DisplayList: IMarkdownDisplayList` | The rendered primitives, for advanced hosts |
+| `ExportToPdf(const Stream: TStream)` / `ExportToPdf(const FileName: string)` | Write the current `Text` as a PDF on A4 (see [PDF export](#pdf-export) below). Raises when the file cannot be written |
+
+### PDF export
+
+`ExportToPdf` prints what the viewer holds without a printer driver:
+
+- The page is A4 with a margin of 2 cm on every side, without header, footer
+  or page numbers. The whole page is white.
+- The document is always laid out in the built-in light preset
+  (`TMarkdownTheme.CreateLight`) at 100 percent, at the width of the content
+  area. A theme the host assigned through `Theme`, the `ThemePreset` and
+  `Zoom` play no part, so a dark preview still gives a light PDF.
+- Every page is rasterised at 200 dpi and stored as one image, so text in the
+  PDF cannot be selected or searched. Charts, mermaid diagrams and formulas
+  keep the proportion to the text they have in the preview.
+- Before rasterising, the export asks for every image of the document and
+  waits until they are loaded, for at most ten seconds, on the calling thread.
+  That works also when the viewer is hidden or has not laid the document out
+  yet. An image that cannot be loaded, or has not arrived in time, prints as a
+  frame with a cross.
+- A block that fits on a page moves to the next page whole. A longer
+  paragraph, list, table or code block breaks between its lines or rows, and
+  the background of a code block carries on over the break. A diagram, chart
+  or image is never cut: one taller than a page gets a page of its own and is
+  shrunk to fit, keeping its proportions.
+
+The framework-neutral parts live in `Source\Layout`
+(`Markdown4D.Export.Pdf` with `TMarkdownPdfExporter`, the pagination and the
+PDF writer); `Markdown4D.Vcl.PdfRasterizer` and `Markdown4D.Fmx.PdfRasterizer`
+paint the pages.
 
 ### Events
 

@@ -7,6 +7,9 @@ program Markdown4D.Fmx.Tests;
 uses
   Markdown4D.Fmx.Painter in '..\Source\Fmx\Markdown4D.Fmx.Painter.pas',
   Markdown4D.Fmx.Viewer in '..\Source\Fmx\Markdown4D.Fmx.Viewer.pas',
+  Markdown4D.Fmx.PdfRasterizer in '..\Source\Fmx\Markdown4D.Fmx.PdfRasterizer.pas',
+  Markdown4D.Fmx.PdfRasterizer.Tests in 'Markdown4D.Fmx.PdfRasterizer.Tests.pas',
+  Markdown4D.Tests.PdfReader in 'Markdown4D.Tests.PdfReader.pas',
   Markdown4D.Fmx.Render.Tests in 'Markdown4D.Fmx.Render.Tests.pas',
   Markdown4D.Fmx.Viewer.Tests in 'Markdown4D.Fmx.Viewer.Tests.pas',
   Markdown4D.Fmx.Wedge.Tests in 'Markdown4D.Fmx.Wedge.Tests.pas',

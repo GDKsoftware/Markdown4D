@@ -136,5 +136,13 @@ contains
   Markdown4D.AutoScroll.Icon in '..\Source\Layout\Markdown4D.AutoScroll.Icon.pas',
   Markdown4D.AutoScroll.Cursors in '..\Source\Layout\Markdown4D.AutoScroll.Cursors.pas',
   Markdown4D.Viewer.ScrollBar in '..\Source\Layout\Markdown4D.Viewer.ScrollBar.pas',
-  Markdown4D.Viewer.Shared in '..\Source\Layout\Markdown4D.Viewer.Shared.pas';
+  Markdown4D.Viewer.Shared in '..\Source\Layout\Markdown4D.Viewer.Shared.pas',
+  Markdown4D.Export.Pdf.Geometry in '..\Source\Layout\Markdown4D.Export.Pdf.Geometry.pas',
+  Markdown4D.Export.Pdf.Errors in '..\Source\Layout\Markdown4D.Export.Pdf.Errors.pas',
+  Markdown4D.Export.Pdf.Interfaces in '..\Source\Layout\Markdown4D.Export.Pdf.Interfaces.pas',
+  Markdown4D.Export.Pagination in '..\Source\Layout\Markdown4D.Export.Pagination.pas',
+  Markdown4D.Export.ScaledPainter in '..\Source\Layout\Markdown4D.Export.ScaledPainter.pas',
+  Markdown4D.Export.Pdf.Writer in '..\Source\Layout\Markdown4D.Export.Pdf.Writer.pas',
+  Markdown4D.Export.ImageWait in '..\Source\Layout\Markdown4D.Export.ImageWait.pas',
+  Markdown4D.Export.Pdf in '..\Source\Layout\Markdown4D.Export.Pdf.pas';
 end.

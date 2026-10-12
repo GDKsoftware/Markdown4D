@@ -27,6 +27,8 @@ type
     FPreviewPreviousNeedle: string;
     FPreviewLayoutCount: Integer;
     FPreviewMatchIndex: Integer;
+    FExportedPdfFileName: string;
+    FPdfExportError: string;
     function GetEditorText: string;
     procedure SetEditorText(const Value: string);
     function MergeEditorText(const Value: string): Boolean;
@@ -39,6 +41,7 @@ type
     function SaveEditState: IMarkdownEditorState;
     procedure LoadEditState(const State: IMarkdownEditorState);
     procedure FlushPreview;
+    procedure ExportPreviewToPdf(const FileName: string);
     procedure EditorFindNext(const Needle: string);
     function EditorFindMatchCount(const Needle: string): Integer;
     function EditorFindMatchIndex(const Needle: string): Integer;
@@ -64,6 +67,8 @@ type
     property PreviewLayouts: Integer read FPreviewLayoutCount write FPreviewLayoutCount;
     property PreviewMatchIndex: Integer read FPreviewMatchIndex write FPreviewMatchIndex;
     property VisibleLine: Integer read FFirstVisibleSourceLine write FFirstVisibleSourceLine;
+    property ExportedPdfFileName: string read FExportedPdfFileName;
+    property PdfExportError: string read FPdfExportError write FPdfExportError;
   end;
 
   // Records what the controller asked the chrome to do and replays canned
@@ -86,6 +91,9 @@ type
     FStatusWords: string;
     FStatusCharacters: string;
     FStatusCount: Integer;
+    FPdfFileName: string;
+    FSuggestedPdfName: string;
+    FPdfPromptCount: Integer;
     procedure RebuildTabs;
     procedure SetDocumentTitle(const Name: string);
     procedure SetStatus(const PositionText, WordsText, CharactersText: string);
@@ -103,6 +111,7 @@ type
     function PromptOpenFile(out FileName: string): Boolean;
     function PromptSaveFile(const SuggestedName: string; out FileName: string): Boolean;
     function PromptExportHtml(const SuggestedName: string; out FileName: string): Boolean;
+    function PromptExportPdf(const SuggestedName: string; out FileName: string): Boolean;
     function ConfirmClose: TPadCloseChoice;
     function ConfirmCloseDocument(const DocName: string): TPadCloseChoice;
     function ConfirmSaveOverChangedFile(const DocName: string): TPadConflictChoice;
@@ -129,6 +138,9 @@ type
     property StatusWords: string read FStatusWords;
     property StatusCharacters: string read FStatusCharacters;
     property StatusCount: Integer read FStatusCount;
+    property PdfFileName: string read FPdfFileName write FPdfFileName;
+    property SuggestedPdfName: string read FSuggestedPdfName;
+    property PdfPromptCount: Integer read FPdfPromptCount;
   end;
 
   [TestFixture]
@@ -140,6 +152,8 @@ type
       CountedText = 'aa bb aa';
       CountedTextCharacters = '8 characters';
       CountedTextWords = '3 words';
+      ChosenPdfFileName = 'C:\Exports\notes.pdf';
+      LockedFileMessage = 'The file is in use';
     var
       FEditorView: TFakeEditorView;
       FShell: TFakeShell;
@@ -241,6 +255,18 @@ type
 
     [Test]
     procedure ApplyDiskText_RefreshesStatusOnNextTick;
+
+    [Test]
+    procedure ExportPdf_Confirmed_FlushesPreviewAndExportsToChosenFile;
+
+    [Test]
+    procedure ExportPdf_OpenDocument_SuggestsDocumentNameWithPdfExtension;
+
+    [Test]
+    procedure ExportPdf_Cancelled_ExportsNothingAndShowsNoError;
+
+    [Test]
+    procedure ExportPdf_ExportFails_ReportsSaveError;
   end;
 
 implementation
@@ -324,6 +350,14 @@ end;
 procedure TFakeEditorView.FlushPreview;
 begin
   Inc(FFlushCount);
+end;
+
+procedure TFakeEditorView.ExportPreviewToPdf(const FileName: string);
+begin
+  if FPdfExportError <> '' then
+    raise EInOutError.Create(FPdfExportError);
+
+  FExportedPdfFileName := FileName;
 end;
 
 procedure TFakeEditorView.EditorFindNext(const Needle: string);
@@ -497,6 +531,14 @@ function TFakeShell.PromptExportHtml(const SuggestedName: string; out FileName: 
 begin
   FileName := '';
   Result := False;
+end;
+
+function TFakeShell.PromptExportPdf(const SuggestedName: string; out FileName: string): Boolean;
+begin
+  Inc(FPdfPromptCount);
+  FSuggestedPdfName := SuggestedName;
+  FileName := FPdfFileName;
+  Result := (FPdfFileName <> '');
 end;
 
 function TFakeShell.ConfirmClose: TPadCloseChoice;
@@ -963,6 +1005,54 @@ begin
   Assert.AreEqual(0, FView.EditorCaret);
   Assert.AreEqual('42 characters', FShell.StatusCharacters);
   Assert.AreEqual('8 words', FShell.StatusWords);
+end;
+
+procedure TPadControllerTests.ExportPdf_Confirmed_FlushesPreviewAndExportsToChosenFile;
+begin
+  OpenSampleFile;
+  const FlushesBefore = FEditorView.FlushCount;
+  FShell.PdfFileName := ChosenPdfFileName;
+
+  FController.ExportPdf;
+
+  Assert.AreEqual(FlushesBefore + 1, FEditorView.FlushCount);
+  Assert.AreEqual(ChosenPdfFileName, FEditorView.ExportedPdfFileName);
+  Assert.AreEqual(0, FShell.SaveErrorCount);
+end;
+
+procedure TPadControllerTests.ExportPdf_OpenDocument_SuggestsDocumentNameWithPdfExtension;
+begin
+  OpenSampleFile;
+  const DocumentName = TPath.GetFileName(FFileName);
+  const Expected = TPath.ChangeExtension(DocumentName, '.pdf');
+
+  FController.ExportPdf;
+
+  Assert.AreEqual(Expected, FShell.SuggestedPdfName);
+end;
+
+procedure TPadControllerTests.ExportPdf_Cancelled_ExportsNothingAndShowsNoError;
+begin
+  OpenSampleFile;
+  FShell.PdfFileName := '';
+
+  FController.ExportPdf;
+
+  Assert.AreEqual(1, FShell.PdfPromptCount);
+  Assert.AreEqual('', FEditorView.ExportedPdfFileName);
+  Assert.AreEqual(0, FShell.SaveErrorCount);
+end;
+
+procedure TPadControllerTests.ExportPdf_ExportFails_ReportsSaveError;
+begin
+  OpenSampleFile;
+  FShell.PdfFileName := ChosenPdfFileName;
+  FEditorView.PdfExportError := LockedFileMessage;
+
+  FController.ExportPdf;
+
+  Assert.AreEqual(1, FShell.SaveErrorCount);
+  Assert.AreEqual('', FEditorView.ExportedPdfFileName);
 end;
 
 end.

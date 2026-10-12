@@ -93,6 +93,7 @@ type
     procedure ExecuteFindPrevious;
     procedure UpdatePreviewFindCount;
     procedure ExportHtml;
+    procedure ExportPdf;
     procedure CopyHtml;
     function QueryClose: Boolean;
 
@@ -666,6 +667,30 @@ begin
 
   const Html = TMarkdownHtmlExport.BuildDocument(FEditor.EditorText, Title, FShell.DarkThemeActive);
   TFile.WriteAllText(FileName, Html, TEncoding.UTF8);
+end;
+
+// The preview prints what the editor holds right now, also in editor-only mode
+// where it may lag behind.
+procedure TPadController.ExportPdf;
+begin
+  FEditor.FlushPreview;
+
+  var Title := UntitledName;
+  if FActiveDoc <> nil then
+    Title := FActiveDoc.DisplayName;
+
+  const SuggestedName = TPath.ChangeExtension(Title, '.' + PdfExtension);
+
+  var FileName: string;
+  if not FShell.PromptExportPdf(SuggestedName, FileName) then
+    Exit;
+
+  try
+    FEditor.ExportPreviewToPdf(FileName);
+  except
+    on E: Exception do
+      FShell.ShowSaveError(FileName, E.Message);
+  end;
 end;
 
 procedure TPadController.CopyHtml;

@@ -35,6 +35,12 @@ type
     procedure NewCommand_InvokesNewDocument;
 
     [Test]
+    procedure ExportPdfCommand_InvokesExportPdf;
+
+    [Test]
+    procedure ExportPdfCommand_FollowsExportHtmlInFileWithShortcut;
+
+    [Test]
     procedure BoldCommand_InvokesFormatWithBold;
 
     [Test]
@@ -88,6 +94,7 @@ begin
   Result.CloseDocument := procedure begin FFired := 'Close'; end;
   Result.NextTab := procedure begin FFired := 'NextTab'; end;
   Result.ExportHtml := procedure begin FFired := 'Export'; end;
+  Result.ExportPdf := procedure begin FFired := 'ExportPdf'; end;
   Result.CopyHtml := procedure begin FFired := 'CopyHtml'; end;
   Result.ViewEditorOnly := procedure begin FFired := 'ViewEditor'; end;
   Result.ViewSplit := procedure begin FFired := 'ViewSplit'; end;
@@ -127,7 +134,32 @@ end;
 procedure TPadCommandSetTests.Register_AddsEveryCommand;
 begin
   TPadCommandSet.Register(FRegistry, BuildActions);
-  Assert.AreEqual(35, FRegistry.Count);
+  Assert.AreEqual(36, FRegistry.Count);
+end;
+
+procedure TPadCommandSetTests.ExportPdfCommand_InvokesExportPdf;
+begin
+  TPadCommandSet.Register(FRegistry, BuildActions);
+  Invoke(CmdExportPdfName);
+  Assert.AreEqual('ExportPdf', FFired);
+end;
+
+procedure TPadCommandSetTests.ExportPdfCommand_FollowsExportHtmlInFileWithShortcut;
+begin
+  TPadCommandSet.Register(FRegistry, BuildActions);
+
+  const Commands = FRegistry.Commands;
+  var PdfIndex := -1;
+  for var Index := 0 to High(Commands) do
+  begin
+    if Commands[Index].Name = CmdExportPdfName then
+      PdfIndex := Index;
+  end;
+
+  Assert.IsTrue(PdfIndex > 0, Format('The palette has no command called "%s" after another command', [CmdExportPdfName]));
+  Assert.AreEqual(CatFile, Commands[PdfIndex].Category);
+  Assert.AreEqual('Ctrl+Shift+P', Commands[PdfIndex].ShortcutText);
+  Assert.AreEqual(CmdExportName, Commands[PdfIndex - 1].Name);
 end;
 
 procedure TPadCommandSetTests.NewCommand_InvokesNewDocument;

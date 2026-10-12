@@ -69,6 +69,7 @@ type
       CopyButtonStrokeWidth = 1.0;
       CopyFeedbackMilliseconds = 1200;
       MenuSeparatorCaption = '-';
+      ExportImagePumpMilliseconds = 25;
     var
       FLifetime: IMarkdownViewerLifetime;
       FImages: TMarkdownViewerImageSettings;
@@ -141,6 +142,9 @@ type
     procedure StoreLoadedImage(const Source: string; const Graphic: TGraphic);
     function ResolveLoadedImage(const Source: string): TGraphic;
     function IsImageBroken(const Source: string): Boolean;
+    procedure RequestImagesForExport(const Sources: TArray<string>);
+    function AreExportImagesSettled(const Sources: TArray<string>): Boolean;
+    procedure PumpForExport;
     procedure RenderToBuffer;
     procedure EnsureBufferSize;
     procedure ScrollToBottom;
@@ -252,6 +256,12 @@ type
     // rendered from, so an editor can put its own selection on those same
     // characters before a formatting command runs.
     function TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean;
+    // Writes the current text as a PDF on A4, always in the built-in light
+    // theme at 100 percent, whatever Theme and Zoom say. Images of the
+    // document are loaded first; one that has not arrived within ten seconds
+    // shows as a frame with a cross.
+    procedure ExportToPdf(const Stream: TStream); overload;
+    procedure ExportToPdf(const FileName: string); overload;
     property Theme: TMarkdownTheme read FTheme write SetTheme;
     property ContentHeight: Integer read GetContentHeight;
     property ScrollOffset: Single read GetScrollOffset write SetScrollPosition;
@@ -324,7 +334,10 @@ uses
   Markdown4D.Layout.HitTest,
   Markdown4D.Layout.Renderer,
   Markdown4D.Viewer.Shared,
-  Markdown4D.Vcl.ScrollBarTheme;
+  Markdown4D.Vcl.ScrollBarTheme,
+  Markdown4D.Export.Pdf,
+  Markdown4D.Export.Pdf.Interfaces,
+  Markdown4D.Vcl.PdfRasterizer;
 
 
 class constructor TMarkdownViewer.Create;
@@ -1781,6 +1794,52 @@ end;
 function TMarkdownViewer.TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean;
 begin
   Result := FModel.TryGetSelectionSourceSegment(Segment);
+end;
+
+procedure TMarkdownViewer.ExportToPdf(const Stream: TStream);
+begin
+  const Rasterizer: IMarkdownPdfPageRasterizer = TMarkdownVclPdfRasterizer.Create(ResolveLoadedImage);
+
+  TMarkdownPdfExporter.ExportWithImages(Text, Rasterizer, Stream,
+    procedure(Sources: TArray<string>)
+    begin
+      RequestImagesForExport(Sources);
+    end,
+    function(Sources: TArray<string>): Boolean
+    begin
+      Result := AreExportImagesSettled(Sources);
+    end,
+    procedure
+    begin
+      PumpForExport;
+    end);
+end;
+
+procedure TMarkdownViewer.ExportToPdf(const FileName: string);
+begin
+  const Buffer = TMemoryStream.Create;
+  try
+    ExportToPdf(Buffer);
+    Buffer.SaveToFile(FileName);
+  finally
+    Buffer.Free;
+  end;
+end;
+
+procedure TMarkdownViewer.RequestImagesForExport(const Sources: TArray<string>);
+begin
+  FModel.RequestImages(Sources);
+  ResolvePendingImages;
+end;
+
+function TMarkdownViewer.AreExportImagesSettled(const Sources: TArray<string>): Boolean;
+begin
+  Result := FModel.AreImagesSettled(Sources);
+end;
+
+procedure TMarkdownViewer.PumpForExport;
+begin
+  CheckSynchronize(ExportImagePumpMilliseconds);
 end;
 
 end.

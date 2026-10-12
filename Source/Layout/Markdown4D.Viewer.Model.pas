@@ -103,6 +103,7 @@ type
     function TryCaptureSelection(out Selection: TSelectionAnchors): Boolean;
     function TryRestoreSelection(const Selection: TSelectionAnchors): Boolean;
     procedure RegisterImageSlots;
+    procedure RequestImage(const Source: string);
     function TryFindTextRunBounds(out FirstIndex, LastIndex: Integer): Boolean;
     function TryGetEverythingRange(out Range: TTextRange): Boolean;
     function IsEverythingSelected: Boolean;
@@ -200,6 +201,12 @@ type
     // points at to the top of the view. The anchor may be percent-encoded.
     function TryGetAnchorOffset(const Anchor: string; out Offset: Single): Boolean;
     function PendingImageSources: TArray<string>;
+    // Asks for images the layout of the preview may not have shown yet, as an
+    // export does while the preview is hidden. Sources already known keep their
+    // state; the others become pending.
+    procedure RequestImages(const Sources: TArray<string>);
+    // True once every one of the sources has loaded or failed.
+    function AreImagesSettled(const Sources: TArray<string>): Boolean;
     procedure NotifyImageArrived(const Source: string; const Size: TLayoutSizeF);
     procedure NotifyImageFailed(const Source: string);
     function ImageSlotState(const Source: string): TMarkdownImageSlotState;
@@ -981,6 +988,41 @@ begin
   end;
 end;
 
+procedure TMarkdownViewerModel.RequestImages(const Sources: TArray<string>);
+begin
+  for var Source in Sources do
+  begin
+    RequestImage(Source);
+  end;
+end;
+
+procedure TMarkdownViewerModel.RequestImage(const Source: string);
+begin
+  if FImageSlots.ContainsKey(Source) then
+    Exit;
+
+  var Slot := Default(TImageSlot);
+  Slot.State := TMarkdownImageSlotState.Requested;
+  FImageSlots.Add(Source, Slot);
+  FImageSlotOrder.Add(Source);
+end;
+
+function TMarkdownViewerModel.AreImagesSettled(const Sources: TArray<string>): Boolean;
+begin
+  for var Source in Sources do
+  begin
+    const State = ImageSlotState(Source);
+    const IsSettled = (State in [TMarkdownImageSlotState.Loaded, TMarkdownImageSlotState.Failed]);
+    if not IsSettled then
+    begin
+      Result := False;
+      Exit;
+    end;
+  end;
+
+  Result := True;
+end;
+
 procedure TMarkdownViewerModel.NotifyImageArrived(const Source: string; const Size: TLayoutSizeF);
 begin
   var Slot: TImageSlot;
@@ -1491,16 +1533,8 @@ begin
   for var Index := 0 to FDisplayList.ItemCount - 1 do
   begin
     var Image: IDisplayImage;
-    if not Supports(FDisplayList.Items[Index], IDisplayImage, Image) then
-      Continue;
-
-    if FImageSlots.ContainsKey(Image.Source) then
-      Continue;
-
-    var Slot := Default(TImageSlot);
-    Slot.State := TMarkdownImageSlotState.Requested;
-    FImageSlots.Add(Image.Source, Slot);
-    FImageSlotOrder.Add(Image.Source);
+    if Supports(FDisplayList.Items[Index], IDisplayImage, Image) then
+      RequestImage(Image.Source);
   end;
 end;
 

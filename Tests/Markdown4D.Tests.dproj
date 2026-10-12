@@ -199,6 +199,16 @@
         <DCCReference Include="Markdown4D.Text.UrlSafety.Tests.pas"/>
         <DCCReference Include="Markdown4D.Viewer.ImageSettings.Tests.pas"/>
         <DCCReference Include="StreamingMarkdown.Demo.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Tests.TallBlockOverride.pas"/>
+        <DCCReference Include="Markdown4D.Tests.RecordingPainter.pas"/>
+        <DCCReference Include="Markdown4D.Tests.FakePdfRasterizer.pas"/>
+        <DCCReference Include="Markdown4D.Tests.PdfReader.pas"/>
+        <DCCReference Include="Markdown4D.Export.Pagination.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Export.ScaledPainter.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Export.Pdf.Writer.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Export.ImageWait.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Export.Pdf.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Vcl.PdfRasterizer.Tests.pas"/>
         <DCCReference Include="Markdown4D.Tests.Arrays.pas"/>
         <DCCReference Include="Markdown4D.Tests.Math.pas"/>
         <DCCReference Include="Markdown4D.Tests.Runner.pas"/>
