@@ -394,13 +394,21 @@ type
 
     [Test]
     procedure TryGetDisclosureAt_PointBelowSummary_ReturnsFalse;
+
+    [Test]
+    procedure SourceLineToScrollOffset_BlocksRegroupedByProcessor_IsTopOfThatLine;
+
+    [Test]
+    procedure SourceLineToScrollOffset_NarrowerViewport_FollowsTheNewLayout;
   end;
 
 implementation
 
 uses
   System.Math,
+  Markdown4D.Ast,
   Markdown4D.Ast.Interfaces,
+  Markdown4D.Extensions.Interfaces,
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Layout.FakeMeasurer,
   Markdown4D.Tests.FailingExtensions,
@@ -436,6 +444,47 @@ const
 begin
   Context.Canvas.FillRectangle(TLayoutRectF.Create(0, Top, Context.Width, Top + BlockHeight), $FF000000);
   Result := BlockHeight;
+end;
+
+type
+  // Wraps the first two blocks of the document in a block quote, so the
+  // document the viewer lays out has fewer top-level blocks than a fresh parse
+  // of the same text.
+  TRegroupingDocumentProcessor = class(TInterfacedObject, IMarkdownDocumentProcessor)
+  public
+    const
+      ProcessorName = 'regrouping-processor';
+    procedure Process(const Document: IMarkdownDocument);
+  end;
+
+procedure TRegroupingDocumentProcessor.Process(const Document: IMarkdownDocument);
+begin
+  const Root = Document as TMarkdownAstNode;
+  const HasTwoBlocks = (Root.ChildCount >= 2);
+  if not HasTwoBlocks then
+    Exit;
+
+  var Blocks: TArray<IMarkdownNode> := nil;
+  for var Index := 0 to Root.ChildCount - 1 do
+  begin
+    Blocks := Blocks + [Root.GetChild(Index)];
+  end;
+
+  for var Index := Root.ChildCount - 1 downto 0 do
+  begin
+    Root.DeleteChild(Index);
+  end;
+
+  const Quote = TMarkdownAstNode.Create(TMarkdownNodeKind.BlockQuote);
+  Quote.SetSegment(TMarkdownSegment.Create(Blocks[0].Segment.StartOffset, Blocks[1].Segment.EndOffset));
+  Quote.AddChild(Blocks[0]);
+  Quote.AddChild(Blocks[1]);
+  Root.AddChild(Quote);
+
+  for var Index := 2 to High(Blocks) do
+  begin
+    Root.AddChild(Blocks[Index]);
+  end;
 end;
 
 procedure TMarkdownViewerModelTests.Setup;
@@ -1729,6 +1778,35 @@ begin
   Assert.IsTrue(Found, 'the first line is a summary');
 
   FModel.ToggleDisclosure(Key);
+end;
+
+procedure TMarkdownViewerModelTests.SourceLineToScrollOffset_BlocksRegroupedByProcessor_IsTopOfThatLine;
+begin
+  TLayoutDocumentProcessorRegistry.Register(TRegroupingDocumentProcessor.ProcessorName,
+    TRegroupingDocumentProcessor.Create);
+  try
+    FModel.SetViewport(DefaultWidth, DefaultHeight);
+    FModel.Text := 'one'#10#10'two'#10#10'three'#10#10'four';
+
+    const FourthParagraph = RunShowing('four');
+    AssertSingle(FourthParagraph.Bounds.Top, FModel.SourceLineToScrollOffset(6));
+  finally
+    TLayoutDocumentProcessorRegistry.Clear;
+  end;
+end;
+
+procedure TMarkdownViewerModelTests.SourceLineToScrollOffset_NarrowerViewport_FollowsTheNewLayout;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := WrappingMarkdown;
+  const WideOffset = FModel.SourceLineToScrollOffset(2);
+
+  FModel.SetViewport(WrapWidthCharacters * BaseCharWidth, DefaultHeight);
+  const NarrowOffset = FModel.SourceLineToScrollOffset(2);
+
+  const LastParagraph = RunShowing('omega');
+  Assert.IsTrue(NarrowOffset > WideOffset, 'the wrapped paragraph pushes the last line down');
+  AssertSingle(LastParagraph.Bounds.Top, NarrowOffset);
 end;
 
 function TMarkdownViewerModelTests.RunShowing(const Text: string): IDisplayTextRun;

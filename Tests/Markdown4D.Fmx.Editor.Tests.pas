@@ -49,6 +49,9 @@ type
       ManyLineCount = 40;
       PreviewWidth = 400;
       PreviewScrollTarget = 40;
+      LargePreviewZoom = 200;
+      ThirdParagraphLine = 2;
+      PixelTolerance = 0.5;
       ClickText = 'alpha';
       ClickX = 20.0;
       ClickY = 8.0;
@@ -62,6 +65,7 @@ type
       FClipboard: TFmxClipboardSwap;
     class function ManyLines(const Count: Integer): string; static;
     function NewOverflowingEditor: TTestableFmxEditor;
+    procedure LinkParagraphs(const Editor: TMarkdownEditor; const Viewer: TMarkdownViewer);
     procedure RecordAutoScrollChange(Sender: TObject);
     procedure RecordZoomChange(Sender: TObject);
     function NewClickRecordingEditor: TTestableFmxEditor;
@@ -178,6 +182,15 @@ type
 
     [Test]
     procedure PreviewScroll_AfterPreviewResize_TracksNewLayout;
+
+    [Test]
+    procedure ArrowDown_ToLineThePreviewDoesNotShow_ScrollsPreviewToThatLine;
+
+    [Test]
+    procedure EditorScrolledAwayFromCaret_PreviewFollowsTopLine;
+
+    [Test]
+    procedure EditorScroll_AfterCaretLineWasShown_PreviewFollowsTopLine;
 
     [Test]
     procedure ScrollBarDrag_ManyLines_AdvancesViewportWithoutMovingCaret;
@@ -752,6 +765,90 @@ begin
   finally
     Editor.Free;
   end;
+end;
+
+procedure TMarkdownFmxEditorTests.ArrowDown_ToLineThePreviewDoesNotShow_ScrollsPreviewToThatLine;
+begin
+  const Editor = TTestableFmxEditor.Create(nil);
+  try
+    const Viewer = TMarkdownViewer.Create(nil);
+    try
+      LinkParagraphs(Editor, Viewer);
+      Editor.CaretPosition := 0;
+
+      Editor.SimulateKeyDown(vkDown, #0, []);
+      Editor.SimulateKeyDown(vkDown, #0, []);
+
+      const CaretLineTop = Viewer.SourceLineToScrollOffset(ThirdParagraphLine);
+      const CaretLineBottom = Viewer.SourceLineToScrollOffset(ThirdParagraphLine + 1);
+      const ViewBottom = Viewer.ScrollOffset + Viewer.Height;
+      Assert.AreEqual(0, Editor.FirstVisibleSourceLine, 'the editor shows the line without scrolling');
+      Assert.IsTrue(CaretLineTop >= Viewer.ScrollOffset - PixelTolerance, 'the top of the caret line is in sight');
+      Assert.IsTrue(CaretLineBottom <= ViewBottom + PixelTolerance, 'the bottom of the caret line is in sight');
+    finally
+      Editor.DetachPreview;
+      Viewer.Free;
+    end;
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.EditorScrolledAwayFromCaret_PreviewFollowsTopLine;
+begin
+  const Editor = TTestableFmxEditor.Create(nil);
+  try
+    const Viewer = TMarkdownViewer.Create(nil);
+    try
+      LinkParagraphs(Editor, Viewer);
+      Editor.CaretPosition := Length(Editor.Text);
+
+      Editor.ScrollToSourceLine(0);
+
+      const TopLineOffset = Viewer.SourceLineToScrollOffset(0);
+      Assert.AreEqual(Double(TopLineOffset), Double(Viewer.ScrollOffset), PixelTolerance);
+    finally
+      Editor.DetachPreview;
+      Viewer.Free;
+    end;
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.EditorScroll_AfterCaretLineWasShown_PreviewFollowsTopLine;
+begin
+  const Editor = TTestableFmxEditor.Create(nil);
+  try
+    const Viewer = TMarkdownViewer.Create(nil);
+    try
+      LinkParagraphs(Editor, Viewer);
+      Editor.CaretPosition := 0;
+      Editor.SimulateKeyDown(vkDown, #0, []);
+      Editor.SimulateKeyDown(vkDown, #0, []);
+
+      Editor.ScrollToSourceLine(1);
+
+      const TopLineOffset = Viewer.SourceLineToScrollOffset(Editor.FirstVisibleSourceLine);
+      Assert.AreEqual(Double(TopLineOffset), Double(Viewer.ScrollOffset), PixelTolerance);
+    finally
+      Editor.DetachPreview;
+      Viewer.Free;
+    end;
+  finally
+    Editor.Free;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.LinkParagraphs(const Editor: TMarkdownEditor; const Viewer: TMarkdownViewer);
+begin
+  Editor.SetBounds(0, 0, PreviewWidth, ShortHeight);
+  Viewer.SetBounds(0, 0, PreviewWidth, ShortHeight);
+  Viewer.Zoom := LargePreviewZoom;
+
+  Editor.Text := TMarkdownTestPipelineHelpers.ManyParagraphs(ManyLineCount);
+  Editor.AttachPreview(Viewer);
+  Editor.FlushPreview;
 end;
 
 procedure TMarkdownFmxEditorTests.ScrollBarDrag_ManyLines_AdvancesViewportWithoutMovingCaret;

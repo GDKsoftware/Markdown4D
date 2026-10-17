@@ -22,7 +22,6 @@ uses
   FMX.Dialogs,
   Markdown4D.Toc,
   Markdown4D.Editor.Model,
-  Markdown4D.Editor.Sync,
   Markdown4D.Theme,
   Markdown4D.Fmx.Editor,
   Markdown4D.Fmx.Viewer,
