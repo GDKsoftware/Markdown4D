@@ -161,6 +161,23 @@ type
     function Shifted(const DeltaX, DeltaY: Single): IDisplayItem; override;
   end;
 
+  TDisplayDisclosure = class(TDisplayItem, IDisplayDisclosure)
+  private
+    FKey: Integer;
+    FIsOpen: Boolean;
+    FMarker: TLayoutRectF;
+    FColor: TLayoutColor;
+    function GetKey: Integer;
+    function GetIsOpen: Boolean;
+    function GetMarker: TLayoutRectF;
+    function GetColor: TLayoutColor;
+
+  public
+    constructor Create(const Bounds: TLayoutRectF; const Node: IMarkdownNode; const Key: Integer;
+      const IsOpen: Boolean; const Marker: TLayoutRectF; const Color: TLayoutColor);
+    function Shifted(const DeltaX, DeltaY: Single): IDisplayItem; override;
+  end;
+
   TMarkdownDisplayList = class(TInterfacedObject, IMarkdownDisplayList)
   private
     FItems: TArray<IDisplayItem>;
@@ -524,6 +541,45 @@ begin
   end;
 
   Result := TDisplayPolygon.Create(ShiftedBounds(DeltaX, DeltaY), FNode, Moved, FFillColor, FStrokeColor, FStrokeWidth);
+end;
+
+constructor TDisplayDisclosure.Create(const Bounds: TLayoutRectF; const Node: IMarkdownNode; const Key: Integer;
+  const IsOpen: Boolean; const Marker: TLayoutRectF; const Color: TLayoutColor);
+begin
+  inherited Create(TDisplayItemKind.Disclosure, Bounds, Node);
+
+  FKey := Key;
+  FIsOpen := IsOpen;
+  FMarker := Marker;
+  FColor := Color;
+end;
+
+function TDisplayDisclosure.GetKey: Integer;
+begin
+  Result := FKey;
+end;
+
+function TDisplayDisclosure.GetIsOpen: Boolean;
+begin
+  Result := FIsOpen;
+end;
+
+function TDisplayDisclosure.GetMarker: TLayoutRectF;
+begin
+  Result := FMarker;
+end;
+
+function TDisplayDisclosure.GetColor: TLayoutColor;
+begin
+  Result := FColor;
+end;
+
+function TDisplayDisclosure.Shifted(const DeltaX, DeltaY: Single): IDisplayItem;
+begin
+  const MovedMarker = TLayoutRectF.Create(FMarker.Left + DeltaX, FMarker.Top + DeltaY, FMarker.Right + DeltaX,
+    FMarker.Bottom + DeltaY);
+
+  Result := TDisplayDisclosure.Create(ShiftedBounds(DeltaX, DeltaY), FNode, FKey, FIsOpen, MovedMarker, FColor);
 end;
 
 constructor TMarkdownDisplayList.Create(const Items: TArray<IDisplayItem>; const Blocks: TArray<TLayoutBlockInfo>;

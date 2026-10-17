@@ -40,6 +40,10 @@ type
       FirstLineY = 10.0;
       SecondLineY = 33.0;
       ThirdLineY = 55.0;
+      SummaryText = 'More';
+      SectionContentText = 'Body';
+      ClosedSectionMarkdown = '<details>'#10'<summary>' + SummaryText + '</summary>'#10#10 + SectionContentText +
+        #10#10'</details>';
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
@@ -54,6 +58,7 @@ type
     procedure LoadImageDocument;
     function AllHighlightRects: TArray<TLayoutRectF>;
     function RunShowing(const Text: string): IDisplayTextRun;
+    procedure ToggleFirstDisclosure;
 
   public
     [Setup]
@@ -374,15 +379,32 @@ type
 
     [Test]
     procedure SetText_FailingDocumentProcessor_ReportsExtensionError;
+
+    [Test]
+    procedure ToggleDisclosure_ClosedSection_ShowsContent;
+
+    [Test]
+    procedure ToggleDisclosure_Twice_HidesContentAgain;
+
+    [Test]
+    procedure ToggleDisclosure_ClosingAtEnd_KeepsScrollInsideDocument;
+
+    [Test]
+    procedure SetText_AfterToggle_ShowsSectionsAsTheirTagsAsk;
+
+    [Test]
+    procedure TryGetDisclosureAt_PointBelowSummary_ReturnsFalse;
   end;
 
 implementation
 
 uses
+  System.Math,
   Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Layout.FakeMeasurer,
-  Markdown4D.Tests.FailingExtensions;
+  Markdown4D.Tests.FailingExtensions,
+  Markdown4D.Tests.DisplayList.Helpers;
 
 type
   // Stands in for the chart/mermaid overrides: claims every code block and
@@ -1639,6 +1661,74 @@ begin
       Result := Result + #10#10;
     Result := Result + Format('paragraph%d', [Index]);
   end;
+end;
+
+procedure TMarkdownViewerModelTests.ToggleDisclosure_ClosedSection_ShowsContent;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := ClosedSectionMarkdown;
+  const ShownBeforeToggle = TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText);
+  Assert.IsFalse(ShownBeforeToggle, 'a section starts closed');
+
+  ToggleFirstDisclosure;
+
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+end;
+
+procedure TMarkdownViewerModelTests.ToggleDisclosure_Twice_HidesContentAgain;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := ClosedSectionMarkdown;
+
+  ToggleFirstDisclosure;
+  ToggleFirstDisclosure;
+
+  Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+end;
+
+procedure TMarkdownViewerModelTests.ToggleDisclosure_ClosingAtEnd_KeepsScrollInsideDocument;
+begin
+  FModel.SetViewport(DefaultWidth, SmallHeight);
+  FModel.Text := '<details open>'#10'<summary>' + SummaryText + '</summary>'#10#10 + BuildTallMarkdown +
+    #10#10'</details>';
+  FModel.ScrollOffset := FModel.DisplayList.Height;
+  Assert.IsTrue(FModel.ScrollOffset > 0, 'the open section is taller than the view');
+
+  ToggleFirstDisclosure;
+
+  const MaxOffset = Max(Single(0), FModel.DisplayList.Height - SmallHeight);
+  AssertSingle(MaxOffset, FModel.ScrollOffset);
+end;
+
+procedure TMarkdownViewerModelTests.SetText_AfterToggle_ShowsSectionsAsTheirTagsAsk;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := ClosedSectionMarkdown;
+  ToggleFirstDisclosure;
+
+  FModel.Text := ClosedSectionMarkdown;
+
+  Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+end;
+
+procedure TMarkdownViewerModelTests.TryGetDisclosureAt_PointBelowSummary_ReturnsFalse;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := ClosedSectionMarkdown;
+
+  var Key: Integer;
+  const Found = FModel.TryGetDisclosureAt(TLayoutPointF.Create(DefaultWidth / 2, ThirdLineY), Key);
+
+  Assert.IsFalse(Found);
+end;
+
+procedure TMarkdownViewerModelTests.ToggleFirstDisclosure;
+begin
+  var Key: Integer;
+  const Found = FModel.TryGetDisclosureAt(TLayoutPointF.Create(DefaultWidth / 2, FirstLineY), Key);
+  Assert.IsTrue(Found, 'the first line is a summary');
+
+  FModel.ToggleDisclosure(Key);
 end;
 
 function TMarkdownViewerModelTests.RunShowing(const Text: string): IDisplayTextRun;

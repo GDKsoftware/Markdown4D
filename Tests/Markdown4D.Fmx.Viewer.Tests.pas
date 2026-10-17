@@ -40,6 +40,8 @@ type
       ClickMarkdown = 'alpha';
       LinkMarkdown = '[alpha](https://example.com)';
       DragDistance = 40.0;
+      SectionContentText = 'Body';
+      ClosedSectionMarkdown = '<details>'#10'<summary>More</summary>'#10#10 + SectionContentText + #10#10'</details>';
       ClipTestMarkdown =
         '# Top'#10#10 +
         'Filler paragraph number one with enough words to wrap across several lines of text at this width.'#10#10 +
@@ -191,6 +193,15 @@ type
 
     [Test]
     procedure Click_EndingAutoScroll_RaisesNoClick;
+
+    [Test]
+    procedure Click_OnSummary_OpensSection;
+
+    [Test]
+    procedure Click_OnSummaryOfOpenSection_ClosesIt;
+
+    [Test]
+    procedure Press_OnSummaryReleasedBelowIt_KeepsSectionClosed;
   end;
 
 implementation
@@ -200,7 +211,8 @@ uses
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Tests.Pipeline.Helpers,
   Markdown4D.Tests.FailingExtensions,
-  Markdown4D.Tests.FmxClipboard;
+  Markdown4D.Tests.FmxClipboard,
+  Markdown4D.Tests.DisplayList.Helpers;
 
 type
   // Widens MouseDown/MouseMove/MouseUp from protected to accessible-in-unit, so a
@@ -700,6 +712,42 @@ begin
 
   Assert.IsFalse(FViewer.IsAutoScrolling);
   Assert.AreEqual(0, FClickCount, 'The click that ends autoscroll is no click in the text');
+end;
+
+procedure TMarkdownFmxViewerTests.Click_OnSummary_OpensSection;
+begin
+  ShowClickMarkdown(ClosedSectionMarkdown);
+  const Center = FirstTextRunCenter;
+
+  PressAt(Center, []);
+  ReleaseAt(Center);
+
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(FViewer.DisplayList, SectionContentText));
+  Assert.AreEqual(0, FClickCount, 'A click on a summary is not a click in the text');
+end;
+
+procedure TMarkdownFmxViewerTests.Click_OnSummaryOfOpenSection_ClosesIt;
+begin
+  ShowClickMarkdown(ClosedSectionMarkdown);
+  const Center = FirstTextRunCenter;
+  PressAt(Center, []);
+  ReleaseAt(Center);
+
+  PressAt(Center, []);
+  ReleaseAt(Center);
+
+  Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(FViewer.DisplayList, SectionContentText));
+end;
+
+procedure TMarkdownFmxViewerTests.Press_OnSummaryReleasedBelowIt_KeepsSectionClosed;
+begin
+  ShowClickMarkdown(ClosedSectionMarkdown);
+  const Center = FirstTextRunCenter;
+
+  PressAt(Center, []);
+  ReleaseAt(TPointF.Create(Center.X, Center.Y + DragDistance));
+
+  Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(FViewer.DisplayList, SectionContentText));
 end;
 
 procedure TMarkdownFmxViewerTests.ShowClickMarkdown(const Markdown: string);

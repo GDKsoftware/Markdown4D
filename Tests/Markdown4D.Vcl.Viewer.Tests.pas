@@ -40,6 +40,8 @@ type
       ClickMarkdown = 'alpha';
       LinkMarkdown = '[alpha](https://example.com)';
       DragDistance = 40;
+      SectionContentText = 'Body';
+      ClosedSectionMarkdown = '<details>'#10'<summary>More</summary>'#10#10 + SectionContentText + #10#10'</details>';
     var
       FHostForm: TForm;
       FReportedSender: TObject;
@@ -150,6 +152,15 @@ type
 
     [Test]
     procedure Click_EndingAutoScroll_RaisesNoClick;
+
+    [Test]
+    procedure Click_OnSummary_OpensSection;
+
+    [Test]
+    procedure Click_OnSummaryOfOpenSection_ClosesIt;
+
+    [Test]
+    procedure Press_OnSummaryReleasedBelowIt_KeepsSectionClosed;
   end;
 
 implementation
@@ -163,7 +174,8 @@ uses
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Tests.Pipeline.Helpers,
   Markdown4D.Tests.FailingExtensions,
-  Markdown4D.Tests.VclClipboard;
+  Markdown4D.Tests.VclClipboard,
+  Markdown4D.Tests.DisplayList.Helpers;
 
 function TTestableVclViewer.SimulateWheel(const WheelDelta: Integer; const Shift: TShiftState): Boolean;
 begin
@@ -587,6 +599,42 @@ begin
 
   Assert.IsFalse(Viewer.IsAutoScrolling);
   Assert.AreEqual(0, FClickCount, 'The click that ends autoscroll is no click in the text');
+end;
+
+procedure TMarkdownVclViewerTests.Click_OnSummary_OpensSection;
+begin
+  const Viewer = NewClickRecordingViewer(ClosedSectionMarkdown);
+  const Center = FirstTextRunCenter(Viewer);
+
+  Viewer.SendMouse(WM_LBUTTONDOWN, Center.X, Center.Y);
+  Viewer.SendMouse(WM_LBUTTONUP, Center.X, Center.Y);
+
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(Viewer.DisplayList, SectionContentText));
+  Assert.AreEqual(0, FClickCount, 'A click on a summary is not a click in the text');
+end;
+
+procedure TMarkdownVclViewerTests.Click_OnSummaryOfOpenSection_ClosesIt;
+begin
+  const Viewer = NewClickRecordingViewer(ClosedSectionMarkdown);
+  const Center = FirstTextRunCenter(Viewer);
+  Viewer.SendMouse(WM_LBUTTONDOWN, Center.X, Center.Y);
+  Viewer.SendMouse(WM_LBUTTONUP, Center.X, Center.Y);
+
+  Viewer.SendMouse(WM_LBUTTONDOWN, Center.X, Center.Y);
+  Viewer.SendMouse(WM_LBUTTONUP, Center.X, Center.Y);
+
+  Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(Viewer.DisplayList, SectionContentText));
+end;
+
+procedure TMarkdownVclViewerTests.Press_OnSummaryReleasedBelowIt_KeepsSectionClosed;
+begin
+  const Viewer = NewClickRecordingViewer(ClosedSectionMarkdown);
+  const Center = FirstTextRunCenter(Viewer);
+
+  Viewer.SendMouse(WM_LBUTTONDOWN, Center.X, Center.Y);
+  Viewer.SendMouse(WM_LBUTTONUP, Center.X, Center.Y + DragDistance);
+
+  Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(Viewer.DisplayList, SectionContentText));
 end;
 
 function TMarkdownVclViewerTests.NewClickRecordingViewer(const Markdown: string): TTestableVclViewer;

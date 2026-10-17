@@ -63,6 +63,14 @@ type
     procedure ExtensionFailed(const Extension: string; const Error: Exception);
   end;
 
+  // Whether a <details> section is open. Key is the source offset of the block
+  // that opens the section, which stays the same from one parse of the same
+  // text to the next; OpenByDefault says whether the tag carries `open`.
+  IMarkdownDisclosureState = interface
+    ['{8F6A980F-3426-47D6-A83C-DC7E1AB9CC64}']
+    function IsDisclosureOpen(const Key: Integer; const OpenByDefault: Boolean): Boolean;
+  end;
+
   IPainter = interface(ITextMeasurer)
     ['{6E2D8B47-9A15-4C60-B3F7-52D0C8E19A64}']
     procedure DrawTextRun(const TopLeft: TLayoutPointF; const Text: string; const Font: TMarkdownFontStyle;

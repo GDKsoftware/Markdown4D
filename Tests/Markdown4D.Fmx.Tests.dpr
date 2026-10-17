@@ -16,6 +16,7 @@ uses
   Markdown4D.Tests.FmxClipboard in 'Markdown4D.Tests.FmxClipboard.pas',
   Markdown4D.Fmx.Design.Tests in 'Markdown4D.Fmx.Design.Tests.pas',
   Markdown4D.Tests.Pipeline.Helpers in 'Markdown4D.Tests.Pipeline.Helpers.pas',
+  Markdown4D.Tests.DisplayList.Helpers in 'Markdown4D.Tests.DisplayList.Helpers.pas',
   Markdown4D.Tests.FailingExtensions in 'Markdown4D.Tests.FailingExtensions.pas',
   Markdown4D.Tests.Fmx.BitmapHelpers in 'Markdown4D.Tests.Fmx.BitmapHelpers.pas',
   Markdown4D.Tests.Arrays in 'Markdown4D.Tests.Arrays.pas',

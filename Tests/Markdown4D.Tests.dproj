@@ -96,6 +96,7 @@
         <DCCReference Include="Markdown4D.Layout.Engine.Tests.pas"/>
         <DCCReference Include="Markdown4D.Html.Subset.Tests.pas"/>
         <DCCReference Include="Markdown4D.Layout.HitTest.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Layout.Disclosure.Tests.pas"/>
         <DCCReference Include="Markdown4D.Layout.MeasureCache.Tests.pas"/>
         <DCCReference Include="Markdown4D.Layout.ResizePacer.Tests.pas"/>
         <DCCReference Include="Markdown4D.Layout.TextAnchor.Tests.pas"/>
@@ -127,6 +128,7 @@
         <DCCReference Include="Markdown4D.Vcl.ScrollBarTheme.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Image.Tests.pas"/>
         <DCCReference Include="Markdown4D.Tests.Pipeline.Helpers.pas"/>
+        <DCCReference Include="Markdown4D.Tests.DisplayList.Helpers.pas"/>
         <DCCReference Include="Markdown4D.Tests.FailingExtensions.pas"/>
         <DCCReference Include="Markdown4D.Tests.Vcl.BitmapHelpers.pas"/>
         <DCCReference Include="Markdown4D.Charts.Corpus.pas"/>

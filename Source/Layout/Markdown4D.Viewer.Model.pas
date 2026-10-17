@@ -35,7 +35,8 @@ type
   TMarkdownExtensionErrorEvent = procedure(const Sender: TObject; const Extension: string;
     const Error: Exception) of object;
 
-  TMarkdownViewerModel = class(TNoRefCountObject, IMarkdownImageSizeProvider, IMarkdownExtensionErrorSink)
+  TMarkdownViewerModel = class(TNoRefCountObject, IMarkdownImageSizeProvider, IMarkdownExtensionErrorSink,
+    IMarkdownDisclosureState)
   private
     type
       TTextPosition = TMarkdownTextPosition;
@@ -94,6 +95,9 @@ type
       FOnExtensionError: TMarkdownExtensionErrorEvent;
       FZoom: Integer;
       FZoomedTheme: TMarkdownTheme;
+      // The <details> sections the reader opened or closed, by the source
+      // offset of their opening block; every other section shows as its tag asks.
+      FToggledDisclosures: TList<Integer>;
     procedure Relayout;
     function ZoomFactor: Single;
     function LayoutTheme: TMarkdownTheme;
@@ -243,6 +247,13 @@ type
     function TryGetScrollTarget(const Match: TMarkdownFoundRange; out Offset: Single): Boolean;
     function CodeBlockRegions: TArray<TMarkdownCodeBlockRegion>;
     function TryGetCodeBlockAt(const Point: TLayoutPointF; out Region: TMarkdownCodeBlockRegion): Boolean;
+    // The <details> section whose summary line is under the point. Key
+    // identifies the section to ToggleDisclosure.
+    function TryGetDisclosureAt(const Point: TLayoutPointF; out Key: Integer): Boolean;
+    // Opens a closed section or closes an open one, and lays out again. Setting
+    // Text shows every section as its tag asks once more.
+    procedure ToggleDisclosure(const Key: Integer);
+    function IsDisclosureOpen(const Key: Integer; const OpenByDefault: Boolean): Boolean;
     property Text: string read GetText write SetText;
     property PendingText: string read GetPendingText;
     property FullText: string read GetFullText;
@@ -271,6 +282,7 @@ uses
   Markdown4D.Defines,
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Layout.Engine,
+  Markdown4D.Layout.HitTest,
   Markdown4D.Layout.SourceMapping,
   Markdown4D.Layout.SelectedMarkdown,
   Markdown4D.Toc,
@@ -301,10 +313,12 @@ begin
   FZoom := TMarkdownZoom.DefaultPercent;
   FImageSlots := TDictionary<string, TImageSlot>.Create;
   FImageSlotOrder := TList<string>.Create;
+  FToggledDisclosures := TList<Integer>.Create;
 end;
 
 destructor TMarkdownViewerModel.Destroy;
 begin
+  FToggledDisclosures.Free;
   FZoomedTheme.Free;
   FImageSlotOrder.Free;
   FImageSlots.Free;
@@ -1369,6 +1383,39 @@ begin
   Result := False;
 end;
 
+function TMarkdownViewerModel.TryGetDisclosureAt(const Point: TLayoutPointF; out Key: Integer): Boolean;
+begin
+  Key := 0;
+  Result := False;
+  if FDisplayList = nil then
+    Exit;
+
+  var Disclosure: IDisplayDisclosure;
+  Result := TMarkdownHitTester.TryFindDisclosure(FDisplayList, Point, Disclosure);
+  if Result then
+    Key := Disclosure.Key;
+end;
+
+procedure TMarkdownViewerModel.ToggleDisclosure(const Key: Integer);
+begin
+  const WasToggled = FToggledDisclosures.Contains(Key);
+  if WasToggled then
+    FToggledDisclosures.Remove(Key)
+  else
+    FToggledDisclosures.Add(Key);
+
+  RefreshLayout;
+  // Closing a section near the end can leave the view scrolled past the
+  // shorter document.
+  SetScrollOffset(FScrollOffset);
+end;
+
+function TMarkdownViewerModel.IsDisclosureOpen(const Key: Integer; const OpenByDefault: Boolean): Boolean;
+begin
+  const IsToggled = FToggledDisclosures.Contains(Key);
+  Result := OpenByDefault xor IsToggled;
+end;
+
 function TMarkdownViewerModel.CodeBlockRegions: TArray<TMarkdownCodeBlockRegion>;
 begin
   Result := [];
@@ -1417,7 +1464,7 @@ begin
   RefreshZoomedTheme;
 
   FDisplayList := TMarkdownLayoutEngine.LayoutDocument(Document, FViewportWidth, LayoutTheme, FMeasurer, Self,
-                                                       Self);
+                                                       Self, Self);
   FLastLayoutMilliseconds := Watch.ElapsedMilliseconds;
   Inc(FLayoutCount);
 
@@ -1707,6 +1754,7 @@ begin
   FText := Value;
   FPendingMarkdown := '';
   FDirty := False;
+  FToggledDisclosures.Clear;
   ClearSelection;
   Relayout;
 end;

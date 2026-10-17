@@ -593,6 +593,17 @@ would show it with the styling removed. The translation is implemented in
 `Markdown4D.Html.Subset` and cached on the AST node, since layout runs again
 on every resize and every streamed chunk.
 
+A `details` section folds as it does on GitHub when it is written the way
+GitHub needs it: the opening tag and its `summary`, a blank line, the markdown
+of the section, a blank line and `</details>`. It starts closed, or open when
+the tag carries `open`, and a click on the summary line opens or closes it.
+Setting `Text` shows every section as its tag asks again. Sections nest, and
+fold inside block quotes and list items too. A section written as one HTML
+block, closing tag included, shows all of its content. Without the viewer,
+`TMarkdownLayoutEngine.LayoutDocument` and `UpdateLayout` take an
+`IMarkdownDisclosureState` that says which sections are open; without one,
+each section shows as its tag asks.
+
 A tag inside a paragraph, heading or table cell is never painted either. The
 viewer follows the subset GitHub renders: `b`/`strong` bold, `i`/`em`/`var`
 italic, `code`/`kbd`/`samp`/`tt` in the code font, `s`/`del`/`strike` struck
