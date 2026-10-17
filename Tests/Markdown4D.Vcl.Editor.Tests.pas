@@ -64,6 +64,9 @@ type
       ClickY = 8;
       DragDistance = 40;
       PreviewScrollTarget = 40;
+      LargePreviewZoom = 200;
+      ThirdParagraphLine = 2;
+      PixelTolerance = 0.5;
     var
       FEditor: TMarkdownEditor;
       FHostForm: TForm;
@@ -81,6 +84,7 @@ type
     procedure RecordClick(Sender: TObject);
     procedure RecordDoubleClick(Sender: TObject);
     function NewHostedPreview(const Editor: TMarkdownEditor): TMarkdownViewer;
+    function NewLinkedParagraphs(const PreviewZoom: Integer; out Viewer: TMarkdownViewer): TTestableVclEditor;
     class function ManyLines(const Count: Integer): string; static;
     class function OneWrappedLine: string; static;
     class function ContentHeightOf(const Editor: TMarkdownEditor): Integer; static;
@@ -215,6 +219,15 @@ type
 
     [Test]
     procedure PreviewScroll_PreviewSizedAfterAttach_MovesEditor;
+
+    [Test]
+    procedure ArrowDown_ToLineThePreviewDoesNotShow_ScrollsPreviewToThatLine;
+
+    [Test]
+    procedure EditorScrolledAwayFromCaret_PreviewFollowsTopLine;
+
+    [Test]
+    procedure EditorScroll_AfterCaretLineWasShown_PreviewFollowsTopLine;
 
     [Test]
     procedure MergeText_KeepsCaretAndUndoHistory;
@@ -928,6 +941,64 @@ begin
 
   const EditorFollowedDownward = (Editor.FirstVisibleSourceLine > 0);
   Assert.IsTrue(EditorFollowedDownward, 'Expected the editor to follow the preview downward');
+end;
+
+procedure TMarkdownVclEditorTests.ArrowDown_ToLineThePreviewDoesNotShow_ScrollsPreviewToThatLine;
+begin
+  var Viewer: TMarkdownViewer;
+  const Editor = NewLinkedParagraphs(LargePreviewZoom, Viewer);
+  Editor.CaretPosition := 0;
+
+  Editor.SimulateKeyDown(vkDown, []);
+  Editor.SimulateKeyDown(vkDown, []);
+
+  const CaretLineTop = Viewer.SourceLineToScrollOffset(ThirdParagraphLine);
+  const CaretLineBottom = Viewer.SourceLineToScrollOffset(ThirdParagraphLine + 1);
+  const ViewBottom = Viewer.ScrollOffset + Viewer.ClientHeight;
+  Assert.AreEqual(0, Editor.FirstVisibleSourceLine, 'the editor shows the line without scrolling');
+  Assert.IsTrue(CaretLineTop >= Viewer.ScrollOffset - PixelTolerance, 'the top of the caret line is in sight');
+  Assert.IsTrue(CaretLineBottom <= ViewBottom + PixelTolerance, 'the bottom of the caret line is in sight');
+end;
+
+procedure TMarkdownVclEditorTests.EditorScrolledAwayFromCaret_PreviewFollowsTopLine;
+begin
+  var Viewer: TMarkdownViewer;
+  const Editor = NewLinkedParagraphs(LargePreviewZoom, Viewer);
+  Editor.CaretPosition := Length(Editor.Text);
+
+  Editor.SimulateVScroll(SB_TOP);
+
+  const TopLineOffset = Viewer.SourceLineToScrollOffset(0);
+  Assert.AreEqual(Double(TopLineOffset), Double(Viewer.ScrollOffset), PixelTolerance);
+end;
+
+procedure TMarkdownVclEditorTests.EditorScroll_AfterCaretLineWasShown_PreviewFollowsTopLine;
+begin
+  var Viewer: TMarkdownViewer;
+  const Editor = NewLinkedParagraphs(LargePreviewZoom, Viewer);
+  Editor.CaretPosition := 0;
+  Editor.SimulateKeyDown(vkDown, []);
+  Editor.SimulateKeyDown(vkDown, []);
+
+  Editor.SimulateVScroll(SB_LINEDOWN);
+
+  const TopLineOffset = Viewer.SourceLineToScrollOffset(Editor.FirstVisibleSourceLine);
+  Assert.AreEqual(Double(TopLineOffset), Double(Viewer.ScrollOffset), PixelTolerance);
+end;
+
+function TMarkdownVclEditorTests.NewLinkedParagraphs(const PreviewZoom: Integer;
+  out Viewer: TMarkdownViewer): TTestableVclEditor;
+begin
+  Result := NewHostedEditor(ShortHostHeight);
+  Viewer := TMarkdownViewer.Create(FHostForm);
+  Viewer.Parent := FHostForm;
+  Viewer.SetBounds(0, 0, HostWidth, ShortHostHeight);
+  Viewer.HandleNeeded;
+  Viewer.Zoom := PreviewZoom;
+
+  Result.Text := TMarkdownTestPipelineHelpers.ManyParagraphs(ManyLineCount);
+  Result.AttachPreview(Viewer);
+  Result.FlushPreview;
 end;
 
 procedure TMarkdownVclEditorTests.MergeText_KeepsCaretAndUndoHistory;

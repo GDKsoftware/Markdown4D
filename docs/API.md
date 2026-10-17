@@ -552,6 +552,7 @@ same.
 | `ContentHeight: Integer` | Laid-out document height, for auto-sizing |
 | `ScrollOffset: Single` | Read / set the vertical scroll position |
 | `ScrollToAnchor(const Anchor: string): Boolean` | Scroll the heading a link such as `#getting-started` points at to the top of the view. Anchors follow GitHub: lower case, punctuation dropped, accented letters kept, every space a dash, and a repeated heading gets `-1`, `-2`. A percent-encoded anchor is decoded first. `False` when the document has no such heading |
+| `SourceLineToScrollOffset(const SourceLine: Integer): Single` / `ScrollOffsetToSourceLine(const Offset: Single): Integer` | Where a line of `Text` shows, as the `ScrollOffset` that brings it to the top, and which line shows at an offset, so a host with its own editor can keep it in step with the viewer. Lines count from 0. Every rendered line knows the source line it came from, inside long lists, tables and code blocks too; between them the answer is interpolated |
 | `LayoutCount: Integer` | Advances on every relayout (first width, resize, arriving images), so a host can notice layout-derived state going stale |
 | `DisplayList: IMarkdownDisplayList` | The rendered primitives, for advanced hosts |
 
@@ -707,7 +708,10 @@ control lives in `Markdown4D.Vcl.Editor`, the FMX control in
 
 `AttachPreview` wires the editor to a `TMarkdownViewer`: edits refresh the
 preview after a pause in typing, and the preview keeps its scroll aligned with
-the editor's first visible source line. The pause grows with how long the last
+the editor's first visible source line. When the caret moves to a line the
+preview does not show, because the preview needs more room than the editor for
+the same lines, the preview scrolls on just far enough to show it. The pause
+grows with how long the last
 update took, so a large document does not stall the typing, and a hidden preview
 waits until it shows. Like the viewer, the editor wraps a very large document to a
 new width once a drag ends rather than on every pixel.

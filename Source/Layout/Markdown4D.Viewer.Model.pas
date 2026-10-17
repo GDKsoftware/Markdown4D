@@ -10,6 +10,7 @@ uses
   Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.DisplayList,
+  Markdown4D.Layout.SourceLineMap,
   Markdown4D.Layout.TextAnchor,
   Markdown4D.Layout.TextSearch,
   Markdown4D.Theme;
@@ -98,7 +99,12 @@ type
       // The <details> sections the reader opened or closed, by the source
       // offset of their opening block; every other section shows as its tag asks.
       FToggledDisclosures: TList<Integer>;
+      FSourceLines: TMarkdownSourceLineMap;
+      // The layout the source line map was built for; it is built again on
+      // first use after the next layout.
+      FSourceLinesLayoutCount: Integer;
     procedure Relayout;
+    procedure RefreshSourceLines;
     function ZoomFactor: Single;
     function LayoutTheme: TMarkdownTheme;
     procedure RefreshZoomedTheme;
@@ -203,6 +209,12 @@ type
     // The scroll offset that brings the heading a link like #getting-started
     // points at to the top of the view. The anchor may be percent-encoded.
     function TryGetAnchorOffset(const Anchor: string; out Offset: Single): Boolean;
+    // Where a line of Text shows, as the scroll offset that brings it to the
+    // top of the view, and which line shows at an offset. Lines count from 0.
+    // A line that renders nothing of its own, such as a blank line, falls
+    // between its neighbours.
+    function SourceLineToScrollOffset(const SourceLine: Integer): Single;
+    function ScrollOffsetToSourceLine(const Offset: Single): Integer;
     function PendingImageSources: TArray<string>;
     procedure NotifyImageArrived(const Source: string; const Size: TLayoutSizeF);
     procedure NotifyImageFailed(const Source: string);
@@ -314,10 +326,13 @@ begin
   FImageSlots := TDictionary<string, TImageSlot>.Create;
   FImageSlotOrder := TList<string>.Create;
   FToggledDisclosures := TList<Integer>.Create;
+  FSourceLines := TMarkdownSourceLineMap.Create;
+  FSourceLinesLayoutCount := -1;
 end;
 
 destructor TMarkdownViewerModel.Destroy;
 begin
+  FSourceLines.Free;
   FToggledDisclosures.Free;
   FZoomedTheme.Free;
   FImageSlotOrder.Free;
@@ -858,6 +873,28 @@ begin
     Result := CopiedSpace
   else
     Result := '';
+end;
+
+function TMarkdownViewerModel.SourceLineToScrollOffset(const SourceLine: Integer): Single;
+begin
+  RefreshSourceLines;
+  Result := FSourceLines.SourceLineToOffset(SourceLine);
+end;
+
+function TMarkdownViewerModel.ScrollOffsetToSourceLine(const Offset: Single): Integer;
+begin
+  RefreshSourceLines;
+  Result := FSourceLines.OffsetToSourceLine(Offset);
+end;
+
+procedure TMarkdownViewerModel.RefreshSourceLines;
+begin
+  const IsCurrent = (FSourceLinesLayoutCount = FLayoutCount);
+  if IsCurrent then
+    Exit;
+
+  FSourceLines.Build(FDocument, FDisplayList, FText);
+  FSourceLinesLayoutCount := FLayoutCount;
 end;
 
 function TMarkdownViewerModel.TryGetAnchorOffset(const Anchor: string; out Offset: Single): Boolean;

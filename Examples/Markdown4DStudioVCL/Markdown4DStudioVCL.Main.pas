@@ -21,7 +21,6 @@ uses
   Markdown4D.Ast.Interfaces,
   Markdown4D.Toc,
   Markdown4D.Editor.Model,
-  Markdown4D.Editor.Sync,
   Markdown4D.Theme,
   Markdown4D.Vcl.Editor,
   Markdown4D.Vcl.Viewer,

@@ -24,7 +24,6 @@ uses
   Markdown4D.Editor.ContextMenu,
   Markdown4D.Editor.Highlights,
   Markdown4D.Editor.Highlighter,
-  Markdown4D.Editor.Sync,
   Markdown4D.Viewer.Lifetime,
   Markdown4D.Viewer.Clicks,
   Markdown4D.Editor.PreviewPacer,
@@ -100,12 +99,10 @@ type
       FAppliedWrapWidth: Integer;
       FPreviewDirty: Boolean;
       FUpdatingPreview: Boolean;
-      FSync: TMarkdownEditorSync;
       FSyncScroll: Boolean;
       FAutoScroller: TMarkdownVclAutoScroller;
       FAutoScrollRemainder: Single;
       FSyncing: Boolean;
-      FSyncedLayoutCount: Integer;
       FRowModel: TMarkdownEditorRows;
       FRows: TArray<TVisualRow>;
       FOnChange: TNotifyEvent;
@@ -127,9 +124,10 @@ type
     procedure UnhookPreviewScroll;
     procedure HandleInternalPreviewScroll(Sender: TObject);
     procedure SyncPreviewToEditor;
+    procedure KeepCaretLineInPreview;
+    function PreviewOffsetShowingLine(const SourceLine: Integer): Single;
+    function TryGetVisibleCaretLine(out CaretLine: Integer): Boolean;
     procedure RestorePreviewScroll(const PreviousOffset: Single);
-    procedure EnsureSyncCurrent;
-    procedure UpdateSync;
     procedure DoSyncScroll(const SourceLine: Integer);
     procedure RenderContent(const TargetCanvas: TCanvas; const TargetWidth, TargetHeight, PixelsPerInch,
       ScrollY: Integer);
@@ -346,8 +344,7 @@ uses
   Vcl.Clipbrd,
   Vcl.Forms,
   Vcl.Themes,
-  Markdown4D,
-  Markdown4D.Defines,
+  Markdown4D.Editor.PreviewScroll,
   Markdown4D.Layout.Defaults,
   Markdown4D.Vcl.ScrollBarTheme;
 
@@ -382,7 +379,6 @@ begin
     end);
   FHighlighter := TMarkdownSourceHighlighter.Create;
   FMatches := TMarkdownEditorHighlights.Create;
-  FSync := TMarkdownEditorSync.Create;
   FSyncScroll := True;
   FIndentWidth := DefaultIndentWidth;
 
@@ -439,7 +435,6 @@ begin
   FMatches.Free;
   FRowModel.Free;
   FModel.Free;
-  FSync.Free;
   FMeasurePainter := nil;
   FMeasurePainterLifetime := nil;
   FMeasureBitmap.Free;
@@ -634,7 +629,6 @@ begin
     FUpdatingPreview := False;
   end;
 
-  UpdateSync;
   RestorePreviewScroll(PreviousOffset);
 
   FLastPreviewUpdateMilliseconds := Watch.ElapsedMilliseconds;
@@ -648,31 +642,11 @@ begin
   if FSyncScroll then
   begin
     SyncPreviewToEditor;
+    KeepCaretLineInPreview;
     Exit;
   end;
 
   FPreview.ScrollOffset := PreviousOffset;
-end;
-
-// The preview lays out lazily: it has no display list until it first gets a
-// width, and every relayout after that (a resize, an arriving image, a diagram
-// upgrading) moves the blocks. A mapping built against the old layout would
-// leave the panes standing still, so it is rebuilt the moment it is used
-// against a layout it has not seen.
-procedure TMarkdownEditor.EnsureSyncCurrent;
-begin
-  if FPreview.LayoutCount <> FSyncedLayoutCount then
-    UpdateSync;
-end;
-
-procedure TMarkdownEditor.UpdateSync;
-begin
-  if FPreview = nil then
-    Exit;
-
-  const Document = TMarkdown.Parse(FModel.Text, TMarkdownDialect.Gfm);
-  FSync.Update(Document, FPreview.DisplayList, FModel.Text);
-  FSyncedLayoutCount := FPreview.LayoutCount;
 end;
 
 procedure TMarkdownEditor.HandleInternalPreviewScroll(Sender: TObject);
@@ -682,8 +656,7 @@ begin
 
   FSyncing := True;
   try
-    EnsureSyncCurrent;
-    const SourceLine = FSync.PreviewOffsetToSourceLine(FPreview.ScrollOffset);
+    const SourceLine = FPreview.ScrollOffsetToSourceLine(FPreview.ScrollOffset);
     ScrollToSourceLine(SourceLine);
     DoSyncScroll(SourceLine);
   finally
@@ -698,13 +671,69 @@ begin
 
   FSyncing := True;
   try
-    EnsureSyncCurrent;
     const SourceLine = FirstVisibleSourceLine;
-    FPreview.ScrollOffset := FSync.SourceLineToPreviewOffset(SourceLine);
+    FPreview.ScrollOffset := FPreview.SourceLineToScrollOffset(SourceLine);
     DoSyncScroll(SourceLine);
   finally
     FSyncing := False;
   end;
+end;
+
+// A caret moved by typing, a key or a click takes the preview along when its
+// line would otherwise leave it: the preview can need more room than the
+// editor for the same lines, as text wraps, images take height or the two zoom
+// apart. Scrolling leaves the caret alone and does not come here, so the
+// preview then follows the editor's top line only.
+procedure TMarkdownEditor.KeepCaretLineInPreview;
+begin
+  if (not FSyncScroll) or FSyncing or (FPreview = nil) then
+    Exit;
+  if not FPreview.HandleAllocated then
+    Exit;
+
+  var CaretLine: Integer;
+  if not TryGetVisibleCaretLine(CaretLine) then
+    Exit;
+
+  const Offset = PreviewOffsetShowingLine(CaretLine);
+  const IsMoving = (not SameValue(Offset, FPreview.ScrollOffset));
+  if not IsMoving then
+    Exit;
+
+  FSyncing := True;
+  try
+    FPreview.ScrollOffset := Offset;
+  finally
+    FSyncing := False;
+  end;
+end;
+
+function TMarkdownEditor.PreviewOffsetShowingLine(const SourceLine: Integer): Single;
+begin
+  const TopLineOffset = FPreview.SourceLineToScrollOffset(FirstVisibleSourceLine);
+  const LineTop = FPreview.SourceLineToScrollOffset(SourceLine);
+  const LineBottom = FPreview.SourceLineToScrollOffset(SourceLine + 1);
+
+  Result := TMarkdownPreviewScroll.OffsetShowingLine(TopLineOffset, LineTop, LineBottom, FPreview.ClientHeight);
+end;
+
+function TMarkdownEditor.TryGetVisibleCaretLine(out CaretLine: Integer): Boolean;
+begin
+  CaretLine := 0;
+  Result := False;
+
+  const CanLocateCaret = (HandleAllocated and (Length(FRows) > 0));
+  if not CanLocateCaret then
+    Exit;
+
+  const CaretRow = RowIndexOfOffset(FModel.CaretPosition);
+  const CaretTop = CaretRow * LineHeightPx;
+  const IsInSight = ((CaretTop >= FScrollOffset) and (CaretTop + LineHeightPx <= FScrollOffset + ClientHeight));
+  if not IsInSight then
+    Exit;
+
+  CaretLine := FRows[CaretRow].LineIndex;
+  Result := True;
 end;
 
 procedure TMarkdownEditor.DoSyncScroll(const SourceLine: Integer);
@@ -1588,6 +1617,7 @@ begin
     NewOffset := Bottom - ClientHeight;
 
   SetScrollOffset(NewOffset);
+  KeepCaretLineInPreview;
 end;
 
 procedure TMarkdownEditor.UpdateScrollBar;
@@ -1928,6 +1958,7 @@ begin
       FAutoScrollTimer.Enabled := False;
   end;
 
+  KeepCaretLineInPreview;
   RaiseClick(ClickKind);
 end;
 

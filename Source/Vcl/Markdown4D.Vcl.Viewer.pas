@@ -243,6 +243,11 @@ type
     // A click on such a link does this itself; OnLinkClick is raised only for
     // an anchor the document does not have.
     function ScrollToAnchor(const Anchor: string): Boolean;
+    // Where a line of Text shows, as the ScrollOffset that brings it to the
+    // top, and which line shows at an offset, so an editor beside the viewer
+    // can keep both in step. Lines count from 0.
+    function SourceLineToScrollOffset(const SourceLine: Integer): Single;
+    function ScrollOffsetToSourceLine(const Offset: Single): Integer;
     // The markdown behind the selection: within one line with the markup
     // around it, over several lines whole lines, a table whole.
     property SelectedMarkdown: string read GetSelectedMarkdown;
@@ -1007,6 +1012,16 @@ begin
   RefreshCodeHover;
   UpdateScrollBar;
   Invalidate;
+end;
+
+function TMarkdownViewer.SourceLineToScrollOffset(const SourceLine: Integer): Single;
+begin
+  Result := FModel.SourceLineToScrollOffset(SourceLine);
+end;
+
+function TMarkdownViewer.ScrollOffsetToSourceLine(const Offset: Single): Integer;
+begin
+  Result := FModel.ScrollOffsetToSourceLine(Offset);
 end;
 
 function TMarkdownViewer.ScrollToAnchor(const Anchor: string): Boolean;
