@@ -73,12 +73,14 @@ msbuild packages\Markdown4D.Fmx.Design.dproj  /t:Build /p:Config=Release /p:Plat
 The runtime packages `Core`, `Vcl` and `Fmx` also target **Win64** and
 **Win64x**; build them the same way with `/p:Platform=Win64` or
 `/p:Platform=Win64x`. The IDE greys out a component on the palette when its
-runtime package does not list the project's target platform. `Vcl.Design` also
-targets Win64x, for the 64-bit IDE.
+runtime package does not list the project's target platform. `Vcl.Design` and
+`Fmx.Design` also target Win64x, for the 64-bit IDE; build them the same way
+with `/p:Platform=Win64x`.
 
 `build.bat` in the repository root also builds all five packages (Release,
-Win32), the three runtime packages for Win64 and Win64x, and `Vcl.Design` for
-Win64x as part of the standard build.
+Win32), the three runtime packages for Win64 and Win64x, and both design
+packages (`Vcl.Design` and `Fmx.Design`) for Win64x as part of the standard
+build.
 
 ## Palette icons
 
@@ -122,6 +124,38 @@ is **not** performed by the automated build.
 
 To uninstall: Component ▸ Install Packages ▸ select each Markdown4D design
 package ▸ Remove.
+
+### Installing in the 64-bit IDE
+
+Delphi 13 also ships a 64-bit IDE, which loads design-time packages built for
+**Win64x**, not Win32. The Win32 steps above are for the 32-bit IDE; the 64-bit
+IDE needs its own build and install:
+
+1. Build the three runtime packages and both design packages for Win64x
+   (Release), either with `build.bat` or by hand:
+
+   ```
+   msbuild packages\Markdown4D.Core.dproj        /t:Build /p:Config=Release /p:Platform=Win64x
+   msbuild packages\Markdown4D.Vcl.dproj         /t:Build /p:Config=Release /p:Platform=Win64x
+   msbuild packages\Markdown4D.Fmx.dproj         /t:Build /p:Config=Release /p:Platform=Win64x
+   msbuild packages\Markdown4D.Vcl.Design.dproj  /t:Build /p:Config=Release /p:Platform=Win64x
+   msbuild packages\Markdown4D.Fmx.Design.dproj  /t:Build /p:Config=Release /p:Platform=Win64x
+   ```
+
+   The BPLs go to `$(BDSCOMMONDIR)\Bpl\Win64x`, a separate folder from the Win32
+   ones, so installing for one IDE never overwrites the other's files.
+2. The 64-bit IDE does not search that folder for the runtime BPLs the design
+   packages depend on. Add it to the user `PATH`, for example
+   `C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\Win64x`, and restart the
+   IDE so it sees the change.
+3. In the 64-bit IDE open `packages\Markdown4D.Vcl.Design.dproj`, right-click the
+   project in the Project Manager and choose **Install**. Repeat for
+   `packages\Markdown4D.Fmx.Design.dproj`.
+4. Add `...\packages\dcp\Win64x\Release` to the Win64x library path
+   (Tools ▸ Options ▸ Language ▸ Delphi ▸ Library) so projects can find the
+   runtime `.dcp`s.
+
+The two IDEs keep separate package lists, so install in each IDE you use.
 
 ## Published-property design decisions (Object Inspector / DFM streaming)
 
