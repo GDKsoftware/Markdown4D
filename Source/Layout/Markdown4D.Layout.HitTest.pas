@@ -23,6 +23,8 @@ type
   public
     class function TryFindLink(const DisplayList: IMarkdownDisplayList; const Point: TLayoutPointF;
       out Link: IMarkdownLink): Boolean;
+    class function TryFindDisclosure(const DisplayList: IMarkdownDisplayList; const Point: TLayoutPointF;
+      out Disclosure: IDisplayDisclosure): Boolean;
     class function TryFindTextPosition(const DisplayList: IMarkdownDisplayList; const Point: TLayoutPointF;
       const Measurer: ITextMeasurer; out Hit: TMarkdownTextHit): Boolean;
   end;
@@ -51,6 +53,26 @@ begin
     const IsLinkNode = (Node.Kind = TMarkdownNodeKind.Link) or (Node.Kind = TMarkdownNodeKind.Autolink);
     const FoundLink = IsLinkNode and Supports(Node, IMarkdownLink, Link);
     if FoundLink then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
+
+  Result := False;
+end;
+
+class function TMarkdownHitTester.TryFindDisclosure(const DisplayList: IMarkdownDisplayList;
+  const Point: TLayoutPointF; out Disclosure: IDisplayDisclosure): Boolean;
+begin
+  Disclosure := nil;
+
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    const Item = DisplayList.Items[Index];
+    const IsDisclosureHit = (Item.Kind = TDisplayItemKind.Disclosure) and Item.Bounds.Contains(Point) and
+      Supports(Item, IDisplayDisclosure, Disclosure);
+    if IsDisclosureHit then
     begin
       Result := True;
       Exit;

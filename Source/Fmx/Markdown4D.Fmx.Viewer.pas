@@ -103,6 +103,8 @@ type
       FCopyFeedback: Boolean;
       FContextMenu: TPopupMenu;
       FPressedLinkUrl: string;
+      FHasPressedDisclosure: Boolean;
+      FPressedDisclosureKey: Integer;
       FHoveredLinkUrl: string;
       FOnLinkClick: TMarkdownLinkClickEvent;
       FOnLinkHover: TMarkdownLinkHoverEvent;
@@ -151,6 +153,7 @@ type
     procedure CopyCodeToClipboard(const Text: string);
     procedure SelectForPress(const Point: TLayoutPointF; const X, Y: Single; const IsDoubleClick: Boolean);
     procedure FinishLinkClick(const X, Y: Single);
+    procedure FinishDisclosureClick(const X, Y: Single);
     procedure RaiseClick(const Kind: TMarkdownClickKind);
     function GetAutoScroll: Boolean;
     function GetIsAutoScrolling: Boolean;
@@ -866,6 +869,10 @@ begin
     Exit;
 
   FPressedLinkUrl := '';
+  FHasPressedDisclosure := FModel.TryGetDisclosureAt(Point, FPressedDisclosureKey);
+  if FHasPressedDisclosure then
+    Exit;
+
   FSelecting := True;
   SelectForPress(Point, X, Y, ssDouble in Shift);
   RedrawContent;
@@ -949,11 +956,18 @@ begin
   const ClickKind = FClickGesture.Release(X, Y, TMarkdownClickGesture.DefaultDragThreshold);
 
   if FDraggingScrollBar then
-    FDraggingScrollBar := False
+  begin
+    FDraggingScrollBar := False;
+  end
   else if FSelecting then
-    FSelecting := False
+  begin
+    FSelecting := False;
+  end
   else
+  begin
     FinishLinkClick(X, Y);
+    FinishDisclosureClick(X, Y);
+  end;
 
   RaiseClick(ClickKind);
 end;
@@ -977,6 +991,25 @@ begin
 
   if Assigned(FOnLinkClick) then
     FOnLinkClick(Self, PressedUrl);
+end;
+
+procedure TMarkdownViewer.FinishDisclosureClick(const X, Y: Single);
+begin
+  if not FHasPressedDisclosure then
+    Exit;
+
+  FHasPressedDisclosure := False;
+
+  var ReleasedKey: Integer;
+  const IsSameDisclosure = (FModel.TryGetDisclosureAt(ContentPointOf(X, Y), ReleasedKey) and
+                            (ReleasedKey = FPressedDisclosureKey));
+  if not IsSameDisclosure then
+    Exit;
+
+  FModel.ToggleDisclosure(FPressedDisclosureKey);
+  ResolvePendingImages;
+  RefreshCodeHover;
+  RedrawContent;
 end;
 
 function TMarkdownViewer.ScrollToAnchor(const Anchor: string): Boolean;
@@ -1321,7 +1354,10 @@ end;
 procedure TMarkdownViewer.UpdateHoverCursor(const Point: TLayoutPointF);
 begin
   var Url: string;
-  if TryFindLinkUrl(Point, Url) then
+  var DisclosureKey: Integer;
+  const IsOverLink = TryFindLinkUrl(Point, Url);
+  const IsOverDisclosure = FModel.TryGetDisclosureAt(Point, DisclosureKey);
+  if IsOverLink or IsOverDisclosure then
     Cursor := crHandPoint
   else
     Cursor := crDefault;

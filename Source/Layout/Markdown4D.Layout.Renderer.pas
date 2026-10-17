@@ -45,6 +45,8 @@ type
     class function PointAt(const Origin: TLayoutPointF; const Angle, Distance: Single): TLayoutPointF;
     class procedure RenderWedge(const Wedge: IDisplayWedge; const Painter: IPainter);
     class procedure RenderPolygon(const Polygon: IDisplayPolygon; const Painter: IPainter);
+    class procedure RenderDisclosure(const Disclosure: IDisplayDisclosure; const Painter: IPainter);
+    class function DisclosureTriangle(const Marker: TLayoutRectF; const IsOpen: Boolean): TArray<TLayoutPointF>;
 
   public
     class procedure Render(const DisplayList: IMarkdownDisplayList; const Painter: IPainter;
@@ -108,6 +110,8 @@ begin
       RenderWedge(Item as IDisplayWedge, Painter);
     TDisplayItemKind.Polygon:
       RenderPolygon(Item as IDisplayPolygon, Painter);
+    TDisplayItemKind.Disclosure:
+      RenderDisclosure(Item as IDisplayDisclosure, Painter);
   else
     raise EMarkdownError.CreateFmt(UnhandledItemKindMessage, [Ord(Item.Kind)]);
   end;
@@ -281,6 +285,29 @@ begin
   const HasStroke = (Polygon.StrokeWidth > 0) and (AlphaOf(Polygon.StrokeColor) > 0);
   if HasStroke then
     Painter.DrawPolygon(Points, Polygon.StrokeColor, Polygon.StrokeWidth);
+end;
+
+class procedure TMarkdownDisplayListRenderer.RenderDisclosure(const Disclosure: IDisplayDisclosure;
+  const Painter: IPainter);
+begin
+  const Triangle = DisclosureTriangle(Disclosure.Marker, Disclosure.IsOpen);
+  Painter.FillPolygon(Triangle, Disclosure.Color);
+end;
+
+// The triangle a browser draws in front of a <summary>: pointing right while
+// the section is closed, and down at its content once it opens.
+class function TMarkdownDisplayListRenderer.DisclosureTriangle(const Marker: TLayoutRectF;
+  const IsOpen: Boolean): TArray<TLayoutPointF>;
+begin
+  const MiddleX = (Marker.Left + Marker.Right) / 2;
+  const MiddleY = (Marker.Top + Marker.Bottom) / 2;
+
+  if IsOpen then
+    Result := [TLayoutPointF.Create(Marker.Left, Marker.Top), TLayoutPointF.Create(Marker.Right, Marker.Top),
+      TLayoutPointF.Create(MiddleX, Marker.Bottom)]
+  else
+    Result := [TLayoutPointF.Create(Marker.Left, Marker.Top), TLayoutPointF.Create(Marker.Right, MiddleY),
+      TLayoutPointF.Create(Marker.Left, Marker.Bottom)];
 end;
 
 end.

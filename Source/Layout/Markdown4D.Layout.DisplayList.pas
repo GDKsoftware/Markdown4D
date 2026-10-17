@@ -9,7 +9,7 @@ uses
   Markdown4D.Layout.Interfaces;
 
 type
-  TDisplayItemKind = (TextRun, Rectangle, Line, Image, Checkbox, Wedge, Polygon);
+  TDisplayItemKind = (TextRun, Rectangle, Line, Image, Checkbox, Wedge, Polygon, Disclosure);
 
   // What a text run is to the reader. Text is painted, selected, searched
   // and copied. Drawing is painted only: a glyph that is part of a picture,
@@ -133,6 +133,22 @@ type
     property FillColor: TLayoutColor read GetFillColor;
     property StrokeColor: TLayoutColor read GetStrokeColor;
     property StrokeWidth: Single read GetStrokeWidth;
+  end;
+
+  // The summary line of a <details> section: Bounds is where a click opens or
+  // closes it, Marker the box its disclosure triangle is drawn in, pointing
+  // right while the section is closed and down while it is open. Key is the
+  // source offset of the block that opens the section.
+  IDisplayDisclosure = interface(IDisplayItem)
+    ['{E9946225-ACAA-4603-A484-BB6BE9FEFDE3}']
+    function GetKey: Integer;
+    function GetIsOpen: Boolean;
+    function GetMarker: TLayoutRectF;
+    function GetColor: TLayoutColor;
+    property Key: Integer read GetKey;
+    property IsOpen: Boolean read GetIsOpen;
+    property Marker: TLayoutRectF read GetMarker;
+    property Color: TLayoutColor read GetColor;
   end;
 
   TLayoutBlockInfo = record

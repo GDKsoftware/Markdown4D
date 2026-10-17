@@ -62,7 +62,7 @@ no DLL of its own, no package manager involved. Delphi 12 Athens and Delphi
 | Chart extension | `chart` fences drawn natively: bar, line, pie, doughnut, radar, scatter |
 | Mermaid extension | `mermaid` fences drawn natively: flowchart, sequence, pie |
 | Math | `$...$` and `$$` blocks set on the canvas: fractions, roots, limits, matrices, stretchy delimiters, `\color`; `\(...\)` HTML for KaTeX and MathJax |
-| Raw HTML in the viewer | The allowed subset renders through the ordinary path; `<script>` and `<style>` are dropped with their content |
+| Raw HTML in the viewer | The allowed subset renders through the ordinary path and `<details>` sections fold open and closed; `<script>` and `<style>` are dropped with their content |
 | Extension API | Block/inline parsers, delimiter processors, renderer hooks, document processors, block overrides |
 
 The document builder, the table of contents, the HTML renderer's safety modes

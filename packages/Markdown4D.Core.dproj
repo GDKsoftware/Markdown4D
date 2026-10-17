@@ -156,6 +156,7 @@
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.Zoom.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.SelectedMarkdown.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.InlineHtml.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Layout.Disclosure.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.Engine.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.AlertIcons.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.ExtensionCanvas.pas"/>

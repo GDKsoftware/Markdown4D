@@ -17,6 +17,8 @@ type
     class function DisplayListWith(const Item: IDisplayItem): IMarkdownDisplayList;
     class function AllInside(const Points: TArray<TLayoutPointF>; const Box: TLayoutRectF): Boolean;
     class function IsWholeNumber(const Value: Single): Boolean;
+    class function HasPoint(const Points: TArray<TLayoutPointF>; const X, Y: Single): Boolean;
+    class function RenderDisclosure(const IsOpen: Boolean; const Marker: TLayoutRectF): TArray<TLayoutPointF>;
 
   public
     [Test]
@@ -61,6 +63,12 @@ type
     [TestCase('Double', '32,2')]
     [TestCase('Large', '56,4')]
     procedure Render_CheckboxOfSize_ScalesBorderToWholePixels(const Size, ExpectedBorderWidth: Integer);
+
+    [Test]
+    procedure Render_ClosedDisclosure_FillsTrianglePointingRight;
+
+    [Test]
+    procedure Render_OpenDisclosure_FillsTrianglePointingDown;
   end;
 
 implementation
@@ -77,6 +85,9 @@ const
   PolygonStrokeWidth = 1.5;
   CheckboxSize = 16.0;
   FractionalOffset = 0.4;
+  MarkerLeft = 20.0;
+  MarkerTop = 20.0;
+  MarkerSize = 10.0;
 
 type
   TRecordingPainter = class(TInterfacedObject, IPainter)
@@ -250,6 +261,38 @@ end;
 class function TMarkdownLayoutRendererTests.IsWholeNumber(const Value: Single): Boolean;
 begin
   Result := (Frac(Value) = 0);
+end;
+
+class function TMarkdownLayoutRendererTests.HasPoint(const Points: TArray<TLayoutPointF>; const X, Y: Single): Boolean;
+begin
+  for var Point in Points do
+  begin
+    const IsMatch = ((Abs(Point.X - X) < 0.001) and (Abs(Point.Y - Y) < 0.001));
+    if IsMatch then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
+
+  Result := False;
+end;
+
+class function TMarkdownLayoutRendererTests.RenderDisclosure(const IsOpen: Boolean;
+  const Marker: TLayoutRectF): TArray<TLayoutPointF>;
+begin
+  const Painter = TRecordingPainter.Create;
+  const PainterLifetime: IPainter = Painter;
+
+  const Line = TLayoutRectF.Create(Marker.Left, Marker.Top, DisplaySize, Marker.Bottom);
+  const Disclosure: IDisplayItem = TDisplayDisclosure.Create(Line, nil, 0, IsOpen, Marker, OpaquePolygonColor);
+  const Viewport = TLayoutRectF.Create(0, 0, DisplaySize, DisplaySize);
+
+  TMarkdownDisplayListRenderer.Render(DisplayListWith(Disclosure), PainterLifetime, Viewport, TransparentColor);
+
+  Assert.AreEqual(1, Painter.FillPolygonCount, 'a disclosure draws one triangle');
+  Assert.IsTrue(Painter.LastPolygonColor = OpaquePolygonColor, 'the triangle takes the disclosure colour');
+  Result := Painter.LastPolygonPoints;
 end;
 
 procedure TMarkdownLayoutRendererTests.Render_TextRun_InvokesDrawTextRun;
@@ -469,6 +512,28 @@ begin
 
   Assert.AreEqual(Single(ExpectedBorderWidth), Painter.LastRectStrokeWidth, 0.001,
     'The border must scale with the checkbox and stay a whole number of pixels');
+end;
+
+procedure TMarkdownLayoutRendererTests.Render_ClosedDisclosure_FillsTrianglePointingRight;
+begin
+  const Marker = TLayoutRectF.Create(MarkerLeft, MarkerTop, MarkerLeft + MarkerSize, MarkerTop + MarkerSize);
+
+  const Points = RenderDisclosure(False, Marker);
+
+  Assert.AreEqual(3, Integer(Length(Points)));
+  Assert.IsTrue(AllInside(Points, Marker), 'the triangle stays inside its marker box');
+  Assert.IsTrue(HasPoint(Points, Marker.Right, MarkerTop + MarkerSize / 2), 'a closed section points right');
+end;
+
+procedure TMarkdownLayoutRendererTests.Render_OpenDisclosure_FillsTrianglePointingDown;
+begin
+  const Marker = TLayoutRectF.Create(MarkerLeft, MarkerTop, MarkerLeft + MarkerSize, MarkerTop + MarkerSize);
+
+  const Points = RenderDisclosure(True, Marker);
+
+  Assert.AreEqual(3, Integer(Length(Points)));
+  Assert.IsTrue(AllInside(Points, Marker), 'the triangle stays inside its marker box');
+  Assert.IsTrue(HasPoint(Points, MarkerLeft + MarkerSize / 2, Marker.Bottom), 'an open section points down');
 end;
 
 end.
