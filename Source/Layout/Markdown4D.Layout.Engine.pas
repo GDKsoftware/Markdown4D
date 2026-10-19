@@ -1450,7 +1450,8 @@ begin
     Exit;
   end;
 
-  Result := TLayoutFrontMatter.ToDocument(Node as IMarkdownFrontMatter);
+  const FrontMatter = Node as IMarkdownFrontMatter;
+  Result := TLayoutFrontMatter.ToDocument(FrontMatter);
 
   Node.SetExtensionData(FrontMatterCacheKey, Result);
 end;

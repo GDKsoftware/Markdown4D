@@ -535,7 +535,10 @@ written as `<pre class="front-matter"><code class="language-yaml">`. The
 markdown writer writes the block back between two `---` fences, as the
 round-trip writers of Markdig and Pandoc do; a closing `...` becomes `---`.
 `TFrontMatterProperties.TryParse` (unit `Markdown4D.FrontMatter.Properties`)
-reads the same subset for a host of its own.
+reads the same subset for a host of its own. A value or list item may be
+quoted, with `''` or `\"` for a quote inside it; a comma inside quotes does not
+split a flow list, so `["a, b", c]` has two items. A scalar of more than one
+quoted piece, or a quote that is never closed, falls back to the raw text.
 
 ### In the viewers
 

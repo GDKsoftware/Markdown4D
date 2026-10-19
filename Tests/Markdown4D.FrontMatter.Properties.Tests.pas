@@ -33,7 +33,35 @@ type
     [TestCase('List item without key', '- a,False')]
     [TestCase('List item after scalar value', 'type: project\n- a,False')]
     [TestCase('Only comments', '# note,False')]
+    [TestCase('Quoted flow items with commas', 'tags: ["a; b"; c],True')]
+    [TestCase('Apostrophe inside plain flow item', 'tags: [it''s; b],True')]
+    [TestCase('Comment after flow list', 'tags: [a; b] # note,True')]
+    [TestCase('Comment after a tab', 'status: idea\t# later,True')]
+    [TestCase('Comment instead of value', 'draft: # later,True')]
+    [TestCase('Escaped single quote', 'title: ''it''''s'',True')]
+    [TestCase('Unclosed quote in flow list', 'tags: ["a; b],False')]
+    [TestCase('Text after flow list', 'tags: [a; b] c,False')]
+    [TestCase('Two quoted pieces', 'title: "a" "b",False')]
+    [TestCase('Quoted piece with text after it', 'title: "a" b,False')]
+    [TestCase('Unclosed quoted value', 'title: "abc,False')]
+    [TestCase('Escaped closing quote only', 'title: "abc\",False')]
+    [TestCase('Unclosed quoted list item', 'tags:\n- ''a,False')]
+    [TestCase('Colon and space in plain value', 'title: Foo: bar,False')]
+    [TestCase('Trailing colon in plain value', 'title: Foo:,False')]
+    [TestCase('Nested flow list', 'tags: [a; [b]],False')]
+    [TestCase('Quoted key with colon and space', '"a: b": c,False')]
+    [TestCase('Nested list in a value', 'key: - a,False')]
+    [TestCase('Nested list as list item', 'tags:\n- - a,False')]
+    [TestCase('Anchor value', 'key: &anchor a,False')]
+    [TestCase('Alias value', 'key: *alias,False')]
+    [TestCase('Tag value', 'key: !tag a,False')]
     procedure TryParse_VariousInput_ReturnsExpected(const RawText: string; const Expected: Boolean);
+
+    [Test]
+    [TestCase('Trailing comment', 'title: a #note,a')]
+    [TestCase('Hash inside word', 'title: c#d,c#d')]
+    [TestCase('Dash without space', 'n: -5,-5')]
+    procedure TryParse_PlainValue_ReturnsValue(const RawText: string; const Expected: string);
 
     [Test]
     procedure TryParse_KeyAndValue_ReturnsOneRowWithValue;
@@ -43,6 +71,15 @@ type
 
     [Test]
     procedure TryParse_FlowList_SplitsIntoTrimmedItems;
+
+    [Test]
+    procedure TryParse_QuotedFlowItems_SplitsOnlyOutsideQuotes;
+
+    [Test]
+    procedure TryParse_CommentAfterTab_StripsComment;
+
+    [Test]
+    procedure TryParse_EscapedQuotes_AreResolved;
 
     [Test]
     procedure TryParse_BlockList_CollectsItemsUnderKey;
@@ -58,13 +95,14 @@ uses
   Markdown4D.Defines,
   Markdown4D.FrontMatter.Properties;
 
-// A [TestCase] argument cannot carry a line break or a comma, so the cases
-// write "\n" for a line feed and ";" for a comma.
+// A [TestCase] argument cannot carry a line break, a tab or a comma, so the
+// cases write "\n" for a line feed, "\t" for a tab and ";" for a comma.
 class function TFrontMatterPropertiesTests.DecodeLineEndings(const Source: string): string;
 begin
   const WithLineFeeds = Source.Replace('\n', LineFeed);
+  const WithTabs = WithLineFeeds.Replace('\t', Tab);
 
-  Result := WithLineFeeds.Replace(';', ',');
+  Result := WithTabs.Replace(';', ',');
 end;
 
 procedure TFrontMatterPropertiesTests.TryParse_VariousInput_ReturnsExpected(const RawText: string;
@@ -72,9 +110,22 @@ procedure TFrontMatterPropertiesTests.TryParse_VariousInput_ReturnsExpected(cons
 begin
   var Properties: TArray<TFrontMatterProperty>;
 
-  const Actual = TFrontMatterProperties.TryParse(DecodeLineEndings(RawText), Properties);
+  const Decoded = DecodeLineEndings(RawText);
+
+  const Actual = TFrontMatterProperties.TryParse(Decoded, Properties);
 
   Assert.AreEqual(Expected, Actual);
+end;
+
+procedure TFrontMatterPropertiesTests.TryParse_PlainValue_ReturnsValue(const RawText: string;
+                                                                       const Expected: string);
+begin
+  var Properties: TArray<TFrontMatterProperty>;
+
+  const Parsed = TFrontMatterProperties.TryParse(RawText, Properties);
+
+  Assert.IsTrue(Parsed);
+  Assert.AreEqual(Expected, Properties[0].Values[0]);
 end;
 
 procedure TFrontMatterPropertiesTests.TryParse_KeyAndValue_ReturnsOneRowWithValue;
@@ -113,6 +164,40 @@ begin
   Assert.AreEqual('markdown', Properties[0].Values[0]);
   Assert.AreEqual('delphi', Properties[0].Values[1]);
   Assert.AreEqual('yaml', Properties[0].Values[2]);
+end;
+
+procedure TFrontMatterPropertiesTests.TryParse_QuotedFlowItems_SplitsOnlyOutsideQuotes;
+begin
+  var Properties: TArray<TFrontMatterProperty>;
+
+  const Parsed = TFrontMatterProperties.TryParse('tags: ["a, b", c, ''x, y'']', Properties);
+
+  Assert.IsTrue(Parsed);
+  Assert.AreEqual(3, Integer(Length(Properties[0].Values)));
+  Assert.AreEqual('a, b', Properties[0].Values[0]);
+  Assert.AreEqual('c', Properties[0].Values[1]);
+  Assert.AreEqual('x, y', Properties[0].Values[2]);
+end;
+
+procedure TFrontMatterPropertiesTests.TryParse_CommentAfterTab_StripsComment;
+begin
+  var Properties: TArray<TFrontMatterProperty>;
+
+  const Parsed = TFrontMatterProperties.TryParse('status: idea'#9'# later', Properties);
+
+  Assert.IsTrue(Parsed);
+  Assert.AreEqual('idea', Properties[0].Values[0]);
+end;
+
+procedure TFrontMatterPropertiesTests.TryParse_EscapedQuotes_AreResolved;
+begin
+  var Properties: TArray<TFrontMatterProperty>;
+
+  const Parsed = TFrontMatterProperties.TryParse('single: ''it''''s'''#10'double: "say \"hi\""', Properties);
+
+  Assert.IsTrue(Parsed);
+  Assert.AreEqual('it''s', Properties[0].Values[0]);
+  Assert.AreEqual('say "hi"', Properties[1].Values[0]);
 end;
 
 procedure TFrontMatterPropertiesTests.TryParse_BlockList_CollectsItemsUnderKey;

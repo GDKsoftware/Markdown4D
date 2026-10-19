@@ -59,23 +59,28 @@ begin
 
   for var Entry in Properties do
   begin
-    Table.AddChild(PropertyRow(Entry));
+    const Row = PropertyRow(Entry);
+    Table.AddChild(Row);
   end;
 end;
 
 class function TLayoutFrontMatter.PropertyRow(const Entry: TFrontMatterProperty): TMarkdownTableRowNode;
 begin
+  const Key = KeyCell(Entry.Key);
+  const Value = ValueCell(Entry);
+
   Result := TMarkdownTableRowNode.Create(False);
-  Result.AddChild(KeyCell(Entry.Key));
-  Result.AddChild(ValueCell(Entry));
+  Result.AddChild(Key);
+  Result.AddChild(Value);
 end;
 
 class function TLayoutFrontMatter.KeyCell(const Key: string): TMarkdownTableCellNode;
 begin
   Result := TMarkdownTableCellNode.Create(TMarkdownTableColumnAlignment.None);
 
+  const KeyText = TMarkdownTextNode.Create(TMarkdownNodeKind.Text, Key);
   const Strong = TMarkdownAstNode.Create(TMarkdownNodeKind.Strong);
-  Strong.AddChild(TMarkdownTextNode.Create(TMarkdownNodeKind.Text, Key));
+  Strong.AddChild(KeyText);
   Result.AddChild(Strong);
 end;
 
@@ -91,8 +96,11 @@ begin
 
   const Value = string.Join(ItemSeparator, Entry.Values);
   const HasValue = (Value <> '');
-  if HasValue then
-    Result.AddChild(TMarkdownTextNode.Create(TMarkdownNodeKind.Text, Value));
+  if not HasValue then
+    Exit;
+
+  const ValueText = TMarkdownTextNode.Create(TMarkdownNodeKind.Text, Value);
+  Result.AddChild(ValueText);
 end;
 
 // The items stand apart by a space, so the row wraps between two chips rather
@@ -103,9 +111,13 @@ begin
   begin
     const IsFollowUp = (Index > 0);
     if IsFollowUp then
-      Cell.AddChild(TMarkdownTextNode.Create(TMarkdownNodeKind.Text, ItemSeparator));
+    begin
+      const Separator = TMarkdownTextNode.Create(TMarkdownNodeKind.Text, ItemSeparator);
+      Cell.AddChild(Separator);
+    end;
 
-    Cell.AddChild(TMarkdownTextNode.Create(TMarkdownNodeKind.CodeSpan, Items[Index]));
+    const Chip = TMarkdownTextNode.Create(TMarkdownNodeKind.CodeSpan, Items[Index]);
+    Cell.AddChild(Chip);
   end;
 end;
 
@@ -114,7 +126,9 @@ begin
   const Document = TMarkdownDocumentNode.Create;
   Result := Document;
 
-  Document.AddChild(TMarkdownCodeBlockNode.Create(RawText + LineFeed, YamlInfoString, True));
+  const Code = RawText + LineFeed;
+  const CodeBlock = TMarkdownCodeBlockNode.Create(Code, YamlInfoString, True);
+  Document.AddChild(CodeBlock);
 end;
 
 end.

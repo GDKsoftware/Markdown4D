@@ -65,6 +65,9 @@ type
     procedure OffsetToSourceLine_LowInsideAnImage_GivesTheLineOfThatImage;
 
     [Test]
+    procedure SourceLineToOffset_HeadingAfterFrontMatter_IsTopOfThatHeading;
+
+    [Test]
     procedure Build_WithoutDisplayList_MapsEveryLineToTheTop;
   end;
 
@@ -90,6 +93,7 @@ begin
   FDisplayList := nil;
   FMeasurer := nil;
   FTheme.Free;
+  TMarkdown.FrontMatterEnabled := False;
 end;
 
 procedure TMarkdownSourceLineMapTests.OffsetToSourceLine_OffsetOfALine_GivesThatLineBack;
@@ -182,6 +186,26 @@ begin
   const LowInImage = ImageLineTop + (NextLineTop - ImageLineTop) * 0.9;
 
   Assert.AreEqual(1, FMap.OffsetToSourceLine(LowInImage));
+end;
+
+procedure TMarkdownSourceLineMapTests.SourceLineToOffset_HeadingAfterFrontMatter_IsTopOfThatHeading;
+begin
+  TMarkdown.FrontMatterEnabled := True;
+
+  BuildMap(
+    '---'#10 +
+    'type: project'#10 +
+    'tags: [markdown, delphi]'#10 +
+    '---'#10#10 +
+    '# Title'#10#10 +
+    'Body text');
+
+  const FrontMatterOffset = FMap.SourceLineToOffset(1);
+  const HeadingOffset = FMap.SourceLineToOffset(5);
+
+  Assert.AreEqual(TopOfRunContaining('Title'), HeadingOffset, SingleTolerance);
+  Assert.IsTrue(FrontMatterOffset < HeadingOffset, 'the front matter should map above the heading');
+  Assert.AreEqual(5, FMap.OffsetToSourceLine(HeadingOffset));
 end;
 
 procedure TMarkdownSourceLineMapTests.Build_WithoutDisplayList_MapsEveryLineToTheTop;

@@ -31,6 +31,9 @@ type
       FPipeline: IMarkdownPipeline;
     class function FirstKindOf(const Document: IMarkdownDocument): TMarkdownNodeKind;
     class function DecodeLineEndings(const Source: string): string;
+    class function ContainsKind(const Node: IMarkdownNode; const Kind: TMarkdownNodeKind): Boolean;
+    class procedure AssertSameTree(const Expected, Actual: IMarkdownNode);
+    class function LiteralOf(const Node: IMarkdownNode): string;
 
   public
     [Setup]
@@ -59,7 +62,15 @@ type
     procedure Parse_VariousFences_ReturnsExpected(const Source: string; const Expected: Boolean);
 
     [Test]
-    procedure Parse_BlockInsideBlockQuote_IsNoFrontMatter;
+    [TestCase('Block quote', '> ---|> a: b|> ---|')]
+    [TestCase('List item', '* ---|  a: b|  ---|')]
+    procedure Parse_BlockInsideContainer_IsNoFrontMatter(const Source: string);
+
+    [Test]
+    procedure Parse_NoClosingFence_SameTreeAsWithoutExtension;
+
+    [Test]
+    procedure Accept_FrontMatterNode_CallsVisitFrontMatter;
 
     [Test]
     procedure Parse_SecondDashBlockLater_IsNormalCommonMark;
@@ -107,7 +118,8 @@ uses
   Markdown4D,
   Markdown4D.Defines,
   Markdown4D.Pipeline,
-  Markdown4D.Extensions.FrontMatter;
+  Markdown4D.Extensions.FrontMatter,
+  Markdown4D.FrontMatter.RecordingVisitor;
 
 procedure TFrontMatterParserTests.Setup;
 begin
@@ -137,13 +149,57 @@ begin
   Result := WithReturns.Replace('\t', Tab);
 end;
 
+class function TFrontMatterParserTests.ContainsKind(const Node: IMarkdownNode; const Kind: TMarkdownNodeKind): Boolean;
+begin
+  if Node.Kind = Kind then
+  begin
+    Result := True;
+    Exit;
+  end;
+
+  for var Index := 0 to Node.ChildCount - 1 do
+  begin
+    if ContainsKind(Node.Children[Index], Kind) then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
+
+  Result := False;
+end;
+
+class procedure TFrontMatterParserTests.AssertSameTree(const Expected, Actual: IMarkdownNode);
+begin
+  Assert.AreEqual<TMarkdownNodeKind>(Expected.Kind, Actual.Kind);
+  Assert.AreEqual(Expected.Segment.StartOffset, Actual.Segment.StartOffset);
+  Assert.AreEqual(Expected.Segment.EndOffset, Actual.Segment.EndOffset);
+  Assert.AreEqual(LiteralOf(Expected), LiteralOf(Actual));
+  Assert.AreEqual(Expected.ChildCount, Actual.ChildCount);
+
+  for var Index := 0 to Expected.ChildCount - 1 do
+  begin
+    AssertSameTree(Expected.Children[Index], Actual.Children[Index]);
+  end;
+end;
+
+class function TFrontMatterParserTests.LiteralOf(const Node: IMarkdownNode): string;
+begin
+  Result := '';
+
+  var Text: IMarkdownText;
+  if Supports(Node, IMarkdownText, Text) then
+    Result := Text.Literal;
+end;
+
 procedure TFrontMatterParserTests.Parse_ValidBlock_FirstChildIsFrontMatterWithRawText;
 begin
   const Document = FPipeline.Parse(SampleDocument);
 
   Assert.AreEqual(2, Document.ChildCount);
   Assert.AreEqual<TMarkdownNodeKind>(TMarkdownNodeKind.FrontMatter, Document.Children[0].Kind);
-  Assert.AreEqual(SampleRawText, (Document.Children[0] as IMarkdownFrontMatter).RawText);
+  const FrontMatter = Document.Children[0] as IMarkdownFrontMatter;
+  Assert.AreEqual(SampleRawText, FrontMatter.RawText);
 
   const Heading = Document.Children[1];
   Assert.AreEqual<TMarkdownNodeKind>(TMarkdownNodeKind.Heading, Heading.Kind);
@@ -152,24 +208,45 @@ end;
 
 procedure TFrontMatterParserTests.Parse_VariousFences_ReturnsExpected(const Source: string; const Expected: Boolean);
 begin
-  const Document = FPipeline.Parse(DecodeLineEndings(Source));
+  const Decoded = DecodeLineEndings(Source);
+  const Document = FPipeline.Parse(Decoded);
 
   const Actual = (FirstKindOf(Document) = TMarkdownNodeKind.FrontMatter);
 
   Assert.AreEqual(Expected, Actual);
 end;
 
-procedure TFrontMatterParserTests.Parse_BlockInsideBlockQuote_IsNoFrontMatter;
+procedure TFrontMatterParserTests.Parse_BlockInsideContainer_IsNoFrontMatter(const Source: string);
 begin
-  const Document = FPipeline.Parse('> ---'#10'> a: b'#10'> ---'#10);
+  const Decoded = DecodeLineEndings(Source);
+  const Document = FPipeline.Parse(Decoded);
 
-  Assert.AreEqual<TMarkdownNodeKind>(TMarkdownNodeKind.BlockQuote, FirstKindOf(Document));
+  const HasFrontMatter = ContainsKind(Document, TMarkdownNodeKind.FrontMatter);
 
-  const Quote = Document.Children[0];
-  for var Index := 0 to Quote.ChildCount - 1 do
-  begin
-    Assert.AreNotEqual<TMarkdownNodeKind>(TMarkdownNodeKind.FrontMatter, Quote.Children[Index].Kind);
-  end;
+  Assert.IsFalse(HasFrontMatter);
+end;
+
+procedure TFrontMatterParserTests.Parse_NoClosingFence_SameTreeAsWithoutExtension;
+begin
+  const Source = '---'#10'a: b'#10#10'# Title'#10'Some *text* here'#10;
+  const PlainPipeline = TMarkdownPipeline.Create.UseGfm.Build;
+
+  const Expected = PlainPipeline.Parse(Source);
+  const Actual = FPipeline.Parse(Source);
+
+  AssertSameTree(Expected, Actual);
+end;
+
+procedure TFrontMatterParserTests.Accept_FrontMatterNode_CallsVisitFrontMatter;
+begin
+  const Document = FPipeline.Parse(SampleDocument);
+  const Recorder = TFrontMatterRecordingVisitor.Create;
+  const Visitor: IMarkdownVisitor = Recorder;
+
+  Document.Children[0].Accept(Visitor);
+
+  Assert.AreEqual(1, Recorder.VisitCount);
+  Assert.AreEqual(SampleRawText, Recorder.VisitedRawText);
 end;
 
 procedure TFrontMatterParserTests.Parse_SecondDashBlockLater_IsNormalCommonMark;
@@ -298,9 +375,9 @@ begin
   const Markdown = TMarkdown.ToMarkdown(Original);
   const Restored = FPipeline.Parse(Markdown);
 
-  const OriginalRawText = (Original.Children[0] as IMarkdownFrontMatter).RawText;
-  const RestoredRawText = (Restored.Children[0] as IMarkdownFrontMatter).RawText;
-  Assert.AreEqual(OriginalRawText, RestoredRawText);
+  const OriginalFrontMatter = Original.Children[0] as IMarkdownFrontMatter;
+  const RestoredFrontMatter = Restored.Children[0] as IMarkdownFrontMatter;
+  Assert.AreEqual(OriginalFrontMatter.RawText, RestoredFrontMatter.RawText);
   Assert.AreEqual(Original.ChildCount, Restored.ChildCount);
 end;
 

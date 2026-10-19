@@ -13,6 +13,7 @@ uses
   Markdown4DStudio.FileWatcher in '..\Shared\Markdown4DStudio.FileWatcher.pas',
   Markdown4DStudio.HtmlExport in '..\Shared\Markdown4DStudio.HtmlExport.pas',
   Markdown4DStudio.LinkPolicy in '..\Shared\Markdown4DStudio.LinkPolicy.pas',
+  Markdown4DStudio.Startup in '..\Shared\Markdown4DStudio.Startup.pas',
   Markdown4DStudio.CommandSet in '..\Shared\Markdown4DStudio.CommandSet.pas',
   Markdown4DStudio.SessionSync in '..\Shared\Markdown4DStudio.SessionSync.pas',
   Markdown4DStudioVCL.Main in 'Markdown4DStudioVCL.Main.pas' {Markdown4DStudioVCLForm},

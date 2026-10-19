@@ -84,22 +84,30 @@ end;
 
 class function TMarkdown.ToHtml(const Source: string; const Dialect: TMarkdownDialect): string;
 begin
-  Result := PipelineFor(Dialect, TRenderMode.Safe, FFrontMatterEnabled).ToHtml(Source);
+  const Pipeline = PipelineFor(Dialect, TRenderMode.Safe, FFrontMatterEnabled);
+
+  Result := Pipeline.ToHtml(Source);
 end;
 
 class function TMarkdown.ToUnsafeHtml(const Source: string; const Dialect: TMarkdownDialect): string;
 begin
-  Result := PipelineFor(Dialect, TRenderMode.Unsafe, FFrontMatterEnabled).ToHtml(Source);
+  const Pipeline = PipelineFor(Dialect, TRenderMode.Unsafe, FFrontMatterEnabled);
+
+  Result := Pipeline.ToHtml(Source);
 end;
 
 class function TMarkdown.Parse(const Source: string; const Dialect: TMarkdownDialect): IMarkdownDocument;
 begin
-  Result := PipelineFor(Dialect, TRenderMode.Safe, FFrontMatterEnabled).Parse(Source);
+  const Pipeline = PipelineFor(Dialect, TRenderMode.Safe, FFrontMatterEnabled);
+
+  Result := Pipeline.Parse(Source);
 end;
 
 class function TMarkdown.ParseFragment(const Source: string; const Dialect: TMarkdownDialect): IMarkdownDocument;
 begin
-  Result := PipelineFor(Dialect, TRenderMode.Safe, False).Parse(Source);
+  const Pipeline = PipelineFor(Dialect, TRenderMode.Safe, False);
+
+  Result := Pipeline.Parse(Source);
 end;
 
 class function TMarkdown.PipelineFor(const Dialect: TMarkdownDialect; const Mode: TRenderMode;
@@ -172,7 +180,9 @@ end;
 // front matter out altogether.
 class function TMarkdown.CreateIncrementalParser(const Dialect: TMarkdownDialect): IMarkdownIncrementalParser;
 begin
-  Result := TMarkdownIncrementalParser.CreateParser(PipelineFor(Dialect, TRenderMode.Safe, False));
+  const Pipeline = PipelineFor(Dialect, TRenderMode.Safe, False);
+
+  Result := TMarkdownIncrementalParser.CreateParser(Pipeline);
 end;
 
 end.

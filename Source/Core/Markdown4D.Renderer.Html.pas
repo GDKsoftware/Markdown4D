@@ -533,9 +533,15 @@ begin
 
   var Properties: TArray<TFrontMatterProperty>;
   if TFrontMatterProperties.TryParse(Node.RawText, Properties) then
-    WriteFrontMatterTable(Properties)
+  begin
+    WriteFrontMatterTable(Properties);
+  end
   else
-    FOutput.Append(Format(FrontMatterSourceFormat, [EscapeHtml(Node.RawText)]));
+  begin
+    const Source = EscapeHtml(Node.RawText);
+    const SourceHtml = Format(FrontMatterSourceFormat, [Source]);
+    FOutput.Append(SourceHtml);
+  end;
 
   AppendLineBreak;
 end;
@@ -551,9 +557,15 @@ begin
   begin
     FOutput.Append(FrontMatterRowOpenTag);
     AppendLineBreak;
-    FOutput.Append(Format(FrontMatterKeyFormat, [EscapeHtml(Entry.Key)]));
+    const KeyHtml = EscapeHtml(Entry.Key);
+    const ValueHtml = FrontMatterValueHtml(Entry);
+
+    const KeyCellHtml = Format(FrontMatterKeyFormat, [KeyHtml]);
+    const ValueCellHtml = Format(FrontMatterValueFormat, [ValueHtml]);
+
+    FOutput.Append(KeyCellHtml);
     AppendLineBreak;
-    FOutput.Append(Format(FrontMatterValueFormat, [FrontMatterValueHtml(Entry)]));
+    FOutput.Append(ValueCellHtml);
     AppendLineBreak;
     FOutput.Append(FrontMatterRowCloseTag);
     AppendLineBreak;
@@ -579,7 +591,9 @@ begin
 
     for var Value in Entry.Values do
     begin
-      Items.Append(Format(FrontMatterListItemFormat, [EscapeHtml(Value)]));
+      const ItemHtml = EscapeHtml(Value);
+      const ListItemHtml = Format(FrontMatterListItemFormat, [ItemHtml]);
+      Items.Append(ListItemHtml);
     end;
 
     Items.Append(FrontMatterListCloseTag);

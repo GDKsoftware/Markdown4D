@@ -345,13 +345,14 @@ uses
   Markdown4DStudio.SessionSync,
   Markdown4DStudio.Workspace,
   Markdown4DStudio.LinkPolicy,
+  Markdown4DStudio.Startup,
   Markdown4DStudio.HtmlExport,
   Markdown4D.Extensions.Chart.BlockOverride,
   Markdown4D.Extensions.Mermaid.BlockOverride;
 
 constructor TMarkdown4DStudioFMXForm.Create(Owner: TComponent);
 begin
-  TMarkdown.FrontMatterEnabled := True;
+  TStudioStartup.ConfigureMarkdown;
 
   // The editor raises OnSyncScroll while the .fmx is still being read, so the
   // controller must exist before inherited Create loads it.

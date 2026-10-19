@@ -688,7 +688,8 @@ begin
   const DisplayList = LayoutWithFrontMatter('---'#10'type: project'#10'status: idea'#10'---'#10);
 
   Assert.IsNull(FirstRectangleWithFill(DisplayList, TableHeaderBackgroundColorValue));
-  Assert.IsTrue(TTestArray.CountOf(LinesWithColor(DisplayList, TableBorderColorValue)) > 0, 'expected table grid lines');
+  const GridLines = LinesWithColor(DisplayList, TableBorderColorValue);
+  Assert.IsTrue(TTestArray.CountOf(GridLines) > 0, 'expected table grid lines');
 
   const Runs = TextRunsOf(DisplayList);
   const TypeKey = FindRunByPrefix(Runs, 'type');
@@ -720,7 +721,8 @@ begin
   const DisplayList = LayoutWithFrontMatter('---'#10'author:'#10'  name: Jan'#10'---'#10);
 
   Assert.IsNotNull(FirstRectangleWithFill(DisplayList, CodeBackgroundColorValue));
-  Assert.AreEqual(0, TTestArray.CountOf(LinesWithColor(DisplayList, TableBorderColorValue)));
+  const GridLines = LinesWithColor(DisplayList, TableBorderColorValue);
+  Assert.AreEqual(0, TTestArray.CountOf(GridLines));
 
   const Runs = TextRunsOf(DisplayList);
   const AuthorLine = FindRunByPrefix(Runs, 'author:');
@@ -748,9 +750,12 @@ procedure TMarkdownLayoutEngineTests.Layout_HtmlBlockWithRulesAndFrontMatterEnab
 begin
   const DisplayList = LayoutWithFrontMatter('<div>'#10'<hr>'#10'<p>a: b</p>'#10'<hr>'#10'</div>'#10);
 
-  Assert.AreEqual(2, TTestArray.CountOf(LinesWithColor(DisplayList, ThematicBreakColorValue)));
-  Assert.AreEqual(0, TTestArray.CountOf(LinesWithColor(DisplayList, TableBorderColorValue)));
-  Assert.IsNotNull(FindRunByPrefix(TextRunsOf(DisplayList), 'a:'));
+  const RuleLines = LinesWithColor(DisplayList, ThematicBreakColorValue);
+  const GridLines = LinesWithColor(DisplayList, TableBorderColorValue);
+  const Runs = TextRunsOf(DisplayList);
+  Assert.AreEqual(2, TTestArray.CountOf(RuleLines));
+  Assert.AreEqual(0, TTestArray.CountOf(GridLines));
+  Assert.IsNotNull(FindRunByPrefix(Runs, 'a:'));
 end;
 
 procedure TMarkdownLayoutEngineTests.Layout_HtmlBlock_EmitsImageForImgTag;

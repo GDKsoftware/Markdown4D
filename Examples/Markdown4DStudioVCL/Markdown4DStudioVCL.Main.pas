@@ -328,6 +328,7 @@ uses
   Markdown4DStudio.SplitLayout,
   Markdown4DStudio.Workspace,
   Markdown4DStudio.LinkPolicy,
+  Markdown4DStudio.Startup,
   Markdown4DStudio.SingleInstance,
   Markdown4DStudio.HtmlExport;
 
@@ -335,7 +336,7 @@ uses
 
 constructor TMarkdown4DStudioVCLForm.Create(Owner: TComponent);
 begin
-  TMarkdown.FrontMatterEnabled := True;
+  TStudioStartup.ConfigureMarkdown;
 
   inherited Create(Owner);
 
