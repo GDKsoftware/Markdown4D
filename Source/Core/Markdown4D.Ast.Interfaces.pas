@@ -7,7 +7,7 @@ interface
 type
   TMarkdownNodeKind = (Document, Paragraph, Heading, ThematicBreak, CodeBlock, BlockQuote, List, ListItem,
     HtmlBlock, Text, Emphasis, Strong, CodeSpan, Link, Image, Autolink, SoftLineBreak, HardLineBreak, InlineHtml,
-    CustomInline, Table, TableRow, TableCell, Math);
+    CustomInline, Table, TableRow, TableCell, Math, FrontMatter);
 
   TMarkdownTableColumnAlignment = (None, Left, Center, Right);
 
@@ -79,6 +79,14 @@ type
     property IsDisplay: Boolean read GetIsDisplay;
   end;
 
+  // The YAML front matter block at the very start of a document. RawText is
+  // what stands between the two fences, without the fences themselves.
+  IMarkdownFrontMatter = interface(IMarkdownNode)
+    ['{4D1A7C63-8E2B-4F95-A0C7-3B6E9D52F18A}']
+    function GetRawText: string;
+    property RawText: string read GetRawText;
+  end;
+
   IMarkdownCustomInline = interface(IMarkdownNode)
     ['{5B7C9D5E-2A6F-4E0B-9C41-8F3D2B6A7C10}']
     function GetNodeName: string;
@@ -131,6 +139,7 @@ type
     procedure VisitTableRow(const Node: IMarkdownTableRow);
     procedure VisitTableCell(const Node: IMarkdownTableCell);
     procedure VisitMath(const Node: IMarkdownMath);
+    procedure VisitFrontMatter(const Node: IMarkdownFrontMatter);
   end;
 
 implementation

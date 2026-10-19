@@ -19,10 +19,18 @@ type
       // specification byte for byte and trusts the input.
       TRenderMode = (Safe, Unsafe);
     class var
-      FPipelines: array[TMarkdownDialect, TRenderMode] of IMarkdownPipeline;
+      // The last index says whether the pipeline recognises front matter. A
+      // pipeline, once built, lives until the process ends, so switching
+      // FrontMatterEnabled only picks another cell and never frees one that a
+      // parse on another thread may still be using.
+      FPipelines: array[TMarkdownDialect, TRenderMode, Boolean] of IMarkdownPipeline;
       FLock: TObject;
-    class function PipelineFor(const Dialect: TMarkdownDialect; const Mode: TRenderMode): IMarkdownPipeline;
-    class function BuildPipeline(const Dialect: TMarkdownDialect; const Mode: TRenderMode): IMarkdownPipeline;
+      FFrontMatterEnabled: Boolean;
+    class function PipelineFor(const Dialect: TMarkdownDialect; const Mode: TRenderMode;
+                               const FrontMatter: Boolean): IMarkdownPipeline;
+    class function BuildPipeline(const Dialect: TMarkdownDialect; const Mode: TRenderMode;
+                                 const FrontMatter: Boolean): IMarkdownPipeline;
+    class procedure SetFrontMatterEnabled(const Value: Boolean); static;
 
   public
     class constructor Create;
@@ -38,8 +46,16 @@ type
     // HTML sanitizer afterwards.
     class function ToUnsafeHtml(const Source: string; const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): string;
     class function Parse(const Source: string; const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): IMarkdownDocument;
+    // Parses text that is not the start of a document, such as markdown made
+    // out of an HTML block, so a leading "---" never becomes front matter.
+    class function ParseFragment(const Source: string; const Dialect: TMarkdownDialect = TMarkdownDialect.Gfm): IMarkdownDocument;
     class function ToMarkdown(const Document: IMarkdownDocument): string;
     class function CreateIncrementalParser(const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): IMarkdownIncrementalParser;
+    // Adds front matter recognition to the GFM dialect of Parse, ToHtml and
+    // ToUnsafeHtml, and so to the viewers and editors. The CommonMark dialect
+    // stays pure CommonMark. Meant to be set once at startup; a parse already
+    // running when it changes finishes with the old setting.
+    class property FrontMatterEnabled: Boolean read FFrontMatterEnabled write SetFrontMatterEnabled;
   end;
 
 implementation
@@ -47,6 +63,7 @@ implementation
 uses
   Markdown4D.Version,
   Markdown4D.Pipeline,
+  Markdown4D.Extensions.FrontMatter,
   Markdown4D.Parser.Incremental,
   Markdown4D.Writer.Markdown;
 
@@ -67,26 +84,34 @@ end;
 
 class function TMarkdown.ToHtml(const Source: string; const Dialect: TMarkdownDialect): string;
 begin
-  Result := PipelineFor(Dialect, TRenderMode.Safe).ToHtml(Source);
+  Result := PipelineFor(Dialect, TRenderMode.Safe, FFrontMatterEnabled).ToHtml(Source);
 end;
 
 class function TMarkdown.ToUnsafeHtml(const Source: string; const Dialect: TMarkdownDialect): string;
 begin
-  Result := PipelineFor(Dialect, TRenderMode.Unsafe).ToHtml(Source);
+  Result := PipelineFor(Dialect, TRenderMode.Unsafe, FFrontMatterEnabled).ToHtml(Source);
 end;
 
 class function TMarkdown.Parse(const Source: string; const Dialect: TMarkdownDialect): IMarkdownDocument;
 begin
-  Result := PipelineFor(Dialect, TRenderMode.Safe).Parse(Source);
+  Result := PipelineFor(Dialect, TRenderMode.Safe, FFrontMatterEnabled).Parse(Source);
 end;
 
-class function TMarkdown.PipelineFor(const Dialect: TMarkdownDialect; const Mode: TRenderMode): IMarkdownPipeline;
+class function TMarkdown.ParseFragment(const Source: string; const Dialect: TMarkdownDialect): IMarkdownDocument;
 begin
+  Result := PipelineFor(Dialect, TRenderMode.Safe, False).Parse(Source);
+end;
+
+class function TMarkdown.PipelineFor(const Dialect: TMarkdownDialect; const Mode: TRenderMode;
+                                     const FrontMatter: Boolean): IMarkdownPipeline;
+begin
+  const UsesFrontMatter = FrontMatter and (Dialect = TMarkdownDialect.Gfm);
+
   // The fast path reads the reference without holding the lock, so it carries a
   // barrier of its own: on a weakly ordered processor a thread could otherwise
   // see the reference before the object it points at is fully written. Leaving
   // the lock below publishes the write side.
-  const Existing = FPipelines[Dialect, Mode];
+  const Existing = FPipelines[Dialect, Mode, UsesFrontMatter];
   MemoryBarrier;
 
   if Existing <> nil then
@@ -97,16 +122,17 @@ begin
 
   TMonitor.Enter(FLock);
   try
-    if FPipelines[Dialect, Mode] = nil then
-      FPipelines[Dialect, Mode] := BuildPipeline(Dialect, Mode);
+    if FPipelines[Dialect, Mode, UsesFrontMatter] = nil then
+      FPipelines[Dialect, Mode, UsesFrontMatter] := BuildPipeline(Dialect, Mode, UsesFrontMatter);
 
-    Result := FPipelines[Dialect, Mode];
+    Result := FPipelines[Dialect, Mode, UsesFrontMatter];
   finally
     TMonitor.Exit(FLock);
   end;
 end;
 
-class function TMarkdown.BuildPipeline(const Dialect: TMarkdownDialect; const Mode: TRenderMode): IMarkdownPipeline;
+class function TMarkdown.BuildPipeline(const Dialect: TMarkdownDialect; const Mode: TRenderMode;
+                                       const FrontMatter: Boolean): IMarkdownPipeline;
 begin
   var Builder := TMarkdownPipeline.Create.UseCommonMark;
 
@@ -114,11 +140,20 @@ begin
   if IsGfmDialect then
     Builder := Builder.UseGfm;
 
+  if FrontMatter then
+    Builder := Builder.Use(TFrontMatterExtension.Create);
+
   const IsUnsafe = (Mode = TRenderMode.Unsafe);
   if IsUnsafe then
     Builder := Builder.UnsafeHtml.UnsafeLinks;
 
   Result := Builder.Build;
+end;
+
+class procedure TMarkdown.SetFrontMatterEnabled(const Value: Boolean);
+begin
+  FFrontMatterEnabled := Value;
+  MemoryBarrier;
 end;
 
 class function TMarkdown.ToMarkdown(const Document: IMarkdownDocument): string;
@@ -132,9 +167,12 @@ begin
   Result := TMarkdownWriter.WriteDocument(Document);
 end;
 
+// Streamed segments are parsed one by one, so a segment after the first that
+// starts with "---" must not become front matter; the streaming parser leaves
+// front matter out altogether.
 class function TMarkdown.CreateIncrementalParser(const Dialect: TMarkdownDialect): IMarkdownIncrementalParser;
 begin
-  Result := TMarkdownIncrementalParser.CreateParser(PipelineFor(Dialect, TRenderMode.Safe));
+  Result := TMarkdownIncrementalParser.CreateParser(PipelineFor(Dialect, TRenderMode.Safe, False));
 end;
 
 end.

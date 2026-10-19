@@ -66,6 +66,7 @@ type
     class function CreateTestTheme: TMarkdownTheme;
     class function LayoutMarkdown(const Source: string; const AvailableWidth: Single): IMarkdownDisplayList;
     class function LayoutMarkdownUncapped(const Source: string; const AvailableWidth: Single): IMarkdownDisplayList;
+    class function LayoutWithFrontMatter(const Source: string): IMarkdownDisplayList;
     class function LayoutMarkdownWithPadding(const Source: string;
       const AvailableWidth, Padding: Single): IMarkdownDisplayList;
     class function TextRunsOf(const DisplayList: IMarkdownDisplayList): TArray<IDisplayTextRun>;
@@ -167,6 +168,21 @@ type
 
     [Test]
     procedure Layout_HtmlBlock_EmitsImageForImgTag;
+
+    [Test]
+    procedure Layout_FrontMatterProperties_EmitsKeyAndValueRowsWithoutHeaderBand;
+
+    [Test]
+    procedure Layout_FrontMatterListValue_EmitsSeparateCodeSpanChips;
+
+    [Test]
+    procedure Layout_FrontMatterNestedMap_EmitsRawTextCodeBlock;
+
+    [Test]
+    procedure Layout_FrontMatterThenHeading_HeadingBelowBlock;
+
+    [Test]
+    procedure Layout_HtmlBlockWithRulesAndFrontMatterEnabled_KeepsContent;
 
     [Test]
     procedure Layout_ThematicBreak_EmitsLinePrimitive;
@@ -667,6 +683,76 @@ begin
   Assert.IsTrue(FoundBold, 'expected a bold run holding the strong text');
 end;
 
+procedure TMarkdownLayoutEngineTests.Layout_FrontMatterProperties_EmitsKeyAndValueRowsWithoutHeaderBand;
+begin
+  const DisplayList = LayoutWithFrontMatter('---'#10'type: project'#10'status: idea'#10'---'#10);
+
+  Assert.IsNull(FirstRectangleWithFill(DisplayList, TableHeaderBackgroundColorValue));
+  Assert.IsTrue(TTestArray.CountOf(LinesWithColor(DisplayList, TableBorderColorValue)) > 0, 'expected table grid lines');
+
+  const Runs = TextRunsOf(DisplayList);
+  const TypeKey = FindRunByPrefix(Runs, 'type');
+  const TypeValue = FindRunByPrefix(Runs, 'project');
+  const StatusKey = FindRunByPrefix(Runs, 'status');
+  Assert.IsNotNull(TypeKey);
+  Assert.IsNotNull(TypeValue);
+  Assert.IsNotNull(StatusKey);
+
+  Assert.IsTrue(TypeKey.Font.Bold);
+  Assert.IsFalse(TypeValue.Font.Bold);
+  AssertSingle(TypeKey.Bounds.Top, TypeValue.Bounds.Top);
+  Assert.IsTrue(TypeValue.Bounds.Left > TypeKey.Bounds.Right, 'expected the value right of the key');
+  Assert.IsTrue(StatusKey.Bounds.Top >= TypeKey.Bounds.Bottom, 'expected one row per property');
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_FrontMatterListValue_EmitsSeparateCodeSpanChips;
+begin
+  const DisplayList = LayoutWithFrontMatter('---'#10'tags: [markdown, delphi]'#10'---'#10);
+
+  const Runs = TextRunsOf(DisplayList);
+  Assert.AreEqual(1, TTestArray.CountOf(RunsWithText(Runs, 'markdown')));
+  Assert.AreEqual(1, TTestArray.CountOf(RunsWithText(Runs, 'delphi')));
+  Assert.AreEqual(2, TTestArray.CountOf(RectanglesWithFill(DisplayList, CodeSpanBackgroundColorValue)));
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_FrontMatterNestedMap_EmitsRawTextCodeBlock;
+begin
+  const DisplayList = LayoutWithFrontMatter('---'#10'author:'#10'  name: Jan'#10'---'#10);
+
+  Assert.IsNotNull(FirstRectangleWithFill(DisplayList, CodeBackgroundColorValue));
+  Assert.AreEqual(0, TTestArray.CountOf(LinesWithColor(DisplayList, TableBorderColorValue)));
+
+  const Runs = TextRunsOf(DisplayList);
+  const AuthorLine = FindRunByPrefix(Runs, 'author:');
+  Assert.IsNotNull(AuthorLine);
+  Assert.AreEqual(CodeFamilyName, AuthorLine.Font.FamilyName);
+end;
+
+procedure TMarkdownLayoutEngineTests.Layout_FrontMatterThenHeading_HeadingBelowBlock;
+begin
+  const DisplayList = LayoutWithFrontMatter('---'#10'type: project'#10'---'#10#10 + HeadingLine + #10);
+
+  const Runs = TextRunsOf(DisplayList);
+  const TypeKey = FindRunByPrefix(Runs, 'type');
+  const Heading = FindRunByPrefix(Runs, HeadingText);
+  Assert.IsNotNull(TypeKey);
+  Assert.IsNotNull(Heading);
+
+  Assert.IsTrue(Heading.Bounds.Top > TypeKey.Bounds.Bottom, 'expected the heading below the properties block');
+  AssertSingle(HeadingOneFontSize, Heading.Font.Size);
+end;
+
+// The HTML subset writes <hr> as "---", so the markdown made out of this block
+// starts and ends with a rule. It must stay two rules around a paragraph.
+procedure TMarkdownLayoutEngineTests.Layout_HtmlBlockWithRulesAndFrontMatterEnabled_KeepsContent;
+begin
+  const DisplayList = LayoutWithFrontMatter('<div>'#10'<hr>'#10'<p>a: b</p>'#10'<hr>'#10'</div>'#10);
+
+  Assert.AreEqual(2, TTestArray.CountOf(LinesWithColor(DisplayList, ThematicBreakColorValue)));
+  Assert.AreEqual(0, TTestArray.CountOf(LinesWithColor(DisplayList, TableBorderColorValue)));
+  Assert.IsNotNull(FindRunByPrefix(TextRunsOf(DisplayList), 'a:'));
+end;
+
 procedure TMarkdownLayoutEngineTests.Layout_HtmlBlock_EmitsImageForImgTag;
 begin
   const ImageUrl = 'docs/images/shot.png';
@@ -1075,6 +1161,16 @@ begin
     Result := TMarkdownLayoutEngine.LayoutDocument(Document, AvailableWidth, Theme, Measurer);
   finally
     Theme.Free;
+  end;
+end;
+
+class function TMarkdownLayoutEngineTests.LayoutWithFrontMatter(const Source: string): IMarkdownDisplayList;
+begin
+  TMarkdown.FrontMatterEnabled := True;
+  try
+    Result := LayoutMarkdown(Source, DefaultWidth);
+  finally
+    TMarkdown.FrontMatterEnabled := False;
   end;
 end;
 

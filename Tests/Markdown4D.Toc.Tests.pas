@@ -51,6 +51,9 @@ type
 
     [Test]
     procedure TryFindHeading_UnknownAnchor_ReturnsFalse;
+
+    [Test]
+    procedure FromDocument_FrontMatterEnabled_SkipsFrontMatterHeading;
   end;
 
 implementation
@@ -185,6 +188,26 @@ begin
     end,
     EMarkdownError,
     'FromDocument must raise EMarkdownError when the document is nil');
+end;
+
+// Without front matter the closing fence turns the last property into a setext
+// heading, which would show in the outline.
+procedure TMarkdownTocTests.FromDocument_FrontMatterEnabled_SkipsFrontMatterHeading;
+begin
+  const Source = '---'#10'type: project'#10'status: idea'#10'---'#10#10'# Title'#10;
+
+  TMarkdown.FrontMatterEnabled := True;
+  try
+    const Document = TMarkdown.Parse(Source, TMarkdownDialect.Gfm);
+
+    const Toc = TMarkdownToc.FromDocument(Document);
+
+    Assert.AreEqual(1, Toc.EntryCount);
+    Assert.AreEqual('Title', Toc.Entries[0].Caption);
+    Assert.AreEqual(6, Toc.Entries[0].SourceLine);
+  finally
+    TMarkdown.FrontMatterEnabled := False;
+  end;
 end;
 
 class function TMarkdownTocTests.BuildToc: IMarkdownToc;

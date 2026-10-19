@@ -126,6 +126,9 @@ type
 
     [Test]
     procedure ReplaceRange_StartIndexOutOfBounds_RaisesMarkdownError;
+
+    [Test]
+    procedure Append_PipelineWithFrontMatterExtension_ParsesFrontMatterAsCommonMark;
   end;
 
 implementation
@@ -136,6 +139,7 @@ uses
   System.Generics.Collections,
   Markdown4D,
   Markdown4D.Pipeline,
+  Markdown4D.Extensions.FrontMatter,
   Markdown4D.Parser.Incremental;
 
 procedure TIncrementalEquivalenceTests.SetupFixture;
@@ -424,6 +428,24 @@ begin
     end,
     EMarkdownError,
     'ReplaceRange must raise EMarkdownError when the start index is out of bounds');
+end;
+
+// The streaming parser parses its segments one by one, so it leaves front
+// matter out altogether: a later segment starting with "---" must stay a
+// thematic break and a heading, and so must the start of the document.
+procedure TIncrementalEquivalenceTests.Append_PipelineWithFrontMatterExtension_ParsesFrontMatterAsCommonMark;
+begin
+  const DashBlock = '---'#10'a: b'#10'---'#10;
+  const Source = DashBlock + #10'text'#10#10 + DashBlock + #10'more'#10;
+  const Pipeline = TMarkdownPipeline.Create.UseGfm.Use(TFrontMatterExtension.Create).Build;
+  const Parser = TMarkdownIncrementalParser.CreateParser(Pipeline);
+
+  AppendInChunks(Parser, Source, SeedForExample(1));
+
+  const Expected = TMarkdownPipeline.Create.UseGfm.Build.ToHtml(Source);
+  const Actual = Parser.ToHtml;
+  Assert.AreEqual(Expected, Actual);
+  Assert.DoesNotContain(Actual, 'front-matter');
 end;
 
 end.

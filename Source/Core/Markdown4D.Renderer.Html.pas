@@ -10,7 +10,8 @@ uses
   System.RegularExpressions,
   Markdown4D.Extensions.Interfaces,
   Markdown4D.Pipeline.Configuration,
-  Markdown4D.Ast.Interfaces;
+  Markdown4D.Ast.Interfaces,
+  Markdown4D.FrontMatter.Properties;
 
 type
   TMarkdownHtmlRenderer = class
@@ -66,6 +67,16 @@ type
       InlineMathClose = '\)';
       DisplayMathOpen = '\[';
       DisplayMathClose = '\]';
+      FrontMatterTableOpenTag = '<table class="front-matter">';
+      FrontMatterTableCloseTag = '</table>';
+      FrontMatterRowOpenTag = '<tr>';
+      FrontMatterRowCloseTag = '</tr>';
+      FrontMatterKeyFormat = '<th>%s</th>';
+      FrontMatterValueFormat = '<td>%s</td>';
+      FrontMatterListItemFormat = '<li>%s</li>';
+      FrontMatterListOpenTag = '<ul>';
+      FrontMatterListCloseTag = '</ul>';
+      FrontMatterSourceFormat = '<pre class="front-matter"><code class="language-yaml">%s</code></pre>';
     var
       FOutput: TStringBuilder;
       FTasks: TStack<TRenderTask>;
@@ -95,6 +106,9 @@ type
     procedure WriteMath(const Node: IMarkdownMath);
     procedure WriteInlineMath(const Node: IMarkdownMath);
     procedure WriteMathBlock(const Node: IMarkdownMath);
+    procedure WriteFrontMatter(const Node: IMarkdownFrontMatter);
+    procedure WriteFrontMatterTable(const Properties: TArray<TFrontMatterProperty>);
+    function FrontMatterValueHtml(const Entry: TFrontMatterProperty): string;
     function CurrentTableCellTag: string;
     function RawHtmlOutput(const Literal: string): string;
     procedure EnterCustomInline(const Node: IMarkdownNode);
@@ -255,6 +269,8 @@ begin
       EnterTableCell(Node as IMarkdownTableCell);
     TMarkdownNodeKind.Math:
       WriteMath(Node as IMarkdownMath);
+    TMarkdownNodeKind.FrontMatter:
+      WriteFrontMatter(Node as IMarkdownFrontMatter);
   else
     // Document is only ever scheduled for a Leave task (see Render), so this
     // guards a future node kind added without updating this dispatcher.
@@ -506,6 +522,72 @@ begin
   FOutput.Append(DisplayMathClose);
   FOutput.Append(MathDivCloseTag);
   AppendLineBreak;
+end;
+
+// Front matter reads as a table of properties, one row per key, the way
+// Obsidian shows it. YAML beyond the simple subset is shown as its source, so
+// nothing in it is lost or misread.
+procedure TMarkdownHtmlRenderer.WriteFrontMatter(const Node: IMarkdownFrontMatter);
+begin
+  AppendLineBreak;
+
+  var Properties: TArray<TFrontMatterProperty>;
+  if TFrontMatterProperties.TryParse(Node.RawText, Properties) then
+    WriteFrontMatterTable(Properties)
+  else
+    FOutput.Append(Format(FrontMatterSourceFormat, [EscapeHtml(Node.RawText)]));
+
+  AppendLineBreak;
+end;
+
+procedure TMarkdownHtmlRenderer.WriteFrontMatterTable(const Properties: TArray<TFrontMatterProperty>);
+begin
+  FOutput.Append(FrontMatterTableOpenTag);
+  AppendLineBreak;
+  FOutput.Append(TableBodyOpenTag);
+  AppendLineBreak;
+
+  for var Entry in Properties do
+  begin
+    FOutput.Append(FrontMatterRowOpenTag);
+    AppendLineBreak;
+    FOutput.Append(Format(FrontMatterKeyFormat, [EscapeHtml(Entry.Key)]));
+    AppendLineBreak;
+    FOutput.Append(Format(FrontMatterValueFormat, [FrontMatterValueHtml(Entry)]));
+    AppendLineBreak;
+    FOutput.Append(FrontMatterRowCloseTag);
+    AppendLineBreak;
+  end;
+
+  FOutput.Append(TableBodyCloseTag);
+  AppendLineBreak;
+  FOutput.Append(FrontMatterTableCloseTag);
+end;
+
+function TMarkdownHtmlRenderer.FrontMatterValueHtml(const Entry: TFrontMatterProperty): string;
+begin
+  if not Entry.IsList then
+  begin
+    const Value = string.Join(Space, Entry.Values);
+    Result := EscapeHtml(Value);
+    Exit;
+  end;
+
+  const Items = TStringBuilder.Create;
+  try
+    Items.Append(FrontMatterListOpenTag);
+
+    for var Value in Entry.Values do
+    begin
+      Items.Append(Format(FrontMatterListItemFormat, [EscapeHtml(Value)]));
+    end;
+
+    Items.Append(FrontMatterListCloseTag);
+
+    Result := Items.ToString;
+  finally
+    Items.Free;
+  end;
 end;
 
 function TMarkdownHtmlRenderer.CurrentTableCellTag: string;

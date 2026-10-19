@@ -47,6 +47,7 @@ type
       StrikethroughMarker = '~~';
       InlineMathMarker = '$';
       DisplayMathMarker = '$$';
+      FrontMatterFence = '---';
       TaskCheckedText = '[x]';
       TaskUncheckedText = '[ ]';
       TablePipe = '|';
@@ -97,6 +98,7 @@ type
     procedure WriteMath(const Task: TWriteTask);
     procedure WriteInlineMath(const Node: IMarkdownMath);
     procedure WriteMathBlock(const Task: TWriteTask; const Node: IMarkdownMath);
+    procedure WriteFrontMatter(const Task: TWriteTask);
     class function IsBlockContainer(const Kind: TMarkdownNodeKind): Boolean;
     procedure EnterCustomInline(const Task: TWriteTask);
     procedure EnterTable(const Task: TWriteTask);
@@ -243,6 +245,8 @@ begin
       EnterTableCell(Task);
     TMarkdownNodeKind.Math:
       WriteMath(Task);
+    TMarkdownNodeKind.FrontMatter:
+      WriteFrontMatter(Task);
   else
     // Render pushes only Document's children (see PushChildren), so Document
     // itself never reaches EnterNode; this guards a future node kind added
@@ -705,6 +709,28 @@ begin
   end;
 
   WriteRaw(DisplayMathMarker);
+  EnsureLineBreak;
+end;
+
+// Front matter goes back as it was written, between two dash fences, as the
+// round-trip writers of Markdig and Pandoc do; a closing "..." becomes "---".
+// The raw text is YAML, not markdown, so it is written without escaping.
+procedure TMarkdownWriter.WriteFrontMatter(const Task: TWriteTask);
+begin
+  BeginBlock(Task);
+
+  WriteRaw(FrontMatterFence);
+  WriteLineBreak;
+
+  const FrontMatter = Task.Node as IMarkdownFrontMatter;
+  const HasContent = (FrontMatter.RawText <> '');
+  if HasContent then
+  begin
+    WriteText(FrontMatter.RawText);
+    WriteLineBreak;
+  end;
+
+  WriteRaw(FrontMatterFence);
   EnsureLineBreak;
 end;
 

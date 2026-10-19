@@ -335,6 +335,8 @@ uses
 
 constructor TMarkdown4DStudioVCLForm.Create(Owner: TComponent);
 begin
+  TMarkdown.FrontMatterEnabled := True;
+
   inherited Create(Owner);
 
   TChartBlockOverride.RegisterOverride;

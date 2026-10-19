@@ -29,6 +29,7 @@ type
       ListItemStart = 600;
       IndentedCodeStart = 550;
       MathBlockStart = 790;
+      FrontMatterBlockStart = 950;
       BackslashInline = 900;
       LineEndingInline = 850;
       EmphasisInline = 800;

@@ -644,6 +644,9 @@ function TStreamingIncrementalParser.ParseWithReferences(const Source: string;
 begin
   const Parser = TBlockParser.Create(FConfiguration);
   try
+    // Every segment is parsed on its own, so one that starts with "---" would
+    // otherwise pass for the start of a document and become front matter.
+    Parser.FrontMatterAllowed := False;
     Result := Parser.Parse(Source, References);
   finally
     Parser.Free;

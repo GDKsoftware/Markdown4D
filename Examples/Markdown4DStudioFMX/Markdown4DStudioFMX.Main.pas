@@ -351,6 +351,8 @@ uses
 
 constructor TMarkdown4DStudioFMXForm.Create(Owner: TComponent);
 begin
+  TMarkdown.FrontMatterEnabled := True;
+
   // The editor raises OnSyncScroll while the .fmx is still being read, so the
   // controller must exist before inherited Create loads it.
   FLightTheme := TMarkdownTheme.CreateLight;

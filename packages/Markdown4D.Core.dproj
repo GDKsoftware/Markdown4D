@@ -91,6 +91,9 @@
         <DCCReference Include="..\Source\Core\Markdown4D.Extensions.Mermaid.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Extensions.Gfm.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Extensions.Math.pas"/>
+        <DCCReference Include="..\Source\Core\Markdown4D.Extensions.FrontMatter.pas"/>
+        <DCCReference Include="..\Source\Core\Markdown4D.Parser.FrontMatter.pas"/>
+        <DCCReference Include="..\Source\Core\Markdown4D.FrontMatter.Properties.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Math.Syntax.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Math.Chemistry.pas"/>
         <DCCReference Include="..\Source\Core\Markdown4D.Color.Names.pas"/>
@@ -156,6 +159,7 @@
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.Zoom.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.SelectedMarkdown.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.InlineHtml.pas"/>
+        <DCCReference Include="..\Source\Layout\Markdown4D.Layout.FrontMatter.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.Disclosure.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.Engine.pas"/>
         <DCCReference Include="..\Source\Layout\Markdown4D.Layout.AlertIcons.pas"/>

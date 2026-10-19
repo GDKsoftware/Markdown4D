@@ -87,7 +87,11 @@ type
       FCurrentLine: TSourceLine;
       FThematicBreakScan: TThematicBreakScan;
       FMathEnabled: Boolean;
-    class function HasMathBlockParser(const Configuration: TMarkdownPipelineConfiguration): Boolean;
+      FFrontMatterAllowed: Boolean;
+    class function HasBlockParser(const Configuration: TMarkdownPipelineConfiguration;
+                                  const ParserName: string): Boolean;
+    function StageFrontMatter(const Source: string): Integer;
+    procedure SkipFrontMatterLine(const Line: TSourceLine);
     procedure ProcessLine(const Line: TSourceLine);
     function MatchContinuations: TContinuationMatch;
     function ContinueBlock(const Block: TStagingBlock): TContinueResult;
@@ -169,6 +173,10 @@ type
     destructor Destroy; override;
     function Parse(const Source: string): IMarkdownDocument; overload;
     function Parse(const Source: string; const References: TLinkReferenceMap): IMarkdownDocument; overload;
+    // Whether a front matter block at the start of the source is recognised.
+    // True when the front matter extension is part of the pipeline; a caller
+    // parsing text that is not the start of a document switches it off.
+    property FrontMatterAllowed: Boolean read FFrontMatterAllowed write FFrontMatterAllowed;
   end;
 
   TBlockParserContext = class(TInterfacedObject, IMarkdownBlockParserContext)
@@ -218,10 +226,22 @@ type
     function TryStart(const Context: IMarkdownBlockParserContext): TMarkdownBlockStart;
   end;
 
+  // Marks the front matter extension as part of the pipeline. Front matter can
+  // only stand on the first line of a document, so TBlockParser looks for it
+  // once before the line-by-line parse; this starter never starts a block.
+  TFrontMatterBlockStarter = class(TInterfacedObject, IMarkdownBlockParser)
+  public
+    const
+      FrontMatterParserName = 'frontmatter';
+    function GetName: string;
+    function TryStart(const Context: IMarkdownBlockParserContext): TMarkdownBlockStart;
+  end;
+
 implementation
 
 uses
   Markdown4D.Defines,
+  Markdown4D.Parser.FrontMatter,
   Markdown4D.Text.Unescape;
 
 constructor TBlockParser.Create(const Configuration: TMarkdownPipelineConfiguration);
@@ -235,18 +255,21 @@ begin
   FHtmlScanner := THtmlBlockScanner.Create;
   FReferenceParser := TLinkReferenceParser.Create;
   FReferenceMap := TLinkReferenceMap.Create;
-  FMathEnabled := HasMathBlockParser(Configuration);
+  FMathEnabled := HasBlockParser(Configuration, TMathBlockStarter.MathParserName);
+  FFrontMatterAllowed := HasBlockParser(Configuration, TFrontMatterBlockStarter.FrontMatterParserName);
 end;
 
 // The ```math fence alias and the table interruption on a $$ line only make
 // sense once the math extension is part of the pipeline; without it a fence
-// tagged math stays an ordinary code block.
-class function TBlockParser.HasMathBlockParser(const Configuration: TMarkdownPipelineConfiguration): Boolean;
+// tagged math stays an ordinary code block. Front matter likewise needs its
+// extension; without it the block is a thematic break and a setext heading.
+class function TBlockParser.HasBlockParser(const Configuration: TMarkdownPipelineConfiguration;
+                                           const ParserName: string): Boolean;
 begin
   for var Registration in Configuration.BlockParsers do
   begin
-    const IsMathParser = (Registration.Parser.Name = TMathBlockStarter.MathParserName);
-    if IsMathParser then
+    const IsNamedParser = (Registration.Parser.Name = ParserName);
+    if IsNamedParser then
     begin
       Result := True;
       Exit;
@@ -283,13 +306,21 @@ begin
   try
     FTip := FRoot;
 
+    var FrontMatterLineCount := 0;
+    if FFrontMatterAllowed then
+      FrontMatterLineCount := StageFrontMatter(Source);
+
     const Reader = TLineReader.Create(Source);
     try
       var Line: TSourceLine;
 
       while Reader.TryReadLine(Line) do
       begin
-        ProcessLine(Line);
+        const IsFrontMatterLine = (FLineNumber < FrontMatterLineCount);
+        if IsFrontMatterLine then
+          SkipFrontMatterLine(Line)
+        else
+          ProcessLine(Line);
       end;
     finally
       Reader.Free;
@@ -306,6 +337,39 @@ begin
   end;
 
   RunDocumentProcessors(Result);
+end;
+
+// The block is staged closed as the first child of the root, so the lines after
+// it open their blocks next to it and it can never end up inside a container.
+// Returns how many lines the block spans, fences included; 0 without one.
+function TBlockParser.StageFrontMatter(const Source: string): Integer;
+begin
+  Result := 0;
+
+  var RawText: string;
+  var LineCount: Integer;
+  if not TFrontMatterScanner.TryScan(Source, RawText, LineCount) then
+    Exit;
+
+  const Block = TStagingBlock.Create(TMarkdownNodeKind.FrontMatter, FRoot);
+  Block.IsOpen := False;
+  Block.Literal := RawText;
+  Block.StartLine := 1;
+  Block.StartOffset := 1;
+  Block.EndOffset := 1;
+  FRoot.Children.Add(Block);
+
+  Result := LineCount;
+end;
+
+// The line still counts, so the source lines of the blocks after the front
+// matter match the editor.
+procedure TBlockParser.SkipFrontMatterLine(const Line: TSourceLine);
+begin
+  Inc(FLineNumber);
+
+  const FrontMatter = FRoot.Children.First;
+  FrontMatter.EndOffset := Line.EndOffset;
 end;
 
 procedure TBlockParser.RunDocumentProcessors(const Document: IMarkdownDocument);
@@ -1890,6 +1954,8 @@ begin
       Result := CreateCodeBlockNode(Block);
     TMarkdownNodeKind.Math:
       Result := TMarkdownMathNode.Create(Block.Literal, True);
+    TMarkdownNodeKind.FrontMatter:
+      Result := TMarkdownFrontMatterNode.Create(Block.Literal);
     TMarkdownNodeKind.HtmlBlock:
       Result := TMarkdownTextNode.Create(TMarkdownNodeKind.HtmlBlock, Block.Literal);
     TMarkdownNodeKind.Table:
@@ -2073,6 +2139,16 @@ begin
   const Engine = (Context as TBlockParserContext).Engine;
 
   Result := Engine.TryStartMathBlock;
+end;
+
+function TFrontMatterBlockStarter.GetName: string;
+begin
+  Result := FrontMatterParserName;
+end;
+
+function TFrontMatterBlockStarter.TryStart(const Context: IMarkdownBlockParserContext): TMarkdownBlockStart;
+begin
+  Result := TMarkdownBlockStart.NoMatch;
 end;
 
 end.

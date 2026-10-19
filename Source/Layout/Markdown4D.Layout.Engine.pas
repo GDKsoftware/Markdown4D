@@ -61,12 +61,14 @@ uses
   Markdown4D.Layout.Disclosure,
   Markdown4D.Layout.AlertIcons,
   Markdown4D.Layout.ExtensionCanvas,
+  Markdown4D.Layout.FrontMatter,
   Markdown4D.Layout.InlineHtml,
   Markdown4D.Layout.Primitives,
   Markdown4D.Math.Layout;
 
 const
   HtmlSubsetCacheKey = 'markdown4d.html.subset';
+  FrontMatterCacheKey = 'markdown4d.frontmatter';
   InlineMathMarker = '$';
   DisplayMathMarker = '$$';
 
@@ -396,6 +398,8 @@ type
     class function CodeLanguageOf(const Code: IMarkdownCodeBlock): string;
     function HtmlBlockDocument(const Node: IMarkdownNode): IMarkdownDocument;
     procedure EmitHtmlBlock(const Command: TLayoutCommand);
+    function FrontMatterDocument(const Node: IMarkdownNode): IMarkdownDocument;
+    procedure EmitFrontMatter(const Command: TLayoutCommand);
     procedure PushDisclosure(const Command: TLayoutCommand; const IsOpen: Boolean);
     procedure EmitDisclosure(const Command: TLayoutCommand);
     function DisclosureIndent: Single;
@@ -873,6 +877,8 @@ begin
       LayoutTable(Command);
     TMarkdownNodeKind.Math:
       EmitMathBlock(Command);
+    TMarkdownNodeKind.FrontMatter:
+      EmitFrontMatter(Command);
   else
     // PushBlock only ever enqueues genuine block-level nodes (document children,
     // block-quote children, list-item children), and a block override that
@@ -1406,7 +1412,7 @@ begin
   const Html = Node as IMarkdownText;
   const Translated = TMarkdownHtmlSubset.ToMarkdown(Html.Literal);
   if Translated <> '' then
-    Result := TMarkdown.Parse(Translated, TMarkdownDialect.Gfm);
+    Result := TMarkdown.ParseFragment(Translated, TMarkdownDialect.Gfm);
 
   Node.SetExtensionData(HtmlSubsetCacheKey, Result);
 end;
@@ -1428,6 +1434,32 @@ begin
     Exit;
 
   PushContainerChildren(Document, ContentX, Command.Color);
+end;
+
+// The properties block is laid out as the table it reads as, through the
+// ordinary table path. The document behind it is cached on the node, because
+// layout runs again on every resize.
+function TLayoutWorker.FrontMatterDocument(const Node: IMarkdownNode): IMarkdownDocument;
+begin
+  Result := nil;
+
+  var Cached: IInterface;
+  if Node.TryGetExtensionData(FrontMatterCacheKey, Cached) then
+  begin
+    Supports(Cached, IMarkdownDocument, Result);
+    Exit;
+  end;
+
+  Result := TLayoutFrontMatter.ToDocument(Node as IMarkdownFrontMatter);
+
+  Node.SetExtensionData(FrontMatterCacheKey, Result);
+end;
+
+procedure TLayoutWorker.EmitFrontMatter(const Command: TLayoutCommand);
+begin
+  const Document = FrontMatterDocument(Command.Node);
+
+  PushContainerChildren(Document, Command.X, Command.Color);
 end;
 
 // Pushed before the summary, so it runs after it: the summary has been laid
