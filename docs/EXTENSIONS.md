@@ -599,6 +599,12 @@ processor: it parses the JSON once and caches an `IChartModel` on the node under
 delegates its geometry to `TChartLayouter`, which builds axes, bars, lines,
 legends and wedges onto the canvas.
 
+The category labels under a bar or line chart wrap at their spaces to the width
+of their own slot, so a narrow chart shows them on two or three lines instead of
+letting neighbours run into each other; the plot gives up the height the
+tallest label needs. A word wider than its slot is cut short with an ellipsis,
+and so is a label that would need more than three lines.
+
 Consumers can read the cached model back:
 
 ```pascal

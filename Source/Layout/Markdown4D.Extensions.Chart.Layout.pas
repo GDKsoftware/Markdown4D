@@ -66,6 +66,7 @@ type
 implementation
 
 uses
+  System.Character,
   System.Math,
   System.SysUtils,
   System.Generics.Collections,
@@ -115,6 +116,12 @@ type
       RadarMinAxes = 3;
       MarkerRadius = 3.5;
       FullCircleDegrees = 360.0;
+      // A category label under the bars wraps onto this many lines at most,
+      // and keeps this much room from the label beside it.
+      MaxCategoryLabelLines = 3;
+      CategoryLabelGap = 4.0;
+      Ellipsis = #$2026;
+      WordSeparator = ' ';
     var
       FModel: IChartModel;
       FTheme: TMarkdownTheme;
@@ -162,6 +169,16 @@ type
     procedure EmitVerticalLegend(const Font: TMarkdownFontStyle; const RowHeight: Single);
     procedure EmitHorizontalLegend(const Font: TMarkdownFontStyle; const RowHeight: Single);
     procedure LayoutAxes;
+    function WrapCategoryLabels(const SlotWidth: Single; const Font: TMarkdownFontStyle): TArray<TArray<string>>;
+    function WrapLabel(const Text: string; const MaxWidth: Single; const Font: TMarkdownFontStyle): TArray<string>;
+    procedure BreakIntoLines(const Lines: TList<string>; const Text: string; const MaxWidth: Single;
+      const Font: TMarkdownFontStyle);
+    procedure LimitLineCount(const Lines: TList<string>; const MaxWidth: Single; const Font: TMarkdownFontStyle);
+    function FitLine(const Text: string; const MaxWidth: Single; const Font: TMarkdownFontStyle): string;
+    function ShortenWithEllipsis(const Text: string; const MaxWidth: Single; const Font: TMarkdownFontStyle): string;
+    class function MostLines(const Labels: TArray<TArray<string>>): Integer; static;
+    procedure EmitCategoryLabel(const Lines: TArray<string>; const CenterX, Top: Single;
+      const Font: TMarkdownFontStyle);
     procedure LayoutBars(const PlotLeft, PlotTop, PlotRight, PlotBottom, AxisMin, AxisMax: Single);
     procedure EmitStackedBars(const LabelIndex: Integer; const SlotLeft, SlotWidth, BaseY, AxisSpan, PlotHeight: Single);
     procedure EmitGroupedBars(const LabelIndex: Integer; const SlotLeft, SlotWidth, BaseY, AxisMin, AxisSpan,
@@ -847,11 +864,16 @@ begin
   end;
   GutterWidth := GutterWidth + AxisGap;
 
-  const BottomGutter = FMeasurer.LineHeight(Font) + AxisGap;
-
+  // The labels under the plot wrap to the width of their slot, so the room
+  // they take below the axis follows from the slot width, and with it the
+  // bottom of the plot.
   const PlotLeft = FLeft + GutterWidth;
   const PlotTop = FTop;
   const PlotRight = FRight;
+  const SlotWidth = (PlotRight - PlotLeft) / Max(1, FModel.LabelCount);
+  const CategoryLabels = WrapCategoryLabels(SlotWidth, Font);
+  const LabelLines = Max(1, MostLines(CategoryLabels));
+  const BottomGutter = LabelLines * FMeasurer.LineHeight(Font) + AxisGap;
   const PlotBottom = FBottom - BottomGutter;
 
   const PlotAreaInvalid = ((PlotRight <= PlotLeft) or (PlotBottom <= PlotTop));
@@ -870,17 +892,169 @@ begin
     EmitText(Text, PlotLeft - AxisGap - Size.Width, GridY - Size.Height / 2, Font, FTheme.ChartTextColor);
   end;
 
-  const SlotWidth = (PlotRight - PlotLeft) / Max(1, FModel.LabelCount);
   for var LabelIndex := 0 to FModel.LabelCount - 1 do
   begin
     const CenterX = PlotLeft + SlotWidth * (LabelIndex + 0.5);
-    EmitCenteredText(FModel.Labels[LabelIndex], CenterX, PlotBottom + AxisGap, Font, FTheme.ChartTextColor);
+    EmitCategoryLabel(CategoryLabels[LabelIndex], CenterX, PlotBottom + AxisGap, Font);
   end;
 
   if FModel.ChartKind = TChartKind.Bar then
     LayoutBars(PlotLeft, PlotTop, PlotRight, PlotBottom, Axis.Minimum, Axis.Maximum)
   else
     LayoutLine(PlotLeft, PlotTop, PlotRight, PlotBottom, Axis.Minimum, Axis.Maximum);
+end;
+
+// Each label as the lines it takes under its slot, with room kept between
+// neighbours so two labels never run into each other.
+function TChartLayoutBuilder.WrapCategoryLabels(const SlotWidth: Single;
+  const Font: TMarkdownFontStyle): TArray<TArray<string>>;
+begin
+  const MaxWidth = Max(0, SlotWidth - CategoryLabelGap);
+  SetLength(Result, FModel.LabelCount);
+
+  for var LabelIndex := 0 to FModel.LabelCount - 1 do
+  begin
+    Result[LabelIndex] := WrapLabel(FModel.Labels[LabelIndex], MaxWidth, Font);
+  end;
+end;
+
+// The words of a label, as many to a line as fit in MaxWidth. A label that
+// fits stays one line. A word wider than the slot is cut short with an
+// ellipsis, and a label that needs more than MaxCategoryLabelLines ends its
+// last line with one.
+function TChartLayoutBuilder.WrapLabel(const Text: string; const MaxWidth: Single;
+  const Font: TMarkdownFontStyle): TArray<string>;
+begin
+  const Lines = TList<string>.Create;
+  try
+    BreakIntoLines(Lines, Text, MaxWidth, Font);
+    LimitLineCount(Lines, MaxWidth, Font);
+
+    for var Index := 0 to Lines.Count - 1 do
+    begin
+      Lines[Index] := FitLine(Lines[Index], MaxWidth, Font);
+    end;
+
+    Result := Lines.ToArray;
+  finally
+    Lines.Free;
+  end;
+end;
+
+procedure TChartLayoutBuilder.BreakIntoLines(const Lines: TList<string>; const Text: string; const MaxWidth: Single;
+  const Font: TMarkdownFontStyle);
+begin
+  const Words = Text.Split([WordSeparator], TStringSplitOptions.ExcludeEmpty);
+
+  var Current := '';
+  for var Word in Words do
+  begin
+    const StartsTheLine = Current.IsEmpty;
+    if StartsTheLine then
+    begin
+      Current := Word;
+      Continue;
+    end;
+
+    const Candidate = string.Join(WordSeparator, [Current, Word]);
+    const Fits = (FMeasurer.MeasureText(Candidate, Font).Width <= MaxWidth);
+    if Fits then
+    begin
+      Current := Candidate;
+      Continue;
+    end;
+
+    Lines.Add(Current);
+    Current := Word;
+  end;
+
+  const HasLastLine = not Current.IsEmpty;
+  if HasLastLine then
+    Lines.Add(Current);
+end;
+
+// The lines past the last one allowed join that last line, which then ends in
+// an ellipsis where it no longer fits.
+procedure TChartLayoutBuilder.LimitLineCount(const Lines: TList<string>; const MaxWidth: Single;
+  const Font: TMarkdownFontStyle);
+begin
+  const IsTooLong = (Lines.Count > MaxCategoryLabelLines);
+  if not IsTooLong then
+    Exit;
+
+  const LastShown = MaxCategoryLabelLines - 1;
+  const AllLines = Lines.ToArray;
+  const Rest = string.Join(WordSeparator, AllLines, LastShown, Length(AllLines) - LastShown);
+
+  Lines.Count := MaxCategoryLabelLines;
+  Lines[LastShown] := ShortenWithEllipsis(Rest, MaxWidth, Font);
+end;
+
+function TChartLayoutBuilder.FitLine(const Text: string; const MaxWidth: Single;
+  const Font: TMarkdownFontStyle): string;
+begin
+  const Fits = (FMeasurer.MeasureText(Text, Font).Width <= MaxWidth);
+  if Fits then
+  begin
+    Result := Text;
+    Exit;
+  end;
+
+  Result := ShortenWithEllipsis(Text, MaxWidth, Font);
+end;
+
+// As much of Text as fits in MaxWidth with an ellipsis after it, cut between
+// characters and never inside a surrogate pair. Nothing at all when even the
+// ellipsis does not fit.
+function TChartLayoutBuilder.ShortenWithEllipsis(const Text: string; const MaxWidth: Single;
+  const Font: TMarkdownFontStyle): string;
+begin
+  var Kept := Text.Length;
+  while Kept > 0 do
+  begin
+    const Shortened = Text.Substring(0, Kept);
+    const Candidate = Shortened.TrimRight + Ellipsis;
+    const Fits = (FMeasurer.MeasureText(Candidate, Font).Width <= MaxWidth);
+    if Fits then
+    begin
+      Result := Candidate;
+      Exit;
+    end;
+
+    Dec(Kept);
+    const SplitsAPair = ((Kept > 0) and Text.Chars[Kept].IsLowSurrogate);
+    if SplitsAPair then
+      Dec(Kept);
+  end;
+
+  const EllipsisFits = (FMeasurer.MeasureText(Ellipsis, Font).Width <= MaxWidth);
+  if EllipsisFits then
+    Result := Ellipsis
+  else
+    Result := '';
+end;
+
+class function TChartLayoutBuilder.MostLines(const Labels: TArray<TArray<string>>): Integer;
+begin
+  Result := 0;
+
+  for var Lines in Labels do
+  begin
+    Result := Max(Result, Length(Lines));
+  end;
+end;
+
+// The lines of one label, each centred under the slot, the first at Top.
+procedure TChartLayoutBuilder.EmitCategoryLabel(const Lines: TArray<string>; const CenterX, Top: Single;
+  const Font: TMarkdownFontStyle);
+begin
+  const LineHeight = FMeasurer.LineHeight(Font);
+
+  for var Index := 0 to High(Lines) do
+  begin
+    const LineTop = Top + Index * LineHeight;
+    EmitCenteredText(Lines[Index], CenterX, LineTop, Font, FTheme.ChartTextColor);
+  end;
 end;
 
 procedure TChartLayoutBuilder.LayoutBars(const PlotLeft, PlotTop, PlotRight, PlotBottom, AxisMin, AxisMax: Single);
