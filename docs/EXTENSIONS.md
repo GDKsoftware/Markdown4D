@@ -604,13 +604,17 @@ of their own slot, so a narrow chart shows them on two or three lines instead of
 letting neighbours run into each other. The plot gives up the height the
 tallest label needs, but no more than half the height under the title and
 legend, as Chart.js does for its x axis; the labels always keep at least one
-line. A label that fits its slot is drawn exactly as written. A
-word wider than its slot is cut short with an ellipsis, and so is the last line
-a label may show when its words need more lines than that.
+line. A label that fits its slot is drawn exactly as written. A word wider than
+its slot is cut short with an ellipsis, and so is the last line a label may show
+when its words need more lines than that.
 
-In a chart so dense that a slot cannot hold even the ellipsis, the labels are
-not wrapped: each one is drawn whole on a single line, and neighbours may
-overlap. The chart does not skip labels to make room.
+A line is only cut short where at least one whole character fits before the
+ellipsis, so the ellipsis never stands on a line of its own. A line without
+that room is left out, and the line above it ends in the ellipsis instead. Where
+that line has no room for it either, or the first line of the label has none,
+as in a chart so dense that a slot cannot hold a letter and the ellipsis
+together, the label is not wrapped: it is drawn whole on a single line, and
+neighbours may overlap. The chart does not skip labels to make room.
 
 Consumers can read the cached model back:
 

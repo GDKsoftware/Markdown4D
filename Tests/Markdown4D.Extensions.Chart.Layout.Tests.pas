@@ -37,6 +37,9 @@ type
       TitleAndLegend = '"title":{"display":true,"text":"Orders"},"legend":{"display":true}';
       LongLabels: array[0..3] of string = ('Shipped month to date', 'Completed month to date',
         'Shipped month projected', 'Completed month projected');
+      WeekCount = 30;
+      NarrowLabel = 'x';
+      Face = #$D83D#$DE00;
       LegendSwatchSize = 10.0;
       RowHeightFactor = 2.0;
       NarrowBarFill = 0.4;
@@ -46,6 +49,7 @@ type
       ChartFence = '```chart'#10'%s'#10'```';
       ThreeBarsExpected = 'A three-label chart must emit three bars';
       LineMustFitItsSlot = 'The line "%s" must fit its slot';
+      EachLabelOnOneLine = 'Every label must still be drawn, each on one line';
       FractionalBarChart =
         '```chart'#10 +
         '{"type":"chart","data":{"type":"bar","data":{"labels":["A","B","C"],' +
@@ -77,7 +81,12 @@ type
     function SlotCenterOf(const LabelIndex, LabelCount: Integer; const Width: Single): Single;
     function ChartBottomOf(const Width: Single): Single;
     function OneLineAxisBottom(const Width: Single): Single;
+    class function WeekLabels(const Count: Integer): TArray<string>; static;
+    class function LabelsStartingWith(const FirstLabel: string; const LabelCount: Integer): TArray<string>; static;
+    function WideLetterItems(const Labels: TArray<string>): TArray<IDisplayItem>;
     procedure AssertBarsTakeColorPerLabel(const Horizontal: Boolean);
+    procedure AssertLabelsStayWholeOnOneLine(const Labels: TArray<string>; const Width: Single; const Plugins: string);
+    class procedure AssertNoLineShowsOnlyTheEllipsis(const Runs: TArray<IDisplayTextRun>); static;
 
   public
     [SetupFixture]
@@ -210,6 +219,21 @@ type
 
     [Test]
     procedure CategoryLabels_CutNextToASurrogatePair_KeepThePairWhole;
+
+    [Test]
+    procedure CategoryLabels_MonthsWithoutRoomForALetter_StayWholeOnOneLine;
+
+    [Test]
+    procedure CategoryLabels_WeeksWithoutRoomForALetter_StayWholeOnOneLine;
+
+    [Test]
+    procedure CategoryLabels_LineWithRoomForOnlyTheEllipsis_LeavesItToTheLineAbove;
+
+    [Test]
+    procedure CategoryLabels_NoLineWithRoomForTheEllipsis_StaysWholeOnOneLine;
+
+    [Test]
+    procedure CategoryLabels_RoomForHalfASurrogatePair_StayWholeOnOneLine;
   end;
 
 implementation
@@ -225,6 +249,50 @@ uses
   Markdown4D.Pipeline,
   Markdown4D.Layout.FakeMeasurer,
   Markdown4D.Tests.Arrays;
+
+type
+  // Measures as the fake measurer does, except that a W takes the room of four
+  // characters, so one line of a label can lack room that the line above it has.
+  TWideLetterMeasurer = class(TInterfacedObject, ITextMeasurer)
+  private
+    const
+      WideLetter = 'W';
+      WideLetterSpan = 4;
+    var
+      FFakeMeasurer: ITextMeasurer;
+
+  public
+    constructor Create;
+    function MeasureText(const Text: string; const Font: TMarkdownFontStyle): TLayoutSizeF;
+    function LineHeight(const Font: TMarkdownFontStyle): Single;
+    function Baseline(const Font: TMarkdownFontStyle): Single;
+  end;
+
+constructor TWideLetterMeasurer.Create;
+begin
+  inherited Create;
+  FFakeMeasurer := TFakeTextMeasurer.Create;
+end;
+
+function TWideLetterMeasurer.MeasureText(const Text: string; const Font: TMarkdownFontStyle): TLayoutSizeF;
+begin
+  const Size = FFakeMeasurer.MeasureText(Text, Font);
+  const Letter = FFakeMeasurer.MeasureText(WideLetter, Font);
+  const WideLetterCount = Text.CountChar(WideLetter);
+  const ExtraWidth = WideLetterCount * (WideLetterSpan - 1) * Letter.Width;
+
+  Result := TLayoutSizeF.Create(Size.Width + ExtraWidth, Size.Height);
+end;
+
+function TWideLetterMeasurer.LineHeight(const Font: TMarkdownFontStyle): Single;
+begin
+  Result := FFakeMeasurer.LineHeight(Font);
+end;
+
+function TWideLetterMeasurer.Baseline(const Font: TMarkdownFontStyle): Single;
+begin
+  Result := FFakeMeasurer.Baseline(Font);
+end;
 
 function ChartPipeline: IMarkdownPipeline;
 begin
@@ -1044,6 +1112,67 @@ begin
   Result := ChartBottomOf(Width) - LabelLineHeight - AxisGap;
 end;
 
+class function TChartLayoutTests.WeekLabels(const Count: Integer): TArray<string>;
+begin
+  SetLength(Result, Count);
+
+  for var Index := 0 to Count - 1 do
+  begin
+    Result[Index] := Format('Week %d', [Index + 1]);
+  end;
+end;
+
+class function TChartLayoutTests.LabelsStartingWith(const FirstLabel: string;
+  const LabelCount: Integer): TArray<string>;
+begin
+  SetLength(Result, LabelCount);
+  Result[0] := FirstLabel;
+
+  for var Index := 1 to LabelCount - 1 do
+  begin
+    Result[Index] := NarrowLabel;
+  end;
+end;
+
+function TChartLayoutTests.WideLetterItems(const Labels: TArray<string>): TArray<IDisplayItem>;
+begin
+  var Code: IMarkdownCodeBlock;
+  const Markdown = LabelChartMarkdown(Labels);
+  const Model = ParseModel(Markdown, Code);
+  const Measurer: ITextMeasurer = TWideLetterMeasurer.Create;
+  const Bounds = TLayoutRectF.Create(0, 0, ChartWidth, ChartHeight);
+  Result := TChartLayouter.BuildDisplayItems(Model, Bounds, FTheme, Measurer, Code);
+end;
+
+procedure TChartLayoutTests.AssertLabelsStayWholeOnOneLine(const Labels: TArray<string>; const Width: Single;
+  const Plugins: string);
+begin
+  const Markdown = ChartWithLabelsMarkdown(BarChart, Labels, Plugins);
+  const Items = ItemsAtWidth(Markdown, Width);
+
+  const Runs = CategoryRuns(Items);
+  const Axis = AxisBottom(Items);
+
+  const LabelCount = TTestArray.CountOf(Labels);
+  Assert.AreEqual(LabelCount, TTestArray.CountOf(Runs), EachLabelOnOneLine);
+  for var Index := 0 to High(Labels) do
+  begin
+    Assert.AreEqual(Labels[Index], Runs[Index].Text, 'A label that cannot be shortened must stay whole');
+  end;
+  const OneLineAxis = OneLineAxisBottom(Width);
+  Assert.AreEqual(Double(OneLineAxis), Double(Axis), 0.01,
+    'Labels that cannot be shortened must not take more than one line of height');
+end;
+
+class procedure TChartLayoutTests.AssertNoLineShowsOnlyTheEllipsis(const Runs: TArray<IDisplayTextRun>);
+begin
+  for var Run in Runs do
+  begin
+    const ShowsOnlyTheEllipsis = (Run.Text = Ellipsis);
+    Assert.IsFalse(ShowsOnlyTheEllipsis, 'No line may show the ellipsis alone');
+  end;
+end;
+
 procedure TChartLayoutTests.CategoryLabels_ThatFit_StayAsWrittenOnOneLine;
 const
   Labels: array[0..3] of string = ('  Q1  ', 'Q2', 'A  B', 'Q4');
@@ -1088,6 +1217,7 @@ begin
       Assert.IsFalse(IsSameLine and Overlaps, Format('"%s" must not run into "%s"', [Run.Text, Other.Text]));
     end;
   end;
+  AssertNoLineShowsOnlyTheEllipsis(Runs);
 
   for var Index := 0 to High(LongLabels) do
   begin
@@ -1163,38 +1293,18 @@ begin
     HasEllipsis := HasEllipsis or Run.Text.EndsWith(Ellipsis);
   end;
   Assert.IsTrue(HasEllipsis, 'A label that needs more lines than there is room for must end in an ellipsis');
+  AssertNoLineShowsOnlyTheEllipsis(Runs);
 end;
 
 procedure TChartLayoutTests.CategoryLabels_NoRoomForTheEllipsis_StayWholeOnOneLine;
-const
-  WeekCount = 30;
 begin
-  var Labels: TArray<string>;
-  SetLength(Labels, WeekCount);
-  for var Index := 0 to WeekCount - 1 do
-  begin
-    Labels[Index] := Format('Week %d', [Index + 1]);
-  end;
+  const Labels = WeekLabels(WeekCount);
 
-  const Markdown = LabelChartMarkdown(Labels);
-  const Items = ItemsAtWidth(Markdown, NarrowChartWidth);
-
-  const Runs = CategoryRuns(Items);
-  const Axis = AxisBottom(Items);
-
-  Assert.AreEqual(WeekCount, TTestArray.CountOf(Runs), 'Every label must still be drawn, each on one line');
-  for var Index := 0 to WeekCount - 1 do
-  begin
-    Assert.AreEqual(Labels[Index], Runs[Index].Text, 'A label in a slot too narrow for the ellipsis must stay whole');
-  end;
-  const OneLineAxis = OneLineAxisBottom(NarrowChartWidth);
-  Assert.AreEqual(Double(OneLineAxis), Double(Axis), 0.01,
-    'Labels that cannot wrap must not take more than one line of height');
+  AssertLabelsStayWholeOnOneLine(Labels, NarrowChartWidth, NoLegend);
 end;
 
 procedure TChartLayoutTests.CategoryLabels_CutNextToASurrogatePair_KeepThePairWhole;
 const
-  Face = #$D83D#$DE00;
   FaceCount = 10;
 begin
   const LongLabel = 'A' + DupeString(Face, FaceCount);
@@ -1215,6 +1325,76 @@ begin
   const KeepsTheStart = (LongLabel.Substring(0, Kept.Length) = Kept);
   Assert.IsFalse(LastKept.IsHighSurrogate, 'The cut must not fall between the two halves of a surrogate pair');
   Assert.IsTrue(KeepsTheStart, 'The shortened label must keep the start of the label');
+end;
+
+// At this width a slot holds the ellipsis, but not a letter before it.
+procedure TChartLayoutTests.CategoryLabels_MonthsWithoutRoomForALetter_StayWholeOnOneLine;
+const
+  MonthsChartWidth = 200.0;
+  Months: TArray<string> = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+    'September', 'October', 'November', 'December'];
+begin
+  AssertLabelsStayWholeOnOneLine(Months, MonthsChartWidth, TitleAndLegend);
+end;
+
+// Thirty labels leave a slot that holds the ellipsis, but not a letter before it.
+procedure TChartLayoutTests.CategoryLabels_WeeksWithoutRoomForALetter_StayWholeOnOneLine;
+begin
+  const Labels = WeekLabels(WeekCount);
+
+  AssertLabelsStayWholeOnOneLine(Labels, ChartWidth, NoLegend);
+end;
+
+// Sixteen labels leave a slot with room for two letters and the ellipsis, but
+// not for a W and the ellipsis, so the last line of 'ab cd W' cannot show its W.
+procedure TChartLayoutTests.CategoryLabels_LineWithRoomForOnlyTheEllipsis_LeavesItToTheLineAbove;
+const
+  LabelCount = 16;
+  Expected = 'ab cd' + Ellipsis;
+begin
+  const Labels = LabelsStartingWith('ab cd W', LabelCount);
+  const Items = WideLetterItems(Labels);
+
+  const Runs = CategoryRuns(Items);
+  const FirstRun = Runs[0];
+  const Center: Single = (FirstRun.Bounds.Left + FirstRun.Bounds.Right) / 2;
+  const Shown = TextUnder(Runs, Center);
+
+  Assert.AreEqual(Expected, Shown, 'The line above must end in the ellipsis that would have stood alone');
+  AssertNoLineShowsOnlyTheEllipsis(Runs);
+end;
+
+// Thirteen labels leave a slot with room for a W, but not for a W and the
+// ellipsis, so neither line of 'W WW' can end in it.
+procedure TChartLayoutTests.CategoryLabels_NoLineWithRoomForTheEllipsis_StaysWholeOnOneLine;
+const
+  LabelCount = 13;
+  WideLabel = 'W WW';
+begin
+  const Labels = LabelsStartingWith(WideLabel, LabelCount);
+  const Items = WideLetterItems(Labels);
+
+  const Runs = CategoryRuns(Items);
+
+  Assert.AreEqual(LabelCount, TTestArray.CountOf(Runs), EachLabelOnOneLine);
+  Assert.AreEqual(WideLabel, Runs[0].Text, 'A label whose lines cannot end in the ellipsis must stay whole');
+end;
+
+// Nineteen labels leave a slot with room for half a surrogate pair and the
+// ellipsis, but not for the whole pair and the ellipsis.
+procedure TChartLayoutTests.CategoryLabels_RoomForHalfASurrogatePair_StayWholeOnOneLine;
+const
+  LabelCount = 19;
+  TwoFaces = Face + Face;
+begin
+  const Labels = LabelsStartingWith(TwoFaces, LabelCount);
+  const Markdown = LabelChartMarkdown(Labels);
+  const Items = ItemsAtWidth(Markdown, ChartWidth);
+
+  const Runs = CategoryRuns(Items);
+
+  Assert.AreEqual(LabelCount, TTestArray.CountOf(Runs), EachLabelOnOneLine);
+  Assert.AreEqual(TwoFaces, Runs[0].Text, 'A label must not be cut down to half a character and the ellipsis');
 end;
 
 end.
