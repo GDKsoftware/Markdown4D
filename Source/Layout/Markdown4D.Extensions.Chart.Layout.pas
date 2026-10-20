@@ -117,9 +117,12 @@ type
       MarkerRadius = 3.5;
       FullCircleDegrees = 360.0;
       // A category label under the bars wraps onto this many lines at most,
-      // and keeps this much room from the label beside it.
+      // and keeps this much room from the label beside it. Like the x axis in
+      // Chart.js, the labels take no more than this share of the height under
+      // the title and legend, so a narrow chart keeps room for its plot.
       MaxCategoryLabelLines = 3;
       CategoryLabelGap = 4.0;
+      MaxCategoryBandShare = 0.5;
       Ellipsis = #$2026;
       WordSeparator = ' ';
     var
@@ -169,13 +172,17 @@ type
     procedure EmitVerticalLegend(const Font: TMarkdownFontStyle; const RowHeight: Single);
     procedure EmitHorizontalLegend(const Font: TMarkdownFontStyle; const RowHeight: Single);
     procedure LayoutAxes;
-    function WrapCategoryLabels(const SlotWidth: Single; const Font: TMarkdownFontStyle): TArray<TArray<string>>;
-    function WrapLabel(const Text: string; const MaxWidth: Single; const Font: TMarkdownFontStyle): TArray<string>;
+    function CategoryLabelLineLimit(const Font: TMarkdownFontStyle): Integer;
+    function WrapCategoryLabels(const SlotWidth: Single; const LineLimit: Integer;
+      const Font: TMarkdownFontStyle): TArray<TArray<string>>;
+    function WrapLabel(const Text: string; const MaxWidth: Single; const LineLimit: Integer;
+      const Font: TMarkdownFontStyle): TArray<string>;
     procedure BreakIntoLines(const Lines: TList<string>; const Text: string; const MaxWidth: Single;
-      const Font: TMarkdownFontStyle);
-    procedure LimitLineCount(const Lines: TList<string>; const MaxWidth: Single; const Font: TMarkdownFontStyle);
-    function FitLine(const Text: string; const MaxWidth: Single; const Font: TMarkdownFontStyle): string;
+      const LineLimit: Integer; const Font: TMarkdownFontStyle);
+    procedure FitLines(const Lines: TList<string>; const MaxWidth: Single; const Font: TMarkdownFontStyle);
     function ShortenWithEllipsis(const Text: string; const MaxWidth: Single; const Font: TMarkdownFontStyle): string;
+    class function PrefixWithEllipsis(const Text: string; const PrefixLength: Integer): string; static;
+    function HasRoomFor(const Text: string; const MaxWidth: Single; const Font: TMarkdownFontStyle): Boolean;
     class function MostLines(const Labels: TArray<TArray<string>>): Integer; static;
     procedure EmitCategoryLabel(const Lines: TArray<string>; const CenterX, Top: Single;
       const Font: TMarkdownFontStyle);
@@ -871,9 +878,10 @@ begin
   const PlotTop = FTop;
   const PlotRight = FRight;
   const SlotWidth = (PlotRight - PlotLeft) / Max(1, FModel.LabelCount);
-  const CategoryLabels = WrapCategoryLabels(SlotWidth, Font);
-  const LabelLines = Max(1, MostLines(CategoryLabels));
-  const BottomGutter = LabelLines * FMeasurer.LineHeight(Font) + AxisGap;
+  const LineLimit = CategoryLabelLineLimit(Font);
+  const CategoryLabels = WrapCategoryLabels(SlotWidth, LineLimit, Font);
+  const LabelLineCount = Max(1, MostLines(CategoryLabels));
+  const BottomGutter = LabelLineCount * FMeasurer.LineHeight(Font) + AxisGap;
   const PlotBottom = FBottom - BottomGutter;
 
   const PlotAreaInvalid = ((PlotRight <= PlotLeft) or (PlotBottom <= PlotTop));
@@ -904,36 +912,45 @@ begin
     LayoutLine(PlotLeft, PlotTop, PlotRight, PlotBottom, Axis.Minimum, Axis.Maximum);
 end;
 
-// Each label as the lines it takes under its slot, with room kept between
-// neighbours so two labels never run into each other.
-function TChartLayoutBuilder.WrapCategoryLabels(const SlotWidth: Single;
+// A chart too low to spare even one line still gives its labels that line, so
+// they stay visible.
+function TChartLayoutBuilder.CategoryLabelLineLimit(const Font: TMarkdownFontStyle): Integer;
+begin
+  const MaxBandHeight = (FBottom - FTop) * MaxCategoryBandShare;
+  const LineHeight = FMeasurer.LineHeight(Font);
+  const LinesInBand = Floor((MaxBandHeight - AxisGap) / LineHeight);
+
+  Result := EnsureRange(LinesInBand, 1, MaxCategoryLabelLines);
+end;
+
+// A slot too narrow for even the ellipsis has no room to wrap into, so its
+// label stays whole on one line rather than taking height for lines that would
+// show nothing.
+function TChartLayoutBuilder.WrapCategoryLabels(const SlotWidth: Single; const LineLimit: Integer;
   const Font: TMarkdownFontStyle): TArray<TArray<string>>;
 begin
   const MaxWidth = Max(0, SlotWidth - CategoryLabelGap);
+  const HasRoomToWrap = (HasRoomFor(Ellipsis, MaxWidth, Font));
   SetLength(Result, FModel.LabelCount);
 
   for var LabelIndex := 0 to FModel.LabelCount - 1 do
   begin
-    Result[LabelIndex] := WrapLabel(FModel.Labels[LabelIndex], MaxWidth, Font);
+    const Text = FModel.Labels[LabelIndex];
+    const StaysWhole = (not HasRoomToWrap or HasRoomFor(Text, MaxWidth, Font));
+    if StaysWhole then
+      Result[LabelIndex] := [Text]
+    else
+      Result[LabelIndex] := WrapLabel(Text, MaxWidth, LineLimit, Font);
   end;
 end;
 
-// The words of a label, as many to a line as fit in MaxWidth. A label that
-// fits stays one line. A word wider than the slot is cut short with an
-// ellipsis, and a label that needs more than MaxCategoryLabelLines ends its
-// last line with one.
-function TChartLayoutBuilder.WrapLabel(const Text: string; const MaxWidth: Single;
+function TChartLayoutBuilder.WrapLabel(const Text: string; const MaxWidth: Single; const LineLimit: Integer;
   const Font: TMarkdownFontStyle): TArray<string>;
 begin
   const Lines = TList<string>.Create;
   try
-    BreakIntoLines(Lines, Text, MaxWidth, Font);
-    LimitLineCount(Lines, MaxWidth, Font);
-
-    for var Index := 0 to Lines.Count - 1 do
-    begin
-      Lines[Index] := FitLine(Lines[Index], MaxWidth, Font);
-    end;
+    BreakIntoLines(Lines, Text, MaxWidth, LineLimit, Font);
+    FitLines(Lines, MaxWidth, Font);
 
     Result := Lines.ToArray;
   finally
@@ -941,97 +958,92 @@ begin
   end;
 end;
 
+// The last line allowed takes every word that is left, so that it ends in an
+// ellipsis where words had to be dropped.
 procedure TChartLayoutBuilder.BreakIntoLines(const Lines: TList<string>; const Text: string; const MaxWidth: Single;
-  const Font: TMarkdownFontStyle);
+  const LineLimit: Integer; const Font: TMarkdownFontStyle);
 begin
-  const Words = Text.Split([WordSeparator], TStringSplitOptions.ExcludeEmpty);
+  const Tokens = Text.Split([WordSeparator], TStringSplitOptions.ExcludeEmpty);
 
-  var Current := '';
-  for var Word in Words do
+  var CurrentLine := '';
+  for var Token in Tokens do
   begin
-    const StartsTheLine = Current.IsEmpty;
+    const StartsTheLine = (CurrentLine.IsEmpty);
     if StartsTheLine then
     begin
-      Current := Word;
+      CurrentLine := Token;
       Continue;
     end;
 
-    const Candidate = string.Join(WordSeparator, [Current, Word]);
-    const Fits = (FMeasurer.MeasureText(Candidate, Font).Width <= MaxWidth);
-    if Fits then
+    const Candidate = string.Join(WordSeparator, [CurrentLine, Token]);
+    const IsLastLine = (Lines.Count >= LineLimit - 1);
+    const StaysOnTheLine = (IsLastLine or HasRoomFor(Candidate, MaxWidth, Font));
+    if StaysOnTheLine then
     begin
-      Current := Candidate;
+      CurrentLine := Candidate;
       Continue;
     end;
 
-    Lines.Add(Current);
-    Current := Word;
+    Lines.Add(CurrentLine);
+    CurrentLine := Token;
   end;
 
-  const HasLastLine = not Current.IsEmpty;
+  const HasLastLine = (not CurrentLine.IsEmpty);
   if HasLastLine then
-    Lines.Add(Current);
+    Lines.Add(CurrentLine);
 end;
 
-// The lines past the last one allowed join that last line, which then ends in
-// an ellipsis where it no longer fits.
-procedure TChartLayoutBuilder.LimitLineCount(const Lines: TList<string>; const MaxWidth: Single;
+procedure TChartLayoutBuilder.FitLines(const Lines: TList<string>; const MaxWidth: Single;
   const Font: TMarkdownFontStyle);
 begin
-  const IsTooLong = (Lines.Count > MaxCategoryLabelLines);
-  if not IsTooLong then
-    Exit;
-
-  const LastShown = MaxCategoryLabelLines - 1;
-  const AllLines = Lines.ToArray;
-  const Rest = string.Join(WordSeparator, AllLines, LastShown, Length(AllLines) - LastShown);
-
-  Lines.Count := MaxCategoryLabelLines;
-  Lines[LastShown] := ShortenWithEllipsis(Rest, MaxWidth, Font);
-end;
-
-function TChartLayoutBuilder.FitLine(const Text: string; const MaxWidth: Single;
-  const Font: TMarkdownFontStyle): string;
-begin
-  const Fits = (FMeasurer.MeasureText(Text, Font).Width <= MaxWidth);
-  if Fits then
+  for var Index := 0 to Lines.Count - 1 do
   begin
-    Result := Text;
-    Exit;
+    const Line = Lines[Index];
+    if not HasRoomFor(Line, MaxWidth, Font) then
+      Lines[Index] := ShortenWithEllipsis(Line, MaxWidth, Font);
   end;
-
-  Result := ShortenWithEllipsis(Text, MaxWidth, Font);
 end;
 
-// As much of Text as fits in MaxWidth with an ellipsis after it, cut between
-// characters and never inside a surrogate pair. Nothing at all when even the
-// ellipsis does not fit.
+// The search can start from the empty prefix, which is known to fit: a label
+// only wraps where the ellipsis does.
 function TChartLayoutBuilder.ShortenWithEllipsis(const Text: string; const MaxWidth: Single;
   const Font: TMarkdownFontStyle): string;
 begin
-  var Kept := Text.Length;
-  while Kept > 0 do
-  begin
-    const Shortened = Text.Substring(0, Kept);
-    const Candidate = Shortened.TrimRight + Ellipsis;
-    const Fits = (FMeasurer.MeasureText(Candidate, Font).Width <= MaxWidth);
-    if Fits then
-    begin
-      Result := Candidate;
-      Exit;
-    end;
+  var FittingLength := 0;
+  var OverflowLength := Text.Length + 1;
 
-    Dec(Kept);
-    const SplitsAPair = ((Kept > 0) and Text.Chars[Kept].IsLowSurrogate);
-    if SplitsAPair then
-      Dec(Kept);
+  while OverflowLength - FittingLength > 1 do
+  begin
+    const MiddleLength = (FittingLength + OverflowLength) div 2;
+    const Candidate = PrefixWithEllipsis(Text, MiddleLength);
+    if HasRoomFor(Candidate, MaxWidth, Font) then
+      FittingLength := MiddleLength
+    else
+      OverflowLength := MiddleLength;
   end;
 
-  const EllipsisFits = (FMeasurer.MeasureText(Ellipsis, Font).Width <= MaxWidth);
-  if EllipsisFits then
-    Result := Ellipsis
-  else
-    Result := '';
+  Result := PrefixWithEllipsis(Text, FittingLength);
+end;
+
+// A cut between the two halves of a surrogate pair would leave half a
+// character, so such a cut moves one place to the left.
+class function TChartLayoutBuilder.PrefixWithEllipsis(const Text: string; const PrefixLength: Integer): string;
+begin
+  const SplitsAPair = ((PrefixLength > 0) and (PrefixLength < Text.Length) and Text.Chars[PrefixLength].IsLowSurrogate);
+
+  var KeptLength := PrefixLength;
+  if SplitsAPair then
+    Dec(KeptLength);
+
+  const Kept = Text.Substring(0, KeptLength);
+  Result := Kept.TrimRight + Ellipsis;
+end;
+
+function TChartLayoutBuilder.HasRoomFor(const Text: string; const MaxWidth: Single;
+  const Font: TMarkdownFontStyle): Boolean;
+begin
+  const Size = FMeasurer.MeasureText(Text, Font);
+  Result := (Size.Width <= MaxWidth);
 end;
 
 class function TChartLayoutBuilder.MostLines(const Labels: TArray<TArray<string>>): Integer;
@@ -1044,7 +1056,6 @@ begin
   end;
 end;
 
-// The lines of one label, each centred under the slot, the first at Top.
 procedure TChartLayoutBuilder.EmitCategoryLabel(const Lines: TArray<string>; const CenterX, Top: Single;
   const Font: TMarkdownFontStyle);
 begin

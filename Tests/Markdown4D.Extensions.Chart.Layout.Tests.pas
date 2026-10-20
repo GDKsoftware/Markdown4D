@@ -30,6 +30,13 @@ type
       AxisGap = 6.0;
       MaxCategoryLabelLines = 3;
       Ellipsis = #$2026;
+      NarrowChartWidth = 280.0;
+      SlotCenterTolerance = 0.5;
+      BarChart = 'bar';
+      NoLegend = '"legend":{"display":false}';
+      TitleAndLegend = '"title":{"display":true,"text":"Orders"},"legend":{"display":true}';
+      LongLabels: array[0..3] of string = ('Shipped month to date', 'Completed month to date',
+        'Shipped month projected', 'Completed month projected');
       LegendSwatchSize = 10.0;
       RowHeightFactor = 2.0;
       NarrowBarFill = 0.4;
@@ -38,6 +45,7 @@ type
       SingleColor = '"#ff0000"';
       ChartFence = '```chart'#10'%s'#10'```';
       ThreeBarsExpected = 'A three-label chart must emit three bars';
+      LineMustFitItsSlot = 'The line "%s" must fit its slot';
       FractionalBarChart =
         '```chart'#10 +
         '{"type":"chart","data":{"type":"bar","data":{"labels":["A","B","C"],' +
@@ -57,9 +65,18 @@ type
     class function ColoredBarMarkdown(const BackgroundColor: string; const Horizontal: Boolean): string; static;
     class function Bars(const Items: TArray<IDisplayItem>): TArray<IDisplayRectangle>; static;
     class function LabelChartMarkdown(const Labels: array of string): string; static;
+    class function ChartWithLabelsMarkdown(const ChartType: string; const Labels: array of string;
+      const Plugins: string): string; static;
     class function AxisBottom(const Items: TArray<IDisplayItem>): Single; static;
+    class function TopGridLine(const Items: TArray<IDisplayItem>): Single; static;
     class function CategoryRuns(const Items: TArray<IDisplayItem>): TArray<IDisplayTextRun>; static;
-    function SlotWidthOf(const LabelCount: Integer): Single;
+    class function TextUnder(const Runs: TArray<IDisplayTextRun>; const CenterX: Single): string; static;
+    function ItemsAtWidth(const Markdown: string; const Width: Single): TArray<IDisplayItem>;
+    function PlotLeft: Single;
+    function SlotWidthOf(const LabelCount: Integer; const Width: Single): Single;
+    function SlotCenterOf(const LabelIndex, LabelCount: Integer; const Width: Single): Single;
+    function ChartBottomOf(const Width: Single): Single;
+    function OneLineAxisBottom(const Width: Single): Single;
     procedure AssertBarsTakeColorPerLabel(const Horizontal: Boolean);
 
   public
@@ -169,10 +186,12 @@ type
     procedure BarFillFactor_AboveOne_BarsTouchTheirNeighbours;
 
     [Test]
-    procedure CategoryLabels_ThatFit_StayOnOneLineEach;
+    procedure CategoryLabels_ThatFit_StayAsWrittenOnOneLine;
 
     [Test]
-    procedure CategoryLabels_WiderThanTheirSlot_WrapWithoutOverlap;
+    [TestCase('Bar', 'bar')]
+    [TestCase('Line', 'line')]
+    procedure CategoryLabels_WiderThanTheirSlot_WrapWithoutOverlap(const ChartType: string);
 
     [Test]
     procedure CategoryLabels_Wrapped_RaiseTheBottomOfThePlot;
@@ -182,13 +201,24 @@ type
 
     [Test]
     procedure CategoryLabels_MoreLinesThanAllowed_EndInAnEllipsis;
+
+    [Test]
+    procedure CategoryLabels_NarrowChartWithTitleAndLegend_LeaveHalfTheRoomToThePlot;
+
+    [Test]
+    procedure CategoryLabels_NoRoomForTheEllipsis_StayWholeOnOneLine;
+
+    [Test]
+    procedure CategoryLabels_CutNextToASurrogatePair_KeepThePairWhole;
   end;
 
 implementation
 
 uses
+  System.Character,
   System.Math,
   System.SysUtils,
+  System.StrUtils,
   System.Generics.Collections,
   Markdown4D,
   Markdown4D.Extensions.Interfaces,
@@ -894,6 +924,12 @@ end;
 // category label.
 class function TChartLayoutTests.LabelChartMarkdown(const Labels: array of string): string;
 begin
+  Result := ChartWithLabelsMarkdown(BarChart, Labels, NoLegend);
+end;
+
+class function TChartLayoutTests.ChartWithLabelsMarkdown(const ChartType: string; const Labels: array of string;
+  const Plugins: string): string;
+begin
   var Quoted: TArray<string>;
   var Values: TArray<string>;
   SetLength(Quoted, Length(Labels));
@@ -904,10 +940,10 @@ begin
     Values[Index] := IntToStr(Index + 1);
   end;
 
-  const Json = Format('{"type":"chart","data":{"type":"bar","data":{"labels":[%s],' +
+  const Json = Format('{"type":"chart","data":{"type":"%s","data":{"labels":[%s],' +
     '"datasets":[{"label":"Series","data":[%s]}]},' +
-    '"options":{"plugins":{"legend":{"display":false}}}}}',
-    [string.Join(',', Quoted), string.Join(',', Values)]);
+    '"options":{"plugins":{%s}}}}',
+    [ChartType, string.Join(',', Quoted), string.Join(',', Values), Plugins]);
   Result := Format(ChartFence, [Json]);
 end;
 
@@ -924,6 +960,19 @@ begin
   end;
 end;
 
+// The highest grid line, which is the top of the plot.
+class function TChartLayoutTests.TopGridLine(const Items: TArray<IDisplayItem>): Single;
+begin
+  Result := MaxSingle;
+
+  for var Item in Items do
+  begin
+    const IsGridLine = (Item.Kind = TDisplayItemKind.Line);
+    if IsGridLine then
+      Result := Min(Result, Item.Bounds.Top);
+  end;
+end;
+
 class function TChartLayoutTests.CategoryRuns(const Items: TArray<IDisplayItem>): TArray<IDisplayTextRun>;
 begin
   Result := [];
@@ -932,76 +981,126 @@ begin
   for var Item in Items do
   begin
     var Run: IDisplayTextRun;
-    const IsUnderTheAxis = Supports(Item, IDisplayTextRun, Run) and (Run.Bounds.Top > Axis);
+    const IsUnderTheAxis = (Supports(Item, IDisplayTextRun, Run) and (Run.Bounds.Top > Axis));
     if IsUnderTheAxis then
       Result := Result + [Run];
   end;
 end;
 
-// The slot of one label in a chart of LabelCount single-digit bars: the plot
-// starts after the widest tick label, a single digit at these values.
-function TChartLayoutTests.SlotWidthOf(const LabelCount: Integer): Single;
+// Joined with a space, as the label was wrapped at its spaces.
+class function TChartLayoutTests.TextUnder(const Runs: TArray<IDisplayTextRun>; const CenterX: Single): string;
+begin
+  var Lines: TArray<string> := [];
+
+  for var Run in Runs do
+  begin
+    const RunCenter: Single = (Run.Bounds.Left + Run.Bounds.Right) / 2;
+    const IsUnderTheSlot = (SameValue(RunCenter, CenterX, SlotCenterTolerance));
+    if IsUnderTheSlot then
+      Lines := Lines + [Run.Text];
+  end;
+
+  Result := string.Join(' ', Lines);
+end;
+
+function TChartLayoutTests.ItemsAtWidth(const Markdown: string; const Width: Single): TArray<IDisplayItem>;
+begin
+  var Code: IMarkdownCodeBlock;
+  const Model = ParseModel(Markdown, Code);
+  const Height = TChartLayouter.PreferredHeight(Width, FTheme);
+  const Bounds = TLayoutRectF.Create(0, 0, Width, Height);
+  Result := TChartLayouter.BuildDisplayItems(Model, Bounds, FTheme, FMeasurer, Code);
+end;
+
+// The plot starts after the widest tick label, a single digit at the values
+// of these charts.
+function TChartLayoutTests.PlotLeft: Single;
 begin
   const Font = TMarkdownFontStyle.Create(FTheme.BaseFont.FamilyName, LabelFontSize);
   const TickWidth = FMeasurer.MeasureText('0', Font).Width;
-  const PlotWidth = ChartWidth - (2 * ChartPadding) - TickWidth - AxisGap;
+  Result := ChartPadding + TickWidth + AxisGap;
+end;
+
+function TChartLayoutTests.SlotWidthOf(const LabelCount: Integer; const Width: Single): Single;
+begin
+  const PlotWidth = Width - ChartPadding - PlotLeft;
   Result := PlotWidth / LabelCount;
 end;
 
-procedure TChartLayoutTests.CategoryLabels_ThatFit_StayOnOneLineEach;
+function TChartLayoutTests.SlotCenterOf(const LabelIndex, LabelCount: Integer; const Width: Single): Single;
 begin
-  const Items = MarkdownItems(LabelChartMarkdown(['Jan', 'Feb', 'Mar', 'Apr']));
-
-  const Runs = CategoryRuns(Items);
-
-  Assert.AreEqual(4, TTestArray.CountOf(Runs), 'Each label that fits its slot must be one text run');
-  for var Run in Runs do
-  begin
-    Assert.AreEqual(Double(Runs[0].Bounds.Top), Double(Run.Bounds.Top), 0.01,
-      Format('Label %s must stand on the same line as the others', [Run.Text]));
-  end;
+  const Slot = SlotWidthOf(LabelCount, Width);
+  Result := PlotLeft + Slot * (LabelIndex + 0.5);
 end;
 
-procedure TChartLayoutTests.CategoryLabels_WiderThanTheirSlot_WrapWithoutOverlap;
-const
-  Labels: array[0..3] of string = ('Shipped month to date', 'Completed month to date',
-    'Shipped month projected', 'Completed month projected');
+function TChartLayoutTests.ChartBottomOf(const Width: Single): Single;
 begin
-  const Items = MarkdownItems(LabelChartMarkdown(Labels));
-  const Slot = SlotWidthOf(Length(Labels));
+  const Height = TChartLayouter.PreferredHeight(Width, FTheme);
+  Result := Height - ChartPadding;
+end;
+
+function TChartLayoutTests.OneLineAxisBottom(const Width: Single): Single;
+begin
+  Result := ChartBottomOf(Width) - LabelLineHeight - AxisGap;
+end;
+
+procedure TChartLayoutTests.CategoryLabels_ThatFit_StayAsWrittenOnOneLine;
+const
+  Labels: array[0..3] of string = ('  Q1  ', 'Q2', 'A  B', 'Q4');
+begin
+  const Markdown = LabelChartMarkdown(Labels);
+  const Items = MarkdownItems(Markdown);
+
+  const Runs = CategoryRuns(Items);
+  const Axis = AxisBottom(Items);
+
+  Assert.AreEqual(Length(Labels), TTestArray.CountOf(Runs), 'Each label that fits its slot must be one text run');
+  for var Index := 0 to High(Labels) do
+  begin
+    const Center = SlotCenterOf(Index, Length(Labels), ChartWidth);
+    const Shown = TextUnder(Runs, Center);
+    Assert.AreEqual(Labels[Index], Shown, 'A label that fits its slot must keep its exact text');
+    Assert.AreEqual(Double(Runs[0].Bounds.Top), Double(Runs[Index].Bounds.Top), 0.01,
+      Format('Label "%s" must stand on the same line as the others', [Labels[Index]]));
+  end;
+  const OneLineAxis = OneLineAxisBottom(ChartWidth);
+  Assert.AreEqual(Double(OneLineAxis), Double(Axis), 0.01,
+    'Labels that fit must leave the axis where a single line of labels puts it');
+end;
+
+procedure TChartLayoutTests.CategoryLabels_WiderThanTheirSlot_WrapWithoutOverlap(const ChartType: string);
+begin
+  const Markdown = ChartWithLabelsMarkdown(ChartType, LongLabels, NoLegend);
+  const Items = MarkdownItems(Markdown);
+  const Slot = SlotWidthOf(Length(LongLabels), ChartWidth);
 
   const Runs = CategoryRuns(Items);
 
-  Assert.IsTrue(TTestArray.CountOf(Runs) > Length(Labels), 'Labels wider than their slot must wrap onto more lines');
-
-  var Shown := '';
+  Assert.IsTrue(TTestArray.CountOf(Runs) > Length(LongLabels), 'Labels wider than their slot must wrap onto more lines');
   for var Run in Runs do
   begin
-    Assert.IsTrue(Run.Bounds.Width <= Slot, Format('The line "%s" must fit its slot', [Run.Text]));
-    Shown := string.Join(' ', [Shown, Run.Text]);
+    Assert.IsTrue(Run.Bounds.Width <= Slot, Format(LineMustFitItsSlot, [Run.Text]));
 
     for var Other in Runs do
     begin
-      const IsSameLine = (Other <> Run) and SameValue(Other.Bounds.Top, Run.Bounds.Top, 0.01);
-      const Overlaps = (Other.Bounds.Left < Run.Bounds.Right) and (Run.Bounds.Left < Other.Bounds.Right);
+      const IsSameLine = ((Other <> Run) and SameValue(Other.Bounds.Top, Run.Bounds.Top, 0.01));
+      const Overlaps = ((Other.Bounds.Left < Run.Bounds.Right) and (Run.Bounds.Left < Other.Bounds.Right));
       Assert.IsFalse(IsSameLine and Overlaps, Format('"%s" must not run into "%s"', [Run.Text, Other.Text]));
     end;
   end;
 
-  for var LabelText in Labels do
+  for var Index := 0 to High(LongLabels) do
   begin
-    const Words = LabelText.Split([' ']);
-    for var Word in Words do
-    begin
-      Assert.IsTrue(Shown.Contains(Word), Format('The word "%s" must still be shown', [Word]));
-    end;
+    const Center = SlotCenterOf(Index, Length(LongLabels), ChartWidth);
+    const Shown = TextUnder(Runs, Center);
+    Assert.AreEqual(LongLabels[Index], Shown, 'A wrapped label must show all its words in order');
   end;
 end;
 
 procedure TChartLayoutTests.CategoryLabels_Wrapped_RaiseTheBottomOfThePlot;
 begin
   const Short = MarkdownItems(LabelChartMarkdown(['A', 'B', 'C', 'D']));
-  const Long = MarkdownItems(LabelChartMarkdown(['Shipped month to date', 'B', 'C', 'D']));
+  const Long = MarkdownItems(LabelChartMarkdown([LongLabels[0], 'B', 'C', 'D']));
 
   Assert.IsTrue(AxisBottom(Long) < AxisBottom(Short),
     'A label that wraps must take its room from the plot rather than run off the bottom');
@@ -1010,7 +1109,7 @@ end;
 procedure TChartLayoutTests.CategoryLabels_AWordWiderThanItsSlot_EndsInAnEllipsis;
 begin
   const Items = MarkdownItems(LabelChartMarkdown(['Supercalifragilistic123456', 'B', 'C', 'D']));
-  const Slot = SlotWidthOf(4);
+  const Slot = SlotWidthOf(4, ChartWidth);
 
   const Runs = CategoryRuns(Items);
 
@@ -1018,7 +1117,7 @@ begin
   var HasEllipsis := False;
   for var Run in Runs do
   begin
-    Assert.IsTrue(Run.Bounds.Width <= Slot, Format('The line "%s" must fit its slot', [Run.Text]));
+    Assert.IsTrue(Run.Bounds.Width <= Slot, Format(LineMustFitItsSlot, [Run.Text]));
     HasEllipsis := HasEllipsis or Run.Text.EndsWith(Ellipsis);
   end;
   Assert.IsTrue(HasEllipsis, 'The word that does not fit must be cut short with an ellipsis');
@@ -1041,6 +1140,81 @@ begin
     HasEllipsis := HasEllipsis or Run.Text.EndsWith(Ellipsis);
   end;
   Assert.IsTrue(HasEllipsis, 'The last line it shows must end in an ellipsis');
+end;
+
+procedure TChartLayoutTests.CategoryLabels_NarrowChartWithTitleAndLegend_LeaveHalfTheRoomToThePlot;
+begin
+  const Markdown = ChartWithLabelsMarkdown(BarChart, LongLabels, TitleAndLegend);
+  const Items = ItemsAtWidth(Markdown, NarrowChartWidth);
+  const Slot = SlotWidthOf(Length(LongLabels), NarrowChartWidth);
+  const ChartBottom = ChartBottomOf(NarrowChartWidth);
+
+  const Room = ChartBottom - TopGridLine(Items);
+  const LabelBand = ChartBottom - AxisBottom(Items);
+  const Runs = CategoryRuns(Items);
+
+  const LeavesHalfToThePlot = (LabelBand <= Room / 2);
+  Assert.IsTrue(LeavesHalfToThePlot,
+    Format('The labels take %.1f of the %.1f under the title and legend, more than half', [LabelBand, Room]));
+  var HasEllipsis := False;
+  for var Run in Runs do
+  begin
+    Assert.IsTrue(Run.Bounds.Width <= Slot, Format(LineMustFitItsSlot, [Run.Text]));
+    HasEllipsis := HasEllipsis or Run.Text.EndsWith(Ellipsis);
+  end;
+  Assert.IsTrue(HasEllipsis, 'A label that needs more lines than there is room for must end in an ellipsis');
+end;
+
+procedure TChartLayoutTests.CategoryLabels_NoRoomForTheEllipsis_StayWholeOnOneLine;
+const
+  WeekCount = 30;
+begin
+  var Labels: TArray<string>;
+  SetLength(Labels, WeekCount);
+  for var Index := 0 to WeekCount - 1 do
+  begin
+    Labels[Index] := Format('Week %d', [Index + 1]);
+  end;
+
+  const Markdown = LabelChartMarkdown(Labels);
+  const Items = ItemsAtWidth(Markdown, NarrowChartWidth);
+
+  const Runs = CategoryRuns(Items);
+  const Axis = AxisBottom(Items);
+
+  Assert.AreEqual(WeekCount, TTestArray.CountOf(Runs), 'Every label must still be drawn, each on one line');
+  for var Index := 0 to WeekCount - 1 do
+  begin
+    Assert.AreEqual(Labels[Index], Runs[Index].Text, 'A label in a slot too narrow for the ellipsis must stay whole');
+  end;
+  const OneLineAxis = OneLineAxisBottom(NarrowChartWidth);
+  Assert.AreEqual(Double(OneLineAxis), Double(Axis), 0.01,
+    'Labels that cannot wrap must not take more than one line of height');
+end;
+
+procedure TChartLayoutTests.CategoryLabels_CutNextToASurrogatePair_KeepThePairWhole;
+const
+  Face = #$D83D#$DE00;
+  FaceCount = 10;
+begin
+  const LongLabel = 'A' + DupeString(Face, FaceCount);
+  const Markdown = LabelChartMarkdown([LongLabel, 'B', 'C', 'D']);
+  const Items = MarkdownItems(Markdown);
+  const Center = SlotCenterOf(0, 4, ChartWidth);
+
+  const Runs = CategoryRuns(Items);
+  const Shown = TextUnder(Runs, Center);
+
+  const ShowsMoreThanTheEllipsis = (Shown.Length > 1);
+  Assert.IsTrue(ShowsMoreThanTheEllipsis, 'The slot has room for more than the ellipsis');
+  const EndsInEllipsis = (Shown.Chars[Shown.Length - 1] = Ellipsis);
+  Assert.IsTrue(EndsInEllipsis, 'A label wider than its slot must be cut short with an ellipsis');
+
+  const Kept = Shown.Substring(0, Shown.Length - 1);
+  const LastKept = Kept.Chars[Kept.Length - 1];
+  const KeepsTheStart = (LongLabel.Substring(0, Kept.Length) = Kept);
+  Assert.IsFalse(LastKept.IsHighSurrogate, 'The cut must not fall between the two halves of a surrogate pair');
+  Assert.IsTrue(KeepsTheStart, 'The shortened label must keep the start of the label');
 end;
 
 end.

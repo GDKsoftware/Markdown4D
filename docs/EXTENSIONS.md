@@ -601,9 +601,16 @@ legends and wedges onto the canvas.
 
 The category labels under a bar or line chart wrap at their spaces to the width
 of their own slot, so a narrow chart shows them on two or three lines instead of
-letting neighbours run into each other; the plot gives up the height the
-tallest label needs. A word wider than its slot is cut short with an ellipsis,
-and so is a label that would need more than three lines.
+letting neighbours run into each other. The plot gives up the height the
+tallest label needs, but no more than half the height under the title and
+legend, as Chart.js does for its x axis; the labels always keep at least one
+line. A label that fits its slot is drawn exactly as written. A
+word wider than its slot is cut short with an ellipsis, and so is the last line
+a label may show when its words need more lines than that.
+
+In a chart so dense that a slot cannot hold even the ellipsis, the labels are
+not wrapped: each one is drawn whole on a single line, and neighbours may
+overlap. The chart does not skip labels to make room.
 
 Consumers can read the cached model back:
 
