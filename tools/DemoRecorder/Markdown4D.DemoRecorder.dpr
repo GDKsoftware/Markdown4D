@@ -24,6 +24,7 @@ uses
   Markdown4D.Layout.Renderer,
   Markdown4D.Theme,
   Markdown4D.Viewer.Model,
+  Markdown4D.Viewer.Shared,
   Markdown4D.Editor.Highlighter,
   Markdown4D.Vcl.Painter,
   Markdown4D.Extensions.Chart.BlockOverride,
@@ -189,6 +190,9 @@ begin
   // Without these the chart and mermaid fences stay ordinary code blocks.
   TChartBlockOverride.RegisterOverride;
   TMermaidBlockOverride.RegisterOverride;
+  // The viewer components register these themselves; the recorder drives the
+  // model directly, so without this every fenced block paints as plain text.
+  TMarkdownViewerShared.RegisterDefaultHighlighters;
 
   FTheme := TMarkdownTheme.CreatePreset(Preset);
 
