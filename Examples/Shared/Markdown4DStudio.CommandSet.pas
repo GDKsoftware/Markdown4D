@@ -33,6 +33,7 @@ type
     ToggleZen: TPadCommandAction;
     ToggleTheme: TPadCommandAction;
     ToggleToc: TPadCommandAction;
+    ToggleToolbar: TPadCommandAction;
     ShowFind: TPadCommandAction;
     ShowReplace: TPadCommandAction;
     FindInPreview: TPadCommandAction;
@@ -82,6 +83,7 @@ begin
   Registry.Register(CmdZenName, CatView, CmdZenShortcut, Actions.ToggleZen);
   Registry.Register(CmdThemeName, CatView, CmdThemeShortcut, Actions.ToggleTheme);
   Registry.Register(CmdTocName, CatView, CmdTocShortcut, Actions.ToggleToc);
+  Registry.Register(CmdToolbarName, CatView, CmdToolbarShortcut, Actions.ToggleToolbar);
 
   Registry.Register(CmdFindName, CatEdit, CmdFindShortcut, Actions.ShowFind);
   Registry.Register(CmdReplaceName, CatEdit, CmdReplaceShortcut, Actions.ShowReplace);

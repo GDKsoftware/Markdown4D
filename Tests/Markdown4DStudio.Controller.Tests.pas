@@ -99,6 +99,7 @@ type
     procedure SetPreviewFindCount(const Value: string);
     function SampleMarkdown: string;
     function DarkThemeActive: Boolean;
+    function ToolbarVisible: Boolean;
     function EffectiveViewMode: TPadViewMode;
     function PromptOpenFile(out FileName: string): Boolean;
     function PromptSaveFile(const SuggestedName: string; out FileName: string): Boolean;
@@ -474,6 +475,11 @@ end;
 function TFakeShell.DarkThemeActive: Boolean;
 begin
   Result := False;
+end;
+
+function TFakeShell.ToolbarVisible: Boolean;
+begin
+  Result := True;
 end;
 
 function TFakeShell.EffectiveViewMode: TPadViewMode;

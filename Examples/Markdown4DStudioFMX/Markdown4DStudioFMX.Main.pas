@@ -120,6 +120,10 @@ type
       FZenButton: TRectangle;
       FCommandsButton: TRectangle;
       FFindButton: TRectangle;
+      FHideToolbarButton: TRectangle;
+      FToolbarHandle: TRectangle;
+      FShowToolbarButton: TRectangle;
+      FToolbarVisible: Boolean;
       FIconFontName: string;
       FIconButtons: TArray<TRectangle>;
       FIconGlyphs: TArray<TText>;
@@ -168,6 +172,7 @@ type
     procedure SetPreviewFindCount(const Value: string);
     function SampleMarkdown: string;
     function DarkThemeActive: Boolean;
+    function ToolbarVisible: Boolean;
     function EffectiveViewMode: TPadViewMode;
     procedure ApplyRestoredViewMode(const Mode: TPadViewMode);
     function PromptOpenFile(out FileName: string): Boolean;
@@ -181,6 +186,7 @@ type
     procedure CopyHtmlToClipboard(const Fragment: string);
     procedure CloseApplication;
     procedure BuildToolbar;
+    procedure BuildToolbarHandle;
     procedure FocusEditor;
     function ResolveIconFontName: string;
     function AddIconButton(const Glyph: string; const Hint: string; const Handler: TNotifyEvent): TRectangle;
@@ -217,6 +223,8 @@ type
     procedure AdoptPreviewSelection;
     procedure ToggleDarkTheme;
     procedure ToggleTocPane;
+    procedure ToggleToolbar;
+    procedure ApplyToolbarVisibility;
     procedure HandleDocumentHandedOver(const FileName: string);
     procedure SetViewMode(const Mode: TPadViewMode);
     procedure ApplyViewMode;
@@ -262,6 +270,7 @@ type
     procedure HandleZenClick(Sender: TObject);
     procedure HandleCommandsClick(Sender: TObject);
     procedure HandleFindClick(Sender: TObject);
+    procedure HandleToolbarToggleClick(Sender: TObject);
     function ActiveDocumentFolder: string;
     function GetEditorText: string;
     procedure SetEditorText(const Value: string);
@@ -374,6 +383,9 @@ begin
   FDarkThemeActive := FController.Session.DarkTheme;
   ApplyTheme;
 
+  FToolbarVisible := FController.Session.ToolbarVisible;
+  ApplyToolbarVisibility;
+
   RestoreSession;
 
   FMapDirty := True;
@@ -444,6 +456,42 @@ begin
   FFindButton := AddIconButton(GlyphFind, HintFind, HandleFindClick);
   FFindButton.Align := TAlignLayout.Right;
   FFindButton.Margins.Right := ControlMargin;
+
+  // Right aligned controls stack inward in creation order, so creating this
+  // after Find puts it just left of it, as in the VCL toolbar.
+  FHideToolbarButton := AddIconButton(GlyphHideToolbar, HintHideToolbar, HandleToolbarToggleClick);
+  FHideToolbarButton.Align := TAlignLayout.Right;
+  FIconGlyphs[High(FIconGlyphs)].Font.Size := ToolbarHandleGlyphSize;
+
+  // Sized to its text like the VCL label, so the find button sits next to the
+  // search box until there is a match count to show.
+  lblPreviewFindCount.WordWrap := False;
+  lblPreviewFindCount.AutoSize := True;
+
+  BuildToolbarHandle;
+end;
+
+// What is left of the toolbar while it is hidden: a sliver in the toolbar's
+// colour with the chevron that brings it back at its right end.
+procedure TMarkdown4DStudioFMXForm.BuildToolbarHandle;
+begin
+  FToolbarHandle := TRectangle.Create(Self);
+  FToolbarHandle.Parent := Self;
+  FToolbarHandle.Align := TAlignLayout.Top;
+  // Top aligned siblings stack by position, so start it just under the toolbar.
+  FToolbarHandle.Position.Y := rctToolbar.Position.Y + rctToolbar.Height;
+  FToolbarHandle.Height := ToolbarHandleHeight;
+  FToolbarHandle.Stroke.Kind := TBrushKind.None;
+  FToolbarHandle.Fill.Kind := TBrushKind.Solid;
+  FToolbarHandle.Visible := False;
+
+  FShowToolbarButton := AddIconButton(GlyphShowToolbar, HintShowToolbar, HandleToolbarToggleClick);
+  FShowToolbarButton.Parent := FToolbarHandle;
+  FShowToolbarButton.Align := TAlignLayout.Right;
+  FShowToolbarButton.Margins.Top := 0;
+  FShowToolbarButton.Margins.Bottom := 0;
+  FShowToolbarButton.Margins.Right := ControlMargin;
+  FIconGlyphs[High(FIconGlyphs)].Font.Size := ToolbarHandleGlyphSize;
 end;
 
 function TMarkdown4DStudioFMXForm.ResolveIconFontName: string;
@@ -774,6 +822,7 @@ begin
   Result.ToggleZen := procedure begin ToggleZen; end;
   Result.ToggleTheme := procedure begin ToggleDarkTheme; end;
   Result.ToggleToc := procedure begin ToggleTocPane; end;
+  Result.ToggleToolbar := procedure begin ToggleToolbar; end;
   Result.ShowFind := procedure begin ShowFindBar; end;
   Result.ShowReplace := procedure begin ShowReplaceBar; end;
   Result.FindInPreview := procedure begin ExecuteFind; end;
@@ -1302,6 +1351,7 @@ begin
   FPreZenViewMode := FViewMode;
 
   rctToolbar.Visible := False;
+  FToolbarHandle.Visible := False;
   FTabStrip.Visible := False;
   layToc.Visible := False;
   splToc.Visible := False;
@@ -1337,7 +1387,7 @@ begin
   FreeAndNil(FZenLeftPad);
   FreeAndNil(FZenRightPad);
 
-  rctToolbar.Visible := True;
+  ApplyToolbarVisibility;
   FTabStrip.Visible := True;
   rctStatus.Visible := True;
   layToc.Visible := FZenTocWasVisible;
@@ -1574,6 +1624,36 @@ begin
   // Showing the contents pane takes the same room the two halves share.
   if (not FZenActive) and (FViewMode = TPadViewMode.Split) then
     ApplySplitEditorWidth(mdEditor.Width);
+end;
+
+procedure TMarkdown4DStudioFMXForm.HandleToolbarToggleClick(Sender: TObject);
+begin
+  // The chevron that was clicked is about to be hidden, and it would keep its
+  // hover fill and hint until the pointer next crosses it.
+  HideHint;
+  (Sender as TRectangle).Fill.Color := FToolbarFill;
+
+  ToggleToolbar;
+end;
+
+procedure TMarkdown4DStudioFMXForm.ToggleToolbar;
+begin
+  FToolbarVisible := not FToolbarVisible;
+
+  // Zen keeps every bar out of sight; the choice shows once zen ends.
+  if not FZenActive then
+    ApplyToolbarVisibility;
+end;
+
+procedure TMarkdown4DStudioFMXForm.ApplyToolbarVisibility;
+begin
+  rctToolbar.Visible := FToolbarVisible;
+  FToolbarHandle.Visible := not FToolbarVisible;
+end;
+
+function TMarkdown4DStudioFMXForm.ToolbarVisible: Boolean;
+begin
+  Result := FToolbarVisible;
 end;
 
 procedure TMarkdown4DStudioFMXForm.HandleFindClick(Sender: TObject);
@@ -1997,6 +2077,7 @@ begin
   Fill.Kind := TBrushKind.Solid;
 
   rctToolbar.Fill.Color := FToolbarFill;
+  FToolbarHandle.Fill.Color := FToolbarFill;
 
   for var Button in FIconButtons do
   begin
