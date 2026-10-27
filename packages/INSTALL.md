@@ -148,9 +148,12 @@ IDE needs its own build and install:
    packages depend on. Add it to the user `PATH`, for example
    `C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\Win64x`, and restart the
    IDE so it sees the change.
-3. In the 64-bit IDE open `packages\Markdown4D.Vcl.Design.dproj`, right-click the
-   project in the Project Manager and choose **Install**. Repeat for
-   `packages\Markdown4D.Fmx.Design.dproj`.
+3. In the 64-bit IDE open `packages\Markdown4D.Vcl.Design.dproj`. In the Project
+   Manager make **Windows 64-bit (Modern)** the active target platform and
+   **Release** the active configuration, then right-click the project and choose
+   **Install**. Repeat for `packages\Markdown4D.Fmx.Design.dproj`. With the IDE
+   defaults (Debug, or Windows 64-bit) the build stops with E2225 on
+   `designide` or E2202 on the runtime package.
 4. Add `...\packages\dcp\Win64x\Release` to the Win64x library path
    (Tools ▸ Options ▸ Language ▸ Delphi ▸ Library) so projects can find the
    runtime `.dcp`s.
