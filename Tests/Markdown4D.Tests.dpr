@@ -60,6 +60,7 @@ uses
   Markdown4DStudio.SingleInstance in '..\Examples\Shared\Markdown4DStudio.SingleInstance.pas',
   Markdown4DStudio.SingleInstance.Tests in 'Markdown4DStudio.SingleInstance.Tests.pas',
   Markdown4D.Vcl.Render.Tests in 'Markdown4D.Vcl.Render.Tests.pas',
+  Markdown4D.Vcl.DirectWriteText.Tests in 'Markdown4D.Vcl.DirectWriteText.Tests.pas',
   Markdown4D.Vcl.Viewer.Tests in 'Markdown4D.Vcl.Viewer.Tests.pas',
   Markdown4D.Vcl.ScrollBarTheme.Tests in 'Markdown4D.Vcl.ScrollBarTheme.Tests.pas',
   Markdown4D.Vcl.Image.Tests in 'Markdown4D.Vcl.Image.Tests.pas',

@@ -13,9 +13,17 @@ uses
   Markdown4D.Image.Rasterizer,
   Markdown4D.Layout.Defaults,
   Markdown4D.Layout.Interfaces,
-  Markdown4D.Layout.MeasureCache;
+  Markdown4D.Layout.MeasureCache,
+  Markdown4D.Vcl.DirectWriteText;
 
 type
+  /// <summary>
+  /// How the VCL controls measure and draw text: through GDI, or through DirectWrite,
+  /// which draws colour emoji in colour. Line height and baseline come from GDI either
+  /// way, so the choice changes only the widths of text, not its vertical layout.
+  /// </summary>
+  TMarkdownTextRendering = (Gdi, DirectWrite);
+
   TMarkdownVclImageResolver = reference to function(const Source: string): TGraphic;
 
   TMarkdownVclBrokenImageQuery = reference to function(const Source: string): Boolean;
@@ -30,6 +38,7 @@ type
       // Room around a wedge or a stroke for the pixels its anti-aliased edge
       // reaches into.
       WedgeBufferMargin = 2;
+      UnsupportedTextRenderingMessage = 'Unsupported text rendering: %d';
     var
       FCanvas: TCanvas;
       FPixelsPerInch: Integer;
@@ -45,6 +54,17 @@ type
       FHasAppliedFont: Boolean;
       FImageResolver: TMarkdownVclImageResolver;
       FBrokenImageQuery: TMarkdownVclBrokenImageQuery;
+      FTextRendering: TMarkdownTextRendering;
+      FDirectWriteText: TMarkdownDirectWriteText;
+      FOwnsDirectWriteText: Boolean;
+      FPendingRuns: TList<TMarkdownDirectWriteRun>;
+    procedure SetTextRendering(const Value: TMarkdownTextRendering);
+    procedure FlushText;
+    function TextWidth(const Text: string; const Font: TMarkdownFontStyle): Single;
+    procedure DrawGdiText(const Left, BaselineY: Single; const Text: string; const Font: TMarkdownFontStyle;
+                          const Color: TLayoutColor);
+    function DirectWriteText: TMarkdownDirectWriteText;
+    function DirectWriteFontOf(const Font: TMarkdownFontStyle): TMarkdownDirectWriteFont;
     procedure ApplyFont(const Font: TMarkdownFontStyle);
     function FontKey(const Font: TMarkdownFontStyle): string;
     function FontPixelHeight(const Font: TMarkdownFontStyle): Integer;
@@ -72,7 +92,13 @@ type
     class function OpaqueBlendFunction: TBlendFunction;
 
   public
-    constructor Create(const Canvas: TCanvas; const PixelsPerInch: Integer = ReferencePixelsPerInch);
+    /// <summary>
+    /// <c>DirectWriteText</c> is the DirectWrite text engine, with its cached layouts,
+    /// that the painter shares with its owner; nil gives the painter one of its own.
+    /// </summary>
+    constructor Create(const Canvas: TCanvas; const PixelsPerInch: Integer = ReferencePixelsPerInch;
+                       const TextRendering: TMarkdownTextRendering = TMarkdownTextRendering.Gdi;
+                       const DirectWriteText: TMarkdownDirectWriteText = nil);
     destructor Destroy; override;
     function MeasureText(const Text: string; const Font: TMarkdownFontStyle): TLayoutSizeF;
     function LineHeight(const Font: TMarkdownFontStyle): Single;
@@ -96,6 +122,8 @@ type
     property PixelsPerInch: Integer read FPixelsPerInch write FPixelsPerInch;
     property ImageResolver: TMarkdownVclImageResolver read FImageResolver write FImageResolver;
     property BrokenImageQuery: TMarkdownVclBrokenImageQuery read FBrokenImageQuery write FBrokenImageQuery;
+    /// <summary>How text is measured and drawn. Changing it drops the measured widths.</summary>
+    property TextRendering: TMarkdownTextRendering read FTextRendering write SetTextRendering;
   end;
 
 implementation
@@ -106,12 +134,17 @@ uses
   Markdown4D.Defines,
   Markdown4D.Viewer.Shared;
 
-constructor TMarkdownVclPainter.Create(const Canvas: TCanvas; const PixelsPerInch: Integer);
+constructor TMarkdownVclPainter.Create(const Canvas: TCanvas; const PixelsPerInch: Integer;
+                                       const TextRendering: TMarkdownTextRendering;
+                                       const DirectWriteText: TMarkdownDirectWriteText);
 begin
   inherited Create;
 
   FCanvas := Canvas;
   FPixelsPerInch := PixelsPerInch;
+  FTextRendering := TextRendering;
+  FDirectWriteText := DirectWriteText;
+  FPendingRuns := TList<TMarkdownDirectWriteRun>.Create;
   FSavedStates := TStack<Integer>.Create;
   FFamilyCache := TDictionary<string, string>.Create;
   FMetricsCache := TDictionary<string, TTextMetric>.Create;
@@ -119,6 +152,10 @@ end;
 
 destructor TMarkdownVclPainter.Destroy;
 begin
+  FlushText;
+  FPendingRuns.Free;
+  if FOwnsDirectWriteText then
+    FDirectWriteText.Free;
   FMeasureCache.Free;
   FMetricsCache.Free;
   FFamilyCache.Free;
@@ -132,12 +169,28 @@ begin
   if MeasureCache.TryGetSize(Text, Font, FPixelsPerInch, Result) then
     Exit;
 
-  ApplyFont(Font);
-
-  const Extent = FCanvas.TextExtent(Text);
+  const Width = TextWidth(Text, Font);
   const Metrics = TextMetricsOf(Font);
-  Result := TLayoutSizeF.Create(Extent.cx, Metrics.tmHeight + Metrics.tmExternalLeading);
+  Result := TLayoutSizeF.Create(Width, Metrics.tmHeight + Metrics.tmExternalLeading);
   MeasureCache.Add(Text, Font, FPixelsPerInch, Result);
+end;
+
+function TMarkdownVclPainter.TextWidth(const Text: string; const Font: TMarkdownFontStyle): Single;
+begin
+  case FTextRendering of
+    TMarkdownTextRendering.Gdi:
+    begin
+      ApplyFont(Font);
+      Result := FCanvas.TextExtent(Text).cx;
+    end;
+    TMarkdownTextRendering.DirectWrite:
+    begin
+      const DirectWriteFont = DirectWriteFontOf(Font);
+      Result := DirectWriteText.MeasureWidth(Text, DirectWriteFont);
+    end;
+  else
+    raise ENotSupportedException.CreateFmt(UnsupportedTextRenderingMessage, [Ord(FTextRendering)]);
+  end;
 end;
 
 function TMarkdownVclPainter.LineHeight(const Font: TMarkdownFontStyle): Single;
@@ -154,21 +207,87 @@ end;
 procedure TMarkdownVclPainter.DrawTextRun(const TopLeft: TLayoutPointF; const Text: string;
   const Font: TMarkdownFontStyle; const Color: TLayoutColor);
 begin
+  const BaselineY = TopLeft.Y + TextMetricsOf(Font).tmAscent;
+  case FTextRendering of
+    TMarkdownTextRendering.Gdi:
+    begin
+      DrawGdiText(TopLeft.X, BaselineY, Text, Font, Color);
+    end;
+    TMarkdownTextRendering.DirectWrite:
+    begin
+      const DirectWriteFont = DirectWriteFontOf(Font);
+      const Run = DirectWriteText.PrepareRun(FCanvas.Handle, TopLeft.X, BaselineY, Text, DirectWriteFont,
+                                             ToVclColor(Color));
+      FPendingRuns.Add(Run);
+    end;
+  else
+    raise ENotSupportedException.CreateFmt(UnsupportedTextRenderingMessage, [Ord(FTextRendering)]);
+  end;
+end;
+
+procedure TMarkdownVclPainter.DrawGdiText(const Left, BaselineY: Single; const Text: string;
+                                          const Font: TMarkdownFontStyle; const Color: TLayoutColor);
+begin
   ApplyFont(Font);
   FCanvas.Font.Color := ToVclColor(Color);
   FCanvas.Brush.Style := bsClear;
 
-  const BaselineY = TopLeft.Y + TextMetricsOf(Font).tmAscent;
   const Handle = FCanvas.Handle;
   const PreviousAlign = GetTextAlign(Handle);
   SetTextAlign(Handle, TA_LEFT or TA_BASELINE);
   SetBkMode(Handle, TRANSPARENT);
-  ExtTextOut(Handle, Round(TopLeft.X), Round(BaselineY), 0, nil, PChar(Text), Length(Text), nil);
+  ExtTextOut(Handle, Round(Left), Round(BaselineY), 0, nil, PChar(Text), Length(Text), nil);
   SetTextAlign(Handle, PreviousAlign);
+end;
+
+procedure TMarkdownVclPainter.SetTextRendering(const Value: TMarkdownTextRendering);
+begin
+  if Value = FTextRendering then
+    Exit;
+
+  FlushText;
+  FTextRendering := Value;
+  FreeAndNil(FMeasureCache);
+end;
+
+// Text drawn through DirectWrite waits until something else is drawn, so the runs
+// in between are drawn together; anything drawn over or under them, and every
+// change of clip, comes after.
+procedure TMarkdownVclPainter.FlushText;
+begin
+  if FPendingRuns.Count = 0 then
+    Exit;
+
+  const Runs = FPendingRuns.ToArray;
+  FPendingRuns.Clear;
+  DirectWriteText.DrawRuns(FCanvas.Handle, Runs);
+end;
+
+function TMarkdownVclPainter.DirectWriteText: TMarkdownDirectWriteText;
+begin
+  if FDirectWriteText = nil then
+  begin
+    FDirectWriteText := TMarkdownDirectWriteText.Create;
+    FOwnsDirectWriteText := True;
+  end;
+
+  Result := FDirectWriteText;
+end;
+
+// A negative GDI font height is the em height, which is what DirectWrite takes as
+// its font size when one device pixel is one DIP.
+function TMarkdownVclPainter.DirectWriteFontOf(const Font: TMarkdownFontStyle): TMarkdownDirectWriteFont;
+begin
+  const FamilyName = ResolveFamilyName(Font.FamilyName);
+  const EmHeight = Abs(FontPixelHeight(Font));
+  const Styles = TMarkdownViewerShared.FontStylesOf(Font);
+  Result := TMarkdownDirectWriteFont.Create(FamilyName, EmHeight, Styles);
 end;
 
 procedure TMarkdownVclPainter.FillRect(const Bounds: TLayoutRectF; const Color: TLayoutColor);
 begin
+  FlushText;
+
   const Alpha = TMarkdownViewerShared.AlphaOf(Color);
   if Alpha = 0 then
     Exit;
@@ -205,6 +324,8 @@ end;
 procedure TMarkdownVclPainter.DrawRect(const Bounds: TLayoutRectF; const Color: TLayoutColor;
   const StrokeWidth: Single);
 begin
+  FlushText;
+
   const IsInvisible = (TMarkdownViewerShared.AlphaOf(Color) = 0) or (StrokeWidth <= 0);
   if IsInvisible then
     Exit;
@@ -223,6 +344,8 @@ end;
 procedure TMarkdownVclPainter.DrawLine(const StartPoint, EndPoint: TLayoutPointF; const Color: TLayoutColor;
   const StrokeWidth: Single);
 begin
+  FlushText;
+
   if TMarkdownViewerShared.AlphaOf(Color) = 0 then
     Exit;
 
@@ -239,6 +362,8 @@ end;
 procedure TMarkdownVclPainter.DrawImage(const Bounds: TLayoutRectF; const Source: string;
   const SourceRect: TLayoutRectF);
 begin
+  FlushText;
+
   var Graphic: TGraphic := nil;
   if Assigned(FImageResolver) then
     Graphic := FImageResolver(Source);
@@ -316,6 +441,8 @@ end;
 procedure TMarkdownVclPainter.FillWedge(const Center: TLayoutPointF;
   const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single; const Color: TLayoutColor);
 begin
+  FlushText;
+
   const Alpha = TMarkdownViewerShared.AlphaOf(Color);
   if (Alpha = 0) or (OuterRadius <= 0) or (SweepAngle = 0) then
     Exit;
@@ -457,6 +584,8 @@ end;
 
 procedure TMarkdownVclPainter.FillPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor);
 begin
+  FlushText;
+
   const Alpha = TMarkdownViewerShared.AlphaOf(Color);
   if (Alpha = 0) or (Length(Points) < 3) then
     Exit;
@@ -475,6 +604,8 @@ end;
 procedure TMarkdownVclPainter.DrawPolygon(const Points: TArray<TLayoutPointF>; const Color: TLayoutColor;
   const StrokeWidth: Single);
 begin
+  FlushText;
+
   const IsInvisible = (TMarkdownViewerShared.AlphaOf(Color) = 0) or (StrokeWidth <= 0) or (Length(Points) < 3);
   if IsInvisible then
     Exit;
@@ -494,6 +625,8 @@ procedure TMarkdownVclPainter.DrawWedge(const Center: TLayoutPointF;
   const OuterRadius, InnerRadius, StartAngle, SweepAngle: Single; const Color: TLayoutColor;
   const StrokeWidth: Single);
 begin
+  FlushText;
+
   const IsInvisible = (TMarkdownViewerShared.AlphaOf(Color) = 0) or (StrokeWidth <= 0) or (OuterRadius <= 0) or
     (SweepAngle = 0);
   if IsInvisible then
@@ -577,17 +710,23 @@ end;
 
 procedure TMarkdownVclPainter.SaveState;
 begin
+  FlushText;
+
   FSavedStates.Push(SaveDC(FCanvas.Handle));
 end;
 
 procedure TMarkdownVclPainter.SetClip(const Bounds: TLayoutRectF);
 begin
+  FlushText;
+
   const Dest = ToDeviceRect(Bounds);
   IntersectClipRect(FCanvas.Handle, Dest.Left, Dest.Top, Dest.Right, Dest.Bottom);
 end;
 
 procedure TMarkdownVclPainter.RestoreState;
 begin
+  FlushText;
+
   if FSavedStates.Count = 0 then
     raise EMarkdownError.Create(UnbalancedRestoreMessage);
 

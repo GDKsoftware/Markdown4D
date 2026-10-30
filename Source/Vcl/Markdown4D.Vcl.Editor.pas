@@ -32,6 +32,7 @@ uses
   Markdown4D.Layout.Pointer,
   Markdown4D.AutoScroll,
   Markdown4D.Vcl.AutoScroll,
+  Markdown4D.Vcl.DirectWriteText,
   Markdown4D.Vcl.Painter,
   Markdown4D.Vcl.Viewer;
 
@@ -73,6 +74,8 @@ type
       FScrollOffset: Integer;
       FIndentWidth: Integer;
       FShowLineNumbers: Boolean;
+      FTextRendering: TMarkdownTextRendering;
+      FDirectWriteText: TMarkdownDirectWriteText;
       FSelecting: Boolean;
       FSelectionAnchor: Integer;
       FDragPending: Boolean;
@@ -202,6 +205,7 @@ type
     procedure SetTheme(const Value: TMarkdownTheme);
     procedure ApplyScrollBarTheme;
     procedure SetShowLineNumbers(const Value: Boolean);
+    procedure SetTextRendering(const Value: TMarkdownTextRendering);
     procedure WMVScroll(var Message: TWMVScroll); message WM_VSCROLL;
     procedure WMEraseBkgnd(var Message: TWMEraseBkgnd); message WM_ERASEBKGND;
     procedure WMGetDlgCode(var Message: TWMGetDlgCode); message WM_GETDLGCODE;
@@ -298,6 +302,10 @@ type
     property ThemePreset: TMarkdownThemePreset read FThemePreset write SetThemePreset
       default TMarkdownThemePreset.Light;
     property ShowLineNumbers: Boolean read FShowLineNumbers write SetShowLineNumbers default False;
+    // DirectWrite draws emoji in colour, Gdi draws them in one colour. Line
+    // heights are the same in both.
+    property TextRendering: TMarkdownTextRendering read FTextRendering write SetTextRendering
+      default TMarkdownTextRendering.DirectWrite;
     // Spaces inserted by Tab and removed by Shift+Tab.
     property IndentWidth: Integer read FIndentWidth write FIndentWidth default DefaultIndentWidth;
     // In percent: the text, its line height and the gutter grow with it.
@@ -384,7 +392,10 @@ begin
 
   FMeasureBitmap := TBitmap.Create;
   FMeasureBitmap.SetSize(1, 1);
-  FMeasurePainter := TMarkdownVclPainter.Create(FMeasureBitmap.Canvas, ContentPixelsPerInch);
+  FTextRendering := TMarkdownTextRendering.DirectWrite;
+  FDirectWriteText := TMarkdownDirectWriteText.Create;
+  FMeasurePainter := TMarkdownVclPainter.Create(FMeasureBitmap.Canvas, ContentPixelsPerInch, FTextRendering,
+                                                FDirectWriteText);
   FMeasurePainterLifetime := FMeasurePainter;
 
   FBuffer := TBitmap.Create;
@@ -437,6 +448,7 @@ begin
   FModel.Free;
   FMeasurePainter := nil;
   FMeasurePainterLifetime := nil;
+  FDirectWriteText.Free;
   FMeasureBitmap.Free;
   FBuffer.Free;
   if FOwnsTheme then
@@ -981,7 +993,7 @@ begin
   if not FAutoScroller.IsActive then
     Exit;
 
-  const Painter: IPainter = TMarkdownVclPainter.Create(FBuffer.Canvas, CurrentPPI);
+  const Painter: IPainter = TMarkdownVclPainter.Create(FBuffer.Canvas, CurrentPPI, FTextRendering, FDirectWriteText);
   FAutoScroller.PaintOrigin(Painter, FTheme.BackgroundColor, FTheme.TextColor);
 end;
 
@@ -1005,7 +1017,7 @@ end;
 procedure TMarkdownEditor.RenderContent(const TargetCanvas: TCanvas; const TargetWidth, TargetHeight, PixelsPerInch,
   ScrollY: Integer);
 begin
-  const Painter = TMarkdownVclPainter.Create(TargetCanvas, PixelsPerInch);
+  const Painter = TMarkdownVclPainter.Create(TargetCanvas, PixelsPerInch, FTextRendering, FDirectWriteText);
   const PainterLifetime: IPainter = Painter;
 
   Painter.FillRect(TLayoutRectF.Create(0, 0, TargetWidth, TargetHeight), FTheme.BackgroundColor);
@@ -2360,6 +2372,19 @@ begin
     Exit;
 
   FShowLineNumbers := Value;
+  RebuildRows;
+  UpdateScrollBar;
+  UpdateCaret;
+  Invalidate;
+end;
+
+procedure TMarkdownEditor.SetTextRendering(const Value: TMarkdownTextRendering);
+begin
+  if Value = FTextRendering then
+    Exit;
+
+  FTextRendering := Value;
+  FMeasurePainter.TextRendering := Value;
   RebuildRows;
   UpdateScrollBar;
   UpdateCaret;

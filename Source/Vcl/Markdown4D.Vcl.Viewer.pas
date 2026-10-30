@@ -32,6 +32,7 @@ uses
   Markdown4D.Viewer.ImageSettings,
   Markdown4D.Viewer.Lifetime,
   Markdown4D.Image.Svg,
+  Markdown4D.Vcl.DirectWriteText,
   Markdown4D.Vcl.Painter;
 
 type
@@ -118,6 +119,8 @@ type
       FPendingZoom: Integer;
       FCopyAsMarkdown: Boolean;
       FOnExtensionError: TMarkdownExtensionErrorEvent;
+      FTextRendering: TMarkdownTextRendering;
+      FDirectWriteText: TMarkdownDirectWriteText;
     class constructor Create;
     class destructor Destroy;
     function InvokeOnMainThread(const Action: TThreadProcedure): Boolean;
@@ -173,6 +176,7 @@ type
     procedure SetZoom(const Value: Integer);
     procedure PaintAutoScrollOrigin;
     procedure SetAutoScroll(const Value: Boolean);
+    procedure SetTextRendering(const Value: TMarkdownTextRendering);
     function CanAutoScroll: Boolean;
     procedure AutoScrollBy(const Delta: Single);
     procedure AutoScrollChanged;
@@ -308,6 +312,10 @@ type
     // menu leaves the entry out and Ctrl+Shift+C copies plain text, for an
     // application that keeps the source to itself.
     property CopyAsMarkdown: Boolean read FCopyAsMarkdown write FCopyAsMarkdown default True;
+    // DirectWrite draws emoji in colour, Gdi draws them in one colour. Widths
+    // differ slightly where DirectWrite kerns; line heights are the same in both.
+    property TextRendering: TMarkdownTextRendering read FTextRendering write SetTextRendering
+      default TMarkdownTextRendering.DirectWrite;
     property OnExtensionError: TMarkdownExtensionErrorEvent read FOnExtensionError write FOnExtensionError;
   end;
 
@@ -364,7 +372,10 @@ begin
 
   FMeasureBitmap := TBitmap.Create;
   FMeasureBitmap.SetSize(1, 1);
-  FMeasurePainter := TMarkdownVclPainter.Create(FMeasureBitmap.Canvas, ContentPixelsPerInch);
+  FTextRendering := TMarkdownTextRendering.DirectWrite;
+  FDirectWriteText := TMarkdownDirectWriteText.Create;
+  FMeasurePainter := TMarkdownVclPainter.Create(FMeasureBitmap.Canvas, ContentPixelsPerInch, FTextRendering,
+                                                FDirectWriteText);
   FMeasurePainterLifetime := FMeasurePainter;
   FModel := TMarkdownViewerModel.Create(FTheme, FMeasurePainterLifetime);
   FModel.OnExtensionError := HandleModelExtensionError;
@@ -430,6 +441,7 @@ begin
   FModel.Free;
   FMeasurePainter := nil;
   FMeasurePainterLifetime := nil;
+  FDirectWriteText.Free;
   FMeasureBitmap.Free;
   FBuffer.Free;
   FLoadedImages.Free;
@@ -759,7 +771,7 @@ begin
   if not FAutoScroller.IsActive then
     Exit;
 
-  const Painter: IPainter = TMarkdownVclPainter.Create(FBuffer.Canvas, CurrentPPI);
+  const Painter: IPainter = TMarkdownVclPainter.Create(FBuffer.Canvas, CurrentPPI, FTextRendering, FDirectWriteText);
   FAutoScroller.PaintOrigin(Painter, FTheme.BackgroundColor, FTheme.TextColor);
 end;
 
@@ -790,7 +802,8 @@ end;
 
 procedure TMarkdownViewer.RenderToBuffer;
 begin
-  const Painter = TMarkdownVclPainter.Create(FBuffer.Canvas, ContentPixelsPerInch);
+  const Painter = TMarkdownVclPainter.Create(FBuffer.Canvas, ContentPixelsPerInch, FTextRendering,
+                                             FDirectWriteText);
   const PainterLifetime: IPainter = Painter;
   Painter.ImageResolver := ResolveLoadedImage;
   Painter.BrokenImageQuery := IsImageBroken;
@@ -1210,6 +1223,18 @@ end;
 procedure TMarkdownViewer.SetAutoScroll(const Value: Boolean);
 begin
   FAutoScroller.Enabled := Value;
+end;
+
+procedure TMarkdownViewer.SetTextRendering(const Value: TMarkdownTextRendering);
+begin
+  if Value = FTextRendering then
+    Exit;
+
+  FTextRendering := Value;
+  FMeasurePainter.TextRendering := Value;
+  FModel.RefreshLayout;
+  UpdateScrollBar;
+  Invalidate;
 end;
 
 function TMarkdownViewer.CanAutoScroll: Boolean;

@@ -526,6 +526,7 @@ same.
 | `Images` | `TMarkdownViewerImageSettings` | How image destinations are resolved and fetched (see below) |
 | `Zoom` | `Integer` | In percent (default `100`, from `25` to `500`). Every font, spacing and image grows with it; the theme the application assigned stays as it is. Ctrl+wheel and Ctrl+Plus/Minus step through the levels browsers use (25, 33, 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400, 500), Ctrl+0 resets it. The line at the top of the view stays there, and a document that lays out slowly waits until the wheel rests |
 | `CopyAsMarkdown` | `Boolean` | Offers `Copy as Markdown` on the context menu and `Ctrl+Shift+C` (default `True`). Off, the menu leaves the entry out and `Ctrl+Shift+C` copies plain text, for an application that keeps the source to itself |
+| `TextRendering` | `TMarkdownTextRendering` | VCL only. `DirectWrite` (default) draws emoji in colour; `Gdi` draws them in one colour. Line heights are the same in both, and widths match except where DirectWrite kerns a pair of letters such as `AV` |
 | `AutoScroll` | `Boolean` | Middle-click autoscroll: the content scrolls faster the further the pointer is from where it was pressed, until the next click, key or wheel turn (default `True`). The key that ends it reaches no shortcut, menu or form handler; only an Alt+letter accelerator in FMX goes to the form first |
 
 ### Public members
@@ -675,6 +676,7 @@ control lives in `Markdown4D.Vcl.Editor`, the FMX control in
 | `Text` | `string` | The markdown source |
 | `ThemePreset` | `TMarkdownThemePreset` | `Light` / `Dark` |
 | `ShowLineNumbers` | `Boolean` | Gutter line numbers (default `False`) |
+| `TextRendering` | `TMarkdownTextRendering` | VCL only, as in the viewer (default `DirectWrite`) |
 | `Zoom` | `Integer` | In percent, as in the viewer: the text, its line height and the gutter grow with it, with the same keys and levels. The source line at the top of the view stays there. Editor and attached preview zoom independently; a host that wants them together sets one from the other's `OnZoomChange` |
 | `AutoScroll` | `Boolean` | Middle-click autoscroll, as in the viewer. Default `True`, except in the FMX editor on Linux, where the middle button pastes the primary selection |
 
