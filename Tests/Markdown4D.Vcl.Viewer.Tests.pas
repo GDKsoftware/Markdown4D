@@ -45,6 +45,9 @@ type
       SectionContentText = 'Body';
       ClosedSectionMarkdown = '<details>'#10'<summary>More</summary>'#10#10 + SectionContentText + #10#10'</details>';
       KernedMarkdown = 'AVATAR WAVY Tokyo';
+      ToggleHostWidth = 809;
+      ToggleHostHeight = 900;
+      ToggleMargin = 16;
     var
       FHostForm: TForm;
       FReportedSender: TObject;
@@ -55,6 +58,7 @@ type
       FDoubleClickCount: Integer;
       FLinkClickCount: Integer;
     function NewHostedViewer: TTestableVclViewer;
+    class function ScrollBarToggleMarkdown: string; static;
     function NewViewerOnPreviewingForm: TTestableVclViewer;
     procedure RecordFormKey(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure RecordAutoScrollChange(Sender: TObject);
@@ -127,6 +131,9 @@ type
     procedure TextRendering_Gdi_MeasuresTheTextAgain;
 
     [Test]
+    procedure Text_ContentThatTogglesTheScrollBar_FinishesWithTheBarShown;
+
+    [Test]
     procedure Text_FailingExtension_ReportsErrorWithViewerAsSender;
 
     [Test]
@@ -181,6 +188,8 @@ uses
   Vcl.Controls,
   Markdown4D.Layout.DisplayList,
   Markdown4D.Layout.BlockOverride,
+  Markdown4D.Layout.Engine,
+  Markdown4D.Extensions.Chart.BlockOverride,
   Markdown4D.Tests.Pipeline.Helpers,
   Markdown4D.Tests.FailingExtensions,
   Markdown4D.Tests.VclClipboard,
@@ -436,6 +445,69 @@ begin
     'Switching to Gdi must lay the text out with the widths GDI measures');
 end;
 
+// The document from the report of the hang: at the host size used below, laying it out
+// without the scroll bar needs the bar, and laying it out with the bar does not.
+class function TMarkdownVclViewerTests.ScrollBarToggleMarkdown: string;
+begin
+  const Lines: TArray<string> = [
+    '## Q2 summary',
+    '',
+    'Sales went up **12%** compared to Q1, led by the *North* region.',
+    '',
+    '| Region | Q1 | Q2 | Change |',
+    '|--------|---:|---:|-------:|',
+    '| North  | 40 | 52 | +30% |',
+    '| South  | 35 | 38 | +9% |',
+    '| West   | 28 | 30 | +7% |',
+    '',
+    'Growth in the North: $\frac{52 - 40}{40} = 30\%$',
+    '',
+    '> [!TIP]',
+    '> The South grew slowest. Start there next quarter.',
+    '',
+    '### Next steps',
+    '',
+    '- [x] Close the open deals in the North',
+    '- [ ] Hire two account managers for the South',
+    '',
+    '```json',
+    '{"type":"chart","data":{"type":"bar","data":{"labels":["North","South","West"],"datasets":[' +
+      '{"label":"Q1","data":[40,35,28],"backgroundColor":"#1F4A7B"},' +
+      '{"label":"Q2","data":[52,38,30],"backgroundColor":"#80D060"}]},' +
+      '"options":{"plugins":{"title":{"display":true,"text":"Sales per region"},' +
+      '"legend":{"position":"bottom"}}}}}',
+    '```'];
+  Result := string.Join(#10, Lines);
+end;
+
+procedure TMarkdownVclViewerTests.Text_ContentThatTogglesTheScrollBar_FinishesWithTheBarShown;
+begin
+  TChartBlockOverride.RegisterOverride;
+  try
+    FHostForm := TForm.CreateNew(nil);
+    FHostForm.Position := poDesigned;
+    FHostForm.Left := -20000;
+    FHostForm.Top := -20000;
+    FHostForm.ClientWidth := ToggleHostWidth;
+    FHostForm.ClientHeight := ToggleHostHeight;
+
+    const Viewer = TTestableVclViewer.Create(FHostForm);
+    Viewer.Parent := FHostForm;
+    Viewer.AlignWithMargins := True;
+    Viewer.Margins.SetBounds(ToggleMargin, ToggleMargin, ToggleMargin, ToggleMargin);
+    Viewer.Align := alClient;
+    FHostForm.Show;
+
+    Viewer.Text := ScrollBarToggleMarkdown;
+    Application.ProcessMessages;
+
+    const Style = GetWindowLong(Viewer.Handle, GWL_STYLE);
+    const ShowsScrollBar = ((Style and WS_VSCROLL) <> 0);
+    Assert.IsTrue(ShowsScrollBar, 'The scroll bar must settle in its shown state');
+  finally
+    TMarkdownLayoutEngine.ClearBlockOverrides;
+  end;
+end;
 class function TMarkdownVclViewerTests.FirstTextRunBounds(const Viewer: TMarkdownViewer): TLayoutRectF;
 begin
   Result := Default(TLayoutRectF);

@@ -88,6 +88,7 @@
         <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.DirectWriteText.pas"/>
         <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.Painter.pas"/>
         <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.ImageDecoder.pas"/>
+        <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.ScrollBar.pas"/>
         <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.ScrollBarTheme.pas"/>
         <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.Viewer.pas"/>
         <DCCReference Include="..\Source\Vcl\Markdown4D.Vcl.AutoScroll.pas"/>

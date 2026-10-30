@@ -33,7 +33,8 @@ uses
   Markdown4D.Viewer.Lifetime,
   Markdown4D.Image.Svg,
   Markdown4D.Vcl.DirectWriteText,
-  Markdown4D.Vcl.Painter;
+  Markdown4D.Vcl.Painter,
+  Markdown4D.Vcl.ScrollBar;
 
 type
   TMarkdownLinkClickEvent = procedure(const Sender: TObject; const Url: string) of object;
@@ -89,6 +90,7 @@ type
       FResizeTimer: TTimer;
       FResizePacer: TMarkdownResizePacer;
       FAppliedWidth: Integer;
+      FVerticalScrollBar: TMarkdownVerticalScrollBar;
       FLoadedImages: TObjectDictionary<string, TGraphic>;
       FSelecting: Boolean;
       FClickCounter: TMarkdownClickCounter;
@@ -1361,14 +1363,7 @@ begin
   if FModel.DisplayList <> nil then
     ContentHeight := Round(FModel.DisplayList.Height);
 
-  var Info := Default(TScrollInfo);
-  Info.cbSize := SizeOf(Info);
-  Info.fMask := SIF_RANGE or SIF_PAGE or SIF_POS;
-  Info.nMin := 0;
-  Info.nMax := Max(0, ContentHeight - 1);
-  Info.nPage := ClientHeight;
-  Info.nPos := Round(FModel.ScrollOffset);
-  SetScrollInfo(Handle, SB_VERT, Info, True);
+  FVerticalScrollBar.Update(Handle, ContentHeight, ClientHeight, Round(FModel.ScrollOffset));
 end;
 
 function TMarkdownViewer.LineScrollAmount: Integer;
