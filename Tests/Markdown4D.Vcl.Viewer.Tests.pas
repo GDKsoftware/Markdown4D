@@ -10,6 +10,8 @@ uses
   System.Types,
   Vcl.Forms,
   DUnitX.TestFramework,
+  Markdown4D.Layout.Interfaces,
+  Markdown4D.Vcl.Painter,
   Markdown4D.Vcl.Viewer;
 
 type
@@ -42,6 +44,7 @@ type
       DragDistance = 40;
       SectionContentText = 'Body';
       ClosedSectionMarkdown = '<details>'#10'<summary>More</summary>'#10#10 + SectionContentText + #10#10'</details>';
+      KernedMarkdown = 'AVATAR WAVY Tokyo';
     var
       FHostForm: TForm;
       FReportedSender: TObject;
@@ -61,7 +64,7 @@ type
     procedure RecordClick(Sender: TObject);
     procedure RecordDoubleClick(Sender: TObject);
     procedure RecordLinkClick(const Sender: TObject; const Url: string);
-    class function FirstTextRunHeight(const Viewer: TMarkdownViewer): Single; static;
+    class function FirstTextRunBounds(const Viewer: TMarkdownViewer): TLayoutRectF; static;
     procedure RecordExtensionError(const Sender: TObject; const Extension: string; const Error: Exception);
 
   public
@@ -116,6 +119,12 @@ type
 
     [Test]
     procedure ScaleForPPI_OnHostForm_ScalesText;
+
+    [Test]
+    procedure TextRendering_Default_IsDirectWrite;
+
+    [Test]
+    procedure TextRendering_Gdi_MeasuresTheTextAgain;
 
     [Test]
     procedure Text_FailingExtension_ReportsErrorWithViewerAsSender;
@@ -396,20 +405,40 @@ procedure TMarkdownVclViewerTests.ScaleForPPI_OnHostForm_ScalesText;
 begin
   const Viewer = NewHostedViewer;
   Viewer.Text := ShortMarkdown;
-  const HeightBefore = FirstTextRunHeight(Viewer);
+  const HeightBefore = FirstTextRunBounds(Viewer).Height;
   const ScaledPixelsPerInch = MulDiv(FHostForm.PixelsPerInch, GrowthNumerator, GrowthDenominator);
 
   FHostForm.ScaleForPPI(ScaledPixelsPerInch);
 
-  const HeightAfter = FirstTextRunHeight(Viewer);
+  const HeightAfter = FirstTextRunBounds(Viewer).Height;
   const ExpectedHeight = HeightBefore * GrowthNumerator / GrowthDenominator;
   Assert.AreEqual(ExpectedHeight, Double(HeightAfter), Double(HeightBefore * ScaleTolerance),
     'The text must grow with the form it is on, as the controls around it do');
 end;
 
-class function TMarkdownVclViewerTests.FirstTextRunHeight(const Viewer: TMarkdownViewer): Single;
+procedure TMarkdownVclViewerTests.TextRendering_Default_IsDirectWrite;
 begin
-  Result := 0;
+  const Viewer = NewHostedViewer;
+
+  Assert.AreEqual<TMarkdownTextRendering>(TMarkdownTextRendering.DirectWrite, Viewer.TextRendering);
+end;
+
+procedure TMarkdownVclViewerTests.TextRendering_Gdi_MeasuresTheTextAgain;
+begin
+  const Viewer = NewHostedViewer;
+  Viewer.Text := KernedMarkdown;
+  const DirectWriteWidth = FirstTextRunBounds(Viewer).Width;
+
+  Viewer.TextRendering := TMarkdownTextRendering.Gdi;
+
+  const GdiWidth = FirstTextRunBounds(Viewer).Width;
+  Assert.AreNotEqual(Double(DirectWriteWidth), Double(GdiWidth),
+    'Switching to Gdi must lay the text out with the widths GDI measures');
+end;
+
+class function TMarkdownVclViewerTests.FirstTextRunBounds(const Viewer: TMarkdownViewer): TLayoutRectF;
+begin
+  Result := Default(TLayoutRectF);
 
   const DisplayList = Viewer.DisplayList;
   for var Index := 0 to DisplayList.ItemCount - 1 do
@@ -417,7 +446,7 @@ begin
     var Run: IDisplayTextRun;
     if Supports(DisplayList.Items[Index], IDisplayTextRun, Run) then
     begin
-      Result := Run.Bounds.Height;
+      Result := Run.Bounds;
       Exit;
     end;
   end;
