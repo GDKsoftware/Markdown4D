@@ -44,16 +44,16 @@ type
   /// Measures and draws text through DirectWrite. Unlike GDI, DirectWrite draws colour
   /// fonts such as Segoe UI Emoji in colour, and falls back to another font per
   /// character on its own. Building a text layout costs far more than drawing it, so
-  /// the layouts are kept: a control holds one instance for as long as it lives and
-  /// hands it to every painter it creates.
+  /// the layouts of drawn runs are kept: a control holds one instance for as long as
+  /// it lives and hands it to every painter it creates.
   /// </summary>
   TMarkdownDirectWriteText = class
   private
     const
-      LocaleName = 'en-us';
       UnboundedExtent = 100000.0;
       DevicePixelsPerDip = 1.0;
-      MaxCachedLayouts = 8192;
+      MaxCachedLayouts = 1024;
+      FallbackLocaleName = 'en-us';
       FailedCallMessage = 'DirectWrite call %s failed with %x';
     class var
       FD2DFactory: ID2D1Factory;
@@ -62,6 +62,8 @@ type
       FTextFormats: TDictionary<string, IDWriteTextFormat>;
       FLayouts: TDictionary<string, IDWriteTextLayout>;
       FRenderTarget: ID2D1DCRenderTarget;
+      FLocaleName: string;
+    class function UserLocaleName: string; static;
     class function D2DFactory: ID2D1Factory; static;
     class function DWriteFactory: IDWriteFactory; static;
     class procedure Check(const Status: HResult; const CallName: string); static;
@@ -80,7 +82,10 @@ type
   public
     constructor Create;
     destructor Destroy; override;
-    /// <summary>The advance width of <c>Text</c>, trailing spaces included.</summary>
+    /// <summary>
+    /// The advance width of <c>Text</c>, trailing spaces included. The layout is not
+    /// kept: a layout holds about 20 KB, and the painter keeps the widths it measured.
+    /// </summary>
     function MeasureWidth(const Text: string; const Font: TMarkdownDirectWriteFont): Single;
     /// <summary>
     /// Lays out <c>Text</c> with its baseline at <c>Baseline</c>, both in the logical
@@ -113,6 +118,19 @@ end;
 function TMarkdownDirectWriteFont.Key: string;
 begin
   Result := Format('%s|%g|%d', [FamilyName, EmHeight, Byte(Styles)]);
+end;
+
+// The locale picks the glyphs DirectWrite falls back to where languages share
+// characters, such as the Chinese or the Japanese form of a Han character.
+class function TMarkdownDirectWriteText.UserLocaleName: string;
+begin
+  var Buffer: array[0..LOCALE_NAME_MAX_LENGTH - 1] of Char;
+  const CharCount = GetUserDefaultLocaleName(Buffer, LOCALE_NAME_MAX_LENGTH);
+  const HasUserLocale = (CharCount > 0);
+  if not HasUserLocale then
+    Exit(FallbackLocaleName);
+
+  Result := Buffer;
 end;
 
 class function TMarkdownDirectWriteText.D2DFactory: ID2D1Factory;
@@ -160,6 +178,7 @@ begin
   inherited Create;
   FTextFormats := TDictionary<string, IDWriteTextFormat>.Create;
   FLayouts := TDictionary<string, IDWriteTextLayout>.Create;
+  FLocaleName := UserLocaleName;
 end;
 
 destructor TMarkdownDirectWriteText.Destroy;
@@ -171,7 +190,7 @@ end;
 
 function TMarkdownDirectWriteText.MeasureWidth(const Text: string; const Font: TMarkdownDirectWriteFont): Single;
 begin
-  const TextLayout = Layout(Text, Font);
+  const TextLayout = CreateLayout(Text, Font);
 
   Result := MetricsOf(TextLayout).widthIncludingTrailingWhitespace;
 end;
@@ -279,13 +298,13 @@ begin
     Style := DWRITE_FONT_STYLE_ITALIC;
 
   Check(DWriteFactory.CreateTextFormat(PChar(Font.FamilyName), nil, Weight, Style, DWRITE_FONT_STRETCH_NORMAL,
-                                       Font.EmHeight, LocaleName, Result),
+                                       Font.EmHeight, PChar(FLocaleName), Result),
         'CreateTextFormat');
   Check(Result.SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP), 'SetWordWrapping');
 end;
 
-// A document repeats the same runs on every paint, so the cache rarely fills up;
-// when it does, it starts over rather than tracking which layouts were used last.
+// The runs on one screen fit in the cache several times over. When scrolling fills it, it
+// starts over rather than tracking which layouts were used last.
 function TMarkdownDirectWriteText.Layout(const Text: string; const Font: TMarkdownDirectWriteFont): IDWriteTextLayout;
 begin
   const Key = Format('%s'#0'%s', [Font.Key, Text]);
