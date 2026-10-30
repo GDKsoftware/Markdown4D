@@ -34,6 +34,7 @@ uses
   Markdown4D.Vcl.AutoScroll,
   Markdown4D.Vcl.DirectWriteText,
   Markdown4D.Vcl.Painter,
+  Markdown4D.Vcl.ScrollBar,
   Markdown4D.Vcl.Viewer;
 
 type
@@ -72,6 +73,7 @@ type
       FMeasurePainterLifetime: IPainter;
       FBuffer: TBitmap;
       FScrollOffset: Integer;
+      FVerticalScrollBar: TMarkdownVerticalScrollBar;
       FIndentWidth: Integer;
       FShowLineNumbers: Boolean;
       FTextRendering: TMarkdownTextRendering;
@@ -1637,14 +1639,7 @@ begin
   if not HandleAllocated then
     Exit;
 
-  var Info := Default(TScrollInfo);
-  Info.cbSize := SizeOf(Info);
-  Info.fMask := SIF_RANGE or SIF_PAGE or SIF_POS;
-  Info.nMin := 0;
-  Info.nMax := Max(0, ContentHeightPx - 1);
-  Info.nPage := ClientHeight;
-  Info.nPos := FScrollOffset;
-  SetScrollInfo(Handle, SB_VERT, Info, True);
+  FVerticalScrollBar.Update(Handle, ContentHeightPx, ClientHeight, FScrollOffset);
 end;
 
 procedure TMarkdownEditor.UpdateCaret;
