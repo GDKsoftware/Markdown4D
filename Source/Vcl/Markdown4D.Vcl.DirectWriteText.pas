@@ -52,6 +52,7 @@ type
     const
       UnboundedExtent = 100000.0;
       DevicePixelsPerDip = 1.0;
+      DipsPerInch = 96.0;
       MaxCachedLayouts = 1024;
       FallbackLocaleName = 'en-us';
       FailedCallMessage = 'DirectWrite call %s failed with %x';
@@ -345,11 +346,13 @@ begin
 end;
 
 // A software target: it draws small runs, where copying the area to the GPU and
-// back would cost more than drawing them.
+// back would cost more than drawing them. Its DPI makes one DIP one device pixel,
+// the unit the font sizes and positions arrive in.
 function TMarkdownDirectWriteText.CreateRenderTarget: ID2D1DCRenderTarget;
 begin
   const PixelFormat = D2D1PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE);
-  const Properties = D2D1RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_SOFTWARE, PixelFormat);
+  const Properties = D2D1RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_SOFTWARE, PixelFormat, DipsPerInch,
+                                                DipsPerInch);
   Check(D2DFactory.CreateDCRenderTarget(Properties, Result), 'CreateDCRenderTarget');
   Result.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
 end;
