@@ -86,7 +86,9 @@ type
     FRule: TLayoutRectF;
     FPoints: TArray<TLayoutPointF>;
     FChildren: TList<TMathPlacement>;
+    FUrl: string;
     procedure DrawGroup(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
+    procedure DrawChildren(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
     procedure DrawPolygon(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
 
   public
@@ -109,6 +111,8 @@ type
     property FontBaseline: Single read FFontBaseline write FFontBaseline;
     property Rule: TLayoutRectF read FRule write FRule;
     property Points: TArray<TLayoutPointF> read FPoints write FPoints;
+    // Group: the URL its children link to, empty for none.
+    property Url: string read FUrl write FUrl;
   end;
 
   TGlyphExtent = record
@@ -213,6 +217,7 @@ type
       FOptions: TMathLayoutOptions;
     function Build(const Node: IMathNode; const Style: TMathStyle; const Variant: TMathFontVariant): TMathBox;
     function BuildColored(const Node: IMathNode; const Style: TMathStyle; const Variant: TMathFontVariant): TMathBox;
+    function BuildLinked(const Node: IMathNode; const Style: TMathStyle; const Variant: TMathFontVariant): TMathBox;
     function BuildRow(const Node: IMathNode; const Style: TMathStyle; const Variant: TMathFontVariant): TMathBox;
     function BuildSymbol(const Node: IMathNode; const Style: TMathStyle; const Variant: TMathFontVariant): TMathBox;
     function BuildText(const Node: IMathNode; const Style: TMathStyle): TMathBox;
@@ -364,7 +369,27 @@ begin
   end;
 end;
 
+// A canvas that cannot attribute drawing to a link still draws the linked
+// part, as plain content.
 procedure TMathBox.DrawGroup(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
+begin
+  var LinkCanvas: IExtensionLinkCanvas;
+  const IsLinked = ((FUrl <> '') and Supports(Canvas, IExtensionLinkCanvas, LinkCanvas));
+  if not IsLinked then
+  begin
+    DrawChildren(Canvas, Left, Baseline);
+    Exit;
+  end;
+
+  LinkCanvas.BeginLink(FUrl);
+  try
+    DrawChildren(Canvas, Left, Baseline);
+  finally
+    LinkCanvas.EndLink;
+  end;
+end;
+
+procedure TMathBox.DrawChildren(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
 begin
   for var Placement in FChildren do
   begin
@@ -575,6 +600,8 @@ begin
       Result := Build(Node.Children[0], Style, Node.Variant);
     TMathNodeKind.Colored:
       Result := BuildColored(Node, Style, Variant);
+    TMathNodeKind.Linked:
+      Result := BuildLinked(Node, Style, Variant);
   else
     raise EMathSyntaxError.CreateFmt('Unhandled math node kind: %d', [Ord(Node.Kind)]);
   end;
@@ -592,6 +619,16 @@ begin
   finally
     FOptions.TextColor := PreviousColor;
   end;
+end;
+
+function TMathBoxBuilder.BuildLinked(const Node: IMathNode; const Style: TMathStyle;
+  const Variant: TMathFontVariant): TMathBox;
+begin
+  const Body = Build(Node.Children[0], Style, Variant);
+
+  Result := TMathBox.Create(TMathBoxKind.Group);
+  Result.Url := Node.Text;
+  Result.Enclose(Body, 0, 0);
 end;
 
 // Atoms sit side by side with TeX's inter-atom spacing between them. Spaces
@@ -693,7 +730,7 @@ begin
         else
           Result := TMathAtomClass.Ordinary;
       end;
-    TMathNodeKind.Colored:
+    TMathNodeKind.Colored, TMathNodeKind.Linked:
       Result := AtomClassOf(Node.Children[0]);
   else
     Result := TMathAtomClass.Ordinary;
@@ -754,8 +791,10 @@ end;
 function TMathBoxBuilder.BuildText(const Node: IMathNode; const Style: TMathStyle): TMathBox;
 begin
   const Font = FontFor(Style, Node.Variant);
+  const Text = TMathGlyphMapper.Apply(Node.Text, Node.Variant);
+  const Extent = GlyphExtent(Node.Text);
 
-  Result := GlyphBox(Node.Text, Font, FOptions.TextColor, GlyphExtent(Node.Text));
+  Result := GlyphBox(Text, Font, FOptions.TextColor, Extent);
 end;
 
 function TMathBoxBuilder.BuildSpace(const Node: IMathNode; const Style: TMathStyle): TMathBox;

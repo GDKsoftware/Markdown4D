@@ -434,6 +434,7 @@ streaming in token by token therefore draws at every flush and only grows.
 | Accents | `\hat`, `\bar`, `\vec`, `\dot`, `\ddot`, `\tilde`, `\check`, `\breve`, `\acute`, `\grave`, `\overline` |
 | Spacing | `\,`, `\:`, `\;`, `\!`, `\ `, `\space`, `~`, `\quad`, `\qquad` |
 | Colour | `\textcolor{colour}{...}` colours its argument; `\color{colour}` is a switch that colours the rest of its group, as in LaTeX, KaTeX and MathJax 3. A colour is a CSS colour name or a hex value in three or six digits, with or without `#` |
+| Links | `\href{url}{...}` makes its argument a link and `\url{url}` shows the URL in a typewriter face as a link, as in KaTeX. The URL is taken as typed, so `#` needs no escaping; an escaped TeX special such as `\#` or `\%` becomes the character itself. A click works as on a markdown link: `#...` scrolls to the heading, anything else raises `OnLinkClick`. MathJax has `\href` but no `\url` |
 
 Anything else comes out as its name, in the error colour, so the author sees
 what did not resolve.

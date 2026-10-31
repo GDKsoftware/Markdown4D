@@ -40,6 +40,16 @@ type
     procedure RestoreState;
   end;
 
+  // A canvas that can attribute what is drawn to a link. What is drawn
+  // between BeginLink and EndLink is clickable as that link in the viewer; a
+  // canvas without this interface draws it as plain content. Links nest: the
+  // innermost one applies.
+  IExtensionLinkCanvas = interface
+    ['{515A1107-F4A0-4D43-8E38-6BC92CA52014}']
+    procedure BeginLink(const Url: string);
+    procedure EndLink;
+  end;
+
   ILayoutBlockContext = interface
     ['{5E1A7C34-9B62-4D08-A5F1-72C0E4B36D91}']
     function GetMeasurer: ITextMeasurer;

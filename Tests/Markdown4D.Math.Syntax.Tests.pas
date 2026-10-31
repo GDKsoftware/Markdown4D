@@ -105,6 +105,27 @@ type
     procedure Parse_ColorWithoutBracedName_ShowsCommandAsError(const Source, ExpectedError: string);
 
     [Test]
+    procedure Parse_Href_WrapsOnlyItsArgument;
+
+    [Test]
+    [TestCase('Verbatim', '\href{https://example.com/a_b#c}{x},https://example.com/a_b#c')]
+    [TestCase('EscapedHash', '\href{\#target}{x},#target')]
+    [TestCase('EscapedPercent', '\href{a\%20b}{x},a%20b')]
+    [TestCase('OtherBackslashKept', '\href{a\b}{x},a\b')]
+    procedure Parse_HrefUrl_IsReadAsTyped(const Source, ExpectedUrl: string);
+
+    [Test]
+    procedure Parse_HrefWithEmptyUrl_KeepsBodyWithoutLink;
+
+    [Test]
+    procedure Parse_Url_LinksItsOwnTextInMonospace;
+
+    [Test]
+    [TestCase('HrefWithoutBraces', '\href x y,\href')]
+    [TestCase('UrlWithoutBraces', '\url x,\url')]
+    procedure Parse_LinkWithoutBracedUrl_ShowsCommandAsError(const Source, ExpectedError: string);
+
+    [Test]
     procedure Parse_Mathbb_YieldsStyledDoubleStruck;
 
     [Test]
@@ -530,6 +551,58 @@ begin
 end;
 
 procedure TMathSyntaxTests.Parse_ColorWithoutBracedName_ShowsCommandAsError(const Source, ExpectedError: string);
+begin
+  const Row = Parse(Source);
+
+  const Command = Row.Children[0];
+  Assert.IsTrue(Command.IsError);
+  Assert.AreEqual(ExpectedError, Command.Text);
+  Assert.IsNotNull(FindText(Row, 'x'));
+end;
+
+procedure TMathSyntaxTests.Parse_Href_WrapsOnlyItsArgument;
+begin
+  const Row = Parse('\href{#target}{x}+y');
+
+  const Linked = Row.Children[0];
+  Assert.AreEqual(3, Row.ChildCount);
+  Assert.AreEqual<TMathNodeKind>(TMathNodeKind.Linked, Linked.Kind);
+  Assert.AreEqual('#target', Linked.Text);
+  Assert.AreEqual('x', InnermostNode(Linked.Children[0]).Text);
+end;
+
+procedure TMathSyntaxTests.Parse_HrefUrl_IsReadAsTyped(const Source, ExpectedUrl: string);
+begin
+  const Row = Parse(Source);
+
+  const Linked = Row.Children[0];
+  Assert.AreEqual<TMathNodeKind>(TMathNodeKind.Linked, Linked.Kind);
+  Assert.AreEqual(ExpectedUrl, Linked.Text);
+end;
+
+procedure TMathSyntaxTests.Parse_HrefWithEmptyUrl_KeepsBodyWithoutLink;
+begin
+  const Row = Parse('\href{}{x}');
+
+  const Body = Row.Children[0];
+  Assert.AreNotEqual<TMathNodeKind>(TMathNodeKind.Linked, Body.Kind);
+  Assert.AreEqual('x', InnermostNode(Body).Text);
+end;
+
+procedure TMathSyntaxTests.Parse_Url_LinksItsOwnTextInMonospace;
+begin
+  const Row = Parse('\url{#target}');
+
+  const Linked = Row.Children[0];
+  const Shown = Linked.Children[0];
+  Assert.AreEqual<TMathNodeKind>(TMathNodeKind.Linked, Linked.Kind);
+  Assert.AreEqual('#target', Linked.Text);
+  Assert.AreEqual<TMathNodeKind>(TMathNodeKind.Text, Shown.Kind);
+  Assert.AreEqual<TMathFontVariant>(TMathFontVariant.Monospace, Shown.Variant);
+  Assert.AreEqual('#target', Shown.Text);
+end;
+
+procedure TMathSyntaxTests.Parse_LinkWithoutBracedUrl_ShowsCommandAsError(const Source, ExpectedError: string);
 begin
   const Row = Parse(Source);
 
