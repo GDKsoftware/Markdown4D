@@ -32,6 +32,7 @@ type
       FFilePositions: TArray<TPadFilePosition>;
       FDarkTheme: Boolean;
       FViewMode: TPadViewMode;
+      FToolbarVisible: Boolean;
     class function ViewModeToText(const Mode: TPadViewMode): string; static;
     class function ViewModeFromText(const Value: string): TPadViewMode; static;
 
@@ -52,6 +53,7 @@ type
     property RecentFiles: TArray<string> read FRecentFiles;
     property DarkTheme: Boolean read FDarkTheme write FDarkTheme;
     property ViewMode: TPadViewMode read FViewMode write FViewMode;
+    property ToolbarVisible: Boolean read FToolbarVisible write FToolbarVisible;
   end;
 
 implementation
@@ -74,6 +76,7 @@ const
   PositionPreviewKey = 'preview';
   DarkThemeKey = 'darkTheme';
   ViewModeKey = 'viewMode';
+  ToolbarVisibleKey = 'toolbarVisible';
   ViewModeEditorText = 'editor';
   ViewModeSplitText = 'split';
   ViewModePreviewText = 'preview';
@@ -108,6 +111,7 @@ begin
   FFilePositions := [];
   FDarkTheme := False;
   FViewMode := TPadViewMode.Split;
+  FToolbarVisible := True;
 end;
 
 procedure TPadSession.Load;
@@ -194,6 +198,10 @@ begin
     var ViewValue: string;
     if Obj.TryGetValue<string>(ViewModeKey, ViewValue) then
       FViewMode := ViewModeFromText(ViewValue);
+
+    var ToolbarValue: Boolean;
+    if Obj.TryGetValue<Boolean>(ToolbarVisibleKey, ToolbarValue) then
+      FToolbarVisible := ToolbarValue;
   finally
     Root.Free;
   end;
@@ -241,6 +249,8 @@ begin
     Root.AddPair(DarkThemeKey, TJSONBool.Create(FDarkTheme));
 
     Root.AddPair(ViewModeKey, ViewModeToText(FViewMode));
+
+    Root.AddPair(ToolbarVisibleKey, TJSONBool.Create(FToolbarVisible));
 
     TFile.WriteAllText(FFilePath, Root.ToJSON);
   finally
