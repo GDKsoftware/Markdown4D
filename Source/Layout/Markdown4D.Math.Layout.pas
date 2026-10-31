@@ -792,8 +792,9 @@ function TMathBoxBuilder.BuildText(const Node: IMathNode; const Style: TMathStyl
 begin
   const Font = FontFor(Style, Node.Variant);
   const Text = TMathGlyphMapper.Apply(Node.Text, Node.Variant);
+  const Extent = GlyphExtent(Node.Text);
 
-  Result := GlyphBox(Text, Font, FOptions.TextColor, GlyphExtent(Node.Text));
+  Result := GlyphBox(Text, Font, FOptions.TextColor, Extent);
 end;
 
 function TMathBoxBuilder.BuildSpace(const Node: IMathNode; const Style: TMathStyle): TMathBox;
