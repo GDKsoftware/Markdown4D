@@ -14,7 +14,8 @@ type
   // a Row is a sequence of atoms, every atom carries the class that decides
   // the spacing around it, and the structural nodes (fraction, script,
   // radical, delimited group, accent, matrix) hold their parts as children.
-  TMathNodeKind = (Row, Symbol, Text, Fraction, Script, Radical, Delimited, Accent, Space, Matrix, Styled, Colored);
+  TMathNodeKind = (Row, Symbol, Text, Fraction, Script, Radical, Delimited, Accent, Space, Matrix, Styled, Colored,
+    Linked);
 
   TMathAtomClass = (Ordinary, Operator, Binary, Relation, Opening, Closing, Punctuation, Inner);
 
@@ -47,7 +48,8 @@ type
     function IsEmpty: Boolean;
     property Kind: TMathNodeKind read GetKind;
     // Symbol: the glyphs to draw; Text: the words; Accent: the accent glyph,
-    // empty for an overline; otherwise unused.
+    // empty for an overline; Linked: the URL the body links to; otherwise
+    // unused.
     property Text: string read GetText;
     property AtomClass: TMathAtomClass read GetAtomClass;
     // Symbol: how its letters are set; Styled: the variant applied to the
@@ -56,7 +58,8 @@ type
     property ChildCount: Integer read GetChildCount;
     // Fraction: numerator, denominator. Script: base, superscript, subscript
     // (an empty row where absent). Radical: radicand, index. Delimited,
-    // Accent, Styled: the body. Matrix: the rows, each holding its cells.
+    // Accent, Styled, Colored, Linked: the body. Matrix: the rows, each
+    // holding its cells.
     property Children[const Index: Integer]: IMathNode read GetChild;
     property LeftDelimiter: string read GetLeftDelimiter;
     property RightDelimiter: string read GetRightDelimiter;
@@ -229,6 +232,9 @@ type
       ColorCommand = 'color';
       TextColorCommand = 'textcolor';
       UnknownColorFormat = '\%s{%s}';
+      HrefCommand = 'href';
+      UrlCommand = 'url';
+      UrlEscapedCharacters = '#$%&~_^{}';
       MaxChemistryDepth = 4;
       PrimeGlyph = #$2032;
       MinusGlyph = #$2212;
@@ -273,6 +279,12 @@ type
     function TryParseEnvironmentCommand(const Name: string; out Node: TMathNode): Boolean;
     function TryParseColorCommand(const Name: string; out Node: TMathNode): Boolean;
     function ParseColored(const CommandName: string): TMathNode;
+    function TryParseLinkCommand(const Name: string; out Node: TMathNode): Boolean;
+    function ParseHref: TMathNode;
+    function ParseUrl: TMathNode;
+    function TryReadUrl(out Url: string): Boolean;
+    class function UnescapeUrl(const Url: string): string; static;
+    class function LinkedNode(const Url: string; const Content: TMathNode): TMathNode; static;
     function ParseChemistry: TMathNode;
     function ParseFraction(const HasRule: Boolean): TMathNode;
     function ParseBinomial: TMathNode;
@@ -1254,6 +1266,9 @@ begin
   if TryParseColorCommand(Name, Result) then
     Exit;
 
+  if TryParseLinkCommand(Name, Result) then
+    Exit;
+
   Result := ErrorNode(Name);
 end;
 
@@ -1594,6 +1609,112 @@ begin
   const TypedCommand = Format(UnknownColorFormat, [CommandName, ColorName]);
   Result := TMathNode.Create(TMathNodeKind.Row);
   Result.AddChild(ErrorSymbol(TypedCommand));
+  Result.AddChild(Content);
+end;
+
+function TMathTreeParser.TryParseLinkCommand(const Name: string; out Node: TMathNode): Boolean;
+begin
+  Result := True;
+
+  if Name = HrefCommand then
+  begin
+    Node := ParseHref;
+    Exit;
+  end;
+
+  if Name = UrlCommand then
+  begin
+    Node := ParseUrl;
+    Exit;
+  end;
+
+  Result := False;
+end;
+
+// \href{url}{math} links the math to the URL, as hyperref and MathJax do.
+// Without a braced URL the command shows in the error colour, like \color.
+function TMathTreeParser.ParseHref: TMathNode;
+begin
+  var Url: string;
+  if not TryReadUrl(Url) then
+  begin
+    Result := ErrorNode(HrefCommand);
+    Exit;
+  end;
+
+  const Content = ParseArgument;
+  Result := LinkedNode(Url, Content);
+end;
+
+// \url{url} shows the URL itself in a typewriter face and links to it.
+function TMathTreeParser.ParseUrl: TMathNode;
+begin
+  var Url: string;
+  if not TryReadUrl(Url) then
+  begin
+    Result := ErrorNode(UrlCommand);
+    Exit;
+  end;
+
+  const Content = TMathNode.Create(TMathNodeKind.Text);
+  Content.AtomClass := TMathAtomClass.Ordinary;
+  Content.Variant := TMathFontVariant.Monospace;
+  Content.Text := Url;
+  Result := LinkedNode(Url, Content);
+end;
+
+// The URL is taken as typed, the way MathJax and KaTeX read it, so a # needs
+// no escaping. A backslash before one of TeX's special characters is
+// dropped, so a URL written for LaTeX as \# works as well.
+function TMathTreeParser.TryReadUrl(out Url: string): Boolean;
+begin
+  Url := '';
+
+  const NextToken = FScanner.Peek;
+  Result := (NextToken.Kind = TMathTokenKind.OpenBrace);
+  if not Result then
+    Exit;
+
+  const TypedUrl = FScanner.ReadRawGroup;
+  Url := UnescapeUrl(TypedUrl);
+end;
+
+class function TMathTreeParser.UnescapeUrl(const Url: string): string;
+begin
+  const Builder = TStringBuilder.Create;
+  try
+    var Index := 1;
+    while Index <= Length(Url) do
+    begin
+      const IsEscape = ((Url[Index] = Backslash) and (Index < Length(Url)) and
+                        UrlEscapedCharacters.Contains(Url[Index + 1]));
+      if IsEscape then
+        Inc(Index);
+
+      Builder.Append(Url[Index]);
+      Inc(Index);
+    end;
+
+    Result := Builder.ToString;
+  finally
+    Builder.Free;
+  end;
+end;
+
+// An empty URL links nowhere, so the body stands on its own. Otherwise the
+// link spaces like its body, as a colour does, so x \href{...}{=} y still
+// spaces the equals sign as a relation.
+class function TMathTreeParser.LinkedNode(const Url: string; const Content: TMathNode): TMathNode;
+begin
+  if Url = '' then
+  begin
+    Result := Content;
+    Exit;
+  end;
+
+  Result := TMathNode.Create(TMathNodeKind.Linked);
+  Result.AtomClass := Content.AtomClass;
+  Result.Text := Url;
   Result.AddChild(Content);
 end;
 

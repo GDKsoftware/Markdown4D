@@ -102,6 +102,15 @@ type
     procedure Layout_NestedColor_RestoresOuterColor;
 
     [Test]
+    procedure Layout_Href_LinksOnlyItsBody;
+
+    [Test]
+    procedure Layout_HrefAroundRelation_KeepsRelationSpacing;
+
+    [Test]
+    procedure Layout_Url_DrawsUrlInMonospaceAsLink;
+
+    [Test]
     procedure Layout_Extent_CoversEveryPart;
 
     [Test]
@@ -136,6 +145,7 @@ uses
   System.StrUtils,
   System.Generics.Collections,
   System.Math,
+  Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Layout.ExtensionCanvas,
   Markdown4D.Layout.FakeMeasurer;
@@ -415,6 +425,39 @@ begin
   Assert.AreEqual<TLayoutColor>($FF0000FF, Inner.Color);
   Assert.AreEqual<TLayoutColor>($FFFF0000, OuterAgain.Color);
   Assert.AreEqual<TLayoutColor>(TextColor, Outside.Color);
+end;
+
+procedure TMathLayoutTests.Layout_Href_LinksOnlyItsBody;
+begin
+  const Drawn = Items('a+\href{#target}{x}', False);
+
+  var Link: IMarkdownLink;
+  const LinkedRun = RunWithText(Drawn, 'x');
+  const PlainRun = RunWithText(Drawn, 'a');
+  Assert.IsTrue(Supports(LinkedRun.Node, IMarkdownLink, Link));
+  Assert.AreEqual('#target', Link.Destination);
+  Assert.IsNull(PlainRun.Node);
+end;
+
+procedure TMathLayoutTests.Layout_HrefAroundRelation_KeepsRelationSpacing;
+begin
+  const Plain = Items('x=y', False);
+  const Linked = Items('x\href{#why}{=}y', False);
+
+  const PlainLeft = RunWithText(Plain, 'y').Bounds.Left;
+  const LinkedLeft = RunWithText(Linked, 'y').Bounds.Left;
+  Assert.AreEqual(PlainLeft, LinkedLeft, Tolerance);
+end;
+
+procedure TMathLayoutTests.Layout_Url_DrawsUrlInMonospaceAsLink;
+begin
+  const MonospaceA = #$D835#$DE8A;
+  const Drawn = Items('\url{a}', False);
+
+  var Link: IMarkdownLink;
+  const Run = RunWithText(Drawn, MonospaceA);
+  Assert.IsTrue(Supports(Run.Node, IMarkdownLink, Link));
+  Assert.AreEqual('a', Link.Destination);
 end;
 
 procedure TMathLayoutTests.Layout_Extent_CoversEveryPart;

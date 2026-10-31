@@ -12,12 +12,13 @@ uses
   Markdown4D.Layout.BlockOverride;
 
 type
-  TDisplayListExtensionCanvas = class(TInterfacedObject, IExtensionCanvas)
+  TDisplayListExtensionCanvas = class(TInterfacedObject, IExtensionCanvas, IExtensionLinkCanvas)
   private
     FMeasurer: ITextMeasurer;
     FItems: TList<IDisplayItem>;
     FNode: IMarkdownNode;
     FTextRole: TDisplayTextRunRole;
+    FNodesOutsideLinks: TStack<IMarkdownNode>;
     class function BoundingRect(const Points: TArray<TLayoutPointF>): TLayoutRectF; static;
 
   public
@@ -26,6 +27,7 @@ type
     // asks for.
     constructor Create(const Measurer: ITextMeasurer; const Items: TList<IDisplayItem>; const Node: IMarkdownNode;
       const TextRole: TDisplayTextRunRole = TDisplayTextRunRole.Text);
+    destructor Destroy; override;
     function MeasureText(const Text: string; const Font: TMarkdownFontStyle): TLayoutSizeF;
     procedure DrawText(const TopLeft: TLayoutPointF; const Text: string; const Font: TMarkdownFontStyle;
       const Color: TLayoutColor);
@@ -51,12 +53,15 @@ type
     procedure SaveState;
     procedure SetClip(const Bounds: TLayoutRectF);
     procedure RestoreState;
+    procedure BeginLink(const Url: string);
+    procedure EndLink;
   end;
 
 implementation
 
 uses
   System.Math,
+  Markdown4D.Ast,
   Markdown4D.Layout.Primitives;
 
 constructor TDisplayListExtensionCanvas.Create(const Measurer: ITextMeasurer; const Items: TList<IDisplayItem>;
@@ -68,6 +73,14 @@ begin
   FItems := Items;
   FNode := Node;
   FTextRole := TextRole;
+  FNodesOutsideLinks := TStack<IMarkdownNode>.Create;
+end;
+
+destructor TDisplayListExtensionCanvas.Destroy;
+begin
+  FNodesOutsideLinks.Free;
+
+  inherited Destroy;
 end;
 
 class function TDisplayListExtensionCanvas.BoundingRect(const Points: TArray<TLayoutPointF>): TLayoutRectF;
@@ -213,6 +226,22 @@ end;
 
 procedure TDisplayListExtensionCanvas.RestoreState;
 begin
+end;
+
+// The items drawn inside a link carry a link node of their own instead of the
+// node the canvas draws for, so the viewer's hit test finds the link the
+// same way it finds a markdown link.
+procedure TDisplayListExtensionCanvas.BeginLink(const Url: string);
+begin
+  FNodesOutsideLinks.Push(FNode);
+  FNode := TMarkdownLinkNode.Create(TMarkdownNodeKind.Link, Url, '');
+end;
+
+procedure TDisplayListExtensionCanvas.EndLink;
+begin
+  const HasOpenLink = (FNodesOutsideLinks.Count > 0);
+  if HasOpenLink then
+    FNode := FNodesOutsideLinks.Pop;
 end;
 
 end.

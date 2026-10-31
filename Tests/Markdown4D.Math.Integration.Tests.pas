@@ -47,6 +47,7 @@ type
     class function RunWithText(const DisplayList: IMarkdownDisplayList; const Text: string): IDisplayTextRun;
     class function RunStartingWith(const DisplayList: IMarkdownDisplayList; const Prefix: string): IDisplayTextRun;
     class function BaselineOf(const Run: IDisplayTextRun): Single;
+    class function CentreOf(const Run: IDisplayTextRun): TLayoutPointF;
 
   public
     [SetupFixture]
@@ -75,6 +76,16 @@ type
 
     [Test]
     procedure UnclosedDisplayBlock_StillLaysOut;
+
+    [Test]
+    [TestCase('InlinePart', '$a+\href{#target}{x}$,x,#target')]
+    [TestCase('DisplayPart', '$$\frac{\href{#target}{x}}{2}$$,x,#target')]
+    [TestCase('InsideMarkdownLink', '[$a+\href{#inner}{x}$](#outer),x,#inner')]
+    [TestCase('AroundHref', '[$a+\href{#inner}{x}$](#outer),a,#outer')]
+    procedure Href_PointOnGlyph_FindsItsLink(const Source, Glyph, ExpectedUrl: string);
+
+    [Test]
+    procedure Href_PointOnPlainPart_FindsNoLink;
   end;
 
   [TestFixture]
@@ -119,7 +130,9 @@ uses
   Markdown4D,
   Markdown4D.Defines,
   Markdown4D.Layout.Defaults,
+  Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Engine,
+  Markdown4D.Layout.HitTest,
   Markdown4D.Layout.FakeMeasurer;
 
 procedure TMathThemeTests.MathFont_Default_IsGenericMathFamilyAtBaseSize;
@@ -315,6 +328,35 @@ begin
 
   RunWithText(DisplayList, 'a');
   Assert.IsTrue(DisplayList.BlockInfos[0].Height > 0);
+end;
+
+procedure TMathLayoutIntegrationTests.Href_PointOnGlyph_FindsItsLink(const Source, Glyph, ExpectedUrl: string);
+begin
+  const DisplayList = Layout(Source);
+  const Point = CentreOf(RunWithText(DisplayList, Glyph));
+
+  var Link: IMarkdownLink;
+  const Found = TMarkdownHitTester.TryFindLink(DisplayList, Point, Link);
+
+  Assert.IsTrue(Found);
+  Assert.AreEqual(ExpectedUrl, Link.Destination);
+end;
+
+procedure TMathLayoutIntegrationTests.Href_PointOnPlainPart_FindsNoLink;
+begin
+  const DisplayList = Layout('$a+\href{#target}{x}$');
+  const Point = CentreOf(RunWithText(DisplayList, 'a'));
+
+  var Link: IMarkdownLink;
+  const Found = TMarkdownHitTester.TryFindLink(DisplayList, Point, Link);
+
+  Assert.IsFalse(Found);
+end;
+
+class function TMathLayoutIntegrationTests.CentreOf(const Run: IDisplayTextRun): TLayoutPointF;
+begin
+  const Bounds = Run.Bounds;
+  Result := TLayoutPointF.Create((Bounds.Left + Bounds.Right) / 2, (Bounds.Top + Bounds.Bottom) / 2);
 end;
 
 procedure TMathViewerTests.Setup;
