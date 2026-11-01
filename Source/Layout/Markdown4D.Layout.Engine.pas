@@ -1535,7 +1535,9 @@ begin
     if not IsGlyph then
       Continue;
 
-    if not IsFirst then
+    // A glyph that starts a table cell or row keeps that break.
+    const HasBreak = (Run.Join <> TDisplayTextJoin.None);
+    if not IsFirst and not HasBreak then
       FItems[Index] := Run.Joined(TDisplayTextJoin.Adjacent, 0);
     IsFirst := False;
   end;
@@ -2757,12 +2759,19 @@ end;
 // it follow on directly, raised or lowered as they may be.
 procedure TInlineWrapper.JoinMathGlyphs(const FirstItem: Integer);
 begin
+  var IsFirst := True;
   for var Index := FirstItem to FItems.Count - 1 do
   begin
     var Run: IDisplayTextRun;
     const IsGlyph = (Supports(FItems[Index], IDisplayTextRun, Run) and (Run.Role = TDisplayTextRunRole.Formula));
-    if IsGlyph then
+    if not IsGlyph then
+      Continue;
+
+    // A glyph that starts a table cell or row keeps that break.
+    const HasBreak = (Run.Join <> TDisplayTextJoin.None);
+    if IsFirst or not HasBreak then
       FItems[Index] := TakeLineJoin(Run);
+    IsFirst := False;
   end;
 end;
 

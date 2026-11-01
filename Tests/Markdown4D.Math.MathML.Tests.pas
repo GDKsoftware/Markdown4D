@@ -36,6 +36,9 @@ type
 
     [Test]
     procedure FromSource_EscapesMarkup;
+
+    [Test]
+    procedure FromSource_Array_WritesAlignmentAndRules;
   end;
 
 implementation
@@ -80,6 +83,14 @@ end;
 procedure TMathMLFormatTests.FromSource_Href_LinksTheRow;
 begin
   Assert.AreEqual('<mrow href="https://example.com"><mi>x</mi></mrow>', Body('\href{https://example.com}{x}'));
+end;
+
+procedure TMathMLFormatTests.FromSource_Array_WritesAlignmentAndRules;
+begin
+  const MathML = Body('\begin{array}{|l|r|} \hline a & b \\ \hline c & d \\ \hline \end{array}');
+
+  Assert.StartsWith('<mtable columnalign="left right" columnlines="solid" rowlines="solid" frame="solid">', MathML);
+  Assert.AreEqual(2, MathML.CountChar('/') - MathML.Replace('</mtr>', '').CountChar('/'), 'two rows, not three');
 end;
 
 procedure TMathMLFormatTests.FromSource_EscapesMarkup;

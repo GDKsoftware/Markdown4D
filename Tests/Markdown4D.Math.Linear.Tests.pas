@@ -42,6 +42,12 @@ type
     procedure FromSource_Matrix_WritesRowsAndCells;
 
     [Test]
+    procedure FromSource_Array_LeavesOutClosingRow;
+
+    [Test]
+    procedure FromSource_Tabular_CopiesAsTabSeparatedRows;
+
+    [Test]
     procedure FromSource_LinesOfDisplayFormula_StayLines;
 
     [Test]
@@ -93,9 +99,21 @@ begin
   Assert.AreEqual('('#$25A0'(a&b@c&d))', TMathLinearFormat.FromSource('\begin{pmatrix}a&b\\c&d\end{pmatrix}'));
 end;
 
+procedure TMathLinearFormatTests.FromSource_Array_LeavesOutClosingRow;
+begin
+  Assert.AreEqual('a'#9'b' + sLineBreak + 'c'#9'd',
+    TMathLinearFormat.FromSource('\begin{array}{|c|c|} \hline a & b \\ c & d \\ \hline \end{array}'));
+end;
+
+procedure TMathLinearFormatTests.FromSource_Tabular_CopiesAsTabSeparatedRows;
+begin
+  Assert.AreEqual('Zutat'#9'Menge' + sLineBreak + 'Zucker'#9'0,2 g',
+    TMathLinearFormat.FromSource('\begin{tabular}{lr} Zutat & Menge \\ Zucker & 0,2 g \end{tabular}'));
+end;
+
 procedure TMathLinearFormatTests.FromSource_LinesOfDisplayFormula_StayLines;
 begin
-  Assert.AreEqual('a=1'#10'b=2', TMathLinearFormat.FromSource('a=1\\b=2'));
+  Assert.AreEqual('a=1' + sLineBreak + 'b=2', TMathLinearFormat.FromSource('a=1\\b=2'));
 end;
 
 procedure TMathLinearFormatTests.FromSource_Href_WritesShownTextOnly;

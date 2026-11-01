@@ -89,6 +89,7 @@ type
     FUrl: string;
     FSourceStart: Integer;
     FSourceLength: Integer;
+    FBreakBefore: TExtensionTextBreak;
     procedure DrawGlyph(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
     procedure DrawGroup(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
     procedure DrawChildren(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
@@ -108,6 +109,9 @@ type
     // Gives every glyph inside that has no place in the source yet this one,
     // so a delimiter or an accent belongs to the command that drew it.
     procedure AttachSource(const Start, Length: Integer);
+    // Starts a new table cell or row at the first glyph inside, in reading
+    // order; False when there is no glyph to carry it.
+    function TryBreakBefore(const Break: TExtensionTextBreak): Boolean;
     property Width: Single read FWidth write FWidth;
     property Ascent: Single read FAscent write FAscent;
     property Descent: Single read FDescent write FDescent;
@@ -188,6 +192,13 @@ type
       NullDelimiterSpaceEm = 0.12;
       MatrixRowGapEm = 0.5;
       MatrixColumnGapEm = 0.9;
+      // An array row is at least as tall as LaTeX's strut, so rules between
+      // rows keep clear of the text; its columns have half the matrix gap on
+      // either side, where the vertical rules run.
+      ArrayStrutAscentEm = 0.84;
+      ArrayStrutDescentEm = 0.36;
+      ArrayColumnPaddingEm = 0.5;
+      ArrayDoubleRuleGapEm = 0.12;
       ParenthesisSegments = 12;
       MuPerEm = 18;
       ArrowGlyph = #$2192;
@@ -239,6 +250,10 @@ type
     function BuildRadical(const Node: IMathNode; const Style: TMathStyle; const Variant: TMathFontVariant): TMathBox;
     function BuildDelimited(const Node: IMathNode; const Style: TMathStyle; const Variant: TMathFontVariant): TMathBox;
     function BuildAccent(const Node: IMathNode; const Style: TMathStyle; const Variant: TMathFontVariant): TMathBox;
+    function BuildArray(const Node: IMathNode; const Style, CellStyle: TMathStyle;
+      const Variant: TMathFontVariant): TMathBox;
+    function VerticalRuleBox(const Top, Bottom, Thickness: Single): TMathBox;
+    class function RuleSpan(const Count: Integer; const Thickness, Gap: Single): Single; static;
     function BuildMatrix(const Node: IMathNode; const Style, CellStyle: TMathStyle;
       const Variant: TMathFontVariant): TMathBox;
     class function ColumnInset(const Alignment: TMathColumnAlignment; const ColumnIndex: Integer;
@@ -396,6 +411,28 @@ begin
     Placement.Box.AttachSource(Start, Length);
 end;
 
+function TMathBox.TryBreakBefore(const Break: TExtensionTextBreak): Boolean;
+begin
+  if FKind = TMathBoxKind.Glyph then
+  begin
+    Result := (FSourceStart >= 0);
+    if Result then
+      FBreakBefore := Break;
+    Exit;
+  end;
+
+  for var Placement in FChildren do
+  begin
+    if Placement.Box.TryBreakBefore(Break) then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
+
+  Result := False;
+end;
+
 // A glyph that knows where it is spelled is drawn as part of the formula's
 // text, so the viewer can select it; any other is a picture.
 procedure TMathBox.DrawGlyph(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
@@ -405,7 +442,8 @@ begin
   var SourceCanvas: IExtensionSourceCanvas;
   const IsPlaced = ((FSourceStart >= 0) and Supports(Canvas, IExtensionSourceCanvas, SourceCanvas));
   if IsPlaced then
-    SourceCanvas.DrawSourceText(TopLeft, FText, FFont, FColor, FSourceStart, FSourceLength, FAscent, FDescent)
+    SourceCanvas.DrawSourceText(TopLeft, FText, FFont, FColor, FSourceStart, FSourceLength, FAscent, FDescent,
+      FBreakBefore)
   else
     Canvas.DrawText(TopLeft, FText, FFont, FColor);
 end;
@@ -1326,6 +1364,12 @@ end;
 function TMathBoxBuilder.BuildMatrix(const Node: IMathNode; const Style, CellStyle: TMathStyle;
   const Variant: TMathFontVariant): TMathBox;
 begin
+  if Node.ColumnSpec <> '' then
+  begin
+    Result := BuildArray(Node, Style, CellStyle, Variant);
+    Exit;
+  end;
+
   const Em = EmSize(Style);
   const RowGap = MatrixRowGapEm * Em;
   const ColumnGap = MatrixColumnGapEm * Em;
@@ -1395,6 +1439,174 @@ begin
   Body.Width := BodyWidth + ColumnGap * Max(0, ColumnCount - 1);
 
   Result := WrapWithDelimiters(Body, Node.LeftDelimiter, Node.RightDelimiter, Style);
+end;
+
+// An array or a tabular sets its rows on LaTeX's strut, one after the other,
+// and draws a \hline at the border above a row and a | of the preamble at
+// the border between two columns, across all rows. A last row without
+// content, after a closing \\, only carries the rules below the table.
+function TMathBoxBuilder.BuildArray(const Node: IMathNode; const Style, CellStyle: TMathStyle;
+  const Variant: TMathFontVariant): TMathBox;
+begin
+  const Em = EmSize(Style);
+  // Whole pixels, at least one, so every rule of the table is equally thick
+  // when it is painted.
+  const Thickness = Max(1, Round(RuleThicknessEm * Em));
+  const Padding = ArrayColumnPaddingEm * Em;
+  const RuleGap = ArrayDoubleRuleGapEm * Em;
+
+  // The columns of the preamble and the rules at each border, 0 before the
+  // first column to Length(Columns) after the last.
+  var Columns := '';
+  var BorderRules: TArray<Integer> := [0];
+  for var Character in Node.ColumnSpec do
+  begin
+    if Character = '|' then
+      BorderRules[High(BorderRules)] := BorderRules[High(BorderRules)] + 1
+    else
+    begin
+      Columns := Columns + Character;
+      BorderRules := BorderRules + [0];
+    end;
+  end;
+
+  var RowCount := Node.ChildCount;
+  var BottomRules := 0;
+  const LastRow = Node.Children[Node.ChildCount - 1];
+  const IsClosingRow = (Node.ChildCount > 1) and (LastRow.ChildCount <= 1) and
+    ((LastRow.ChildCount = 0) or LastRow.Children[0].IsEmpty);
+  if IsClosingRow then
+  begin
+    RowCount := RowCount - 1;
+    BottomRules := LastRow.RulesAbove;
+  end;
+
+  var ColumnCount := Length(Columns);
+  for var RowIndex := 0 to RowCount - 1 do
+    ColumnCount := Max(ColumnCount, Node.Children[RowIndex].ChildCount);
+  while Length(Columns) < ColumnCount do
+  begin
+    Columns := Columns + 'c';
+    BorderRules := BorderRules + [0];
+  end;
+
+  var Cells: TArray<TArray<TMathBox>>;
+  var ColumnWidths: TArray<Single>;
+  var RowAscents: TArray<Single>;
+  var RowDescents: TArray<Single>;
+  SetLength(Cells, RowCount);
+  SetLength(ColumnWidths, ColumnCount);
+  SetLength(RowAscents, RowCount);
+  SetLength(RowDescents, RowCount);
+
+  for var RowIndex := 0 to RowCount - 1 do
+  begin
+    const Row = Node.Children[RowIndex];
+    SetLength(Cells[RowIndex], Row.ChildCount);
+    RowAscents[RowIndex] := ArrayStrutAscentEm * Em;
+    RowDescents[RowIndex] := ArrayStrutDescentEm * Em;
+
+    for var ColumnIndex := 0 to Row.ChildCount - 1 do
+    begin
+      const Cell = Build(Row.Children[ColumnIndex], CellStyle, Variant);
+      Cells[RowIndex][ColumnIndex] := Cell;
+      ColumnWidths[ColumnIndex] := Max(ColumnWidths[ColumnIndex], Cell.Width);
+      RowAscents[RowIndex] := Max(RowAscents[RowIndex], Cell.Ascent);
+      RowDescents[RowIndex] := Max(RowDescents[RowIndex], Cell.Descent);
+    end;
+  end;
+
+  // Where each border runs: rules take their own room, the padding sits
+  // between them and the cells.
+  var Borders: TArray<Single>;
+  SetLength(Borders, ColumnCount + 1);
+  var X: Single := 0;
+  for var BorderIndex := 0 to ColumnCount do
+  begin
+    Borders[BorderIndex] := X;
+    X := X + RuleSpan(BorderRules[BorderIndex], Thickness, RuleGap);
+    if BorderIndex < ColumnCount then
+      X := X + Padding + ColumnWidths[BorderIndex] + Padding;
+  end;
+  const TotalWidth = X;
+
+  var TotalHeight: Single := 0;
+  for var RowIndex := 0 to RowCount - 1 do
+    TotalHeight := TotalHeight + RuleSpan(Node.Children[RowIndex].RulesAbove, Thickness, RuleGap) +
+      RowAscents[RowIndex] + RowDescents[RowIndex];
+  TotalHeight := TotalHeight + RuleSpan(BottomRules, Thickness, RuleGap);
+
+  const Body = TMathBox.Create(TMathBoxKind.Group);
+  const Top = -AxisHeightEm * Em - TotalHeight / 2;
+  var Cursor := Top;
+  var PendingBreak := TExtensionTextBreak.None;
+
+  for var RowIndex := 0 to RowCount - 1 do
+  begin
+    const RulesAbove = Node.Children[RowIndex].RulesAbove;
+    for var RuleIndex := 0 to RulesAbove - 1 do
+      Body.Enclose(RuleBox(TotalWidth, Thickness), 0, Cursor + RuleIndex * (Thickness + RuleGap) + Thickness / 2);
+    Cursor := Cursor + RuleSpan(RulesAbove, Thickness, RuleGap);
+
+    const RowBaseline = Cursor + RowAscents[RowIndex];
+    for var ColumnIndex := 0 to High(Cells[RowIndex]) do
+    begin
+      const Cell = Cells[RowIndex][ColumnIndex];
+
+      // Copied as text, a table keeps its cells apart by tabs and its rows
+      // by line breaks, as a browser copies a table; an empty cell passes
+      // its break on to the next.
+      if ColumnIndex > 0 then
+        PendingBreak := TExtensionTextBreak(Max(Ord(PendingBreak), Ord(TExtensionTextBreak.Column)))
+      else if RowIndex > 0 then
+        PendingBreak := TExtensionTextBreak.Line;
+      if (PendingBreak <> TExtensionTextBreak.None) and Cell.TryBreakBefore(PendingBreak) then
+        PendingBreak := TExtensionTextBreak.None;
+
+      const Slack = ColumnWidths[ColumnIndex] - Cell.Width;
+      var Inset := Slack / 2;
+      if Columns[ColumnIndex + 1] = 'l' then
+        Inset := 0
+      else if Columns[ColumnIndex + 1] = 'r' then
+        Inset := Slack;
+
+      const CellLeft = Borders[ColumnIndex] + RuleSpan(BorderRules[ColumnIndex], Thickness, RuleGap) + Padding;
+      Body.Enclose(Cell, CellLeft + Inset, RowBaseline);
+    end;
+
+    Cursor := Cursor + RowAscents[RowIndex] + RowDescents[RowIndex];
+  end;
+
+  for var RuleIndex := 0 to BottomRules - 1 do
+    Body.Enclose(RuleBox(TotalWidth, Thickness), 0, Cursor + RuleIndex * (Thickness + RuleGap) + Thickness / 2);
+
+  for var BorderIndex := 0 to ColumnCount do
+  begin
+    for var RuleIndex := 0 to BorderRules[BorderIndex] - 1 do
+      Body.Enclose(VerticalRuleBox(Top, Top + TotalHeight, Thickness),
+        Borders[BorderIndex] + RuleIndex * (Thickness + RuleGap), 0);
+  end;
+
+  Body.Width := TotalWidth;
+  Result := WrapWithDelimiters(Body, Node.LeftDelimiter, Node.RightDelimiter, Style);
+end;
+
+// How much room Count rules side by side take, a gap between each two.
+class function TMathBoxBuilder.RuleSpan(const Count: Integer; const Thickness, Gap: Single): Single;
+begin
+  Result := 0;
+  if Count > 0 then
+    Result := Count * Thickness + (Count - 1) * Gap;
+end;
+
+function TMathBoxBuilder.VerticalRuleBox(const Top, Bottom, Thickness: Single): TMathBox;
+begin
+  Result := TMathBox.Create(TMathBoxKind.Rule);
+  Result.Rule := TLayoutRectF.Create(0, Top, Thickness, Bottom);
+  Result.Color := FOptions.TextColor;
+  Result.Width := Thickness;
+  Result.Ascent := -Top;
+  Result.Descent := Bottom;
 end;
 
 class function TMathBoxBuilder.ColumnInset(const Alignment: TMathColumnAlignment; const ColumnIndex: Integer;
