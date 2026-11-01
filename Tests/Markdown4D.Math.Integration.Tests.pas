@@ -69,6 +69,12 @@ type
     procedure FormulaGlyphs_AreDrawingsWithOneSourceRun;
 
     [Test]
+    procedure TextWithDescender_KeepsFractionBarClear;
+
+    [Test]
+    procedure FractionInAligned_KeepsDisplaySize;
+
+    [Test]
     procedure DisplayBlock_IsCentred;
 
     [Test]
@@ -132,6 +138,7 @@ uses
   Markdown4D.Layout.Defaults,
   Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Engine,
+  Markdown4D.Math.Layout,
   Markdown4D.Layout.HitTest,
   Markdown4D.Layout.FakeMeasurer;
 
@@ -284,6 +291,30 @@ begin
   const Formula = RunWithText(DisplayList, 'x');
   const After = RunStartingWith(DisplayList, ' beta');
   Assert.IsTrue(After.Bounds.Left >= Formula.Bounds.Right, 'the space and the word follow the formula');
+end;
+
+// The p of the second word reaches below the baseline, so the numerator
+// stands higher above the bar than the one without it.
+procedure TMathLayoutIntegrationTests.TextWithDescender_KeepsFractionBarClear;
+begin
+  const Font = TMarkdownFontStyle.Create(FTheme.MathFont.FamilyName, FTheme.MathFont.Size);
+  const Options = TMathLayoutOptions.Create(Font, TLayoutColor($FF000000), FTheme.MathErrorColor, False);
+
+  const WithDescender = TMathLayouter.Layout('\frac{\text{Rohprotein}}{2}', Options, FMeasurer);
+  const WithoutDescender = TMathLayouter.Layout('\frac{\text{Rohrotein}}{2}', Options, FMeasurer);
+
+  Assert.IsTrue(WithDescender.Ascent > WithoutDescender.Ascent, 'every character of a word counts, not its first');
+end;
+
+procedure TMathLayoutIntegrationTests.FractionInAligned_KeepsDisplaySize;
+begin
+  const Aligned = Layout('$$'#10'\begin{aligned} x &= \frac{a}{b} \end{aligned}'#10'$$');
+  const Matrix = Layout('$$'#10'\begin{matrix} \frac{a}{b} \end{matrix}'#10'$$');
+
+  const AlignedSize = RunWithText(Aligned, 'a').Font.Size;
+  const MatrixSize = RunWithText(Matrix, 'a').Font.Size;
+  Assert.AreEqual(FTheme.MathFont.Size, AlignedSize, SingleTolerance, 'aligned lines are set in display style');
+  Assert.IsTrue(MatrixSize < AlignedSize, 'matrix cells in text style');
 end;
 
 procedure TMathLayoutIntegrationTests.FormulaGlyphs_AreDrawingsWithOneSourceRun;

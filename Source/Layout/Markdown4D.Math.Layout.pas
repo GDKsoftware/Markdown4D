@@ -260,6 +260,8 @@ type
     class function IsScriptStyle(const Style: TMathStyle): Boolean; static;
     class function ResolveVariant(const Own, Context: TMathFontVariant): TMathFontVariant; static;
     class function GlyphExtent(const Text: string): TGlyphExtent; static;
+    class function CellStyleOf(const Node: IMathNode; const Style: TMathStyle): TMathStyle; static;
+    class function CharacterExtent(const First: Char): TGlyphExtent; static;
     class function AtomClassOf(const Node: IMathNode): TMathAtomClass; static;
     class function ResolveAtomClasses(const Node: IMathNode): TArray<TMathAtomClass>; static;
     function SpacingBetween(const Left, Right: TMathAtomClass; const Style: TMathStyle): Single;
@@ -595,7 +597,7 @@ begin
     TMathNodeKind.Accent:
       Result := BuildAccent(Node, Style, Variant);
     TMathNodeKind.Matrix:
-      Result := BuildMatrix(Node, Style, TMathStyle.Text, Variant);
+      Result := BuildMatrix(Node, Style, CellStyleOf(Node, Style), Variant);
     TMathNodeKind.Styled:
       Result := Build(Node.Children[0], Style, Node.Variant);
     TMathNodeKind.Colored:
@@ -1475,16 +1477,36 @@ end;
 // Heights in em for the glyph classes the font families share closely
 // enough: the layouter needs ascent and descent, and the measurer only
 // reports a line height. The values follow STIX Two Math.
+// TeX sets the cells of a matrix in text style, but the lines of aligned in
+// the style around them, display style in a display formula, so a fraction
+// in an aligned line keeps its size.
+class function TMathBoxBuilder.CellStyleOf(const Node: IMathNode; const Style: TMathStyle): TMathStyle;
+begin
+  if Node.Alignment = TMathColumnAlignment.Alternate then
+    Result := Style
+  else
+    Result := TMathStyle.Text;
+end;
+
+// A run of text reaches as high as its tallest character and as low as its
+// deepest, so the p of "Rohprotein" keeps a fraction bar below it clear.
 class function TMathBoxBuilder.GlyphExtent(const Text: string): TGlyphExtent;
 begin
-  if Text = '' then
+  Result := TGlyphExtent.Create(0, 0);
+
+  for var Character in Text do
   begin
-    Result := TGlyphExtent.Create(0, 0);
-    Exit;
+    if Character.IsWhiteSpace or Character.IsLowSurrogate then
+      Continue;
+
+    const Extent = CharacterExtent(Character);
+    Result.AscentEm := Max(Result.AscentEm, Extent.AscentEm);
+    Result.DescentEm := Max(Result.DescentEm, Extent.DescentEm);
   end;
+end;
 
-  const First = Text[1];
-
+class function TMathBoxBuilder.CharacterExtent(const First: Char): TGlyphExtent;
+begin
   if First.IsDigit then
   begin
     Result := TGlyphExtent.Create(0.68, 0);
