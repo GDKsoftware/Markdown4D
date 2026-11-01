@@ -43,6 +43,7 @@ contains
   Markdown4D.Math.Syntax in '..\Source\Core\Markdown4D.Math.Syntax.pas',
   Markdown4D.Math.Chemistry in '..\Source\Core\Markdown4D.Math.Chemistry.pas',
   Markdown4D.Math.Linear in '..\Source\Core\Markdown4D.Math.Linear.pas',
+  Markdown4D.Math.MathML in '..\Source\Core\Markdown4D.Math.MathML.pas',
   Markdown4D.Color.Names in '..\Source\Core\Markdown4D.Color.Names.pas',
   Markdown4D.Highlighter.Diff in '..\Source\Core\Markdown4D.Highlighter.Diff.pas',
   Markdown4D.Consts in '..\Source\Core\Markdown4D.Consts.pas',
@@ -139,5 +140,6 @@ contains
   Markdown4D.AutoScroll.Icon in '..\Source\Layout\Markdown4D.AutoScroll.Icon.pas',
   Markdown4D.AutoScroll.Cursors in '..\Source\Layout\Markdown4D.AutoScroll.Cursors.pas',
   Markdown4D.Viewer.ScrollBar in '..\Source\Layout\Markdown4D.Viewer.ScrollBar.pas',
+  Markdown4D.Viewer.Clipboard in '..\Source\Layout\Markdown4D.Viewer.Clipboard.pas',
   Markdown4D.Viewer.Shared in '..\Source\Layout\Markdown4D.Viewer.Shared.pas';
 end.
