@@ -47,6 +47,9 @@ type
       const Measurer: ITextMeasurer): IMathLayout;
     class function LayoutNode(const Node: IMathNode; const Options: TMathLayoutOptions;
       const Measurer: ITextMeasurer): IMathLayout;
+    // The text a reader would type for drawn glyphs: the mathematical
+    // alphabets the layouter draws fold back to plain letters and digits.
+    class function PlainText(const Glyphs: string): string;
   end;
 
 implementation
@@ -87,6 +90,11 @@ type
     FPoints: TArray<TLayoutPointF>;
     FChildren: TList<TMathPlacement>;
     FUrl: string;
+    FSourceStart: Integer;
+    FSourceLength: Integer;
+    FIsAttached: Boolean;
+    FBreakBefore: TExtensionTextBreak;
+    procedure DrawGlyph(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
     procedure DrawGroup(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
     procedure DrawChildren(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
     procedure DrawPolygon(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
@@ -102,6 +110,12 @@ type
     // Grows the group so the placed child fits; the group's extent is never
     // smaller than its parts.
     procedure Enclose(const Child: TMathBox; const DX, DY: Single);
+    // Gives every glyph inside that has no place in the source yet this one,
+    // so a delimiter or an accent belongs to the command that drew it.
+    procedure AttachSource(const Start, Length: Integer);
+    // Starts a new table cell or row at the first glyph inside, in reading
+    // order; False when there is no glyph to carry it.
+    function TryBreakBefore(const Break: TExtensionTextBreak): Boolean;
     property Width: Single read FWidth write FWidth;
     property Ascent: Single read FAscent write FAscent;
     property Descent: Single read FDescent write FDescent;
@@ -136,6 +150,7 @@ type
     // of the variant; everything else stays. Bold and italic are font
     // attributes, so they pass through untouched.
     class function Apply(const Text: string; const Variant: TMathFontVariant): string;
+    class function PlainText(const Text: string): string;
   end;
 
   TMathBoxBuilder = class
@@ -322,12 +337,18 @@ begin
   end;
 end;
 
+class function TMathLayouter.PlainText(const Glyphs: string): string;
+begin
+  Result := TMathGlyphMapper.PlainText(Glyphs);
+end;
+
 constructor TMathBox.Create(const Kind: TMathBoxKind);
 begin
   inherited Create;
 
   FKind := Kind;
   FChildren := TList<TMathPlacement>.Create;
+  FSourceStart := -1;
 end;
 
 destructor TMathBox.Destroy;
@@ -378,7 +399,7 @@ begin
     TMathBoxKind.Group:
       DrawGroup(Canvas, Left, Baseline);
     TMathBoxKind.Glyph:
-      Canvas.DrawText(TLayoutPointF.Create(Left, Baseline - FFontBaseline), FText, FFont, FColor);
+      DrawGlyph(Canvas, Left, Baseline);
     TMathBoxKind.Rule:
       Canvas.FillRectangle(TLayoutRectF.Create(Left + FRule.Left, Baseline + FRule.Top, Left + FRule.Right,
         Baseline + FRule.Bottom), FColor);
@@ -387,6 +408,62 @@ begin
   else
     raise EMathSyntaxError.CreateFmt('Unhandled math box kind: %d', [Ord(FKind)]);
   end;
+end;
+
+// Every glyph has a place once a box below a placed node is attached, so the
+// boxes around it, attached in turn, need not look into it again.
+procedure TMathBox.AttachSource(const Start, Length: Integer);
+begin
+  if FIsAttached then
+    Exit;
+  FIsAttached := True;
+
+  const IsUnplacedGlyph = ((FKind = TMathBoxKind.Glyph) and (FSourceStart < 0));
+  if IsUnplacedGlyph then
+  begin
+    FSourceStart := Start;
+    FSourceLength := Length;
+  end;
+
+  for var Placement in FChildren do
+    Placement.Box.AttachSource(Start, Length);
+end;
+
+function TMathBox.TryBreakBefore(const Break: TExtensionTextBreak): Boolean;
+begin
+  if FKind = TMathBoxKind.Glyph then
+  begin
+    Result := (FSourceStart >= 0);
+    if Result then
+      FBreakBefore := Break;
+    Exit;
+  end;
+
+  for var Placement in FChildren do
+  begin
+    if Placement.Box.TryBreakBefore(Break) then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
+
+  Result := False;
+end;
+
+// A glyph that knows where it is spelled is drawn as part of the formula's
+// text, so the viewer can select it; any other is a picture.
+procedure TMathBox.DrawGlyph(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
+begin
+  const TopLeft = TLayoutPointF.Create(Left, Baseline - FFontBaseline);
+
+  var SourceCanvas: IExtensionSourceCanvas;
+  const IsPlaced = ((FSourceStart >= 0) and Supports(Canvas, IExtensionSourceCanvas, SourceCanvas));
+  if IsPlaced then
+    SourceCanvas.DrawSourceText(TopLeft, FText, FFont, FColor, FSourceStart, FSourceLength, FAscent, FDescent,
+      FBreakBefore)
+  else
+    Canvas.DrawText(TopLeft, FText, FFont, FColor);
 end;
 
 // A canvas that cannot attribute drawing to a link still draws the linked
@@ -643,6 +720,10 @@ begin
   else
     raise EMathSyntaxError.CreateFmt('Unhandled math node kind: %d', [Ord(Node.Kind)]);
   end;
+
+  const IsPlaced = (Node.SourceStart >= 0);
+  if IsPlaced then
+    Result.AttachSource(Node.SourceStart, Node.SourceLength);
 end;
 
 // Every box reads the text colour from the options as it is built, so the
@@ -1467,6 +1548,7 @@ begin
   const Body = TMathBox.Create(TMathBoxKind.Group);
   const Top = -AxisHeightEm * Em - TotalHeight / 2;
   var Cursor := Top;
+  var PendingBreak := TExtensionTextBreak.None;
 
   for var RowIndex := 0 to RowCount - 1 do
   begin
@@ -1479,6 +1561,17 @@ begin
     for var ColumnIndex := 0 to High(Cells[RowIndex]) do
     begin
       const Cell = Cells[RowIndex][ColumnIndex];
+
+      // Copied as text, a table keeps its cells apart by tabs and its rows
+      // by line breaks, as a browser copies a table; an empty cell passes
+      // its break on to the next.
+      if ColumnIndex > 0 then
+        PendingBreak := TExtensionTextBreak(Max(Ord(PendingBreak), Ord(TExtensionTextBreak.Column)))
+      else if RowIndex > 0 then
+        PendingBreak := TExtensionTextBreak.Line;
+      if (PendingBreak <> TExtensionTextBreak.None) and Cell.TryBreakBefore(PendingBreak) then
+        PendingBreak := TExtensionTextBreak.None;
+
       const Slack = ColumnWidths[ColumnIndex] - Cell.Width;
 
       var Inset := Slack / 2;
@@ -1790,6 +1883,65 @@ begin
   end;
 
   Result := TGlyphExtent.Create(0.68, 0.05);
+end;
+
+// The mathematical alphanumeric symbols (U+1D400 to U+1D7FF) repeat the
+// Latin alphabet in thirteen styles, the Greek one in five and the digits in
+// five; the letterlike symbols fill the gaps in them.
+class function TMathGlyphMapper.PlainText(const Text: string): string;
+const
+  LatinFirst = $1D400;
+  LatinLast = $1D6A3;
+  GreekFirst = $1D6A8;
+  GreekLast = $1D7C9;
+  DigitFirst = $1D7CE;
+  DigitLast = $1D7FF;
+  GreekLetters =
+    #$0391#$0392#$0393#$0394#$0395#$0396#$0397#$0398#$0399#$039A#$039B#$039C#$039D#$039E +
+    #$039F#$03A0#$03A1#$03F4#$03A3#$03A4#$03A5#$03A6#$03A7#$03A8#$03A9#$2207#$03B1#$03B2 +
+    #$03B3#$03B4#$03B5#$03B6#$03B7#$03B8#$03B9#$03BA#$03BB#$03BC#$03BD#$03BE#$03BF#$03C0 +
+    #$03C1#$03C2#$03C3#$03C4#$03C5#$03C6#$03C7#$03C8#$03C9#$2202#$03F5#$03D1#$03F0#$03D5 +
+    #$03F1#$03D6;
+  LetterlikeFrom =
+    #$210E#$212C#$2130#$2131#$210B#$2110#$2112#$2133#$211B#$212F#$210A#$2134#$212D#$210C +
+    #$2111#$211C#$2128#$2102#$210D#$2115#$2119#$211A#$211D#$2124;
+  LetterlikeTo = 'hBEFHILMReg' + 'oCHIRZCHNPQRZ';
+begin
+  Result := '';
+
+  var Index := 1;
+  while Index <= Length(Text) do
+  begin
+    const IsPair = ((Index < Length(Text)) and Text[Index].IsHighSurrogate);
+    if not IsPair then
+    begin
+      const Letterlike = Pos(Text[Index], LetterlikeFrom);
+      if Letterlike > 0 then
+        Result := Result + LetterlikeTo[Letterlike]
+      else
+        Result := Result + Text[Index];
+      Inc(Index);
+      Continue;
+    end;
+
+    const CodePoint = Char.ConvertToUtf32(Text[Index], Text[Index + 1]);
+    if (CodePoint >= LatinFirst) and (CodePoint <= LatinLast) then
+    begin
+      const Letter = (CodePoint - LatinFirst) mod 52;
+      if Letter < 26 then
+        Result := Result + Chr(Ord('A') + Letter)
+      else
+        Result := Result + Chr(Ord('a') + Letter - 26);
+    end
+    else if (CodePoint >= GreekFirst) and (CodePoint <= GreekLast) then
+      Result := Result + GreekLetters[(CodePoint - GreekFirst) mod 58 + 1]
+    else if (CodePoint >= DigitFirst) and (CodePoint <= DigitLast) then
+      Result := Result + Chr(Ord('0') + (CodePoint - DigitFirst) mod 10)
+    else
+      Result := Result + Text[Index] + Text[Index + 1];
+
+    Inc(Index, 2);
+  end;
 end;
 
 end.

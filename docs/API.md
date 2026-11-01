@@ -406,9 +406,21 @@ with the clearance rules, limits above and below large operators in display
 style, radicals with an optional index, delimiters that grow into drawn shapes
 when a glyph is too short, accents, and matrix environments. An inline formula
 sits on the text baseline and pushes the lines apart when it is tall; a display
-formula is centred in the column. A formula selects as one unit and copies as
-its markdown, `$...$` or a `$$` block, so a paste lands back in a document as
-the same formula; find searches the LaTeX source, not the drawn glyphs.
+formula is centred in the column.
+
+A formula selects like text, glyph by glyph, the way KaTeX and MathJax output
+does in a browser: a drag can start or end anywhere inside it, and a double
+click selects the letters and digits on one baseline, such as a name or a
+number but not its power. Every glyph knows where it is spelled in the source,
+so each way of copying gives what it promises:
+
+| Copy | A whole formula | Part of a formula |
+|---|---|---|
+| `Ctrl+C` | its markdown, `$...$` or the `$$` block, so a paste lands back in a document as the same formula | the glyphs shown, letters of the mathematical alphabets as plain letters, the cells of an `array` or `tabular` split by tabs and its rows by line breaks |
+| `Copy as Markdown` | the same markdown | the selected TeX widened until it is valid: a command whole, braces balanced, a command with the groups it reads; the text of `\href` or the address of `\url` takes the whole command, as a markdown link does |
+
+Find searches the LaTeX source, not the drawn glyphs, and a match selects the
+whole formula.
 
 A display formula wider than the column scrolls sideways in its band, the way
 browsers show a long KaTeX or MathJax formula: a thin track below it shows

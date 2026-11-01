@@ -136,6 +136,12 @@ type
 
     [Test]
     procedure Layout_ChemistryBetweenDeepMatrices_DoesNotOverflowStack;
+
+    [Test]
+    procedure PlainText_MathematicalAlphabets_FoldToLetters;
+
+    [Test]
+    procedure PlainText_LetterlikeSymbols_FoldToLetters;
   end;
 
 implementation
@@ -524,6 +530,18 @@ begin
   const Formula = Layout(Source, True);
 
   Assert.IsNotNull(Formula);
+end;
+
+procedure TMathLayoutTests.PlainText_MathematicalAlphabets_FoldToLetters;
+begin
+  // Bold A, italic e, bold digit 7, bold capital delta, bold small alpha.
+  Assert.AreEqual('Ae7'#$0394#$03B1,
+    TMathLayouter.PlainText(#$D835#$DC00#$D835#$DC52#$D835#$DFD5#$D835#$DEAB#$D835#$DEC2));
+end;
+
+procedure TMathLayoutTests.PlainText_LetterlikeSymbols_FoldToLetters;
+begin
+  Assert.AreEqual('RCh', TMathLayouter.PlainText(#$211D#$2102#$210E));
 end;
 
 end.
