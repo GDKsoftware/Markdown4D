@@ -99,6 +99,7 @@ type
       FCodeHoverActive: Boolean;
       FCodeHoverRect: TLayoutRectF;
       FCodeHoverText: string;
+      FCodeHoverMathML: string;
       FCopyButtonRect: TLayoutRectF;
       FCopyFeedback: Boolean;
       FContextMenu: TPopupMenu;
@@ -150,7 +151,7 @@ type
     procedure RefreshCodeHover;
     function PointOnCopyButton(const Point: TLayoutPointF): Boolean;
     procedure ClearCodeHover;
-    procedure CopyCodeToClipboard(const Text: string);
+    procedure CopyCodeToClipboard(const Text: string; const MathML: string = '');
     procedure SelectForPress(const Point: TLayoutPointF; const X, Y: Single; const IsDoubleClick: Boolean);
     procedure FinishLinkClick(const X, Y: Single);
     procedure FinishDisclosureClick(const X, Y: Single);
@@ -158,7 +159,7 @@ type
     function GetAutoScroll: Boolean;
     function GetIsAutoScrolling: Boolean;
     function GetSelectedMarkdown: string;
-    procedure PutOnClipboard(const Text: string);
+    procedure PutOnClipboard(const Text: string; const MathML: string = '');
     procedure CopyForShortcut(const Shift: TShiftState);
     function GetZoom: Integer;
     procedure SetZoom(const Value: Integer);
@@ -338,6 +339,7 @@ uses
   Markdown4D.Layout.Defaults,
   Markdown4D.Layout.HitTest,
   Markdown4D.Layout.Renderer,
+  Markdown4D.Viewer.Clipboard,
   Markdown4D.Viewer.Shared;
 
 
@@ -614,7 +616,7 @@ end;
 
 procedure TMarkdownViewer.CopySelectionToClipboard;
 begin
-  PutOnClipboard(FModel.SelectedText);
+  PutOnClipboard(FModel.SelectedText, FModel.SelectedMathML);
 end;
 
 procedure TMarkdownViewer.CopySelectionAsMarkdown;
@@ -638,9 +640,16 @@ begin
     CopySelectionToClipboard;
 end;
 
-procedure TMarkdownViewer.PutOnClipboard(const Text: string);
+// A formula goes on the clipboard as MathML next to its text where the
+// platform allows it: Word and LibreOffice paste the MathML as an equation,
+// every other program the text.
+procedure TMarkdownViewer.PutOnClipboard(const Text: string; const MathML: string);
 begin
   if Text = '' then
+    Exit;
+
+  const IsPutWithMathML = ((MathML <> '') and TMarkdownMathClipboard.TryPutTextAndMathML(Text, MathML));
+  if IsPutWithMathML then
     Exit;
 
   var Clipboard: IFMXClipboardService;
@@ -866,7 +875,7 @@ begin
   const Point = ContentPointOf(X, Y);
   if PointOnCopyButton(Point) then
   begin
-    CopyCodeToClipboard(FCodeHoverText);
+    CopyCodeToClipboard(FCodeHoverText, FCodeHoverMathML);
     FCopyFeedback := True;
     if Assigned(FCopyFeedbackTimer) then
     begin
@@ -1453,6 +1462,7 @@ begin
   FCodeHoverActive := True;
   FCodeHoverRect := Region.Rect;
   FCodeHoverText := Region.Text;
+  FCodeHoverMathML := Region.MathML;
   FCopyButtonRect := ButtonRect;
   FCopyFeedback := False;
   RedrawContent;
@@ -1470,27 +1480,14 @@ begin
     FCodeHoverActive := False;
     FCopyFeedback := False;
     FCodeHoverText := '';
+    FCodeHoverMathML := '';
     RedrawContent;
   end;
 end;
 
-procedure TMarkdownViewer.CopyCodeToClipboard(const Text: string);
+procedure TMarkdownViewer.CopyCodeToClipboard(const Text: string; const MathML: string);
 begin
-  if Text = '' then
-    Exit;
-
-  var Clip: IFMXClipboardService;
-  if not TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Clip) then
-    Exit;
-
-  try
-    Clip.SetClipboard(Text);
-  except
-    // Same reasoning as CopySelectionToClipboard: no shared specific exception
-    // exists across the platform clipboard implementations.
-    on Exception do
-      Exit;
-  end;
+  PutOnClipboard(Text, MathML);
 end;
 
 procedure TMarkdownViewer.HandleCopyFeedbackTimer(Sender: TObject);

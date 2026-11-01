@@ -28,7 +28,11 @@ type
   TMarkdownCodeBlockRegion = record
     Rect: TLayoutRectF;
     Text: string;
-    class function Create(const Rect: TLayoutRectF; const Text: string): TMarkdownCodeBlockRegion; static;
+    // A formula's region also carries the formula as MathML, for a clipboard
+    // that can hold it next to the text; empty for a code block.
+    MathML: string;
+    class function Create(const Rect: TLayoutRectF; const Text: string;
+                          const MathML: string = ''): TMarkdownCodeBlockRegion; static;
   end;
 
   // Raised when a block override or a document processor fails. The document
@@ -215,6 +219,10 @@ type
     // selection. A selection of everything gives the whole source, including
     // lines that render nothing.
     function SelectedMarkdown: string;
+    // The selected formula as MathML when the selection is exactly one whole
+    // formula, so a paste into Word or LibreOffice makes an equation of it;
+    // empty otherwise.
+    function SelectedMathML: string;
     // The scroll offset that brings the heading a link like #getting-started
     // points at to the top of the view. The anchor may be percent-encoded.
     function TryGetAnchorOffset(const Anchor: string; out Offset: Single): Boolean;
@@ -309,6 +317,7 @@ uses
   Markdown4D.Layout.SourceMapping,
   Markdown4D.Layout.SelectedMarkdown,
   Markdown4D.Math.Linear,
+  Markdown4D.Math.MathML,
   Markdown4D.Toc,
   Markdown4D.Layout.Zoom;
 
@@ -321,10 +330,11 @@ begin
 end;
 
 class function TMarkdownCodeBlockRegion.Create(const Rect: TLayoutRectF;
-  const Text: string): TMarkdownCodeBlockRegion;
+  const Text: string; const MathML: string): TMarkdownCodeBlockRegion;
 begin
   Result.Rect := Rect;
   Result.Text := Text;
+  Result.MathML := MathML;
 end;
 
 constructor TMarkdownViewerModel.Create(const Theme: TMarkdownTheme; const Measurer: ITextMeasurer);
@@ -1064,6 +1074,38 @@ begin
     Result := TMarkdownSelectedSource.Extract(FText, FDocument, Segment);
 end;
 
+function TMarkdownViewerModel.SelectedMathML: string;
+begin
+  Result := '';
+  if not HasSelection then
+    Exit;
+
+  const Range = NormalizeSelection;
+
+  var FirstRun, LastRun: IDisplayTextRun;
+  var FirstCharacter, LastCharacter: Integer;
+  if not TryFindSelectionEdges(FirstRun, LastRun, FirstCharacter, LastCharacter) then
+    Exit;
+
+  const IsOneFormula = ((FirstRun.Role = TDisplayTextRunRole.Formula) and
+                        (LastRun.Role = TDisplayTextRunRole.Formula) and (FirstRun.SourceNode = LastRun.SourceNode));
+  if not IsOneFormula then
+    Exit;
+
+  var FirstIndex := Range.StartPosition.ItemIndex;
+  var Run: IDisplayTextRun;
+  while (FirstIndex <= Range.EndPosition.ItemIndex) and
+        not (TrySelectableRun(FirstIndex, Run) and (Run = FirstRun)) do
+    Inc(FirstIndex);
+
+  var LastGlyph: Integer;
+  if not TryGetWholeFormula(FirstIndex, Range, LastGlyph) then
+    Exit;
+
+  const Math = FirstRun.SourceNode as IMarkdownMath;
+  Result := TMathMLFormat.FromSource(Math.Literal, Math.IsDisplay);
+end;
+
 function TMarkdownViewerModel.IsEverythingSelected: Boolean;
 begin
   var Everything: TTextRange;
@@ -1608,7 +1650,8 @@ begin
                            ((Item as IDisplayRectangle).StrokeWidth = 0));
     Result := IsFormulaBand and FFormulaCopyButton;
     if Result then
-      Region := TMarkdownCodeBlockRegion.Create(Item.Bounds, TMathLinearFormat.FromSource(Math.Literal));
+      Region := TMarkdownCodeBlockRegion.Create(Item.Bounds, TMathLinearFormat.FromSource(Math.Literal),
+        TMathMLFormat.FromSource(Math.Literal, True));
     Exit;
   end;
 

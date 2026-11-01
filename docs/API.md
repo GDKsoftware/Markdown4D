@@ -425,6 +425,17 @@ UnicodeMath is the linear format of Unicode Technical Note 28, the plain text
 Word and OneNote write for a formula; `TMathLinearFormat.FromSource` in
 `Markdown4D.Math.Linear` turns any formula into it.
 
+When `Ctrl+C` or the copy button copies one whole formula, the VCL and the FMX
+viewer also put it on the clipboard as presentation MathML, in the formats
+`MathML` and `MathML Presentation` that Word reads, so a paste into Word or
+LibreOffice makes an editable equation while every other program takes the
+text. The MathML carries the TeX as an annotation, as KaTeX and MathJax write
+it. `TMathMLFormat.FromSource` in `Markdown4D.Math.MathML` writes it,
+`SelectedMathML` on the viewer model returns it for the selection, and
+`TMarkdownMathClipboard` in `Markdown4D.Viewer.Clipboard` puts text and MathML
+on the Windows clipboard at once; on other platforms the viewers copy the text
+only.
+
 `Theme.MathFont` names the family and size; the default family is the generic
 `math`, which the painters resolve to the bundled STIX Two Math when
 `Markdown4D.Vcl.MathFont` or `Markdown4D.Fmx.MathFont` is in a uses clause, and

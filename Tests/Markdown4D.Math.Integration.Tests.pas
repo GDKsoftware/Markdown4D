@@ -166,6 +166,12 @@ type
     procedure Drag_PastTheEndOfFormula_SelectsAllOfIt;
 
     [Test]
+    procedure SelectedMathML_WholeFormula_IsTheFormula;
+
+    [Test]
+    procedure SelectedMathML_PartOfFormulaOrText_IsEmpty;
+
+    [Test]
     procedure CodeBlockRegions_DisplayFormulaByDefault_OffersNoButton;
 
     [Test]
@@ -688,6 +694,29 @@ begin
   Assert.AreEqual('$$'#10'x = \frac{-b+c}{2a}'#10'$$', FModel.SelectedMarkdown.Replace(sLineBreak, #10));
 end;
 
+procedure TMathViewerTests.SelectedMathML_WholeFormula_IsTheFormula;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'so $\frac{a}{b}$ holds';
+
+  Drag('a', 'b');
+
+  Assert.StartsWith('<math xmlns=', FModel.SelectedMathML);
+  Assert.Contains(FModel.SelectedMathML, '<mfrac>');
+end;
+
+procedure TMathViewerTests.SelectedMathML_PartOfFormulaOrText_IsEmpty;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'area $\pi r^2$ done';
+
+  Drag('r', '2');
+  Assert.AreEqual('', FModel.SelectedMathML, 'part of a formula');
+
+  Assert.IsTrue(FModel.SelectAll);
+  Assert.AreEqual('', FModel.SelectedMathML, 'a formula with text around it');
+end;
+
 procedure TMathViewerTests.CodeBlockRegions_DisplayFormulaByDefault_OffersNoButton;
 begin
   FModel.SetViewport(DefaultWidth, DefaultHeight);
@@ -706,6 +735,7 @@ begin
 
   Assert.AreEqual(1, Integer(Length(Regions)));
   Assert.AreEqual(#$221A + '(x' + #$00B2 + '+1)', Regions[0].Text);
+  Assert.Contains(Regions[0].MathML, '<msqrt>');
 end;
 
 end.
