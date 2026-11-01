@@ -454,6 +454,7 @@ streaming in token by token therefore draws at every flush and only grows.
 |------|----------|
 | Structure | `\frac`, `\dfrac`, `\tfrac`, `\binom`, `\sqrt[n]{}`, `^`, `_`, `'`, `{}` groups, `\left ... \right` with `( ) [ ] \{ \} \| \langle \rangle \lfloor \rfloor \lceil \rceil .` |
 | Environments | `matrix`, `pmatrix`, `bmatrix`, `Bmatrix`, `vmatrix`, `Vmatrix`, `cases`, `aligned`, `align`, `gathered`; `\\` at the top level breaks a display formula into lines |
+| Tables | `array` with a preamble of `l`, `c`, `r` and `|` for vertical rules (`p{...}` aligns left; `@{...}`, `>{...}` and the like are skipped), `\hline` above or below any row; `tabular` the same with cells set as upright text, as LaTeX's text-mode table |
 | Operators | `\sum`, `\prod`, `\int`, `\iint`, `\oint`, `\bigcup`, `\bigcap`, `\lim`, `\max`, `\min`, `\sup`, `\inf`, `\det`, `\gcd`, `\sin` and the other function names, `\operatorname{}`, `\limits`, `\nolimits` |
 | Symbols | The Greek alphabet, `\pm \times \cdot \div \circ \cup \cap \wedge \vee \oplus \otimes`, `\leq \geq \neq \approx \equiv \sim \subset \subseteq \in \notin \perp \parallel \mid`, the arrows, `\infty \partial \nabla \forall \exists \emptyset \neg \hbar \ell \aleph \ldots \cdots \vdots \ddots \prime \angle` |
 | Alphabets | `\mathrm`, `\mathbf`, `\boldsymbol`, `\mathit`, `\mathbb`, `\mathcal`, `\mathfrak`, `\mathsf`, `\mathtt`, `\text`, `\textit`, `\textbf` |

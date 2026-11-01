@@ -260,12 +260,74 @@ type
     procedure Chemistry_SymbolsHaveNoPlaceOfTheirOwn;
   end;
 
+  [TestFixture]
+  TMathTableSyntaxTests = class
+  private
+    class function TableOf(const Source: string): IMathNode; static;
+  public
+    [Test]
+    procedure Array_ReadsPreambleAndRules;
+
+    [Test]
+    procedure Array_SkipsColumnModifiers;
+
+    [Test]
+    procedure Tabular_CellsAreText;
+
+    [Test]
+    procedure Tabular_ClosingRowCarriesBottomRule;
+  end;
+
 implementation
 
 uses
   System.SysUtils,
   System.Math,
   System.StrUtils;
+
+class function TMathTableSyntaxTests.TableOf(const Source: string): IMathNode;
+begin
+  Result := TMathParser.Parse(Source).Children[0];
+end;
+
+procedure TMathTableSyntaxTests.Array_ReadsPreambleAndRules;
+begin
+  const Table = TableOf('\begin{array}{|l|cr|} a & b & c \\ \hline d & e & f \end{array}');
+
+  Assert.AreEqual<TMathNodeKind>(TMathNodeKind.Matrix, Table.Kind);
+  Assert.AreEqual('|l|cr|', Table.ColumnSpec);
+  Assert.AreEqual(2, Table.ChildCount);
+  Assert.AreEqual(0, Table.Children[0].RulesAbove);
+  Assert.AreEqual(1, Table.Children[1].RulesAbove);
+  Assert.AreEqual(3, Table.Children[1].ChildCount);
+end;
+
+procedure TMathTableSyntaxTests.Array_SkipsColumnModifiers;
+begin
+  const Table = TableOf('\begin{array}{@{}p{2cm}|>{\bfseries}c@{}} a & b \end{array}');
+
+  Assert.AreEqual('l|c', Table.ColumnSpec);
+end;
+
+procedure TMathTableSyntaxTests.Tabular_CellsAreText;
+begin
+  const Table = TableOf('\begin{tabular}{cc} Spalte 1 & 100 \% \end{tabular}');
+
+  const Row = Table.Children[0];
+  Assert.AreEqual<TMathNodeKind>(TMathNodeKind.Text, Row.Children[0].Kind);
+  Assert.AreEqual('Spalte 1', Row.Children[0].Text, 'the words keep their space');
+  Assert.AreEqual('100 %', Row.Children[1].Text, 'an escaped character is itself');
+end;
+
+procedure TMathTableSyntaxTests.Tabular_ClosingRowCarriesBottomRule;
+begin
+  const Table = TableOf('\begin{tabular}{|c|} \hline a \\ \hline \end{tabular}');
+
+  Assert.AreEqual(2, Table.ChildCount);
+  Assert.AreEqual(1, Table.Children[0].RulesAbove);
+  Assert.AreEqual(1, Table.Children[1].RulesAbove, 'the rule below the table');
+  Assert.IsTrue(Table.Children[1].Children[0].IsEmpty);
+end;
 
 class function TMathSourcePlacementTests.SourceOf(const Source: string; const Node: IMathNode): string;
 begin

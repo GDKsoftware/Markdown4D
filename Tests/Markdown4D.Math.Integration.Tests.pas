@@ -72,6 +72,9 @@ type
     procedure FormulaGlyphs_HaveNoSourceRun;
 
     [Test]
+    procedure Tabular_DrawsRulesAndUprightText;
+
+    [Test]
     procedure DisplayBlock_IsCentred;
 
     [Test]
@@ -152,6 +155,9 @@ type
 
     [Test]
     procedure SelectWordAt_FormulaGlyph_SelectsTheGlyphsWithoutSpace;
+
+    [Test]
+    procedure Drag_OverTableCells_CopiesTabsAndLineBreaks;
 
     [Test]
     procedure SelectWordAt_LettersOnOneBaseline_SelectsTheName;
@@ -362,6 +368,24 @@ begin
   const Alpha = RunWithText(DisplayList, #$03B1);
   Assert.AreEqual(4, Alpha.StartOffset);
   Assert.AreEqual(6, Alpha.SourceLength, 'a command glyph stands for its whole spelling');
+end;
+
+procedure TMathLayoutIntegrationTests.Tabular_DrawsRulesAndUprightText;
+begin
+  const DisplayList = Layout('$$'#10'\begin{tabular}{|c|c|}'#10'\hline'#10'Spalte 1 & Spalte 2 \\'#10'\hline'#10 +
+    '\end{tabular}'#10'$$');
+
+  const Words = RunWithText(DisplayList, 'Spalte 1');
+  Assert.IsFalse(Words.Font.Italic, 'tabular cells are text');
+
+  var Rules := 0;
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    var Rectangle: IDisplayRectangle;
+    if Supports(DisplayList.Items[Index], IDisplayRectangle, Rectangle) and (Rectangle.FillColor <> 0) then
+      Inc(Rules);
+  end;
+  Assert.AreEqual(5, Rules, 'two \hline and three vertical rules');
 end;
 
 procedure TMathLayoutIntegrationTests.FormulaGlyphs_HaveNoSourceRun;
@@ -644,6 +668,21 @@ begin
     (Letter.Top + Letter.Bottom) / 2)));
 
   Assert.AreEqual(#$03C0 + 'r', FModel.SelectedText, 'as a browser takes letters without a space between them');
+end;
+
+procedure TMathViewerTests.Drag_OverTableCells_CopiesTabsAndLineBreaks;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'Tabelle:'#10#10'$$'#10'\begin{tabular}{lr} Zutat & Menge \\ Zucker & 20 \end{tabular}'#10'$$'#10#10 +
+    'Ende.';
+
+  Drag('Menge', 'Zucker');
+
+  Assert.AreEqual('Menge' + sLineBreak + 'Zucker', FModel.SelectedText, 'a new row starts a new line');
+
+  Drag('Zutat', 'Menge');
+
+  Assert.AreEqual('Zutat'#9'Menge', FModel.SelectedText, 'cells of a row are split by a tab');
 end;
 
 procedure TMathViewerTests.SelectWordAt_LettersOnOneBaseline_SelectsTheName;

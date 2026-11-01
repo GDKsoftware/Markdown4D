@@ -50,17 +50,23 @@ type
     procedure EndLink;
   end;
 
+  // What separates a glyph from the one before it when the formula is copied
+  // as text: nothing, the next cell of a table row, or the next row.
+  TExtensionTextBreak = (None, Column, Line);
+
   // A canvas that can tell the glyphs of a formula from a picture. Text drawn
   // with DrawSourceText is painted like DrawText, but the viewer selects and
   // copies it as part of the formula, which SourceStart and SourceLength place
   // in the formula's source, counted from 0. Ascent and Descent are the ink of
   // the glyph above and below its baseline, which is what the reader points
-  // at and sees selected, tighter than the font's line. A canvas without this
-  // interface draws it with DrawText.
+  // at and sees selected, tighter than the font's line. BreakBefore starts a
+  // new cell or row of a table when the formula is copied. A canvas without
+  // this interface draws it with DrawText.
   IExtensionSourceCanvas = interface
     ['{0B6E2C71-8D54-4F1A-9E37-C2A85F14D693}']
     procedure DrawSourceText(const TopLeft: TLayoutPointF; const Text: string; const Font: TMarkdownFontStyle;
-      const Color: TLayoutColor; const SourceStart, SourceLength: Integer; const Ascent, Descent: Single);
+      const Color: TLayoutColor; const SourceStart, SourceLength: Integer; const Ascent, Descent: Single;
+      const BreakBefore: TExtensionTextBreak = TExtensionTextBreak.None);
   end;
 
   ILayoutBlockContext = interface

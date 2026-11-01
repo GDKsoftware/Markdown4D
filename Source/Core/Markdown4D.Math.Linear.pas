@@ -30,6 +30,7 @@ type
     class function WriteMatrix(const Node: IMathNode): string; static;
     class function WriteLinked(const Node: IMathNode): string; static;
     class function IsColumnOfLines(const Node: IMathNode): Boolean; static;
+    class function IsClosingRow(const Node: IMathNode; const RowIndex: Integer): Boolean; static;
     class function Operand(const Text: string): string; static;
     class function IsSingleOperand(const Text: string): Boolean; static;
     class function TryRaise(const Text, Digits: string; const Sign: Char; out Raised: string): Boolean; static;
@@ -54,7 +55,7 @@ uses
 
 const
   Space = ' ';
-  LineFeed = #10;
+  Tab = #9;
 
 class function TMathLinearFormat.FromSource(const Source: string): string;
 begin
@@ -222,33 +223,49 @@ begin
 end;
 
 // The lines of a display formula stay lines; a matrix is the matrix sign with its rows
-// split by @ and its cells by &.
+// split by @ and its cells by &. A table, an array or a tabular, is written
+// as a browser copies a table, its cells split by tabs and its rows by line
+// breaks, so it pastes into a spreadsheet or a mail as a table.
 class function TMathLinearFormat.WriteMatrix(const Node: IMathNode): string;
 begin
   const IsLines = IsColumnOfLines(Node);
+  const IsTable = (Node.ColumnSpec <> '');
 
   var Rows: TArray<string> := [];
   for var RowIndex := 0 to Node.ChildCount - 1 do
   begin
     const Row = Node.Children[RowIndex];
+    if IsClosingRow(Node, RowIndex) then
+      Continue;
 
     var Cells: TArray<string> := [];
     for var CellIndex := 0 to Row.ChildCount - 1 do
       Cells := Cells + [Write(Row.Children[CellIndex]).Trim];
 
-    if IsLines then
+    if IsTable then
+      Rows := Rows + [string.Join(Tab, Cells)]
+    else if IsLines then
       Rows := Rows + [string.Join('', Cells)]
     else
       Rows := Rows + [string.Join('&', Cells)];
   end;
 
-  if IsLines then
+  if IsLines or IsTable then
   begin
-    Result := string.Join(LineFeed, Rows);
+    Result := string.Join(sLineBreak, Rows);
     Exit;
   end;
 
   Result := Node.LeftDelimiter + #$25A0'(' + string.Join('@', Rows) + ')' + Node.RightDelimiter;
+end;
+
+// The empty row a \\ before \end leaves, which only carries the \hline below
+// a table.
+class function TMathLinearFormat.IsClosingRow(const Node: IMathNode; const RowIndex: Integer): Boolean;
+begin
+  const Row = Node.Children[RowIndex];
+  Result := (RowIndex > 0) and (RowIndex = Node.ChildCount - 1) and (Row.ChildCount <= 1) and
+    ((Row.ChildCount = 0) or Row.Children[0].IsEmpty);
 end;
 
 class function TMathLinearFormat.IsColumnOfLines(const Node: IMathNode): Boolean;

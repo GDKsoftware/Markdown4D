@@ -24,6 +24,7 @@ type
     class function WriteDelimited(const Node: IMathNode; const Variant: TMathFontVariant): string; static;
     class function WriteMatrix(const Node: IMathNode; const Variant: TMathFontVariant): string; static;
     class function Fence(const Delimiter: string): string; static;
+    class function TableAttributes(const Node: IMathNode; const RowCount: Integer): string; static;
     class function Element(const Name, Content: string; const Attributes: string = ''): string; static;
     class function VariantName(const Variant: TMathFontVariant): string; static;
     class function ColorOf(const Color: Cardinal): string; static;
@@ -192,8 +193,15 @@ end;
 
 class function TMathMLFormat.WriteMatrix(const Node: IMathNode; const Variant: TMathFontVariant): string;
 begin
+  var RowCount := Node.ChildCount;
+  const LastRow = Node.Children[RowCount - 1];
+  const HasClosingRow = (RowCount > 1) and (LastRow.ChildCount <= 1) and
+    ((LastRow.ChildCount = 0) or LastRow.Children[0].IsEmpty);
+  if HasClosingRow then
+    Dec(RowCount);
+
   var Rows := '';
-  for var RowIndex := 0 to Node.ChildCount - 1 do
+  for var RowIndex := 0 to RowCount - 1 do
   begin
     const Row = Node.Children[RowIndex];
 
@@ -204,9 +212,71 @@ begin
     Rows := Rows + Element('mtr', Cells);
   end;
 
-  Result := Element('mtable', Rows);
+  Result := Element('mtable', Rows, TableAttributes(Node, RowCount));
   if (Node.LeftDelimiter <> '') or (Node.RightDelimiter <> '') then
     Result := Element('mrow', Fence(Node.LeftDelimiter) + Result + Fence(Node.RightDelimiter));
+end;
+
+// The preamble of an array as MathML: how the columns align, the rules
+// between columns and rows, and a frame when the rules close all around.
+class function TMathMLFormat.TableAttributes(const Node: IMathNode; const RowCount: Integer): string;
+begin
+  Result := '';
+  if Node.ColumnSpec = '' then
+    Exit;
+
+  var Aligns: TArray<string> := [];
+  var ColumnLines: TArray<string> := [];
+  var RuleBefore := False;
+  var PendingRule := False;
+  for var Character in Node.ColumnSpec do
+  begin
+    if Character = '|' then
+    begin
+      if Length(Aligns) = 0 then
+        RuleBefore := True
+      else
+        PendingRule := True;
+      Continue;
+    end;
+
+    if Length(Aligns) > 0 then
+    begin
+      if PendingRule then
+        ColumnLines := ColumnLines + ['solid']
+      else
+        ColumnLines := ColumnLines + ['none'];
+    end;
+    PendingRule := False;
+
+    case Character of
+      'l': Aligns := Aligns + ['left'];
+      'r': Aligns := Aligns + ['right'];
+    else
+      Aligns := Aligns + ['center'];
+    end;
+  end;
+  const RuleAfter = PendingRule;
+
+  var RowLines: TArray<string> := [];
+  for var RowIndex := 1 to RowCount - 1 do
+  begin
+    if Node.Children[RowIndex].RulesAbove > 0 then
+      RowLines := RowLines + ['solid']
+    else
+      RowLines := RowLines + ['none'];
+  end;
+
+  Result := 'columnalign="' + string.Join(' ', Aligns) + '"';
+  if Length(ColumnLines) > 0 then
+    Result := Result + ' columnlines="' + string.Join(' ', ColumnLines) + '"';
+  if Length(RowLines) > 0 then
+    Result := Result + ' rowlines="' + string.Join(' ', RowLines) + '"';
+
+  const HasRuleAbove = (Node.Children[0].RulesAbove > 0);
+  const HasRuleBelow = (RowCount < Node.ChildCount) and (Node.Children[Node.ChildCount - 1].RulesAbove > 0);
+  if RuleBefore and RuleAfter and HasRuleAbove and HasRuleBelow then
+    Result := Result + ' frame="solid"';
 end;
 
 // \left. draws no delimiter and writes none.

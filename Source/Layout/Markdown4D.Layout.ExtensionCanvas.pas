@@ -61,7 +61,8 @@ type
     // the formula whose source they were set from; without one it is drawn
     // with DrawText.
     procedure DrawSourceText(const TopLeft: TLayoutPointF; const Text: string; const Font: TMarkdownFontStyle;
-      const Color: TLayoutColor; const SourceStart, SourceLength: Integer; const Ascent, Descent: Single);
+      const Color: TLayoutColor; const SourceStart, SourceLength: Integer; const Ascent, Descent: Single;
+      const BreakBefore: TExtensionTextBreak = TExtensionTextBreak.None);
     property SourceNode: IMarkdownNode read FSourceNode write FSourceNode;
   end;
 
@@ -70,6 +71,7 @@ implementation
 uses
   System.Math,
   Markdown4D.Ast,
+  Markdown4D.Defines,
   Markdown4D.Layout.Primitives;
 
 constructor TDisplayListExtensionCanvas.Create(const Measurer: ITextMeasurer; const Items: TList<IDisplayItem>;
@@ -129,7 +131,7 @@ end;
 // all the same.
 procedure TDisplayListExtensionCanvas.DrawSourceText(const TopLeft: TLayoutPointF; const Text: string;
   const Font: TMarkdownFontStyle; const Color: TLayoutColor; const SourceStart, SourceLength: Integer;
-  const Ascent, Descent: Single);
+  const Ascent, Descent: Single; const BreakBefore: TExtensionTextBreak);
 begin
   if FSourceNode = nil then
   begin
@@ -150,8 +152,16 @@ begin
     Baseline := Ascent;
   end;
 
-  FItems.Add(TDisplayTextRun.CreateFormula(Bounds, FNode, Text, Font, Color, Baseline, SourceStart, SourceLength,
-    FSourceNode));
+  var Run: IDisplayTextRun := TDisplayTextRun.CreateFormula(Bounds, FNode, Text, Font, Color, Baseline, SourceStart,
+    SourceLength, FSourceNode);
+  case BreakBefore of
+    TExtensionTextBreak.None   : ;
+    TExtensionTextBreak.Column : Run := Run.Joined(TDisplayTextJoin.Tab, 0);
+    TExtensionTextBreak.Line   : Run := Run.Joined(TDisplayTextJoin.LineBreak, 0);
+  else
+    raise EMarkdownError.CreateFmt('Unhandled text break: %d', [Ord(BreakBefore)]);
+  end;
+  FItems.Add(Run);
 end;
 
 procedure TDisplayListExtensionCanvas.DrawLine(const StartPoint, EndPoint: TLayoutPointF; const Color: TLayoutColor;
