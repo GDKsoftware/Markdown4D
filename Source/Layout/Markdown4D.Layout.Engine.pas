@@ -1480,8 +1480,9 @@ begin
 end;
 
 // A display formula is centred in the available width and set in display
-// style; one wider than the column starts at the left and runs on, the way
-// a code block does.
+// style. One wider than the column starts at the left and scrolls sideways
+// in its band, as browsers show a long KaTeX or MathJax formula, with room
+// below it for the track that shows how far it is scrolled.
 procedure TLayoutWorker.EmitMathBlock(const Command: TLayoutCommand);
 begin
   const Math = Command.Node as IMarkdownMath;
@@ -1492,7 +1493,13 @@ begin
   const Padding = FTheme.BlockSpacing / 2;
   const AvailableWidth = ContentRight - Command.X;
   const Left = Command.X + Max(0, (AvailableWidth - Formula.Width) / 2);
-  const Height = Max(Formula.Ascent + Formula.Descent, FMeasurer.LineHeight(Font)) + 2 * Padding;
+  const IsWide = (Formula.Width > AvailableWidth);
+  var Height := Max(Formula.Ascent + Formula.Descent, FMeasurer.LineHeight(Font)) + 2 * Padding;
+  if IsWide then
+    Height := Height + TDisplayScroller.TrackSpace;
+
+  const Band = TLayoutRectF.Create(Command.X, FCurrentY, ContentRight, FCurrentY + Height);
+  const FirstItem = FItems.Count;
 
   const Canvas: IExtensionCanvas = TDisplayListExtensionCanvas.Create(FMeasurer, FItems, Command.Node,
     TDisplayTextRunRole.Drawing);
@@ -1502,6 +1509,10 @@ begin
   const SourceBounds = TLayoutRectF.Create(Left, FCurrentY, Left + Formula.Width, FCurrentY + Height);
   FItems.Add(TDisplayTextRun.Create(SourceBounds, Command.Node, MathSourceOf(Math, True), Font, Command.Color,
     Baseline - FCurrentY, 0, TDisplayTextRunRole.Source));
+
+  if IsWide then
+    FItems.Insert(FirstItem, TDisplayScroller.Create(Band, Command.Node, FItems.Count - FirstItem, Formula.Width, 0,
+      Command.Node.Segment.StartOffset));
 
   FCurrentY := FCurrentY + Height;
 end;

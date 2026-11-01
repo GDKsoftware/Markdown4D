@@ -120,6 +120,15 @@ type
 
     [Test]
     procedure SelectAll_DisplayBlock_CopiesDollarFences;
+
+    [Test]
+    procedure WideDisplayFormula_ScrollsInsteadOfOverflowing;
+
+    [Test]
+    procedure ScrollSideways_MovesContentAndKeepsItOverRelayout;
+
+    [Test]
+    procedure ScrollerThumbDrag_ScrollsToTheEnd;
   end;
 
 implementation
@@ -430,6 +439,87 @@ begin
 
   Assert.AreEqual('before' + sLineBreak + sLineBreak + '$$'#10'\frac{a}{b}'#10'$$' + sLineBreak + sLineBreak + 'after',
     FModel.SelectedText);
+end;
+
+function FindScroller(const DisplayList: IMarkdownDisplayList): IDisplayScroller;
+begin
+  Result := nil;
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    if Supports(DisplayList.Items[Index], IDisplayScroller, Result) then
+      Exit;
+  end;
+end;
+
+function GlyphBounds(const DisplayList: IMarkdownDisplayList; const Glyph: string): TLayoutRectF;
+begin
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    if Supports(DisplayList.Items[Index], IDisplayTextRun, Run) and (Run.Text = Glyph) then
+    begin
+      Result := Run.Bounds;
+      Exit;
+    end;
+  end;
+
+  raise Exception.CreateFmt('No run "%s" in the display list', [Glyph]);
+end;
+
+const
+  ScrollTolerance = 0.01;
+  WideFormula = '$$'#10'a + b + c + d + e + f + g + h + i + j + k + l + m + n + o + p + q + r + s + t + u + v' +
+    ' + w + z'#10'$$';
+
+procedure TMathViewerTests.WideDisplayFormula_ScrollsInsteadOfOverflowing;
+begin
+  FModel.SetViewport(200, DefaultHeight);
+  FModel.Text := WideFormula;
+
+  const Scroller = FindScroller(FModel.DisplayList);
+  Assert.IsNotNull(Scroller, 'a formula wider than the column scrolls');
+  Assert.IsTrue(Scroller.ContentWidth > Scroller.Bounds.Width);
+  Assert.AreEqual(Single(0), Scroller.Offset);
+
+  FModel.Text := '$$'#10'a + b'#10'$$';
+  Assert.IsNull(FindScroller(FModel.DisplayList), 'one that fits does not');
+end;
+
+procedure TMathViewerTests.ScrollSideways_MovesContentAndKeepsItOverRelayout;
+begin
+  FModel.SetViewport(200, DefaultHeight);
+  FModel.Text := WideFormula;
+
+  const Before = GlyphBounds(FModel.DisplayList, 'c').Left;
+  const Band = FindScroller(FModel.DisplayList).Bounds;
+  const Inside = TLayoutPointF.Create(Band.Left + 10, (Band.Top + Band.Bottom) / 2);
+
+  Assert.IsTrue(FModel.ScrollSideways(Inside, 30));
+  Assert.AreEqual(Before - 30, GlyphBounds(FModel.DisplayList, 'c').Left, ScrollTolerance,
+    'the content moves with the offset');
+
+  FModel.SetViewport(210, DefaultHeight);
+  Assert.AreEqual(Single(30), FindScroller(FModel.DisplayList).Offset, ScrollTolerance, 'a new layout keeps it');
+
+  Assert.IsFalse(FModel.ScrollSideways(TLayoutPointF.Create(Band.Left + 10, Band.Bottom + 50), 30),
+    'outside a scroller there is nothing to scroll');
+end;
+
+procedure TMathViewerTests.ScrollerThumbDrag_ScrollsToTheEnd;
+begin
+  FModel.SetViewport(200, DefaultHeight);
+  FModel.Text := WideFormula;
+
+  const Scroller = FindScroller(FModel.DisplayList);
+  const Thumb = Scroller.Thumb;
+  const Middle = (Thumb.Top + Thumb.Bottom) / 2;
+
+  Assert.IsTrue(FModel.TryBeginScrollerDrag(TLayoutPointF.Create(Thumb.Left + 1, Middle)));
+  FModel.DragScrollerThumb(TLayoutPointF.Create(Scroller.Track.Right + 100, Middle));
+  FModel.EndScrollerDrag;
+
+  const Moved = FindScroller(FModel.DisplayList);
+  Assert.AreEqual(Moved.MaxOffset, Moved.Offset, ScrollTolerance, 'dragging past the end stops at the end');
 end;
 
 end.

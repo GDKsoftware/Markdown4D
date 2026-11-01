@@ -99,6 +99,10 @@ type
       // The <details> sections the reader opened or closed, by the source
       // offset of their opening block; every other section shows as its tag asks.
       FToggledDisclosures: TList<Integer>;
+      FScrollerOffsets: TDictionary<Integer, Single>;
+      FScrollers: TArray<Integer>;
+      FDraggedScroller: Integer;
+      FThumbGrab: Single;
       FSourceLines: TMarkdownSourceLineMap;
       // The layout the source line map was built for; it is built again on
       // first use after the next layout.
@@ -134,6 +138,12 @@ type
     function TryAdjacentRun(const ItemIndex, Direction: Integer; out AdjacentIndex: Integer;
       out Run: IDisplayTextRun): Boolean;
     class function ContinuesWord(const Run, Before: IDisplayTextRun): Boolean; static;
+    function TryFindScrollerAt(const Point: TLayoutPointF; out Index: Integer): Boolean;
+    function TryFindScrollerOf(const ItemIndex: Integer; out Index: Integer): Boolean;
+    procedure SetScrollerOffset(const Index: Integer; const Offset: Single);
+    procedure RestoreScrollerOffsets;
+    procedure RevealInScroller(const ItemIndex: Integer);
+    function ClipToScroller(const ItemIndex: Integer; const Rect: TLayoutRectF): TLayoutRectF;
     class function ContinuesLine(const Run, Before: IDisplayTextRun): Boolean; static;
     class function CharacterClassOf(const Character: Char): TCharacterClass; static;
     function NextMatchAfterSelection(const Matches: TArray<TMarkdownFoundRange>): TMarkdownFoundRange;
@@ -258,6 +268,17 @@ type
     // content jump.
     function TryGetScrollTarget(const Match: TMarkdownFoundRange; out Offset: Single): Boolean;
     function CodeBlockRegions: TArray<TMarkdownCodeBlockRegion>;
+    // A display formula wider than the column scrolls sideways in its band.
+    // ScrollSideways moves the one under Point by Delta (positive to the
+    // right) and is False when there is none there. A press on its track
+    // starts dragging the thumb, which DragScrollerThumb follows until
+    // EndScrollerDrag.
+    function ScrollSideways(const Point: TLayoutPointF; const Delta: Single): Boolean;
+    function TryBeginScrollerDrag(const Point: TLayoutPointF): Boolean;
+    procedure DragScrollerThumb(const Point: TLayoutPointF);
+    procedure EndScrollerDrag;
+    function IsDraggingScroller: Boolean;
+    function IsOverScrollerTrack(const Point: TLayoutPointF): Boolean;
     function TryGetCodeBlockAt(const Point: TLayoutPointF; out Region: TMarkdownCodeBlockRegion): Boolean;
     // The <details> section whose summary line is under the point. Key
     // identifies the section to ToggleDisclosure.
@@ -297,6 +318,7 @@ uses
   Markdown4D.Layout.HitTest,
   Markdown4D.Layout.SourceMapping,
   Markdown4D.Layout.SelectedMarkdown,
+  Markdown4D.Layout.Primitives,
   Markdown4D.Toc,
   Markdown4D.Layout.Zoom;
 
@@ -326,6 +348,8 @@ begin
   FImageSlots := TDictionary<string, TImageSlot>.Create;
   FImageSlotOrder := TList<string>.Create;
   FToggledDisclosures := TList<Integer>.Create;
+  FScrollerOffsets := TDictionary<Integer, Single>.Create;
+  FDraggedScroller := -1;
   FSourceLines := TMarkdownSourceLineMap.Create;
   FSourceLinesLayoutCount := -1;
 end;
@@ -333,6 +357,7 @@ end;
 destructor TMarkdownViewerModel.Destroy;
 begin
   FSourceLines.Free;
+  FScrollerOffsets.Free;
   FToggledDisclosures.Free;
   FZoomedTheme.Free;
   FImageSlotOrder.Free;
@@ -789,8 +814,10 @@ begin
     if not SelectedCharacterRange(Run, Index, Range.StartPosition, Range.EndPosition, CharFrom, CharTo) then
       Continue;
 
-    const RunRect = TLayoutRectF.Create(Run.Bounds.Left + PrefixWidth(Run, CharFrom), Run.Bounds.Top,
-      Run.Bounds.Left + PrefixWidth(Run, CharTo), Run.Bounds.Bottom);
+    const RunRect = ClipToScroller(Index, TLayoutRectF.Create(Run.Bounds.Left + PrefixWidth(Run, CharFrom),
+      Run.Bounds.Top, Run.Bounds.Left + PrefixWidth(Run, CharTo), Run.Bounds.Bottom));
+    if RunRect.Right <= RunRect.Left then
+      Continue;
 
     const LastIndex = High(Result);
     const MergesWithLast = (LastIndex >= 0) and SameValue(Result[LastIndex].Top, RunRect.Top, LineTopEpsilon);
@@ -1224,6 +1251,7 @@ begin
   FAnchor := Range.StartPosition;
   FExtent := Range.EndPosition;
   FSelectionActive := True;
+  RevealInScroller(Match.ItemIndex);
 end;
 
 // The source of a formula is selected whole or not at all, the same rule a
@@ -1377,7 +1405,7 @@ begin
   begin
     const Run = MatchRun(Marks[Index]);
     const Range = RangeInRun(Run, Marks[Index]);
-    FHighlightRects[Index] := BoundsInRun(Run, Range);
+    FHighlightRects[Index] := ClipToScroller(Marks[Index].ItemIndex, BoundsInRun(Run, Range));
   end;
 end;
 
@@ -1453,6 +1481,174 @@ begin
   Result := OpenByDefault xor IsToggled;
 end;
 
+function TMarkdownViewerModel.TryFindScrollerAt(const Point: TLayoutPointF; out Index: Integer): Boolean;
+begin
+  Index := -1;
+  Result := False;
+  if FDisplayList = nil then
+    Exit;
+
+  for var Candidate in FScrollers do
+  begin
+    if FDisplayList.Items[Candidate].Bounds.Contains(Point) then
+    begin
+      Index := Candidate;
+      Result := True;
+      Exit;
+    end;
+  end;
+end;
+
+// The scroller whose content the item at ItemIndex is, if any.
+function TMarkdownViewerModel.TryFindScrollerOf(const ItemIndex: Integer; out Index: Integer): Boolean;
+begin
+  Index := -1;
+  Result := False;
+  if FDisplayList = nil then
+    Exit;
+
+  for var Candidate in FScrollers do
+  begin
+    const Count = (FDisplayList.Items[Candidate] as IDisplayScroller).ItemCount;
+    if (ItemIndex > Candidate) and (ItemIndex <= Candidate + Count) then
+    begin
+      Index := Candidate;
+      Result := True;
+      Exit;
+    end;
+  end;
+end;
+
+// The content moves by what the offset changes, so everything that reads
+// positions off the display list, the pointer, the selection and find, sees
+// it where it is drawn.
+procedure TMarkdownViewerModel.SetScrollerOffset(const Index: Integer; const Offset: Single);
+begin
+  const Scroller = FDisplayList.Items[Index] as IDisplayScroller;
+  const NewOffset = EnsureRange(Offset, 0, Scroller.MaxOffset);
+  const Delta = Scroller.Offset - NewOffset;
+  const CanMove = ((Delta <> 0) and (TObject(FDisplayList) is TMarkdownDisplayList));
+  if not CanMove then
+    Exit;
+
+  const List = TMarkdownDisplayList(TObject(FDisplayList));
+  for var ContentIndex := Index + 1 to Index + Scroller.ItemCount do
+    List.ReplaceItem(ContentIndex, (FDisplayList.Items[ContentIndex] as IDisplayItemShift).Shifted(Delta, 0));
+  List.ReplaceItem(Index, Scroller.WithOffset(NewOffset));
+
+  FScrollerOffsets.AddOrSetValue(Scroller.Key, NewOffset);
+  RefreshHighlights;
+end;
+
+// A new layout draws every scroller unscrolled; each takes back the offset
+// the reader left it at.
+procedure TMarkdownViewerModel.RestoreScrollerOffsets;
+begin
+  FScrollers := [];
+  for var Index := 0 to FDisplayList.ItemCount - 1 do
+  begin
+    if FDisplayList.Items[Index].Kind = TDisplayItemKind.Scroller then
+      FScrollers := FScrollers + [Index];
+  end;
+
+  for var Index in FScrollers do
+  begin
+    const Scroller = FDisplayList.Items[Index] as IDisplayScroller;
+
+    var Offset: Single;
+    if FScrollerOffsets.TryGetValue(Scroller.Key, Offset) then
+      SetScrollerOffset(Index, Offset);
+  end;
+end;
+
+// A match find selects in the part of a formula out of view scrolls into it.
+procedure TMarkdownViewerModel.RevealInScroller(const ItemIndex: Integer);
+begin
+  var Index: Integer;
+  if not TryFindScrollerOf(ItemIndex, Index) then
+    Exit;
+
+  const Bounds = FDisplayList.Items[Index].Bounds;
+  const Target = FDisplayList.Items[ItemIndex].Bounds;
+  const Scroller = FDisplayList.Items[Index] as IDisplayScroller;
+  if Target.Left < Bounds.Left then
+    SetScrollerOffset(Index, Scroller.Offset - (Bounds.Left - Target.Left) - Bounds.Width / 4)
+  else if Target.Right > Bounds.Right then
+    SetScrollerOffset(Index, Scroller.Offset + (Target.Right - Bounds.Right) + Bounds.Width / 4);
+end;
+
+function TMarkdownViewerModel.ClipToScroller(const ItemIndex: Integer; const Rect: TLayoutRectF): TLayoutRectF;
+begin
+  Result := Rect;
+
+  var Index: Integer;
+  if not TryFindScrollerOf(ItemIndex, Index) then
+    Exit;
+
+  const Bounds = FDisplayList.Items[Index].Bounds;
+  Result.Left := Max(Rect.Left, Bounds.Left);
+  Result.Right := Min(Rect.Right, Bounds.Right);
+end;
+
+function TMarkdownViewerModel.ScrollSideways(const Point: TLayoutPointF; const Delta: Single): Boolean;
+begin
+  var Index: Integer;
+  Result := TryFindScrollerAt(Point, Index);
+  if Result then
+    SetScrollerOffset(Index, (FDisplayList.Items[Index] as IDisplayScroller).Offset + Delta);
+end;
+
+function TMarkdownViewerModel.IsOverScrollerTrack(const Point: TLayoutPointF): Boolean;
+begin
+  var Index: Integer;
+  Result := TryFindScrollerAt(Point, Index) and (FDisplayList.Items[Index] as IDisplayScroller).Track.Contains(Point);
+end;
+
+// A press on the thumb grabs it where it was pressed; a press elsewhere on
+// the track first brings the thumb under the pointer.
+function TMarkdownViewerModel.TryBeginScrollerDrag(const Point: TLayoutPointF): Boolean;
+begin
+  Result := IsOverScrollerTrack(Point);
+  if not Result then
+    Exit;
+
+  TryFindScrollerAt(Point, FDraggedScroller);
+  var Thumb := (FDisplayList.Items[FDraggedScroller] as IDisplayScroller).Thumb;
+  if not Thumb.Contains(Point) then
+  begin
+    FThumbGrab := Thumb.Width / 2;
+    DragScrollerThumb(Point);
+    Exit;
+  end;
+
+  FThumbGrab := Point.X - Thumb.Left;
+end;
+
+procedure TMarkdownViewerModel.DragScrollerThumb(const Point: TLayoutPointF);
+begin
+  if not IsDraggingScroller then
+    Exit;
+
+  const Scroller = FDisplayList.Items[FDraggedScroller] as IDisplayScroller;
+  const Track = Scroller.Track;
+  const Travel = Track.Width - Scroller.Thumb.Width;
+  if Travel <= 0 then
+    Exit;
+
+  const ThumbLeft = Point.X - FThumbGrab - Track.Left;
+  SetScrollerOffset(FDraggedScroller, ThumbLeft / Travel * Scroller.MaxOffset);
+end;
+
+procedure TMarkdownViewerModel.EndScrollerDrag;
+begin
+  FDraggedScroller := -1;
+end;
+
+function TMarkdownViewerModel.IsDraggingScroller: Boolean;
+begin
+  Result := (FDraggedScroller >= 0) and (FDisplayList <> nil) and (FDraggedScroller < FDisplayList.ItemCount);
+end;
+
 function TMarkdownViewerModel.CodeBlockRegions: TArray<TMarkdownCodeBlockRegion>;
 begin
   Result := [];
@@ -1504,6 +1700,8 @@ begin
                                                        Self, Self);
   FLastLayoutMilliseconds := Watch.ElapsedMilliseconds;
   Inc(FLayoutCount);
+  FDraggedScroller := -1;
+  RestoreScrollerOffsets;
 
   // A selection whose text the new layout no longer has is dropped, rather
   // than drawn over whatever text now sits at its old place.

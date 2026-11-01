@@ -9,7 +9,7 @@ uses
   Markdown4D.Layout.Interfaces;
 
 type
-  TDisplayItemKind = (TextRun, Rectangle, Line, Image, Checkbox, Wedge, Polygon, Disclosure);
+  TDisplayItemKind = (TextRun, Rectangle, Line, Image, Checkbox, Wedge, Polygon, Disclosure, Scroller);
 
   // What a text run is to the reader. Text is painted, selected, searched
   // and copied. Drawing is painted only: a glyph that is part of a picture,
@@ -149,6 +149,33 @@ type
     property IsOpen: Boolean read GetIsOpen;
     property Marker: TLayoutRectF read GetMarker;
     property Color: TLayoutColor read GetColor;
+  end;
+
+  // A block wider than its column, such as a long display formula, that
+  // scrolls sideways the way browsers let it. The ItemCount items right after
+  // it are its content: they are clipped to Bounds and already moved left by
+  // Offset, which the viewer changes as the reader scrolls. ContentWidth is
+  // how wide the content is; Track is the strip along the bottom of Bounds
+  // that shows how far it is scrolled, and Thumb the part of it that stands
+  // for what is in view. Key is the source offset of the block, so the
+  // offset survives a new layout.
+  IDisplayScroller = interface(IDisplayItem)
+    ['{7C1E0B52-3F9A-4D6E-B8A1-5D2F7E9C4A30}']
+    function GetItemCount: Integer;
+    function GetContentWidth: Single;
+    function GetOffset: Single;
+    function GetKey: Integer;
+    function GetTrack: TLayoutRectF;
+    function GetThumb: TLayoutRectF;
+    function GetMaxOffset: Single;
+    function WithOffset(const Offset: Single): IDisplayScroller;
+    property ItemCount: Integer read GetItemCount;
+    property ContentWidth: Single read GetContentWidth;
+    property Offset: Single read GetOffset;
+    property Key: Integer read GetKey;
+    property Track: TLayoutRectF read GetTrack;
+    property Thumb: TLayoutRectF read GetThumb;
+    property MaxOffset: Single read GetMaxOffset;
   end;
 
   TLayoutBlockInfo = record
