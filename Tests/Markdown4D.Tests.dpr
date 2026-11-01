@@ -9,6 +9,7 @@ uses
   Markdown4D.Parser.Gfm.Tests in 'Markdown4D.Parser.Gfm.Tests.pas',
   Markdown4D.Parser.Math.Tests in 'Markdown4D.Parser.Math.Tests.pas',
   Markdown4D.Math.Syntax.Tests in 'Markdown4D.Math.Syntax.Tests.pas',
+  Markdown4D.Math.Linear.Tests in 'Markdown4D.Math.Linear.Tests.pas',
   Markdown4D.Color.Names.Tests in 'Markdown4D.Color.Names.Tests.pas',
   Markdown4D.Extensions.Alerts.Tests in 'Markdown4D.Extensions.Alerts.Tests.pas',
   Markdown4D.Extensions.Toc.Tests in 'Markdown4D.Extensions.Toc.Tests.pas',

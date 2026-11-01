@@ -406,9 +406,24 @@ with the clearance rules, limits above and below large operators in display
 style, radicals with an optional index, delimiters that grow into drawn shapes
 when a glyph is too short, accents, and matrix environments. An inline formula
 sits on the text baseline and pushes the lines apart when it is tall; a display
-formula is centred in the column. A formula selects as one unit and copies as
-its markdown, `$...$` or a `$$` block, so a paste lands back in a document as
-the same formula; find searches the LaTeX source, not the drawn glyphs.
+formula is centred in the column.
+
+A formula selects like text, glyph by glyph, the way KaTeX and MathJax output
+does in a browser: a drag can start or end anywhere inside it, a double click
+selects the letters and digits on one baseline, such as a name or a number but
+not its power, and find searches the glyphs the reader sees, not the LaTeX
+source. Every glyph knows where it is spelled in the source, so the three ways
+of copying each give what they promise:
+
+| Copy | A whole formula | Part of a formula |
+|---|---|---|
+| `Ctrl+C` | UnicodeMath plain text, `πr²`, `(a+1)/b`, `√(x+1)` | the glyphs shown, letters of the mathematical alphabets as plain letters |
+| `Copy as Markdown` | the formula with its markers, `$...$` or the `$$` block | the selected TeX widened until it is valid: a command whole, braces balanced, a command with the groups it reads; the text of `\href` or the address of `\url` takes the whole command, as a markdown link does |
+| Copy button (`FormulaCopyButton`) | UnicodeMath plain text of a display formula | |
+
+UnicodeMath is the linear format of Unicode Technical Note 28, the plain text
+Word and OneNote write for a formula; `TMathLinearFormat.FromSource` in
+`Markdown4D.Math.Linear` turns any formula into it.
 
 `Theme.MathFont` names the family and size; the default family is the generic
 `math`, which the painters resolve to the bundled STIX Two Math when
@@ -527,6 +542,7 @@ same.
 | `Images` | `TMarkdownViewerImageSettings` | How image destinations are resolved and fetched (see below) |
 | `Zoom` | `Integer` | In percent (default `100`, from `25` to `500`). Every font, spacing and image grows with it; the theme the application assigned stays as it is. Ctrl+wheel and Ctrl+Plus/Minus step through the levels browsers use (25, 33, 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400, 500), Ctrl+0 resets it. The line at the top of the view stays there, and a document that lays out slowly waits until the wheel rests |
 | `CopyAsMarkdown` | `Boolean` | Offers `Copy as Markdown` on the context menu and `Ctrl+Shift+C` (default `True`). Off, the menu leaves the entry out and `Ctrl+Shift+C` copies plain text, for an application that keeps the source to itself |
+| `FormulaCopyButton` | `Boolean` | Shows a Copy button over a display formula, as over a code block, that copies the formula as UnicodeMath plain text for an editor or a mail (default `False`) |
 | `TextRendering` | `TMarkdownTextRendering` | VCL only. `DirectWrite` (default) draws emoji in colour; `Gdi` draws them in one colour. Line heights are the same in both, and widths match except where DirectWrite kerns a pair of letters such as `AV` |
 | `AutoScroll` | `Boolean` | Middle-click autoscroll: the content scrolls faster the further the pointer is from where it was pressed, until the next click, key or wheel turn (default `True`). The key that ends it reaches no shortcut, menu or form handler; only an Alt+letter accelerator in FMX goes to the form first |
 
@@ -541,7 +557,7 @@ same.
 | `FindPrevious(const Needle[; const Options]): Boolean` | The same walk backwards; wraps to the last match before the first |
 | `FindMatchCount(const Needle[; const Options]): Integer` | How many matches a walk with `FindText` visits; a formula counts once |
 | `FindMatchIndex(const Needle; const Options): Integer` | Which of those matches the selection is, counted from 0, for a "3 of 12"; -1 when the selection is not a match |
-| `HighlightMatches(const Needle[; const Options])` / `ClearHighlights` | Mark every match, independently of the selection; the marks follow the document as it changes, an empty needle clears them, and a formula is marked once |
+| `HighlightMatches(const Needle[; const Options])` / `ClearHighlights` | Mark every match, independently of the selection; the marks follow the document as it changes, an empty needle clears them; inside a formula each glyph that matches is marked |
 | `HighlightCount: Integer` | How many matches are marked |
 | `CopySelectionToClipboard` | Copy the current selection |
 | `CopySelectionAsMarkdown` / `SelectedMarkdown: string` | Copy, or read, the markdown behind the selection. Within one line that is the selected source with the markup directly around it (selecting *bold* in `**bold**` gives `**bold**`); over several lines whole source lines, so list markers, quote markers and indentation come along; a table always whole; and a selection of everything the whole source. Line ends are the platform's |

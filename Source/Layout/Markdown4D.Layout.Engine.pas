@@ -67,8 +67,6 @@ uses
 
 const
   HtmlSubsetCacheKey = 'markdown4d.html.subset';
-  InlineMathMarker = '$';
-  DisplayMathMarker = '$$';
 
 type
   TMarkdownFontStyleHelper = record helper for TMarkdownFontStyle
@@ -185,7 +183,7 @@ type
     function SameRunStyle(const Atom: TInlineAtom): Boolean;
     procedure EmitImageItem(const Atom: TInlineAtom);
     procedure EmitMathItem(const Atom: TInlineAtom);
-    procedure EmitMathSource(const Atom: TInlineAtom);
+    procedure JoinMathGlyphs(const FirstItem: Integer);
     function TakeLineJoin(const Run: IDisplayTextRun): IDisplayTextRun;
     procedure MeasureLine(out MaxAscent, MaxDescent, MaxImageHeight: Single);
 
@@ -401,7 +399,7 @@ type
     function DisclosureIndent: Single;
     procedure EmitThematicBreak(const Command: TLayoutCommand);
     procedure EmitMathBlock(const Command: TLayoutCommand);
-    class function MathSourceOf(const Math: IMarkdownMath; const AsBlock: Boolean): string;
+    procedure JoinFormulaGlyphs(const FirstItem: Integer);
     procedure LayoutTable(const Command: TLayoutCommand);
     function CollectInlineAtoms(const Container: IMarkdownNode; const BaseFont: TMarkdownFontStyle;
       const BaseColor: TLayoutColor): TList<TInlineAtom>;
@@ -1494,35 +1492,39 @@ begin
   const Left = Command.X + Max(0, (AvailableWidth - Formula.Width) / 2);
   const Height = Max(Formula.Ascent + Formula.Descent, FMeasurer.LineHeight(Font)) + 2 * Padding;
 
-  const Canvas: IExtensionCanvas = TDisplayListExtensionCanvas.Create(FMeasurer, FItems, Command.Node,
+  // An invisible area over the formula's band, where the viewer offers the
+  // formula's copy button as it does over a code block.
+  const Band = TLayoutRectF.Create(Command.X, FCurrentY, ContentRight, FCurrentY + Height);
+  FItems.Add(TDisplayRectangle.Create(Band, Command.Node, 0, 0, 0));
+
+  const MathCanvas = TDisplayListExtensionCanvas.Create(FMeasurer, FItems, Command.Node,
     TDisplayTextRunRole.Drawing);
+  MathCanvas.SourceNode := Command.Node;
+  const Canvas: IExtensionCanvas = MathCanvas;
+  const FirstItem = FItems.Count;
   const Baseline = FCurrentY + Padding + Formula.Ascent;
   Formula.Draw(Canvas, Left, Baseline);
-
-  const SourceBounds = TLayoutRectF.Create(Left, FCurrentY, Left + Formula.Width, FCurrentY + Height);
-  FItems.Add(TDisplayTextRun.Create(SourceBounds, Command.Node, MathSourceOf(Math, True), Font, Command.Color,
-    Baseline - FCurrentY, 0, TDisplayTextRunRole.Source));
+  JoinFormulaGlyphs(FirstItem);
 
   FCurrentY := FCurrentY + Height;
 end;
 
-// What a formula copies as: its markdown, so a paste lands back in a document
-// as the same formula.
-class function TLayoutWorker.MathSourceOf(const Math: IMarkdownMath; const AsBlock: Boolean): string;
+// The glyphs of a formula copy as one stretch of text, each following the
+// one before it directly, whatever line of the formula it sits on.
+procedure TLayoutWorker.JoinFormulaGlyphs(const FirstItem: Integer);
 begin
-  if AsBlock then
+  var IsFirst := True;
+  for var Index := FirstItem to FItems.Count - 1 do
   begin
-    Result := string.Join(LineFeed, [DisplayMathMarker, Math.Literal, DisplayMathMarker]);
-    Exit;
-  end;
+    var Run: IDisplayTextRun;
+    const IsGlyph = (Supports(FItems[Index], IDisplayTextRun, Run) and (Run.Role = TDisplayTextRunRole.Formula));
+    if not IsGlyph then
+      Continue;
 
-  if Math.IsDisplay then
-  begin
-    Result := DisplayMathMarker + Math.Literal + DisplayMathMarker;
-    Exit;
+    if not IsFirst then
+      FItems[Index] := Run.Joined(TDisplayTextJoin.Adjacent, 0);
+    IsFirst := False;
   end;
-
-  Result := InlineMathMarker + Math.Literal + InlineMathMarker;
 end;
 
 procedure TLayoutWorker.LayoutTable(const Command: TLayoutCommand);
@@ -2067,7 +2069,7 @@ begin
   var Atom := Default(TInlineAtom);
   Atom.Kind := TInlineAtomKind.MathToken;
   Atom.Node := Attribution;
-  Atom.Text := TLayoutWorker.MathSourceOf(Math, False);
+  Atom.SourceNode := Child;
   Atom.Font := Style.Font;
   Atom.Color := Style.Color;
   Atom.Formula := TMathLayouter.Layout(Math.Literal, Options, FMeasurer);
@@ -2726,25 +2728,28 @@ end;
 
 procedure TInlineWrapper.EmitMathItem(const Atom: TInlineAtom);
 begin
-  const Canvas: IExtensionCanvas = TDisplayListExtensionCanvas.Create(FMeasurer, FItems, Atom.Node,
+  const MathCanvas = TDisplayListExtensionCanvas.Create(FMeasurer, FItems, Atom.Node,
     TDisplayTextRunRole.Drawing);
+  MathCanvas.SourceNode := Atom.SourceNode;
+  const Canvas: IExtensionCanvas = MathCanvas;
+  const FirstItem = FItems.Count;
   Atom.Formula.Draw(Canvas, FCursor, FLineTop + FLineBaseline);
-  EmitMathSource(Atom);
+  JoinMathGlyphs(FirstItem);
 
   FCursor := FCursor + Atom.Width;
 end;
 
-// The source run carries the font of the text around it and sits exactly
-// where a text run in that font would, which is how the viewer tells one
-// line from the next when it copies a selection.
-procedure TInlineWrapper.EmitMathSource(const Atom: TInlineAtom);
+// The first glyph of a formula carries how the line began; the glyphs after
+// it follow on directly, raised or lowered as they may be.
+procedure TInlineWrapper.JoinMathGlyphs(const FirstItem: Integer);
 begin
-  const RunBaseline = FMeasurer.Baseline(Atom.Font);
-  const Top = FLineTop + (FLineBaseline - RunBaseline);
-  const Bounds = TLayoutRectF.Create(FCursor, Top, FCursor + Atom.Width, Top + FMeasurer.LineHeight(Atom.Font));
-  const Run: IDisplayTextRun = TDisplayTextRun.Create(Bounds, Atom.Node, Atom.Text, Atom.Font, Atom.Color,
-    RunBaseline, 0, TDisplayTextRunRole.Source);
-  FItems.Add(TakeLineJoin(Run));
+  for var Index := FirstItem to FItems.Count - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    const IsGlyph = (Supports(FItems[Index], IDisplayTextRun, Run) and (Run.Role = TDisplayTextRunRole.Formula));
+    if IsGlyph then
+      FItems[Index] := TakeLineJoin(Run);
+  end;
 end;
 
 // The first run of a line carries how the line began; the runs after it on
