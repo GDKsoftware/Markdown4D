@@ -26,6 +26,8 @@ type
         LiteralWidth: Integer;
       end;
     class function IsTakenWhole(const Node: IMarkdownNode): Boolean; static;
+    class function TryMathLiteralStart(const Source: string; const Node: IMarkdownNode;
+                                       out Start: Integer): Boolean; static;
     class function IsSegmentInside(const Source: string; const Segment: TMarkdownSegment): Boolean; static;
     class function OffsetInLiteral(const Source: string; const Segment: TMarkdownSegment;
                                    const LiteralOffset: Integer): Integer; static;
@@ -44,6 +46,7 @@ type
 implementation
 
 uses
+  System.SysUtils,
   Markdown4D.Defines,
   Markdown4D.Text.Unescape;
 
@@ -61,6 +64,14 @@ begin
   if not IsSegmentInside(Source, Segment) then
   begin
     Result := False;
+    Exit;
+  end;
+
+  var LiteralStart: Integer;
+  if TryMathLiteralStart(Source, Node, LiteralStart) then
+  begin
+    Offset := LiteralStart + LiteralOffset;
+    Result := True;
     Exit;
   end;
 
@@ -85,6 +96,26 @@ end;
 class function TMarkdownSourceMapper.IsTakenWhole(const Node: IMarkdownNode): Boolean;
 begin
   Result := (Node.Kind <> TMarkdownNodeKind.Text);
+end;
+
+// A formula is typed as its literal between its markers, so a position in
+// the literal is a position in the source. A literal that does not appear
+// as typed, its line ends rewritten for instance, is taken whole.
+class function TMarkdownSourceMapper.TryMathLiteralStart(const Source: string; const Node: IMarkdownNode;
+  out Start: Integer): Boolean;
+begin
+  Start := 0;
+
+  var Math: IMarkdownMath;
+  if not Supports(Node, IMarkdownMath, Math) or (Math.Literal = '') then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  const Segment = Node.Segment;
+  Start := Pos(Math.Literal, Source, Segment.StartOffset);
+  Result := (Start > 0) and (Start + Length(Math.Literal) <= Segment.EndOffset);
 end;
 
 class function TMarkdownSourceMapper.IsSegmentInside(const Source: string;

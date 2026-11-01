@@ -12,11 +12,13 @@ uses
   Markdown4D.Layout.BlockOverride;
 
 type
-  TDisplayListExtensionCanvas = class(TInterfacedObject, IExtensionCanvas, IExtensionLinkCanvas)
+  TDisplayListExtensionCanvas = class(TInterfacedObject, IExtensionCanvas, IExtensionLinkCanvas,
+    IExtensionSourceCanvas)
   private
     FMeasurer: ITextMeasurer;
     FItems: TList<IDisplayItem>;
     FNode: IMarkdownNode;
+    FSourceNode: IMarkdownNode;
     FTextRole: TDisplayTextRunRole;
     FNodesOutsideLinks: TStack<IMarkdownNode>;
     class function BoundingRect(const Points: TArray<TLayoutPointF>): TLayoutRectF; static;
@@ -55,6 +57,12 @@ type
     procedure RestoreState;
     procedure BeginLink(const Url: string);
     procedure EndLink;
+    // Text drawn with DrawSourceText becomes formula glyphs of SourceNode,
+    // the formula whose source they were set from; without one it is drawn
+    // with DrawText.
+    procedure DrawSourceText(const TopLeft: TLayoutPointF; const Text: string; const Font: TMarkdownFontStyle;
+      const Color: TLayoutColor; const SourceStart, SourceLength: Integer; const Ascent, Descent: Single);
+    property SourceNode: IMarkdownNode read FSourceNode write FSourceNode;
   end;
 
 implementation
@@ -113,6 +121,37 @@ begin
   const Bounds = TLayoutRectF.CreateFromOrigin(TopLeft, Size);
 
   FItems.Add(TDisplayTextRun.Create(Bounds, FNode, Text, Font, Color, FMeasurer.Baseline(Font), 0, FTextRole));
+end;
+
+// The run spans the glyph's ink rather than the font's line, so the glyphs
+// of a fraction or a script do not cover one another for the pointer or the
+// selection. Its baseline sits Ascent below its top, where the text is painted
+// all the same.
+procedure TDisplayListExtensionCanvas.DrawSourceText(const TopLeft: TLayoutPointF; const Text: string;
+  const Font: TMarkdownFontStyle; const Color: TLayoutColor; const SourceStart, SourceLength: Integer;
+  const Ascent, Descent: Single);
+begin
+  if FSourceNode = nil then
+  begin
+    DrawText(TopLeft, Text, Font, Color);
+    Exit;
+  end;
+
+  const Size = FMeasurer.MeasureText(Text, Font);
+  const FontBaseline = FMeasurer.Baseline(Font);
+
+  var Bounds := TLayoutRectF.CreateFromOrigin(TopLeft, Size);
+  var Baseline := FontBaseline;
+  const HasInk = ((Ascent + Descent) > 0);
+  if HasInk then
+  begin
+    const BaselineY = TopLeft.Y + FontBaseline;
+    Bounds := TLayoutRectF.Create(TopLeft.X, BaselineY - Ascent, TopLeft.X + Size.Width, BaselineY + Descent);
+    Baseline := Ascent;
+  end;
+
+  FItems.Add(TDisplayTextRun.CreateFormula(Bounds, FNode, Text, Font, Color, Baseline, SourceStart, SourceLength,
+    FSourceNode));
 end;
 
 procedure TDisplayListExtensionCanvas.DrawLine(const StartPoint, EndPoint: TLayoutPointF; const Color: TLayoutColor;

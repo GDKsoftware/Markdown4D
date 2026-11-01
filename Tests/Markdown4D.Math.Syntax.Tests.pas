@@ -237,12 +237,98 @@ type
     procedure Parse_NestingWithinLimit_HasNoError(const Opening, Closing: string);
   end;
 
+  [TestFixture]
+  TMathSourcePlacementTests = class
+  private
+    class function SourceOf(const Source: string; const Node: IMathNode): string; static;
+    class function SymbolWithText(const Node: IMathNode; const Text: string): IMathNode; static;
+  public
+    [Test]
+    [TestCase('Letter', 'a+b,b,b')]
+    [TestCase('Digits', 'x+123,123,123')]
+    [TestCase('Command', 'x+\alpha,' + #$03B1 + ',\alpha')]
+    [TestCase('Operator name', '\sin x,sin,\sin')]
+    [TestCase('Inside a fraction', '\frac{a}{b},b,b')]
+    [TestCase('Script', 'x^{2},2,2')]
+    [TestCase('Inside a link', '\href{https://example.com}{y},y,y')]
+    procedure Symbol_IsPlacedAtItsSpelling(const Source, Text, Expected: string);
+
+    [Test]
+    procedure TextCommand_IsPlacedAtItsWords;
+
+    [Test]
+    procedure Fraction_CoversTheCommand;
+
+    [Test]
+    procedure Chemistry_SymbolsHaveNoPlaceOfTheirOwn;
+  end;
+
 implementation
 
 uses
   System.SysUtils,
   System.Math,
   System.StrUtils;
+
+class function TMathSourcePlacementTests.SourceOf(const Source: string; const Node: IMathNode): string;
+begin
+  Result := Copy(Source, Node.SourceStart + 1, Node.SourceLength);
+end;
+
+class function TMathSourcePlacementTests.SymbolWithText(const Node: IMathNode; const Text: string): IMathNode;
+begin
+  if (Node.Kind in [TMathNodeKind.Symbol, TMathNodeKind.Text]) and (Node.Text = Text) then
+  begin
+    Result := Node;
+    Exit;
+  end;
+
+  for var Index := 0 to Node.ChildCount - 1 do
+  begin
+    Result := SymbolWithText(Node.Children[Index], Text);
+    if Result <> nil then
+      Exit;
+  end;
+
+  Result := nil;
+end;
+
+procedure TMathSourcePlacementTests.Symbol_IsPlacedAtItsSpelling(const Source, Text, Expected: string);
+begin
+  const Symbol = SymbolWithText(TMathParser.Parse(Source), Text);
+
+  Assert.IsNotNull(Symbol);
+  Assert.AreEqual(Expected, SourceOf(Source, Symbol));
+end;
+
+procedure TMathSourcePlacementTests.TextCommand_IsPlacedAtItsWords;
+begin
+  const Source = 'x \text{if so} y';
+  const Words = SymbolWithText(TMathParser.Parse(Source), 'if so');
+
+  Assert.AreEqual('if so', SourceOf(Source, Words), 'the words are placed character for character');
+end;
+
+procedure TMathSourcePlacementTests.Fraction_CoversTheCommand;
+begin
+  const Source = 'x+\frac{a}{b}';
+  const Row = TMathParser.Parse(Source);
+
+  const Fraction = Row.Children[2];
+  Assert.AreEqual<TMathNodeKind>(TMathNodeKind.Fraction, Fraction.Kind);
+  Assert.AreEqual('\frac{a}{b}', SourceOf(Source, Fraction));
+end;
+
+procedure TMathSourcePlacementTests.Chemistry_SymbolsHaveNoPlaceOfTheirOwn;
+begin
+  const Source = 'x+\ce{H2O}';
+  const Row = TMathParser.Parse(Source);
+
+  const Chemistry = Row.Children[2];
+  Assert.AreEqual('\ce{H2O}', SourceOf(Source, Chemistry));
+  for var Index := 0 to Chemistry.ChildCount - 1 do
+    Assert.AreEqual(-1, Chemistry.Children[Index].SourceStart, 'positions in the translated formula are dropped');
+end;
 
 class function TMathSyntaxTests.Parse(const Source: string): IMathNode;
 begin

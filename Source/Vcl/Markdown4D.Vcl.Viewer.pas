@@ -176,6 +176,8 @@ type
     procedure CopyForShortcut(const Shift: TShiftState);
     function GetZoom: Integer;
     procedure SetZoom(const Value: Integer);
+    function GetFormulaCopyButton: Boolean;
+    procedure SetFormulaCopyButton(const Value: Boolean);
     procedure PaintAutoScrollOrigin;
     procedure SetAutoScroll(const Value: Boolean);
     procedure SetTextRendering(const Value: TMarkdownTextRendering);
@@ -316,6 +318,11 @@ type
     // menu leaves the entry out and Ctrl+Shift+C copies plain text, for an
     // application that keeps the source to itself.
     property CopyAsMarkdown: Boolean read FCopyAsMarkdown write FCopyAsMarkdown default True;
+    // Shows a Copy button over a display formula, as over a code block, that
+    // copies the formula as UnicodeMath plain text (x^2 as x squared, a/b, a root) for an
+    // editor or a mail. Off by default: Ctrl+C on a selected formula copies
+    // the same text, Copy as Markdown its TeX.
+    property FormulaCopyButton: Boolean read GetFormulaCopyButton write SetFormulaCopyButton default False;
     // DirectWrite draws emoji in colour, Gdi draws them in one colour. Widths
     // differ slightly where DirectWrite kerns; line heights are the same in both.
     property TextRendering: TMarkdownTextRendering read FTextRendering write SetTextRendering
@@ -965,6 +972,17 @@ begin
   end;
 
   UpdateHoverCursor(ContentPoint);
+end;
+
+function TMarkdownViewer.GetFormulaCopyButton: Boolean;
+begin
+  Result := FModel.FormulaCopyButton;
+end;
+
+procedure TMarkdownViewer.SetFormulaCopyButton(const Value: Boolean);
+begin
+  FModel.FormulaCopyButton := Value;
+  RefreshCodeHover;
 end;
 
 procedure TMarkdownViewer.RefreshCodeHover;
