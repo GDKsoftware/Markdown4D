@@ -141,6 +141,8 @@ type
   TMathBoxBuilder = class
   private
     const
+      EmSpace = #$2003;
+      MaximumDeviceScale = 4;
       ScriptScale = 0.7;
       ScriptScriptScale = 0.5;
       LargeOperatorScale = 1.4;
@@ -215,6 +217,8 @@ type
     var
       FMeasurer: ITextMeasurer;
       FOptions: TMathLayoutOptions;
+      FDeviceScale: Single;
+    class function DeviceScaleOf(const Font: TMarkdownFontStyle; const Measurer: ITextMeasurer): Single; static;
     function Build(const Node: IMathNode; const Style: TMathStyle; const Variant: TMathFontVariant): TMathBox;
     function BuildColored(const Node: IMathNode; const Style: TMathStyle; const Variant: TMathFontVariant): TMathBox;
     function BuildLinked(const Node: IMathNode; const Style: TMathStyle; const Variant: TMathFontVariant): TMathBox;
@@ -553,6 +557,24 @@ begin
 
   FOptions := Options;
   FMeasurer := Measurer;
+  FDeviceScale := DeviceScaleOf(Options.Font, Measurer);
+end;
+
+// The measurer may set text larger than the size it is given, as the VCL
+// viewer does on a display scaled to 125 % or more: widths then come back in
+// device pixels while the size stays at 96 dpi. An em space is one em wide by
+// definition, so its width tells how large an em really is, and every height
+// and gap the builder derives from the size is scaled to match the glyphs.
+class function TMathBoxBuilder.DeviceScaleOf(const Font: TMarkdownFontStyle; const Measurer: ITextMeasurer): Single;
+begin
+  Result := 1;
+  if Font.Size <= 0 then
+    Exit;
+
+  const Ratio = Measurer.MeasureText(EmSpace, Font).Width / Font.Size;
+  const IsScaled = (Ratio > 1) and (Ratio <= MaximumDeviceScale);
+  if IsScaled then
+    Result := Ratio;
 end;
 
 function TMathBoxBuilder.BuildRoot(const Node: IMathNode): TMathBox;
@@ -1366,8 +1388,8 @@ begin
   Result.Color := Color;
   Result.FontBaseline := FMeasurer.Baseline(Font);
   Result.Width := FMeasurer.MeasureText(Text, Font).Width;
-  Result.Ascent := Extent.AscentEm * Font.Size;
-  Result.Descent := Extent.DescentEm * Font.Size;
+  Result.Ascent := Extent.AscentEm * Font.Size * FDeviceScale;
+  Result.Descent := Extent.DescentEm * Font.Size * FDeviceScale;
 end;
 
 function TMathBoxBuilder.RuleBox(const Width, Thickness: Single): TMathBox;
@@ -1411,18 +1433,20 @@ begin
   const IsItalic = (Variant = TMathFontVariant.Italic) or (Variant = TMathFontVariant.BoldItalic);
   const IsBold = (Variant = TMathFontVariant.Bold) or (Variant = TMathFontVariant.BoldItalic);
 
-  Result := TMarkdownFontStyle.Create(FOptions.Font.FamilyName, EmSize(Style), IsBold, IsItalic);
+  // The size of a font stays the one the measurer is given; it scales the
+  // glyphs itself.
+  Result := TMarkdownFontStyle.Create(FOptions.Font.FamilyName, EmSize(Style) / FDeviceScale, IsBold, IsItalic);
 end;
 
 function TMathBoxBuilder.EmSize(const Style: TMathStyle): Single;
 begin
   case Style of
     TMathStyle.Display, TMathStyle.Text:
-      Result := FOptions.Font.Size;
+      Result := FOptions.Font.Size * FDeviceScale;
     TMathStyle.Script:
-      Result := FOptions.Font.Size * ScriptScale;
+      Result := FOptions.Font.Size * ScriptScale * FDeviceScale;
     TMathStyle.ScriptScript:
-      Result := FOptions.Font.Size * ScriptScriptScale;
+      Result := FOptions.Font.Size * ScriptScriptScale * FDeviceScale;
   else
     raise EMathSyntaxError.CreateFmt('Unhandled math style: %d', [Ord(Style)]);
   end;

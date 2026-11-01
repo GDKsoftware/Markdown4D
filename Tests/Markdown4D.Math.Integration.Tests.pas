@@ -75,6 +75,9 @@ type
     procedure FractionInAligned_KeepsDisplaySize;
 
     [Test]
+    procedure ScaledMeasurer_ScalesHeightsWithWidths;
+
+    [Test]
     procedure DisplayBlock_IsCentred;
 
     [Test]
@@ -304,6 +307,66 @@ begin
   const WithoutDescender = TMathLayouter.Layout('\frac{\text{Rohrotein}}{2}', Options, FMeasurer);
 
   Assert.IsTrue(WithDescender.Ascent > WithoutDescender.Ascent, 'every character of a word counts, not its first');
+end;
+
+type
+  // Sets text 1.25 times larger than the size it is given, as the VCL viewer
+  // does on a display scaled to 125 %.
+  TScaledMeasurer = class(TInterfacedObject, ITextMeasurer)
+  private
+    const
+      Scale = 1.25;
+    var
+      FInner: ITextMeasurer;
+  public
+    constructor Create(const Inner: ITextMeasurer);
+    function MeasureText(const Text: string; const Font: TMarkdownFontStyle): TLayoutSizeF;
+    function LineHeight(const Font: TMarkdownFontStyle): Single;
+    function Baseline(const Font: TMarkdownFontStyle): Single;
+  end;
+
+constructor TScaledMeasurer.Create(const Inner: ITextMeasurer);
+begin
+  inherited Create;
+  FInner := Inner;
+end;
+
+// An em space is one em wide, as in a real font.
+function TScaledMeasurer.MeasureText(const Text: string; const Font: TMarkdownFontStyle): TLayoutSizeF;
+begin
+  Result := FInner.MeasureText(Text, Font);
+  if Text = #$2003 then
+    Result.Width := Font.Size;
+  Result.Width := Result.Width * Scale;
+  Result.Height := Result.Height * Scale;
+end;
+
+function TScaledMeasurer.LineHeight(const Font: TMarkdownFontStyle): Single;
+begin
+  Result := FInner.LineHeight(Font) * Scale;
+end;
+
+function TScaledMeasurer.Baseline(const Font: TMarkdownFontStyle): Single;
+begin
+  Result := FInner.Baseline(Font) * Scale;
+end;
+
+procedure TMathLayoutIntegrationTests.ScaledMeasurer_ScalesHeightsWithWidths;
+begin
+  const Font = TMarkdownFontStyle.Create(FTheme.MathFont.FamilyName, FTheme.MathFont.Size);
+  const Options = TMathLayoutOptions.Create(Font, TLayoutColor($FF000000), FTheme.MathErrorColor, True);
+  const Source = '\overline{\frac{a+b}{c}}';
+  const ScaledMeasurer: ITextMeasurer = TScaledMeasurer.Create(FMeasurer);
+
+  const Reference: IMathLayout = TMathLayouter.Layout(Source, Options, FMeasurer);
+  const Scaled: IMathLayout = TMathLayouter.Layout(Source, Options, ScaledMeasurer);
+
+  const ExpectedAscent: Single = Reference.Ascent * 1.25;
+  const ExpectedDescent: Single = Reference.Descent * 1.25;
+  const ActualAscent: Single = Scaled.Ascent;
+  const ActualDescent: Single = Scaled.Descent;
+  Assert.AreEqual(ExpectedAscent, ActualAscent, 0.5, 'heights and gaps follow the measurer as widths do');
+  Assert.AreEqual(ExpectedDescent, ActualDescent, 0.5, 'and depths');
 end;
 
 procedure TMathLayoutIntegrationTests.FractionInAligned_KeepsDisplaySize;
