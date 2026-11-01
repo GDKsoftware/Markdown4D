@@ -264,6 +264,7 @@ type
     class function IsScriptStyle(const Style: TMathStyle): Boolean; static;
     class function ResolveVariant(const Own, Context: TMathFontVariant): TMathFontVariant; static;
     class function GlyphExtent(const Text: string): TGlyphExtent; static;
+    class function RuleThicknessOf(const Em: Single): Single; static;
     class function CellStyleOf(const Node: IMathNode; const Style: TMathStyle): TMathStyle; static;
     class function CharacterExtent(const First: Char): TGlyphExtent; static;
     class function AtomClassOf(const Node: IMathNode): TMathAtomClass; static;
@@ -838,7 +839,7 @@ begin
   const Axis = AxisHeightEm * Em;
   const IsDisplayStyle = (Style = TMathStyle.Display);
 
-  var Thickness := RuleThicknessEm * Em;
+  var Thickness := RuleThicknessOf(Em);
   var Gap := FractionGapTextEm * Em;
   var NumeratorShift := FractionNumeratorShiftTextEm * Em;
   var DenominatorShift := FractionDenominatorShiftTextEm * Em;
@@ -975,7 +976,7 @@ function TMathBoxBuilder.BuildRadical(const Node: IMathNode; const Style: TMathS
 begin
   const Radicand = Build(Node.Children[0], Style, Variant);
   const Em = EmSize(Style);
-  const Thickness = RuleThicknessEm * Em;
+  const Thickness = RuleThicknessOf(Em);
 
   var Gap := RadicalGapTextEm * Em;
   if Style = TMathStyle.Display then
@@ -1259,7 +1260,7 @@ begin
   const IsOverline = (Node.Text = '');
   if IsOverline then
   begin
-    const Thickness = RuleThicknessEm * Em;
+    const Thickness = RuleThicknessOf(Em);
     const Line = RuleBox(Base.Width, Thickness);
     Result.Enclose(Line, 0, -(Base.Ascent + OverlineGapEm * Em + Thickness));
     Exit;
@@ -1501,6 +1502,14 @@ end;
 // Heights in em for the glyph classes the font families share closely
 // enough: the layouter needs ascent and descent, and the measurer only
 // reports a line height. The values follow STIX Two Math.
+// Whole pixels, at least one: a rule of 1.2 pixels painted at 10.4 or at
+// 10.6 rounds to one pixel or to two, so bars and lines of the same formula
+// would look unequally thick.
+class function TMathBoxBuilder.RuleThicknessOf(const Em: Single): Single;
+begin
+  Result := Max(1, Round(RuleThicknessEm * Em));
+end;
+
 // TeX sets the cells of a matrix in text style, but the lines of aligned in
 // the style around them, display style in a display formula, so a fraction
 // in an aligned line keeps its size.
