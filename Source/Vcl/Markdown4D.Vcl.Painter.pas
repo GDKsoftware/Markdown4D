@@ -849,9 +849,29 @@ begin
   Result := TColor(RGB(Red, Green, Blue));
 end;
 
+// Each edge rounds on its own, so shapes that meet share their border. A line
+// thinner than two pixels keeps its thickness instead: rounded edge by edge, a
+// rule of 1.2 pixels comes out one or two pixels thick depending on where it
+// lies, and one of a pixel on a half pixel vanishes.
 class function TMarkdownVclPainter.ToDeviceRect(const Bounds: TLayoutRectF): TRect;
+const
+  ThinLineLimit = 2;
 begin
   Result := TRect.Create(Round(Bounds.Left), Round(Bounds.Top), Round(Bounds.Right), Round(Bounds.Bottom));
+
+  const IsThinRow = (Bounds.Height > 0) and (Bounds.Height < ThinLineLimit);
+  if IsThinRow then
+  begin
+    Result.Top := Round(Bounds.Top);
+    Result.Bottom := Result.Top + Max(1, Round(Bounds.Height));
+  end;
+
+  const IsThinColumn = (Bounds.Width > 0) and (Bounds.Width < ThinLineLimit);
+  if IsThinColumn then
+  begin
+    Result.Left := Round(Bounds.Left);
+    Result.Right := Result.Left + Max(1, Round(Bounds.Width));
+  end;
 end;
 
 class function TMarkdownVclPainter.OpaqueBlendFunction: Winapi.Windows.TBlendFunction;

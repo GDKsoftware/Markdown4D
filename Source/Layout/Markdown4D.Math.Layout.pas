@@ -141,6 +141,8 @@ type
   TMathBoxBuilder = class
   private
     const
+      EmSpace = #$2003;
+      MaximumDeviceScale = 4;
       ScriptScale = 0.7;
       ScriptScriptScale = 0.5;
       LargeOperatorScale = 1.4;
@@ -215,6 +217,8 @@ type
     var
       FMeasurer: ITextMeasurer;
       FOptions: TMathLayoutOptions;
+      FDeviceScale: Single;
+    class function DeviceScaleOf(const Font: TMarkdownFontStyle; const Measurer: ITextMeasurer): Single; static;
     function Build(const Node: IMathNode; const Style: TMathStyle; const Variant: TMathFontVariant): TMathBox;
     function BuildColored(const Node: IMathNode; const Style: TMathStyle; const Variant: TMathFontVariant): TMathBox;
     function BuildLinked(const Node: IMathNode; const Style: TMathStyle; const Variant: TMathFontVariant): TMathBox;
@@ -260,6 +264,9 @@ type
     class function IsScriptStyle(const Style: TMathStyle): Boolean; static;
     class function ResolveVariant(const Own, Context: TMathFontVariant): TMathFontVariant; static;
     class function GlyphExtent(const Text: string): TGlyphExtent; static;
+    class function RuleThicknessOf(const Em: Single): Single; static;
+    class function CellStyleOf(const Node: IMathNode; const Style: TMathStyle): TMathStyle; static;
+    class function CharacterExtent(const First: Char): TGlyphExtent; static;
     class function AtomClassOf(const Node: IMathNode): TMathAtomClass; static;
     class function ResolveAtomClasses(const Node: IMathNode): TArray<TMathAtomClass>; static;
     function SpacingBetween(const Left, Right: TMathAtomClass; const Style: TMathStyle): Single;
@@ -551,6 +558,24 @@ begin
 
   FOptions := Options;
   FMeasurer := Measurer;
+  FDeviceScale := DeviceScaleOf(Options.Font, Measurer);
+end;
+
+// The measurer may set text larger than the size it is given, as the VCL
+// viewer does on a display scaled to 125 % or more: widths then come back in
+// device pixels while the size stays at 96 dpi. An em space is one em wide by
+// definition, so its width tells how large an em really is, and every height
+// and gap the builder derives from the size is scaled to match the glyphs.
+class function TMathBoxBuilder.DeviceScaleOf(const Font: TMarkdownFontStyle; const Measurer: ITextMeasurer): Single;
+begin
+  Result := 1;
+  if Font.Size <= 0 then
+    Exit;
+
+  const Ratio = Measurer.MeasureText(EmSpace, Font).Width / Font.Size;
+  const IsScaled = (Ratio > 1) and (Ratio <= MaximumDeviceScale);
+  if IsScaled then
+    Result := Ratio;
 end;
 
 function TMathBoxBuilder.BuildRoot(const Node: IMathNode): TMathBox;
@@ -595,7 +620,7 @@ begin
     TMathNodeKind.Accent:
       Result := BuildAccent(Node, Style, Variant);
     TMathNodeKind.Matrix:
-      Result := BuildMatrix(Node, Style, TMathStyle.Text, Variant);
+      Result := BuildMatrix(Node, Style, CellStyleOf(Node, Style), Variant);
     TMathNodeKind.Styled:
       Result := Build(Node.Children[0], Style, Node.Variant);
     TMathNodeKind.Colored:
@@ -814,7 +839,7 @@ begin
   const Axis = AxisHeightEm * Em;
   const IsDisplayStyle = (Style = TMathStyle.Display);
 
-  var Thickness := RuleThicknessEm * Em;
+  var Thickness := RuleThicknessOf(Em);
   var Gap := FractionGapTextEm * Em;
   var NumeratorShift := FractionNumeratorShiftTextEm * Em;
   var DenominatorShift := FractionDenominatorShiftTextEm * Em;
@@ -951,7 +976,7 @@ function TMathBoxBuilder.BuildRadical(const Node: IMathNode; const Style: TMathS
 begin
   const Radicand = Build(Node.Children[0], Style, Variant);
   const Em = EmSize(Style);
-  const Thickness = RuleThicknessEm * Em;
+  const Thickness = RuleThicknessOf(Em);
 
   var Gap := RadicalGapTextEm * Em;
   if Style = TMathStyle.Display then
@@ -1235,7 +1260,7 @@ begin
   const IsOverline = (Node.Text = '');
   if IsOverline then
   begin
-    const Thickness = RuleThicknessEm * Em;
+    const Thickness = RuleThicknessOf(Em);
     const Line = RuleBox(Base.Width, Thickness);
     Result.Enclose(Line, 0, -(Base.Ascent + OverlineGapEm * Em + Thickness));
     Exit;
@@ -1364,8 +1389,8 @@ begin
   Result.Color := Color;
   Result.FontBaseline := FMeasurer.Baseline(Font);
   Result.Width := FMeasurer.MeasureText(Text, Font).Width;
-  Result.Ascent := Extent.AscentEm * Font.Size;
-  Result.Descent := Extent.DescentEm * Font.Size;
+  Result.Ascent := Extent.AscentEm * Font.Size * FDeviceScale;
+  Result.Descent := Extent.DescentEm * Font.Size * FDeviceScale;
 end;
 
 function TMathBoxBuilder.RuleBox(const Width, Thickness: Single): TMathBox;
@@ -1409,18 +1434,20 @@ begin
   const IsItalic = (Variant = TMathFontVariant.Italic) or (Variant = TMathFontVariant.BoldItalic);
   const IsBold = (Variant = TMathFontVariant.Bold) or (Variant = TMathFontVariant.BoldItalic);
 
-  Result := TMarkdownFontStyle.Create(FOptions.Font.FamilyName, EmSize(Style), IsBold, IsItalic);
+  // The size of a font stays the one the measurer is given; it scales the
+  // glyphs itself.
+  Result := TMarkdownFontStyle.Create(FOptions.Font.FamilyName, EmSize(Style) / FDeviceScale, IsBold, IsItalic);
 end;
 
 function TMathBoxBuilder.EmSize(const Style: TMathStyle): Single;
 begin
   case Style of
     TMathStyle.Display, TMathStyle.Text:
-      Result := FOptions.Font.Size;
+      Result := FOptions.Font.Size * FDeviceScale;
     TMathStyle.Script:
-      Result := FOptions.Font.Size * ScriptScale;
+      Result := FOptions.Font.Size * ScriptScale * FDeviceScale;
     TMathStyle.ScriptScript:
-      Result := FOptions.Font.Size * ScriptScriptScale;
+      Result := FOptions.Font.Size * ScriptScriptScale * FDeviceScale;
   else
     raise EMathSyntaxError.CreateFmt('Unhandled math style: %d', [Ord(Style)]);
   end;
@@ -1475,16 +1502,44 @@ end;
 // Heights in em for the glyph classes the font families share closely
 // enough: the layouter needs ascent and descent, and the measurer only
 // reports a line height. The values follow STIX Two Math.
+// Whole pixels, at least one: a rule of 1.2 pixels painted at 10.4 or at
+// 10.6 rounds to one pixel or to two, so bars and lines of the same formula
+// would look unequally thick.
+class function TMathBoxBuilder.RuleThicknessOf(const Em: Single): Single;
+begin
+  Result := Max(1, Round(RuleThicknessEm * Em));
+end;
+
+// TeX sets the cells of a matrix in text style, but the lines of aligned in
+// the style around them, display style in a display formula, so a fraction
+// in an aligned line keeps its size.
+class function TMathBoxBuilder.CellStyleOf(const Node: IMathNode; const Style: TMathStyle): TMathStyle;
+begin
+  if Node.Alignment = TMathColumnAlignment.Alternate then
+    Result := Style
+  else
+    Result := TMathStyle.Text;
+end;
+
+// A run of text reaches as high as its tallest character and as low as its
+// deepest, so the p of "Rohprotein" keeps a fraction bar below it clear.
 class function TMathBoxBuilder.GlyphExtent(const Text: string): TGlyphExtent;
 begin
-  if Text = '' then
+  Result := TGlyphExtent.Create(0, 0);
+
+  for var Character in Text do
   begin
-    Result := TGlyphExtent.Create(0, 0);
-    Exit;
+    if Character.IsWhiteSpace or Character.IsLowSurrogate then
+      Continue;
+
+    const Extent = CharacterExtent(Character);
+    Result.AscentEm := Max(Result.AscentEm, Extent.AscentEm);
+    Result.DescentEm := Max(Result.DescentEm, Extent.DescentEm);
   end;
+end;
 
-  const First = Text[1];
-
+class function TMathBoxBuilder.CharacterExtent(const First: Char): TGlyphExtent;
+begin
   if First.IsDigit then
   begin
     Result := TGlyphExtent.Create(0.68, 0);
