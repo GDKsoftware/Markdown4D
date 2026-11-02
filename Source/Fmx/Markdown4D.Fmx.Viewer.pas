@@ -1100,8 +1100,9 @@ begin
   // Shift turns the wheel sideways over a formula wider than the column, as
   // in a browser.
   const IsShiftWheel = (ssShift in Shift) and FHasLastMousePoint;
+  const PointerPoint = ContentPointOf(FLastMousePoint.X, FLastMousePoint.Y);
   const SidewaysDelta = -WheelDelta / MouseWheelDeltaPerNotch * WheelLinesPerNotch * LineScrollAmount;
-  if IsShiftWheel and FModel.ScrollSideways(ContentPointOf(FLastMousePoint.X, FLastMousePoint.Y), SidewaysDelta) then
+  if IsShiftWheel and FModel.ScrollSideways(PointerPoint, SidewaysDelta) then
   begin
     RedrawContent;
     Handled := True;
