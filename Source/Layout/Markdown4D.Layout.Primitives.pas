@@ -182,6 +182,7 @@ type
   private
     const
       TrackHeight = 6;
+      TrackGap = 2;
       MinimumThumbWidth = 24;
     var
       FItemCount: Integer;
@@ -197,7 +198,7 @@ type
     function GetMaxOffset: Single;
 
   public
-    // How much room the track takes below the content.
+    // How much room the track and the gap above it take below the content.
     class function TrackSpace: Single; static;
     constructor Create(const Bounds: TLayoutRectF; const Node: IMarkdownNode; const ItemCount: Integer;
       const ContentWidth, Offset: Single; const Key: Integer);
@@ -225,14 +226,13 @@ type
   public
     constructor Create(const Items: TArray<IDisplayItem>; const Blocks: TArray<TLayoutBlockInfo>;
       const Width, ContentWidth, Height: Single; const RecomputedBlockIndexes: TArray<Integer>);
-    // Puts Item in the place of the one at Index, which the viewer does when
-    // it scrolls the content of a scroller sideways.
-    procedure ReplaceItem(const Index: Integer; const Item: IDisplayItem);
+    procedure SetScrollerOffset(const Index: Integer; const Offset: Single);
   end;
 
 implementation
 
 uses
+  System.Math,
   Markdown4D.Defines;
 
 constructor TDisplayItem.Create(const Kind: TDisplayItemKind; const Bounds: TLayoutRectF; const Node: IMarkdownNode);
@@ -612,6 +612,11 @@ begin
   Result := TDisplayDisclosure.Create(ShiftedBounds(DeltaX, DeltaY), FNode, FKey, FIsOpen, MovedMarker, FColor);
 end;
 
+class function TDisplayScroller.TrackSpace: Single;
+begin
+  Result := TrackHeight + TrackGap;
+end;
+
 constructor TDisplayScroller.Create(const Bounds: TLayoutRectF; const Node: IMarkdownNode; const ItemCount: Integer;
   const ContentWidth, Offset: Single; const Key: Integer);
 begin
@@ -621,11 +626,6 @@ begin
   FContentWidth := ContentWidth;
   FOffset := Offset;
   FKey := Key;
-end;
-
-class function TDisplayScroller.TrackSpace: Single;
-begin
-  Result := TrackHeight + 2;
 end;
 
 function TDisplayScroller.GetItemCount: Integer;
@@ -691,9 +691,21 @@ begin
   Result := TDisplayScroller.Create(FBounds, FNode, FItemCount, FContentWidth, Offset, FKey);
 end;
 
-procedure TMarkdownDisplayList.ReplaceItem(const Index: Integer; const Item: IDisplayItem);
+// The content moves by what the offset changes, so everything that reads
+// positions off the display list, the pointer, the selection and find, sees
+// it where it is drawn.
+procedure TMarkdownDisplayList.SetScrollerOffset(const Index: Integer; const Offset: Single);
 begin
-  FItems[Index] := Item;
+  const Scroller = FItems[Index] as IDisplayScroller;
+  const NewOffset = EnsureRange(Offset, 0, Scroller.MaxOffset);
+  const Delta = Scroller.Offset - NewOffset;
+  const IsUnchanged = (Delta = 0);
+  if IsUnchanged then
+    Exit;
+
+  for var ContentIndex := Index + 1 to Index + Scroller.ItemCount do
+    FItems[ContentIndex] := (FItems[ContentIndex] as IDisplayItemShift).Shifted(Delta, 0);
+  FItems[Index] := Scroller.WithOffset(NewOffset);
 end;
 
 constructor TMarkdownDisplayList.Create(const Items: TArray<IDisplayItem>; const Blocks: TArray<TLayoutBlockInfo>;

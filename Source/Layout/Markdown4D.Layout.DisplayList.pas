@@ -199,6 +199,9 @@ type
     function GetBlockCount: Integer;
     function GetBlockInfo(const Index: Integer): TLayoutBlockInfo;
     function GetRecomputedBlockIndexes: TArray<Integer>;
+    // Scrolls the scroller at Index to Offset, kept between 0 and its
+    // MaxOffset, and moves its content along.
+    procedure SetScrollerOffset(const Index: Integer; const Offset: Single);
     property ItemCount: Integer read GetItemCount;
     property Items[const Index: Integer]: IDisplayItem read GetItem;
     property Width: Single read GetWidth;

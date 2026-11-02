@@ -138,14 +138,15 @@ type
     function TryAdjacentRun(const ItemIndex, Direction: Integer; out AdjacentIndex: Integer;
       out Run: IDisplayTextRun): Boolean;
     class function ContinuesWord(const Run, Before: IDisplayTextRun): Boolean; static;
+    class function ContinuesLine(const Run, Before: IDisplayTextRun): Boolean; static;
+    class function CharacterClassOf(const Character: Char): TCharacterClass; static;
     function TryFindScrollerAt(const Point: TLayoutPointF; out Index: Integer): Boolean;
     function TryFindScrollerOf(const ItemIndex: Integer; out Index: Integer): Boolean;
+    function IsOverScrollerTrack(const Point: TLayoutPointF): Boolean;
     procedure SetScrollerOffset(const Index: Integer; const Offset: Single);
     procedure RestoreScrollerOffsets;
     procedure RevealInScroller(const ItemIndex: Integer);
     function ClipToScroller(const ItemIndex: Integer; const Rect: TLayoutRectF): TLayoutRectF;
-    class function ContinuesLine(const Run, Before: IDisplayTextRun): Boolean; static;
-    class function CharacterClassOf(const Character: Char): TCharacterClass; static;
     function NextMatchAfterSelection(const Matches: TArray<TMarkdownFoundRange>): TMarkdownFoundRange;
     function PreviousMatchBeforeSelection(const Matches: TArray<TMarkdownFoundRange>): TMarkdownFoundRange;
     function HasCaret: Boolean;
@@ -278,7 +279,6 @@ type
     procedure DragScrollerThumb(const Point: TLayoutPointF);
     procedure EndScrollerDrag;
     function IsDraggingScroller: Boolean;
-    function IsOverScrollerTrack(const Point: TLayoutPointF): Boolean;
     function TryGetCodeBlockAt(const Point: TLayoutPointF; out Region: TMarkdownCodeBlockRegion): Boolean;
     // The <details> section whose summary line is under the point. Key
     // identifies the section to ToggleDisclosure.
@@ -318,7 +318,6 @@ uses
   Markdown4D.Layout.HitTest,
   Markdown4D.Layout.SourceMapping,
   Markdown4D.Layout.SelectedMarkdown,
-  Markdown4D.Layout.Primitives,
   Markdown4D.Toc,
   Markdown4D.Layout.Zoom;
 
@@ -1519,24 +1518,17 @@ begin
   end;
 end;
 
-// The content moves by what the offset changes, so everything that reads
-// positions off the display list, the pointer, the selection and find, sees
-// it where it is drawn.
 procedure TMarkdownViewerModel.SetScrollerOffset(const Index: Integer; const Offset: Single);
 begin
+  const OldOffset = (FDisplayList.Items[Index] as IDisplayScroller).Offset;
+  FDisplayList.SetScrollerOffset(Index, Offset);
+
   const Scroller = FDisplayList.Items[Index] as IDisplayScroller;
-  const NewOffset = EnsureRange(Offset, 0, Scroller.MaxOffset);
-  const Delta = Scroller.Offset - NewOffset;
-  const CanMove = ((Delta <> 0) and (TObject(FDisplayList) is TMarkdownDisplayList));
-  if not CanMove then
+  const IsMoved = (Scroller.Offset <> OldOffset);
+  if not IsMoved then
     Exit;
 
-  const List = TMarkdownDisplayList(TObject(FDisplayList));
-  for var ContentIndex := Index + 1 to Index + Scroller.ItemCount do
-    List.ReplaceItem(ContentIndex, (FDisplayList.Items[ContentIndex] as IDisplayItemShift).Shifted(Delta, 0));
-  List.ReplaceItem(Index, Scroller.WithOffset(NewOffset));
-
-  FScrollerOffsets.AddOrSetValue(Scroller.Key, NewOffset);
+  FScrollerOffsets.AddOrSetValue(Scroller.Key, Scroller.Offset);
   RefreshHighlights;
 end;
 
@@ -1561,7 +1553,8 @@ begin
   end;
 end;
 
-// A match find selects in the part of a formula out of view scrolls into it.
+// A match that find selects in a part of a formula out of view scrolls that
+// part into view.
 procedure TMarkdownViewerModel.RevealInScroller(const ItemIndex: Integer);
 begin
   var Index: Integer;
@@ -1613,7 +1606,7 @@ begin
     Exit;
 
   TryFindScrollerAt(Point, FDraggedScroller);
-  var Thumb := (FDisplayList.Items[FDraggedScroller] as IDisplayScroller).Thumb;
+  const Thumb = (FDisplayList.Items[FDraggedScroller] as IDisplayScroller).Thumb;
   if not Thumb.Contains(Point) then
   begin
     FThumbGrab := Thumb.Width / 2;

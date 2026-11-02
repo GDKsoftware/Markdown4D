@@ -94,10 +94,18 @@ type
     const
       DefaultWidth = 400.0;
       DefaultHeight = 300.0;
+      ScrollTolerance = 0.01;
+      WideFormula = '$$'#10'a + b + c + d + e + f + g + h + i + j + k + l + m + n + o + p + q + r + s + t + u' +
+        ' + v + w + z'#10'$$';
+      WideLinkedFormula = '$$'#10'\href{#target}{a} + b + c + d + e + f + g + h + i + j + k + l + m + n + o' +
+        ' + p + q + r + s + t + u + v + w + z'#10'$$';
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
       FModel: TMarkdownViewerModel;
+    class function FindScroller(const DisplayList: IMarkdownDisplayList): IDisplayScroller;
+    class function GlyphBounds(const DisplayList: IMarkdownDisplayList; const Glyph: string): TLayoutRectF;
+    class function CentreOf(const Bounds: TLayoutRectF): TLayoutPointF;
 
   public
     [Setup]
@@ -129,6 +137,15 @@ type
 
     [Test]
     procedure ScrollerThumbDrag_ScrollsToTheEnd;
+
+    [Test]
+    procedure WideDisplayFormula_TrackSitsRightBelowFormula;
+
+    [Test]
+    procedure DisplayFormula_TakesTextLineAsMinimumHeight;
+
+    [Test]
+    procedure Href_ScrolledOutOfView_FindsNoLink;
   end;
 
 implementation
@@ -441,36 +458,6 @@ begin
     FModel.SelectedText);
 end;
 
-function FindScroller(const DisplayList: IMarkdownDisplayList): IDisplayScroller;
-begin
-  Result := nil;
-  for var Index := 0 to DisplayList.ItemCount - 1 do
-  begin
-    if Supports(DisplayList.Items[Index], IDisplayScroller, Result) then
-      Exit;
-  end;
-end;
-
-function GlyphBounds(const DisplayList: IMarkdownDisplayList; const Glyph: string): TLayoutRectF;
-begin
-  for var Index := 0 to DisplayList.ItemCount - 1 do
-  begin
-    var Run: IDisplayTextRun;
-    if Supports(DisplayList.Items[Index], IDisplayTextRun, Run) and (Run.Text = Glyph) then
-    begin
-      Result := Run.Bounds;
-      Exit;
-    end;
-  end;
-
-  raise Exception.CreateFmt('No run "%s" in the display list', [Glyph]);
-end;
-
-const
-  ScrollTolerance = 0.01;
-  WideFormula = '$$'#10'a + b + c + d + e + f + g + h + i + j + k + l + m + n + o + p + q + r + s + t + u + v' +
-    ' + w + z'#10'$$';
-
 procedure TMathViewerTests.WideDisplayFormula_ScrollsInsteadOfOverflowing;
 begin
   FModel.SetViewport(200, DefaultHeight);
@@ -520,6 +507,70 @@ begin
 
   const Moved = FindScroller(FModel.DisplayList);
   Assert.AreEqual(Moved.MaxOffset, Moved.Offset, ScrollTolerance, 'dragging past the end stops at the end');
+end;
+
+procedure TMathViewerTests.WideDisplayFormula_TrackSitsRightBelowFormula;
+begin
+  FModel.SetViewport(200, DefaultHeight);
+  FModel.Text := WideFormula;
+
+  const Track = FindScroller(FModel.DisplayList).Track;
+  const Block = FModel.DisplayList.BlockInfos[0];
+  const SpaceBelowTrack = Block.Top + Block.Height - Track.Bottom;
+  const IsAbovePadding = (SpaceBelowTrack >= FTheme.BlockSpacing / 2 - ScrollTolerance);
+  Assert.IsTrue(IsAbovePadding, 'the padding of the block stays below the track');
+end;
+
+procedure TMathViewerTests.DisplayFormula_TakesTextLineAsMinimumHeight;
+begin
+  FTheme.BaseFont := TMarkdownFontStyle.Create(FTheme.BaseFont.FamilyName, FTheme.MathFont.Size / 2);
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '$$'#10'x'#10'$$';
+
+  const Block = FModel.DisplayList.BlockInfos[0];
+  const MathLineHeight = FMeasurer.LineHeight(FTheme.MathFont);
+  const IsBelowMathLine = (Block.Height < MathLineHeight + FTheme.BlockSpacing);
+  Assert.IsTrue(IsBelowMathLine, 'the line height of the math font, which can be far taller, does not count');
+end;
+
+procedure TMathViewerTests.Href_ScrolledOutOfView_FindsNoLink;
+begin
+  FModel.SetViewport(200, DefaultHeight);
+  FModel.Text := WideLinkedFormula;
+
+  const Band = FindScroller(FModel.DisplayList).Bounds;
+  const InView = CentreOf(GlyphBounds(FModel.DisplayList, 'a'));
+  var Link: IMarkdownLink;
+  Assert.IsTrue(TMarkdownHitTester.TryFindLink(FModel.DisplayList, InView, Link), 'in view the link answers');
+
+  FModel.ScrollSideways(InView, 30);
+
+  const Glyph = GlyphBounds(FModel.DisplayList, 'a');
+  const IsOutOfView = (Glyph.Right < Band.Left);
+  Assert.IsTrue(IsOutOfView);
+  Assert.IsFalse(TMarkdownHitTester.TryFindLink(FModel.DisplayList, CentreOf(Glyph), Link),
+    'scrolled out of view it does not');
+end;
+
+class function TMathViewerTests.FindScroller(const DisplayList: IMarkdownDisplayList): IDisplayScroller;
+begin
+  Result := nil;
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    if Supports(DisplayList.Items[Index], IDisplayScroller, Result) then
+      Exit;
+  end;
+end;
+
+class function TMathViewerTests.GlyphBounds(const DisplayList: IMarkdownDisplayList; const Glyph: string): TLayoutRectF;
+begin
+  const Run = TMathLayoutIntegrationTests.RunWithText(DisplayList, Glyph);
+  Result := Run.Bounds;
+end;
+
+class function TMathViewerTests.CentreOf(const Bounds: TLayoutRectF): TLayoutPointF;
+begin
+  Result := TLayoutPointF.Create((Bounds.Left + Bounds.Right) / 2, (Bounds.Top + Bounds.Bottom) / 2);
 end;
 
 end.
