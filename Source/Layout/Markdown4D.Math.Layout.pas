@@ -1499,9 +1499,6 @@ begin
   Result := Own;
 end;
 
-// Heights in em for the glyph classes the font families share closely
-// enough: the layouter needs ascent and descent, and the measurer only
-// reports a line height. The values follow STIX Two Math.
 // Whole pixels, at least one: a rule of 1.2 pixels painted at 10.4 or at
 // 10.6 rounds to one pixel or to two, so bars and lines of the same formula
 // would look unequally thick.
@@ -1538,6 +1535,9 @@ begin
   end;
 end;
 
+// Heights in em for the glyph classes the font families share closely
+// enough: the layouter needs ascent and descent, and the measurer only
+// reports a line height. The values follow STIX Two Math.
 class function TMathBoxBuilder.CharacterExtent(const First: Char): TGlyphExtent;
 begin
   if First.IsDigit then
