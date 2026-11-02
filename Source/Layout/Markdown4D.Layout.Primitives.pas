@@ -178,6 +178,33 @@ type
     function Shifted(const DeltaX, DeltaY: Single): IDisplayItem; override;
   end;
 
+  TDisplayScroller = class(TDisplayItem, IDisplayScroller)
+  private
+    const
+      TrackHeight = 6;
+      MinimumThumbWidth = 24;
+    var
+      FItemCount: Integer;
+      FContentWidth: Single;
+      FOffset: Single;
+      FKey: Integer;
+    function GetItemCount: Integer;
+    function GetContentWidth: Single;
+    function GetOffset: Single;
+    function GetKey: Integer;
+    function GetTrack: TLayoutRectF;
+    function GetThumb: TLayoutRectF;
+    function GetMaxOffset: Single;
+
+  public
+    // How much room the track takes below the content.
+    class function TrackSpace: Single; static;
+    constructor Create(const Bounds: TLayoutRectF; const Node: IMarkdownNode; const ItemCount: Integer;
+      const ContentWidth, Offset: Single; const Key: Integer);
+    function Shifted(const DeltaX, DeltaY: Single): IDisplayItem; override;
+    function WithOffset(const Offset: Single): IDisplayScroller;
+  end;
+
   TMarkdownDisplayList = class(TInterfacedObject, IMarkdownDisplayList)
   private
     FItems: TArray<IDisplayItem>;
@@ -198,6 +225,9 @@ type
   public
     constructor Create(const Items: TArray<IDisplayItem>; const Blocks: TArray<TLayoutBlockInfo>;
       const Width, ContentWidth, Height: Single; const RecomputedBlockIndexes: TArray<Integer>);
+    // Puts Item in the place of the one at Index, which the viewer does when
+    // it scrolls the content of a scroller sideways.
+    procedure ReplaceItem(const Index: Integer; const Item: IDisplayItem);
   end;
 
 implementation
@@ -580,6 +610,90 @@ begin
     FMarker.Bottom + DeltaY);
 
   Result := TDisplayDisclosure.Create(ShiftedBounds(DeltaX, DeltaY), FNode, FKey, FIsOpen, MovedMarker, FColor);
+end;
+
+constructor TDisplayScroller.Create(const Bounds: TLayoutRectF; const Node: IMarkdownNode; const ItemCount: Integer;
+  const ContentWidth, Offset: Single; const Key: Integer);
+begin
+  inherited Create(TDisplayItemKind.Scroller, Bounds, Node);
+
+  FItemCount := ItemCount;
+  FContentWidth := ContentWidth;
+  FOffset := Offset;
+  FKey := Key;
+end;
+
+class function TDisplayScroller.TrackSpace: Single;
+begin
+  Result := TrackHeight + 2;
+end;
+
+function TDisplayScroller.GetItemCount: Integer;
+begin
+  Result := FItemCount;
+end;
+
+function TDisplayScroller.GetContentWidth: Single;
+begin
+  Result := FContentWidth;
+end;
+
+function TDisplayScroller.GetOffset: Single;
+begin
+  Result := FOffset;
+end;
+
+function TDisplayScroller.GetKey: Integer;
+begin
+  Result := FKey;
+end;
+
+function TDisplayScroller.GetMaxOffset: Single;
+begin
+  Result := FContentWidth - FBounds.Width;
+  if Result < 0 then
+    Result := 0;
+end;
+
+function TDisplayScroller.GetTrack: TLayoutRectF;
+begin
+  Result := TLayoutRectF.Create(FBounds.Left, FBounds.Bottom - TrackHeight, FBounds.Right, FBounds.Bottom);
+end;
+
+// The thumb is as much of the track as the view is of the content, and sits
+// as far along it as the view is along the content.
+function TDisplayScroller.GetThumb: TLayoutRectF;
+begin
+  const Track = GetTrack;
+  var Width := Track.Width;
+  if FContentWidth > 0 then
+    Width := Track.Width * FBounds.Width / FContentWidth;
+  if Width < MinimumThumbWidth then
+    Width := MinimumThumbWidth;
+  if Width > Track.Width then
+    Width := Track.Width;
+
+  var Left := Track.Left;
+  const MaxOffset = GetMaxOffset;
+  if MaxOffset > 0 then
+    Left := Track.Left + (Track.Width - Width) * FOffset / MaxOffset;
+
+  Result := TLayoutRectF.Create(Left, Track.Top, Left + Width, Track.Bottom);
+end;
+
+function TDisplayScroller.Shifted(const DeltaX, DeltaY: Single): IDisplayItem;
+begin
+  Result := TDisplayScroller.Create(ShiftedBounds(DeltaX, DeltaY), FNode, FItemCount, FContentWidth, FOffset, FKey);
+end;
+
+function TDisplayScroller.WithOffset(const Offset: Single): IDisplayScroller;
+begin
+  Result := TDisplayScroller.Create(FBounds, FNode, FItemCount, FContentWidth, Offset, FKey);
+end;
+
+procedure TMarkdownDisplayList.ReplaceItem(const Index: Integer; const Item: IDisplayItem);
+begin
+  FItems[Index] := Item;
 end;
 
 constructor TMarkdownDisplayList.Create(const Items: TArray<IDisplayItem>; const Blocks: TArray<TLayoutBlockInfo>;

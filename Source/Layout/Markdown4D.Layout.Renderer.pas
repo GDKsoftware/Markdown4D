@@ -46,6 +46,8 @@ type
     class procedure RenderWedge(const Wedge: IDisplayWedge; const Painter: IPainter);
     class procedure RenderPolygon(const Polygon: IDisplayPolygon; const Painter: IPainter);
     class procedure RenderDisclosure(const Disclosure: IDisplayDisclosure; const Painter: IPainter);
+    class procedure RenderScroller(const DisplayList: IMarkdownDisplayList; const Index: Integer;
+      const Painter: IPainter; const Viewport: TLayoutRectF);
     class function DisclosureTriangle(const Marker: TLayoutRectF; const IsOpen: Boolean): TArray<TLayoutPointF>;
 
   public
@@ -72,11 +74,21 @@ begin
   try
     Painter.SetClip(Viewport);
 
-    for var Index := 0 to DisplayList.ItemCount - 1 do
+    var Index := 0;
+    while Index < DisplayList.ItemCount do
     begin
       const Item = DisplayList.Items[Index];
+      if Item.Kind = TDisplayItemKind.Scroller then
+      begin
+        if IsVisible(Item.Bounds, Viewport) then
+          RenderScroller(DisplayList, Index, Painter, Viewport);
+        Index := Index + 1 + (Item as IDisplayScroller).ItemCount;
+        Continue;
+      end;
+
       if IsVisible(Item.Bounds, Viewport) then
         RenderItem(Item, Painter);
+      Inc(Index);
     end;
   finally
     Painter.RestoreState;
@@ -112,9 +124,42 @@ begin
       RenderPolygon(Item as IDisplayPolygon, Painter);
     TDisplayItemKind.Disclosure:
       RenderDisclosure(Item as IDisplayDisclosure, Painter);
+    TDisplayItemKind.Scroller:
+      ; // Render draws a scroller together with the content it clips.
   else
     raise EMarkdownError.CreateFmt(UnhandledItemKindMessage, [Ord(Item.Kind)]);
   end;
+end;
+
+// The content of a scroller is clipped to its band; the track below it
+// shows, as a thin bar, which part of the content is in view.
+class procedure TMarkdownDisplayListRenderer.RenderScroller(const DisplayList: IMarkdownDisplayList;
+  const Index: Integer; const Painter: IPainter; const Viewport: TLayoutRectF);
+const
+  TrackColor = TLayoutColor($20808080);
+  ThumbColor = TLayoutColor($90808080);
+begin
+  const Scroller = DisplayList.Items[Index] as IDisplayScroller;
+  const Bounds = Scroller.Bounds;
+  const Clip = TLayoutRectF.Create(Max(Bounds.Left, Viewport.Left), Max(Bounds.Top, Viewport.Top),
+    Min(Bounds.Right, Viewport.Right), Min(Bounds.Bottom, Viewport.Bottom));
+
+  Painter.SaveState;
+  try
+    Painter.SetClip(Clip);
+    const LastIndex = Min(Index + Scroller.ItemCount, DisplayList.ItemCount - 1);
+    for var ContentIndex := Index + 1 to LastIndex do
+    begin
+      const Item = DisplayList.Items[ContentIndex];
+      if IsVisible(Item.Bounds, Viewport) then
+        RenderItem(Item, Painter);
+    end;
+  finally
+    Painter.RestoreState;
+  end;
+
+  Painter.FillRect(Scroller.Track, TrackColor);
+  Painter.FillRect(Scroller.Thumb, ThumbColor);
 end;
 
 class procedure TMarkdownDisplayListRenderer.RenderTextRun(const Run: IDisplayTextRun; const Painter: IPainter);

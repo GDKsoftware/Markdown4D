@@ -410,6 +410,12 @@ formula is centred in the column. A formula selects as one unit and copies as
 its markdown, `$...$` or a `$$` block, so a paste lands back in a document as
 the same formula; find searches the LaTeX source, not the drawn glyphs.
 
+A display formula wider than the column scrolls sideways in its band, the way
+browsers show a long KaTeX or MathJax formula: a thin track below it shows
+which part is in view, and `Shift` with the mouse wheel, a sideways swipe on a
+touchpad (VCL) or a drag on the track scrolls it. Find scrolls a match into
+view, and a new layout keeps the formula where the reader left it.
+
 `Theme.MathFont` names the family and size; the default family is the generic
 `math`, which the painters resolve to the bundled STIX Two Math when
 `Markdown4D.Vcl.MathFont` or `Markdown4D.Fmx.MathFont` is in a uses clause, and

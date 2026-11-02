@@ -857,6 +857,12 @@ begin
     Exit;
 
   const Point = ContentPointOf(X, Y);
+  if FModel.TryBeginScrollerDrag(Point) then
+  begin
+    RedrawContent;
+    Exit;
+  end;
+
   if PointOnCopyButton(Point) then
   begin
     CopyCodeToClipboard(FCodeHoverText);
@@ -920,6 +926,13 @@ begin
   end;
 
   const ContentPoint = ContentPointOf(X, Y);
+  if FModel.IsDraggingScroller then
+  begin
+    FModel.DragScrollerThumb(ContentPoint);
+    RedrawContent;
+    Exit;
+  end;
+
   if FSelecting then
   begin
     FModel.SetSelectionExtent(ContentPoint);
@@ -963,6 +976,10 @@ begin
   if FDraggingScrollBar then
   begin
     FDraggingScrollBar := False;
+  end
+  else if FModel.IsDraggingScroller then
+  begin
+    FModel.EndScrollerDrag;
   end
   else if FSelecting then
   begin
@@ -1076,6 +1093,18 @@ begin
     else
       ZoomOut;
 
+    Handled := True;
+    Exit;
+  end;
+
+  // Shift turns the wheel sideways over a formula wider than the column, as
+  // in a browser.
+  const IsSideways = (ssShift in Shift) and FHasLastMousePoint and
+    FModel.ScrollSideways(ContentPointOf(FLastMousePoint.X, FLastMousePoint.Y),
+      -WheelDelta / MouseWheelDeltaPerNotch * WheelLinesPerNotch * LineScrollAmount);
+  if IsSideways then
+  begin
+    RedrawContent;
     Handled := True;
     Exit;
   end;

@@ -203,6 +203,8 @@ type
     procedure ApplyScrollBarTheme;
     function GetSelectedText: string;
     procedure WMVScroll(var Message: TWMVScroll); message WM_VSCROLL;
+    procedure WMMouseHWheel(var Message: TWMMouseWheel); message WM_MOUSEHWHEEL;
+    function ScrollSidewaysAt(const ScreenPoint: TPoint; const Notches: Single): Boolean;
     procedure WMEraseBkgnd(var Message: TWMEraseBkgnd); message WM_ERASEBKGND;
     procedure WMGetDlgCode(var Message: TWMGetDlgCode); message WM_GETDLGCODE;
     procedure CMMouseLeave(var Message: TMessage); message CM_MOUSELEAVE;
@@ -868,6 +870,12 @@ begin
     SetFocus;
 
   const Point = ContentPointOf(X, Y);
+  if FModel.TryBeginScrollerDrag(Point) then
+  begin
+    Invalidate;
+    Exit;
+  end;
+
   if PointOnCopyButton(Point) then
   begin
     CopyCodeToClipboard(FCodeHoverText);
@@ -935,6 +943,13 @@ begin
   end;
 
   const ContentPoint = ContentPointOf(X, Y);
+  if FModel.IsDraggingScroller then
+  begin
+    FModel.DragScrollerThumb(ContentPoint);
+    Invalidate;
+    Exit;
+  end;
+
   if FSelecting then
   begin
     FModel.SetSelectionExtent(ContentPoint);
@@ -974,6 +989,12 @@ begin
     Exit;
 
   const ClickKind = FClickGesture.Release(X, Y, Mouse.DragThreshold);
+
+  if FModel.IsDraggingScroller then
+  begin
+    FModel.EndScrollerDrag;
+    Exit;
+  end;
 
   if FSelecting then
   begin
@@ -1065,6 +1086,14 @@ begin
   if FAutoScroller.IsActive then
   begin
     FAutoScroller.Stop;
+    Result := True;
+    Exit;
+  end;
+
+  // Shift turns the wheel sideways over a formula wider than the column, as
+  // in a browser.
+  if (ssShift in Shift) and ScrollSidewaysAt(MousePos, -WheelDelta / WHEEL_DELTA) then
+  begin
     Result := True;
     Exit;
   end;
@@ -1324,6 +1353,27 @@ end;
 procedure TMarkdownViewer.WMGetDlgCode(var Message: TWMGetDlgCode);
 begin
   Message.Result := DLGC_WANTARROWS;
+end;
+
+// A tilt of the wheel or a sideways swipe on a touchpad.
+procedure TMarkdownViewer.WMMouseHWheel(var Message: TWMMouseWheel);
+begin
+  if ScrollSidewaysAt(Point(Message.XPos, Message.YPos), Message.WheelDelta / WHEEL_DELTA) then
+  begin
+    Message.Result := 1;
+    Exit;
+  end;
+
+  inherited;
+end;
+
+function TMarkdownViewer.ScrollSidewaysAt(const ScreenPoint: TPoint; const Notches: Single): Boolean;
+begin
+  const ClientPoint = ScreenToClient(ScreenPoint);
+  Result := FModel.ScrollSideways(ContentPointOf(ClientPoint.X, ClientPoint.Y),
+    Notches * WheelLinesPerNotch * LineScrollAmount);
+  if Result then
+    Invalidate;
 end;
 
 procedure TMarkdownViewer.CMMouseLeave(var Message: TMessage);
