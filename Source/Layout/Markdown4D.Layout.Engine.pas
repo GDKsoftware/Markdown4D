@@ -1481,8 +1481,10 @@ end;
 
 // A display formula is centred in the available width and set in display
 // style. One wider than the column starts at the left and scrolls sideways
-// in its band, as browsers show a long KaTeX or MathJax formula, with room
-// below it for the track that shows how far it is scrolled.
+// in its band, as browsers show a long KaTeX or MathJax formula, with the
+// track that shows how far it is scrolled right below the formula. The block
+// is as tall as the formula and at least a line of text, not a line of the
+// math font: Windows gives STIX Two Math a line height of more than four em.
 procedure TLayoutWorker.EmitMathBlock(const Command: TLayoutCommand);
 begin
   const Math = Command.Node as IMarkdownMath;
@@ -1494,11 +1496,12 @@ begin
   const AvailableWidth = ContentRight - Command.X;
   const Left = Command.X + Max(0, (AvailableWidth - Formula.Width) / 2);
   const IsWide = (Formula.Width > AvailableWidth);
-  var Height := Max(Formula.Ascent + Formula.Descent, FMeasurer.LineHeight(Font)) + 2 * Padding;
+  var DrawnHeight := Formula.Ascent + Formula.Descent;
   if IsWide then
-    Height := Height + TDisplayScroller.TrackSpace;
+    DrawnHeight := DrawnHeight + TDisplayScroller.TrackSpace;
+  const Height = Max(DrawnHeight, FMeasurer.LineHeight(FTheme.BaseFont)) + 2 * Padding;
 
-  const Band = TLayoutRectF.Create(Command.X, FCurrentY, ContentRight, FCurrentY + Height);
+  const Band = TLayoutRectF.Create(Command.X, FCurrentY, ContentRight, FCurrentY + Padding + DrawnHeight);
   const FirstItem = FItems.Count;
 
   const Canvas: IExtensionCanvas = TDisplayListExtensionCanvas.Create(FMeasurer, FItems, Command.Node,

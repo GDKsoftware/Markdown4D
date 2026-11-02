@@ -17,6 +17,8 @@ type
 
   TMarkdownHitTester = class
   private
+    class function NextIndex(const DisplayList: IMarkdownDisplayList; const Index: Integer;
+      const Point: TLayoutPointF): Integer;
     class function NearestCharacterIndex(const Run: IDisplayTextRun; const Point: TLayoutPointF;
       const Measurer: ITextMeasurer): Integer;
 
@@ -39,15 +41,14 @@ class function TMarkdownHitTester.TryFindLink(const DisplayList: IMarkdownDispla
 begin
   Link := nil;
 
-  for var Index := 0 to DisplayList.ItemCount - 1 do
+  var Index := 0;
+  while Index < DisplayList.ItemCount do
   begin
     const Item = DisplayList.Items[Index];
-    const IsHit = Item.Bounds.Contains(Point);
-    if not IsHit then
-      Continue;
-
     const Node = Item.Node;
-    if Node = nil then
+    const IsHit = Item.Bounds.Contains(Point) and (Node <> nil);
+    Index := NextIndex(DisplayList, Index, Point);
+    if not IsHit then
       Continue;
 
     const IsLinkNode = (Node.Kind = TMarkdownNodeKind.Link) or (Node.Kind = TMarkdownNodeKind.Autolink);
@@ -87,11 +88,13 @@ class function TMarkdownHitTester.TryFindTextPosition(const DisplayList: IMarkdo
 begin
   Hit := Default(TMarkdownTextHit);
 
-  for var Index := 0 to DisplayList.ItemCount - 1 do
+  var Index := 0;
+  while Index < DisplayList.ItemCount do
   begin
     var Run: IDisplayTextRun;
     const IsTextRunHit = Supports(DisplayList.Items[Index], IDisplayTextRun, Run) and
       (Run.Role <> TDisplayTextRunRole.Drawing) and Run.Bounds.Contains(Point);
+    Index := NextIndex(DisplayList, Index, Point);
     if not IsTextRunHit then
       Continue;
 
@@ -102,6 +105,21 @@ begin
   end;
 
   Result := False;
+end;
+
+// The index to test after Index. The content of a scroller is drawn only
+// inside its band, so with the point outside the band all of it is passed
+// over: a link scrolled out of view does not answer the pointer.
+class function TMarkdownHitTester.NextIndex(const DisplayList: IMarkdownDisplayList; const Index: Integer;
+  const Point: TLayoutPointF): Integer;
+begin
+  Result := Index + 1;
+
+  var Scroller: IDisplayScroller;
+  const IsOutsideScroller = Supports(DisplayList.Items[Index], IDisplayScroller, Scroller) and
+    not Scroller.Bounds.Contains(Point);
+  if IsOutsideScroller then
+    Result := Result + Scroller.ItemCount;
 end;
 
 class function TMarkdownHitTester.NearestCharacterIndex(const Run: IDisplayTextRun; const Point: TLayoutPointF;
