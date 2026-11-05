@@ -90,6 +90,9 @@ type
     procedure Parse_SpaceCommand_YieldsWordSpace;
 
     [Test]
+    procedure Parse_BackslashBeforeWhitespace_YieldsWordSpace;
+
+    [Test]
     procedure Parse_TextColor_WrapsOnlyItsArgument;
 
     [Test]
@@ -514,6 +517,24 @@ begin
 
   Assert.AreEqual<TMathNodeKind>(TMathNodeKind.Space, Row.Children[1].Kind);
   Assert.AreEqual(WordSpace.SpaceWidth, Row.Children[1].SpaceWidth, 0.0001);
+end;
+
+// TeX reads a backslash before a tab or the end of a line as \ followed by a
+// space, as KaTeX and MathJax do.
+procedure TMathSyntaxTests.Parse_BackslashBeforeWhitespace_YieldsWordSpace;
+begin
+  const Sources: TArray<string> = ['a\'#10'b', 'a\'#13#10'b', 'a\'#9'b'];
+  const WordSpace = Parse('a\ b').Children[1];
+
+  for var Source in Sources do
+  begin
+    const Row = Parse(Source);
+
+    Assert.AreEqual(3, Row.ChildCount);
+    Assert.AreEqual<TMathNodeKind>(TMathNodeKind.Space, Row.Children[1].Kind);
+    Assert.AreEqual(WordSpace.SpaceWidth, Row.Children[1].SpaceWidth, 0.0001);
+    Assert.AreEqual('b', Row.Children[2].Text);
+  end;
 end;
 
 procedure TMathSyntaxTests.Parse_TextColor_WrapsOnlyItsArgument;
