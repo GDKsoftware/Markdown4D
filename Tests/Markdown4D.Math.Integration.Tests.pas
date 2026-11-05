@@ -69,6 +69,9 @@ type
     procedure Tabular_DrawsRulesAndUprightText;
 
     [Test]
+    procedure Tabular_KeepsRoomBetweenTextAndRules;
+
+    [Test]
     procedure FormulaGlyphs_AreDrawingsWithOneSourceRun;
 
     [Test]
@@ -332,6 +335,27 @@ begin
       Inc(Rules);
   end;
   Assert.AreEqual(5, Rules, 'two \hline and three vertical rules');
+end;
+
+// A row is as tall as LaTeX's strut, 1.2 em, with 0.2 em more above and below
+// it, so the rules keep clear of the text.
+procedure TMathLayoutIntegrationTests.Tabular_KeepsRoomBetweenTextAndRules;
+begin
+  const DisplayList = Layout('$$'#10'\begin{tabular}{c}'#10'\hline'#10'Word \\'#10'\hline'#10'\end{tabular}'#10'$$');
+  const MinimumRowHeight = 1.6 * FTheme.MathFont.Size;
+
+  var Rules: TArray<TLayoutRectF> := [];
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    var Rule: IDisplayRectangle;
+    const IsRule = (Supports(DisplayList.Items[Index], IDisplayRectangle, Rule) and (Rule.FillColor <> 0));
+    if IsRule then
+      Rules := Rules + [Rule.Bounds];
+  end;
+
+  Assert.AreEqual(2, Integer(Length(Rules)));
+  const RowHeight = Rules[1].Top - Rules[0].Bottom;
+  Assert.IsTrue(RowHeight >= MinimumRowHeight - SingleTolerance, 'the row keeps room above and below its text');
 end;
 
 procedure TMathLayoutIntegrationTests.InlineMath_KeepsTheSpaceAfterIt;
