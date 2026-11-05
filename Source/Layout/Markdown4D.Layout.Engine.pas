@@ -2557,10 +2557,13 @@ begin
           MaxAscent := Max(MaxAscent, Ascent);
           MaxDescent := Max(MaxDescent, FMeasurer.LineHeight(Atom.Font) - Ascent);
         end;
+      // A formula is at least as tall as a line of text: a small one such as
+      // $m$ alone on a line or in a table cell must not lower the line.
       TInlineAtomKind.MathToken:
         begin
-          MaxAscent := Max(MaxAscent, Atom.Ascent);
-          MaxDescent := Max(MaxDescent, Atom.Descent);
+          const TextAscent = FMeasurer.Baseline(FBaseFont);
+          MaxAscent := Max(MaxAscent, Max(Atom.Ascent, TextAscent));
+          MaxDescent := Max(MaxDescent, Max(Atom.Descent, FMeasurer.LineHeight(FBaseFont) - TextAscent));
         end;
       TInlineAtomKind.ImageToken:
         MaxImageHeight := Max(MaxImageHeight, Atom.Height);

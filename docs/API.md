@@ -434,6 +434,7 @@ streaming in token by token therefore draws at every flush and only grows.
 |------|----------|
 | Structure | `\frac`, `\dfrac`, `\tfrac`, `\binom`, `\sqrt[n]{}`, `^`, `_`, `'`, `{}` groups, `\left ... \right` with `( ) [ ] \{ \} \| \langle \rangle \lfloor \rfloor \lceil \rceil .` |
 | Environments | `matrix`, `pmatrix`, `bmatrix`, `Bmatrix`, `vmatrix`, `Vmatrix`, `cases`, `aligned`, `align`, `gathered`; `\\` at the top level breaks a display formula into lines |
+| Tables | `array` with a preamble of `l`, `c`, `r` and `|` for vertical rules (`p{...}` aligns left; `@{...}`, `>{...}` and the like are skipped), `\hline` above or below any row; `tabular` the same with cells set as upright text, as LaTeX's text-mode table, where `\textbf{}`, `\textit{}`, `\emph{}`, `\text{}`, `$...$` and the escaped characters `\& \% \_ \# \$ \{ \}` work |
 | Operators | `\sum`, `\prod`, `\int`, `\iint`, `\oint`, `\bigcup`, `\bigcap`, `\lim`, `\max`, `\min`, `\sup`, `\inf`, `\det`, `\gcd`, `\sin` and the other function names, `\operatorname{}`, `\limits`, `\nolimits` |
 | Symbols | The Greek alphabet, `\pm \times \cdot \div \circ \cup \cap \wedge \vee \oplus \otimes`, `\leq \geq \neq \approx \equiv \sim \subset \subseteq \in \notin \perp \parallel \mid`, the arrows, `\infty \partial \nabla \forall \exists \emptyset \neg \hbar \ell \aleph \ldots \cdots \vdots \ddots \prime \angle` |
 | Alphabets | `\mathrm`, `\mathbf`, `\boldsymbol`, `\mathit`, `\mathbb`, `\mathcal`, `\mathfrak`, `\mathsf`, `\mathtt`, `\text`, `\textit`, `\textbf` |
@@ -550,7 +551,7 @@ same.
 | `HighlightMatches(const Needle[; const Options])` / `ClearHighlights` | Mark every match, independently of the selection; the marks follow the document as it changes, an empty needle clears them, and a formula is marked once |
 | `HighlightCount: Integer` | How many matches are marked |
 | `CopySelectionToClipboard` | Copy the current selection |
-| `CopySelectionAsMarkdown` / `SelectedMarkdown: string` | Copy, or read, the markdown behind the selection. Within one line that is the selected source with the markup directly around it (selecting *bold* in `**bold**` gives `**bold**`); over several lines whole source lines, so list markers, quote markers and indentation come along; a table always whole; and a selection of everything the whole source. Line ends are the platform's |
+| `CopySelectionAsMarkdown` / `SelectedMarkdown: string` | Copy, or read, the markdown behind the selection. Within one line that is the selected source with the markup directly around it (selecting *bold* in `**bold**` gives `**bold**`); over several lines whole source lines, so list markers, quote markers and indentation come along; a table always whole; a display formula with the `$$` line that closes it; and a selection of everything the whole source. Line ends are the platform's |
 | `SelectAll` | Select the whole document |
 | `ClearSelection` | Drop the selection |
 | `SelectedText: string` | The selected text |

@@ -90,6 +90,9 @@ type
     procedure Parse_SpaceCommand_YieldsWordSpace;
 
     [Test]
+    procedure Parse_BackslashBeforeWhitespace_YieldsWordSpace;
+
+    [Test]
     procedure Parse_TextColor_WrapsOnlyItsArgument;
 
     [Test]
@@ -232,6 +235,36 @@ type
     [TestCase('Fractions', TNestedFormula.Fractions)]
     [TestCase('Primes', TNestedFormula.Primes)]
     procedure Parse_NestingWithinLimit_HasNoError(const Opening, Closing: string);
+  end;
+
+  [TestFixture]
+  TMathTableSyntaxTests = class
+  private
+    class function TableOf(const Source: string): IMathNode; static;
+  public
+    [Test]
+    procedure Array_ReadsPreambleAndRules;
+
+    [Test]
+    procedure Array_SkipsColumnModifiers;
+
+    [Test]
+    procedure Tabular_CellsAreText;
+
+    [Test]
+    procedure Tabular_ClosingLineBreak_PutsRulesBelowTheTable;
+
+    [Test]
+    procedure Tabular_TextCommands_StyleTheirWords;
+
+    [Test]
+    procedure Tabular_DollarSigns_SetAFormula;
+
+    [Test]
+    procedure Tabular_UnknownCommand_ShowsAsError;
+
+    [Test]
+    procedure Matrix_ClosingLineBreak_KeepsItsEmptyRow;
   end;
 
 implementation
@@ -514,6 +547,24 @@ begin
 
   Assert.AreEqual<TMathNodeKind>(TMathNodeKind.Space, Row.Children[1].Kind);
   Assert.AreEqual(WordSpace.SpaceWidth, Row.Children[1].SpaceWidth, 0.0001);
+end;
+
+// TeX reads a backslash before a tab or the end of a line as \ followed by a
+// space, as KaTeX and MathJax do.
+procedure TMathSyntaxTests.Parse_BackslashBeforeWhitespace_YieldsWordSpace;
+begin
+  const Sources: TArray<string> = ['a\'#10'b', 'a\'#13#10'b', 'a\'#9'b'];
+  const WordSpace = Parse('a\ b').Children[1];
+
+  for var Source in Sources do
+  begin
+    const Row = Parse(Source);
+
+    Assert.AreEqual(3, Row.ChildCount);
+    Assert.AreEqual<TMathNodeKind>(TMathNodeKind.Space, Row.Children[1].Kind);
+    Assert.AreEqual(WordSpace.SpaceWidth, Row.Children[1].SpaceWidth, 0.0001);
+    Assert.AreEqual('b', Row.Children[2].Text);
+  end;
 end;
 
 procedure TMathSyntaxTests.Parse_TextColor_WrapsOnlyItsArgument;
@@ -915,5 +966,87 @@ begin
 
   Assert.IsFalse(HasError(Row));
 end;
+
+class function TMathTableSyntaxTests.TableOf(const Source: string): IMathNode;
+begin
+  Result := TMathParser.Parse(Source).Children[0];
+end;
+
+procedure TMathTableSyntaxTests.Array_ReadsPreambleAndRules;
+begin
+  const Table = TableOf('\begin{array}{|l|cr|} a & b & c \\ \hline d & e & f \end{array}');
+
+  Assert.AreEqual<TMathNodeKind>(TMathNodeKind.Matrix, Table.Kind);
+  Assert.AreEqual('|l|cr|', Table.ColumnSpec);
+  Assert.AreEqual(2, Table.ChildCount);
+  Assert.AreEqual(0, Table.Children[0].RulesAbove);
+  Assert.AreEqual(1, Table.Children[1].RulesAbove);
+  Assert.AreEqual(3, Table.Children[1].ChildCount);
+end;
+
+procedure TMathTableSyntaxTests.Array_SkipsColumnModifiers;
+begin
+  const Table = TableOf('\begin{array}{@{}p{2cm}|>{\bfseries}c@{}} a & b \end{array}');
+
+  Assert.AreEqual('l|c', Table.ColumnSpec);
+end;
+
+procedure TMathTableSyntaxTests.Tabular_CellsAreText;
+begin
+  const Table = TableOf('\begin{tabular}{cc} Spalte 1 & 100 \% \end{tabular}');
+
+  const Row = Table.Children[0];
+  Assert.AreEqual<TMathNodeKind>(TMathNodeKind.Text, Row.Children[0].Kind);
+  Assert.AreEqual('Spalte 1', Row.Children[0].Text, 'the words keep their space');
+  Assert.AreEqual('100 %', Row.Children[1].Text, 'an escaped character is itself');
+end;
+
+procedure TMathTableSyntaxTests.Tabular_ClosingLineBreak_PutsRulesBelowTheTable;
+begin
+  const Table = TableOf('\begin{tabular}{|c|} \hline a \\ \hline \end{tabular}');
+
+  Assert.AreEqual(1, Table.ChildCount, 'the \\ before \end starts no row');
+  Assert.AreEqual(1, Table.Children[0].RulesAbove);
+  Assert.AreEqual(1, Table.RulesBelow);
+end;
+
+procedure TMathTableSyntaxTests.Tabular_TextCommands_StyleTheirWords;
+begin
+  const Table = TableOf('\begin{tabular}{l} Summe: \textbf{42} \emph{kg} \end{tabular}');
+
+  const Cell = Table.Children[0].Children[0];
+  Assert.AreEqual(4, Cell.ChildCount);
+  Assert.AreEqual('Summe: ', Cell.Children[0].Text);
+  Assert.AreEqual('42', Cell.Children[1].Text);
+  Assert.AreEqual<TMathFontVariant>(TMathFontVariant.Bold, Cell.Children[1].Variant);
+  Assert.AreEqual<TMathFontVariant>(TMathFontVariant.Italic, Cell.Children[3].Variant);
+end;
+
+procedure TMathTableSyntaxTests.Tabular_DollarSigns_SetAFormula;
+begin
+  const Table = TableOf('\begin{tabular}{l} Area $r^2$ \end{tabular}');
+
+  const Cell = Table.Children[0].Children[0];
+  Assert.AreEqual(2, Cell.ChildCount);
+  Assert.AreEqual<TMathNodeKind>(TMathNodeKind.Text, Cell.Children[0].Kind);
+  Assert.AreNotEqual<TMathNodeKind>(TMathNodeKind.Text, Cell.Children[1].Kind, 'the formula is math, not words');
+end;
+
+procedure TMathTableSyntaxTests.Tabular_UnknownCommand_ShowsAsError;
+begin
+  const Table = TableOf('\begin{tabular}{l} \foo{x} \end{tabular}');
+
+  const Cell = Table.Children[0].Children[0];
+  Assert.IsTrue(Cell.Children[0].IsError);
+end;
+
+procedure TMathTableSyntaxTests.Matrix_ClosingLineBreak_KeepsItsEmptyRow;
+begin
+  const Matrix = TableOf('\begin{pmatrix} a \\ b \\ \end{pmatrix}');
+
+  Assert.AreEqual(3, Matrix.ChildCount, 'only a table treats its last \\ apart');
+  Assert.AreEqual('', Matrix.ColumnSpec);
+end;
+
 
 end.
