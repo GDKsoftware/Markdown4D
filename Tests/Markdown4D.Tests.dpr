@@ -11,6 +11,7 @@ uses
   Markdown4D.Math.Syntax.Tests in 'Markdown4D.Math.Syntax.Tests.pas',
   Markdown4D.Math.Linear.Tests in 'Markdown4D.Math.Linear.Tests.pas',
   Markdown4D.Math.MathML.Tests in 'Markdown4D.Math.MathML.Tests.pas',
+  Markdown4D.Viewer.Clipboard.Tests in 'Markdown4D.Viewer.Clipboard.Tests.pas',
   Markdown4D.Color.Names.Tests in 'Markdown4D.Color.Names.Tests.pas',
   Markdown4D.Extensions.Alerts.Tests in 'Markdown4D.Extensions.Alerts.Tests.pas',
   Markdown4D.Extensions.Toc.Tests in 'Markdown4D.Extensions.Toc.Tests.pas',

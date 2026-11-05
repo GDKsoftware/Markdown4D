@@ -144,10 +144,19 @@ type
     procedure HighlightMatches_InsideFormula_MarksEveryHit;
 
     [Test]
-    procedure SelectAll_CopiesFormulaAsLinearText;
+    procedure SelectAll_CopiesFormulaAsTeX;
 
     [Test]
-    procedure SelectAll_DisplayBlock_CopiesLinearText;
+    procedure SelectAll_DisplayBlock_CopiesTeX;
+
+    [Test]
+    procedure SelectedHtml_TextWithFormula_HoldsMathML;
+
+    [Test]
+    procedure SelectedHtml_EscapesText;
+
+    [Test]
+    procedure SelectedHtml_WithoutWholeFormula_IsEmpty;
 
     [Test]
     procedure SelectedMarkdown_SelectAll_KeepsFormulaSource;
@@ -159,7 +168,7 @@ type
     procedure Drag_InsideFraction_CopiesBalancedSource;
 
     [Test]
-    procedure Drag_OverWholeFormula_CopiesLinearTextAndMarkdown;
+    procedure Drag_OverWholeFormula_CopiesTeX;
 
     [Test]
     procedure Drag_FromTextIntoFormula_CopiesBoth;
@@ -691,24 +700,24 @@ begin
   Assert.IsTrue(HasWidth, 'the mark covers the formula');
 end;
 
-procedure TMathViewerTests.SelectAll_CopiesFormulaAsLinearText;
+procedure TMathViewerTests.SelectAll_CopiesFormulaAsTeX;
 begin
   FModel.SetViewport(DefaultWidth, DefaultHeight);
   FModel.Text := 'area $\pi r^2$ done';
 
   Assert.IsTrue(FModel.SelectAll);
 
-  Assert.AreEqual('area ' + #$03C0 + 'r' + #$00B2 + ' done', FModel.SelectedText);
+  Assert.AreEqual('area $\pi r^2$ done', FModel.SelectedText);
 end;
 
-procedure TMathViewerTests.SelectAll_DisplayBlock_CopiesLinearText;
+procedure TMathViewerTests.SelectAll_DisplayBlock_CopiesTeX;
 begin
   FModel.SetViewport(DefaultWidth, DefaultHeight);
   FModel.Text := 'before'#10#10'$$'#10'\frac{a+1}{b}'#10'$$'#10#10'after';
 
   Assert.IsTrue(FModel.SelectAll);
 
-  Assert.AreEqual('before' + sLineBreak + sLineBreak + '(a+1)/b' + sLineBreak + sLineBreak + 'after',
+  Assert.AreEqual('before' + sLineBreak + sLineBreak + '$$\frac{a+1}{b}$$' + sLineBreak + sLineBreak + 'after',
     FModel.SelectedText);
 end;
 
@@ -872,14 +881,46 @@ begin
   Assert.AreEqual('\frac{a}{b}', FModel.SelectedMarkdown);
 end;
 
-procedure TMathViewerTests.Drag_OverWholeFormula_CopiesLinearTextAndMarkdown;
+procedure TMathViewerTests.SelectedHtml_TextWithFormula_HoldsMathML;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'area $\pi r^2$ done'#10#10'next';
+
+  Assert.IsTrue(FModel.SelectAll);
+
+  const Html = FModel.SelectedHtml;
+  Assert.StartsWith('<p>area <math', Html);
+  Assert.Contains(Html, '</math> done</p><p>next</p>');
+end;
+
+procedure TMathViewerTests.SelectedHtml_EscapesText;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'a & b < c $x$';
+
+  Assert.IsTrue(FModel.SelectAll);
+
+  Assert.StartsWith('<p>a &amp; b &lt; c <math', FModel.SelectedHtml);
+end;
+
+procedure TMathViewerTests.SelectedHtml_WithoutWholeFormula_IsEmpty;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'area $\pi r^2$ done';
+
+  Drag('r', '2');
+
+  Assert.AreEqual('', FModel.SelectedHtml, 'part of a formula has no MathML of its own');
+end;
+
+procedure TMathViewerTests.Drag_OverWholeFormula_CopiesTeX;
 begin
   FModel.SetViewport(DefaultWidth, DefaultHeight);
   FModel.Text := 'so $\frac{a}{b}$ holds';
 
   Drag('a', 'b');
 
-  Assert.AreEqual('a/b', FModel.SelectedText);
+  Assert.AreEqual('$\frac{a}{b}$', FModel.SelectedText);
   Assert.AreEqual('$\frac{a}{b}$', FModel.SelectedMarkdown);
 end;
 
@@ -1007,7 +1048,7 @@ begin
   FModel.SetSelectionAnchor(TLayoutPointF.Create(Start.Left + 0.01, (Start.Top + Start.Bottom) / 2));
   FModel.SetSelectionExtent(TLayoutPointF.Create(Numerator.Right + 20, (Numerator.Top + Numerator.Bottom) / 2));
 
-  Assert.AreEqual('x=('#$2212'b+c)/(2a)', FModel.SelectedText,
+  Assert.AreEqual('$$x = \frac{-b+c}{2a}$$', FModel.SelectedText,
     'beside the numerator still means the end of the formula');
   Assert.AreEqual('$$'#10'x = \frac{-b+c}{2a}'#10'$$', FModel.SelectedMarkdown.Replace(sLineBreak, #10));
 end;

@@ -165,7 +165,6 @@ type
     procedure RefreshCodeHover;
     function PointOnCopyButton(const Point: TLayoutPointF): Boolean;
     procedure ClearCodeHover;
-    procedure CopyCodeToClipboard(const Text: string; const MathML: string = '');
     procedure SelectForPress(const Point: TLayoutPointF; const X, Y: Integer; const IsDoubleClick: Boolean);
     procedure FinishLinkClick(const X, Y: Integer);
     procedure FinishDisclosureClick(const X, Y: Integer);
@@ -173,7 +172,7 @@ type
     function GetAutoScroll: Boolean;
     function GetIsAutoScrolling: Boolean;
     function GetSelectedMarkdown: string;
-    procedure PutOnClipboard(const Text: string; const MathML: string = '');
+    procedure PutOnClipboard(const Text: string; const Html: string = ''; const MathML: string = '');
     procedure CopyForShortcut(const Shift: TShiftState);
     function GetZoom: Integer;
     procedure SetZoom(const Value: Integer);
@@ -319,10 +318,10 @@ type
     // menu leaves the entry out and Ctrl+Shift+C copies plain text, for an
     // application that keeps the source to itself.
     property CopyAsMarkdown: Boolean read FCopyAsMarkdown write FCopyAsMarkdown default True;
-    // Shows a Copy button over a display formula, as over a code block, that
-    // copies the formula as UnicodeMath plain text (x^2 as x squared, a/b, a root) for an
-    // editor or a mail. Off by default: Ctrl+C on a selected formula copies
-    // the same text, Copy as Markdown its TeX.
+    // Shows a Copy button over a display formula, as over a code block. It
+    // copies the formula as UnicodeMath text, and on Windows also as MathML
+    // that Word pastes as an equation. Off by default: Ctrl+C on a selected
+    // formula copies its TeX, with the same MathML for Word.
     property FormulaCopyButton: Boolean read GetFormulaCopyButton write SetFormulaCopyButton default False;
     // DirectWrite draws emoji in colour, Gdi draws them in one colour. Widths
     // differ slightly where DirectWrite kerns; line heights are the same in both.
@@ -598,7 +597,7 @@ end;
 
 procedure TMarkdownViewer.CopySelectionToClipboard;
 begin
-  PutOnClipboard(FModel.SelectedText, FModel.SelectedMathML);
+  PutOnClipboard(FModel.SelectedText, FModel.SelectedHtml, FModel.SelectedMathML);
 end;
 
 procedure TMarkdownViewer.CopySelectionAsMarkdown;
@@ -622,15 +621,17 @@ begin
     CopySelectionToClipboard;
 end;
 
-// A formula goes on the clipboard as MathML next to its text: Word and
-// LibreOffice paste the MathML as an equation, every other program the text.
-procedure TMarkdownViewer.PutOnClipboard(const Text: string; const MathML: string);
+// Formulas go on the clipboard as MathML, in HTML and on their own, next to
+// the text: Word and LibreOffice paste them as equations, every other program
+// takes the text.
+procedure TMarkdownViewer.PutOnClipboard(const Text: string; const Html: string; const MathML: string);
 begin
   if Text = '' then
     Exit;
 
-  const IsPutWithMathML = ((MathML <> '') and TMarkdownMathClipboard.TryPutTextAndMathML(Text, MathML));
-  if IsPutWithMathML then
+  const HasMath = ((Html <> '') or (MathML <> ''));
+  const IsPutWithMath = (HasMath and TMarkdownMathClipboard.TryPutTextWithMath(Text, Html, MathML));
+  if IsPutWithMath then
     Exit;
 
   try
@@ -893,7 +894,7 @@ begin
 
   if PointOnCopyButton(Point) then
   begin
-    CopyCodeToClipboard(FCodeHoverText, FCodeHoverMathML);
+    PutOnClipboard(FCodeHoverText, '', FCodeHoverMathML);
     FCopyFeedback := True;
     FCopyFeedbackTimer.Enabled := False;
     FCopyFeedbackTimer.Enabled := True;
@@ -1550,11 +1551,6 @@ begin
     FCodeHoverMathML := '';
     Invalidate;
   end;
-end;
-
-procedure TMarkdownViewer.CopyCodeToClipboard(const Text: string; const MathML: string);
-begin
-  PutOnClipboard(Text, MathML);
 end;
 
 procedure TMarkdownViewer.HandleCopyFeedbackTimer(Sender: TObject);

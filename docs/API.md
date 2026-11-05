@@ -417,7 +417,7 @@ of copying each give what they promise:
 
 | Copy | A whole formula | Part of a formula |
 |---|---|---|
-| `Ctrl+C` | UnicodeMath plain text, `πr²`, `(a+1)/b`, `√(x+1)` | the glyphs shown, letters of the mathematical alphabets as plain letters |
+| `Ctrl+C` | the TeX between `$...$`, or `$$...$$` for a display formula, as KaTeX copies it; on Windows also MathML for Word | the glyphs shown, letters of the mathematical alphabets as plain letters |
 | `Copy as Markdown` | the formula with its markers, `$...$` or the `$$` block | the selected TeX widened until it is valid: a command whole, braces balanced, a command with the groups it reads; the text of `\href` or the address of `\url` takes the whole command, as a markdown link does |
 | Copy button (`FormulaCopyButton`) | UnicodeMath plain text of a display formula | |
 
@@ -425,16 +425,17 @@ UnicodeMath is the linear format of Unicode Technical Note 28, the plain text
 Word and OneNote write for a formula; `TMathLinearFormat.FromSource` in
 `Markdown4D.Math.Linear` turns any formula into it.
 
-When `Ctrl+C` or the copy button copies one whole formula, the VCL and the FMX
-viewer also put it on the clipboard as presentation MathML, in the formats
-`MathML` and `MathML Presentation` that Word reads, so a paste into Word or
-LibreOffice makes an editable equation while every other program takes the
-text. The MathML carries the TeX as an annotation, as KaTeX and MathJax write
-it. `TMathMLFormat.FromSource` in `Markdown4D.Math.MathML` writes it,
-`SelectedMathML` on the viewer model returns it for the selection, and
-`TMarkdownMathClipboard` in `Markdown4D.Viewer.Clipboard` puts text and MathML
-on the Windows clipboard at once; on other platforms the viewers copy the text
-only.
+On Windows the VCL and the FMX viewer also put the formulas on the clipboard
+as presentation MathML, so a paste into Word or LibreOffice makes editable
+equations while every other program takes the text. `Ctrl+C` on a selection
+with whole formulas in it adds HTML with a MathML element for each formula,
+and on exactly one whole formula, as the copy button does, the formats
+`MathML` and `MathML Presentation`. The MathML carries the TeX as an
+annotation, as KaTeX and MathJax write it. `TMathMLFormat.FromSource` in
+`Markdown4D.Math.MathML` writes it, `SelectedHtml` and `SelectedMathML` on the
+viewer model return it for the selection, and `TMarkdownMathClipboard` in
+`Markdown4D.Viewer.Clipboard` puts text, HTML and MathML on the clipboard at
+once; on other platforms the viewers copy the text only.
 
 A display formula wider than the column scrolls sideways in its band, the way
 browsers show a long KaTeX or MathJax formula: a thin track below it shows

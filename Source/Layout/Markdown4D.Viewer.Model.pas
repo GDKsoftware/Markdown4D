@@ -63,6 +63,13 @@ type
       // whole words after a double click, whole lines after a triple click.
       TSelectionUnit = (Character, Word, Line);
       TCharacterClass = (WordCharacter, Space, Other);
+      // One stretch of the copied selection: the separator before it, and
+      // either the text it shows or a whole formula.
+      TCopiedPiece = record
+        Separator: string;
+        Text: string;
+        Formula: IMarkdownMath;
+      end;
     const
       DefaultFlushIntervalMilliseconds = 100;
       BottomEpsilon = 0.5;
@@ -70,6 +77,11 @@ type
       CopiedIndentWidth = 2;
       CopiedSpace = ' ';
       CopiedTab = #9;
+      InlineMathDelimiter = '$';
+      DisplayMathDelimiter = '$$';
+      HtmlParagraphStart = '<p>';
+      HtmlParagraphEnd = '</p>';
+      HtmlLineBreak = '<br>';
       AnchorMark = '#';
     var
       FTheme: TMarkdownTheme;
@@ -177,6 +189,9 @@ type
     function SelectedCharacterRange(const Run: IDisplayTextRun; const ItemIndex: Integer;
       const StartPosition, EndPosition: TTextPosition; out CharFrom, CharTo: Integer): Boolean;
     function BlockIndexOfItem(const ItemIndex: Integer): Integer;
+    function CopiedPieces: TArray<TCopiedPiece>;
+    class function FormulaSourceText(const Formula: IMarkdownMath): string; static;
+    class function HtmlSeparator(const Separator: string): string; static;
     class function SeparatorBefore(const Run: IDisplayTextRun; const StartsBlock: Boolean;
       const PreviousTop: Single): string; static;
     class function FallbackSeparator(const Run: IDisplayTextRun; const StartsBlock: Boolean;
@@ -230,6 +245,10 @@ type
     // selection. A selection of everything gives the whole source, including
     // lines that render nothing.
     function SelectedMarkdown: string;
+    // The selection as HTML with a MathML element for every whole formula in
+    // it, so a paste into Word or LibreOffice makes equations of them; empty
+    // when the selection holds no whole formula.
+    function SelectedHtml: string;
     // The selected formula as MathML when the selection is exactly one whole
     // formula, so a paste into Word or LibreOffice makes an equation of it;
     // empty otherwise.
@@ -899,9 +918,58 @@ begin
   end;
 end;
 
+// A whole formula copies as its TeX between dollar signs, as KaTeX copies it,
+// so it pastes into a markdown editor as a formula again.
 function TMarkdownViewerModel.SelectedText: string;
 begin
   Result := '';
+
+  for var Piece in CopiedPieces do
+  begin
+    Result := Result + Piece.Separator;
+
+    const IsFormula = (Piece.Formula <> nil);
+    if IsFormula then
+      Result := Result + FormulaSourceText(Piece.Formula)
+    else
+      Result := Result + Piece.Text;
+  end;
+end;
+
+function TMarkdownViewerModel.SelectedHtml: string;
+begin
+  Result := '';
+
+  const Pieces = CopiedPieces;
+  var HasFormula := False;
+  for var Piece in Pieces do
+  begin
+    const IsFormula = (Piece.Formula <> nil);
+    if IsFormula then
+      HasFormula := True;
+  end;
+  if not HasFormula then
+    Exit;
+
+  for var Piece in Pieces do
+  begin
+    Result := Result + HtmlSeparator(Piece.Separator);
+
+    const IsFormula = (Piece.Formula <> nil);
+    if IsFormula then
+      Result := Result + TMathMLFormat.FromSource(Piece.Formula.Literal, Piece.Formula.IsDisplay)
+    else
+      Result := Result + TNetEncoding.HTML.Encode(Piece.Text);
+  end;
+
+  Result := HtmlParagraphStart + Result + HtmlParagraphEnd;
+end;
+
+// The selection as the stretches it copies as. A whole formula is one piece;
+// part of one copies as the characters it shows.
+function TMarkdownViewerModel.CopiedPieces: TArray<TCopiedPiece>;
+begin
+  Result := [];
   if not HasSelection then
     Exit;
 
@@ -922,27 +990,25 @@ begin
       SelectedCharacterRange(Run, Index, Range.StartPosition, Range.EndPosition, CharFrom, CharTo);
     if IsSelected then
     begin
-      var Segment := Copy(Run.Text, CharFrom + 1, CharTo - CharFrom);
+      var Piece := Default(TCopiedPiece);
+      Piece.Text := Copy(Run.Text, CharFrom + 1, CharTo - CharFrom);
 
-      // A whole formula copies as text a reader can type and read again; part
-      // of one copies as the characters it shows.
       var LastGlyph: Integer;
       if (Run.Role = TDisplayTextRunRole.Formula) and TryGetWholeFormula(Index, Range, LastGlyph) then
       begin
-        Segment := TMathLinearFormat.FromSource((Run.SourceNode as IMarkdownMath).Literal);
+        Piece.Formula := Run.SourceNode as IMarkdownMath;
         NextIndex := LastGlyph + 1;
       end
       else if Run.Role = TDisplayTextRunRole.Formula then
       begin
-        Segment := TMathLinearFormat.PlainText(Segment);
+        Piece.Text := TMathLinearFormat.PlainText(Piece.Text);
       end;
 
       const BlockIndex = BlockIndexOfItem(Index);
-
       if HasPrevious then
-        Result := Result + SeparatorBefore(Run, BlockIndex <> PreviousBlock, PreviousTop);
+        Piece.Separator := SeparatorBefore(Run, BlockIndex <> PreviousBlock, PreviousTop);
 
-      Result := Result + Segment;
+      Result := Result + [Piece];
 
       HasPrevious := True;
       PreviousTop := Run.Bounds.Top;
@@ -951,6 +1017,25 @@ begin
 
     Index := NextIndex;
   end;
+end;
+
+class function TMarkdownViewerModel.FormulaSourceText(const Formula: IMarkdownMath): string;
+begin
+  if Formula.IsDisplay then
+    Result := DisplayMathDelimiter + Formula.Literal.Trim + DisplayMathDelimiter
+  else
+    Result := InlineMathDelimiter + Formula.Literal + InlineMathDelimiter;
+end;
+
+// A blank line between blocks starts a new paragraph, a line break within one
+// breaks the line; spaces and tabs stay as they are.
+class function TMarkdownViewerModel.HtmlSeparator(const Separator: string): string;
+begin
+  const BlankLine: string = sLineBreak + sLineBreak;
+  const ParagraphBreak = HtmlParagraphEnd + HtmlParagraphStart;
+
+  Result := Separator.Replace(BlankLine, ParagraphBreak);
+  Result := Result.Replace(sLineBreak, HtmlLineBreak);
 end;
 
 // The glyphs of one formula follow one another in the display list, with its
