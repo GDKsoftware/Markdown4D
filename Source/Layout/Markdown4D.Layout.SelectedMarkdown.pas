@@ -10,14 +10,22 @@ uses
 type
   // The markdown a reader means when copying a selection as markdown: within one
   // line the selected source with the markup directly around it, over several
-  // lines whole source lines, and a table always whole.
+  // lines whole source lines, a table always whole, and a display formula with
+  // the line that closes it.
   TMarkdownSelectedSource = record
   private
     const
       LineFeed = #10;
       CarriageReturn = #13;
       Delimiters = ['*', '_', '~', '`'];
+      DisplayMathMarker = '$$';
+      ContainerPrefix = [' ', #9, '>'];
+    class function WidenOverMathBlocks(const Source: string; const Node: IMarkdownNode;
+                                       const Range: TMarkdownSegment): TMarkdownSegment; static;
     class function WidenOverTables(const Node: IMarkdownNode; const Range: TMarkdownSegment): TMarkdownSegment; static;
+    // Where a display formula block ends in Source together with the line that
+    // closes it; a block left open ends where its segment does.
+    class function MathBlockEnd(const Source: string; const Block: IMarkdownNode): Integer; static;
     class function Overlaps(const Left, Right: TMarkdownSegment): Boolean; static;
     class function SpansLines(const Source: string; const Range: TMarkdownSegment): Boolean; static;
     class function WholeLines(const Source: string; const Range: TMarkdownSegment): TMarkdownSegment; static;
@@ -43,6 +51,7 @@ class function TMarkdownSelectedSource.Extract(const Source: string; const Docum
   const Selection: TMarkdownSegment): string;
 begin
   var Range := WidenOverTables(Document, Selection);
+  Range := WidenOverMathBlocks(Source, Document, Range);
 
   if SpansLines(Source, Range) then
     Range := WholeLines(Source, Range)
@@ -57,6 +66,57 @@ class function TMarkdownSelectedSource.WithPlatformLineBreaks(const Text: string
 begin
   const LineFeedsOnly = Text.Replace(CarriageReturn + LineFeed, LineFeed);
   Result := LineFeedsOnly.Replace(LineFeed, sLineBreak);
+end;
+
+// The segment of a display formula block ends with its last line, before the
+// $$ that closes it; pasted without that line, the formula would swallow
+// everything after it.
+class function TMarkdownSelectedSource.WidenOverMathBlocks(const Source: string; const Node: IMarkdownNode;
+  const Range: TMarkdownSegment): TMarkdownSegment;
+begin
+  Result := Range;
+  if Node = nil then
+    Exit;
+
+  for var Index := 0 to Node.ChildCount - 1 do
+  begin
+    const Child = Node.Children[Index];
+    const IsEndOfMathBlock = ((Child.Kind = TMarkdownNodeKind.Math) and Overlaps(Child.Segment, Result) and
+                              (Result.EndOffset >= Child.Segment.EndOffset));
+    const IsContainer = (Child.Kind in [TMarkdownNodeKind.BlockQuote, TMarkdownNodeKind.List,
+                                        TMarkdownNodeKind.ListItem]);
+    if IsEndOfMathBlock then
+      Result := TMarkdownSegment.Create(Result.StartOffset, Max(Result.EndOffset, MathBlockEnd(Source, Child)))
+    else if IsContainer then
+      Result := WidenOverMathBlocks(Source, Child, Result);
+  end;
+end;
+
+// The segment stops at the line break of the block's last line; the next line
+// holds $$ after the indentation or the quote markers of the container the
+// block sits in.
+class function TMarkdownSelectedSource.MathBlockEnd(const Source: string; const Block: IMarkdownNode): Integer;
+begin
+  Result := Block.Segment.EndOffset;
+
+  var Position := Result;
+  if (Position <= Length(Source)) and (Source[Position] = CarriageReturn) then
+    Inc(Position);
+  if (Position <= Length(Source)) and (Source[Position] = LineFeed) then
+    Inc(Position);
+
+  while (Position <= Length(Source)) and CharInSet(Source[Position], ContainerPrefix) do
+    Inc(Position);
+
+  const IsClosed = (Copy(Source, Position, Length(DisplayMathMarker)) = DisplayMathMarker);
+  if not IsClosed then
+    Exit;
+
+  Position := Position + Length(DisplayMathMarker);
+  while (Position <= Length(Source)) and not CharInSet(Source[Position], [CarriageReturn, LineFeed]) do
+    Inc(Position);
+
+  Result := Position;
 end;
 
 // The cells of a table have no source of their own worth copying apart, so a
