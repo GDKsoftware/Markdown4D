@@ -269,6 +269,9 @@ type
 
     [Test]
     procedure ContextMenu_ElsewhereOffersNoFormulaEntries;
+
+    [Test]
+    procedure FormulaMathML_IsThePresentationOfTheFormula;
   end;
 
 implementation
@@ -1301,6 +1304,20 @@ begin
   for var Item in TMarkdownViewerContextMenu.Build(FModel, True, nil) do
     Assert.IsTrue(Item.Command in [TViewerContextCommand.Copy, TViewerContextCommand.CopyAsMarkdown,
       TViewerContextCommand.SelectAll], 'no formula under the pointer, no formula entries');
+end;
+
+procedure TMathViewerTests.FormulaMathML_IsThePresentationOfTheFormula;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'so $\frac{a}{b}$ holds';
+
+  var Math: IMarkdownMath;
+  Assert.IsTrue(FModel.TryGetFormulaAt(CentreOf(GlyphRun('a').Bounds), Math));
+
+  const MathML = TMarkdownViewerModel.FormulaMathML(Math);
+  Assert.StartsWith('<math xmlns=', MathML);
+  Assert.Contains(MathML, '<mfrac>');
+  Assert.Contains(MathML, '\frac{a}{b}', 'the TeX rides along as an annotation');
 end;
 
 end.

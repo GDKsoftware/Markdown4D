@@ -39,6 +39,9 @@ type
   TMarkdownFormulaFormat = (LaTeX, Text);
   TMarkdownFormulaFormats = set of TMarkdownFormulaFormat;
 
+  // Puts text on the clipboard of the viewer that copies.
+  TMarkdownClipboardText = reference to procedure(const Text: string);
+
   // A button the viewer shows over a block while the pointer is on it: Copy
   // over a code block, LaTeX and Text over a display formula.
   TMarkdownCopyButton = (Code, FormulaAsLaTeX, FormulaAsText);
@@ -332,6 +335,18 @@ type
     // context menu that copy it.
     function TryGetFormulaAt(const Point: TLayoutPointF; out Math: IMarkdownMath): Boolean;
     class function FormulaText(const Math: IMarkdownMath; const Format: TMarkdownFormulaFormat): string; static;
+    // The formula as presentation MathML, with its TeX as an annotation as
+    // KaTeX and MathJax write it: what Word and LibreOffice paste as an
+    // editable equation.
+    class function FormulaMathML(const Math: IMarkdownMath): string; static;
+    // Copies a formula as LaTeX or as text. As text it goes on the clipboard
+    // as MathML as well where the platform allows it; otherwise, and as
+    // LaTeX, PutText puts it there.
+    class procedure CopyFormula(const Math: IMarkdownMath; const Format: TMarkdownFormulaFormat;
+      const PutText: TMarkdownClipboardText); static;
+    // Copies what a button of Region stands for.
+    class procedure CopyFromButton(const Region: TMarkdownCopyButtonRegion; const Button: TMarkdownCopyButton;
+      const PutText: TMarkdownClipboardText); static;
     // The copy buttons the viewer shows while the pointer is at Point: Copy
     // over a code block, and over a display formula one button for each of
     // FormulaCopyButtons.
@@ -386,6 +401,8 @@ uses
   Markdown4D.Layout.SelectedMarkdown,
   Markdown4D.Math.Layout,
   Markdown4D.Math.Linear,
+  Markdown4D.Math.MathML,
+  Markdown4D.Viewer.Clipboard,
   Markdown4D.Consts,
   Markdown4D.Toc,
   Markdown4D.Layout.Zoom;
@@ -1980,6 +1997,47 @@ begin
     TMarkdownFormulaFormat.Text  : Result := TMathLinearFormat.FromSource(Math.Literal);
   else
     Result := '';
+  end;
+end;
+
+class function TMarkdownViewerModel.FormulaMathML(const Math: IMarkdownMath): string;
+begin
+  Result := TMathMLFormat.FromSource(Math.Literal, Math.IsDisplay);
+end;
+
+// Word and LibreOffice paste the MathML as an editable equation, every other
+// program takes the text.
+class procedure TMarkdownViewerModel.CopyFormula(const Math: IMarkdownMath; const Format: TMarkdownFormulaFormat;
+  const PutText: TMarkdownClipboardText);
+begin
+  const Text = FormulaText(Math, Format);
+
+  if Format = TMarkdownFormulaFormat.Text then
+  begin
+    if TMarkdownMathClipboard.TryPutTextAndMathML(Text, FormulaMathML(Math)) then
+      Exit;
+  end;
+
+  PutText(Text);
+end;
+
+class procedure TMarkdownViewerModel.CopyFromButton(const Region: TMarkdownCopyButtonRegion;
+  const Button: TMarkdownCopyButton; const PutText: TMarkdownClipboardText);
+begin
+  var Math: IMarkdownMath;
+  const IsFormula = Supports(Region.Node, IMarkdownMath, Math);
+
+  case Button of
+    TMarkdownCopyButton.Code:
+      PutText(CopyButtonText(Region, Button));
+    TMarkdownCopyButton.FormulaAsLaTeX:
+      if IsFormula then
+        CopyFormula(Math, TMarkdownFormulaFormat.LaTeX, PutText);
+    TMarkdownCopyButton.FormulaAsText:
+      if IsFormula then
+        CopyFormula(Math, TMarkdownFormulaFormat.Text, PutText);
+  else
+    raise EMarkdownError.CreateFmt('Unhandled copy button: %d', [Ord(Button)]);
   end;
 end;
 

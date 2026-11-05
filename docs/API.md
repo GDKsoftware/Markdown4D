@@ -434,6 +434,16 @@ same with `FormulaAt(X, Y)`, the formula at a point of the control or `nil`,
 and `CopyFormula(Formula, Format)`. `TMathLinearFormat.FromSource` in
 `Markdown4D.Math.Linear` turns any formula into that text.
 
+Copied as text, from the menu or the button, the VCL and the FMX viewer also
+put the formula on the clipboard as presentation MathML, in the formats
+`MathML` and `MathML Presentation` that Word reads, so a paste into Word or
+LibreOffice makes an editable equation while every other program takes the
+text. The MathML carries the TeX as an annotation, as KaTeX and MathJax write
+it, and an `array` or `tabular` keeps its alignment and its rules. `TMathMLFormat.FromSource` in `Markdown4D.Math.MathML` writes it, and
+`TMarkdownMathClipboard` in `Markdown4D.Viewer.Clipboard` puts text and MathML
+on the Windows clipboard at once; on other platforms the viewers copy the text
+only.
+
 A display formula wider than the column scrolls sideways in its band, the way
 browsers show a long KaTeX or MathJax formula: a thin track below it shows
 which part is in view, and `Shift` with the mouse wheel, a sideways swipe on a
@@ -577,7 +587,7 @@ same.
 | `HighlightCount: Integer` | How many matches are marked |
 | `CopySelectionToClipboard` | Copy the current selection |
 | `CopySelectionAsMarkdown` / `SelectedMarkdown: string` | Copy, or read, the markdown behind the selection. Within one line that is the selected source with the markup directly around it (selecting *bold* in `**bold**` gives `**bold**`); over several lines whole source lines, so list markers, quote markers and indentation come along; a table always whole; a display formula with the `$$` line that closes it; and a selection of everything the whole source. Line ends are the platform's |
-| `FormulaAt(X, Y): IMarkdownMath` / `CopyFormula(Formula, Format)` | The formula at a point of the control, or `nil`, and copying it as `LaTeX` or `Text`: for an application with a context menu of its own |
+| `FormulaAt(X, Y): IMarkdownMath` / `CopyFormula(Formula, Format)` | The formula at a point of the control, or `nil`, and copying it as `LaTeX` or `Text`, the latter with its MathML: for an application with a context menu of its own |
 | `SelectAll` | Select the whole document |
 | `ClearSelection` | Drop the selection |
 | `SelectedText: string` | The selected text |

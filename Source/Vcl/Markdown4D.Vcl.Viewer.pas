@@ -902,7 +902,7 @@ begin
   const CopyButton = CopyButtonIndexAt(Point);
   if CopyButton >= 0 then
   begin
-    CopyCodeToClipboard(TMarkdownViewerModel.CopyButtonText(FCopyRegion, FCopyRegion.Buttons[CopyButton]));
+    TMarkdownViewerModel.CopyFromButton(FCopyRegion, FCopyRegion.Buttons[CopyButton], CopyCodeToClipboard);
     FCopiedButton := CopyButton;
     FCopyFeedback := True;
     FCopyFeedbackTimer.Enabled := False;
@@ -1593,7 +1593,7 @@ end;
 procedure TMarkdownViewer.CopyFormula(const Formula: IMarkdownMath; const Format: TMarkdownFormulaFormat);
 begin
   if Formula <> nil then
-    CopyCodeToClipboard(TMarkdownViewerModel.FormulaText(Formula, Format));
+    TMarkdownViewerModel.CopyFormula(Formula, Format, CopyCodeToClipboard);
 end;
 
 procedure TMarkdownViewer.HandleCopyFeedbackTimer(Sender: TObject);
