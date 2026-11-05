@@ -239,6 +239,9 @@ type
 
     [Test]
     procedure SelectedMarkdown_SelectAll_KeepsFormulaSource;
+
+    [Test]
+    procedure Drag_InScrolledFormula_SelectsTheGlyphsInView;
   end;
 
 implementation
@@ -825,6 +828,20 @@ begin
   const MathLineHeight = FMeasurer.LineHeight(FTheme.MathFont);
   const IsBelowMathLine = (Block.Height < MathLineHeight + FTheme.BlockSpacing);
   Assert.IsTrue(IsBelowMathLine, 'the line height of the math font, which can be far taller, does not count');
+end;
+
+procedure TMathViewerTests.Drag_InScrolledFormula_SelectsTheGlyphsInView;
+begin
+  FModel.SetViewport(200, DefaultHeight);
+  FModel.Text := WideFormula;
+  const Before = GlyphRun('f').Bounds.Left;
+  const Band = FindScroller(FModel.DisplayList).Bounds;
+
+  FModel.ScrollSideways(TLayoutPointF.Create(Band.Left + 10, (Band.Top + Band.Bottom) / 2), 30);
+  Drag('f', 'h');
+
+  Assert.AreEqual(Before - 30, GlyphRun('f').Bounds.Left, ScrollTolerance, 'the glyphs moved with the scroll');
+  Assert.AreEqual('f+g+h', FModel.SelectedText);
 end;
 
 procedure TMathViewerTests.Href_ScrolledOutOfView_FindsNoLink;
