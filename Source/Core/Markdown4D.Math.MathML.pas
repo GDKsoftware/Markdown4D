@@ -331,7 +331,10 @@ end;
 
 class function TMathMLFormat.Escaped(const Text: string): string;
 begin
-  Result := Text.Replace('&', '&amp;').Replace('<', '&lt;').Replace('>', '&gt;').Replace('"', '&quot;');
+  Result := Text.Replace('&', '&amp;');
+  Result := Result.Replace('<', '&lt;');
+  Result := Result.Replace('>', '&gt;');
+  Result := Result.Replace('"', '&quot;');
 end;
 
 end.
