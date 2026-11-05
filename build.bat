@@ -37,17 +37,18 @@ if defined STUDIO_VERSION (
 )
 
 if defined DELPHI_CE if defined STUDIO_BDS (
+
     if not exist "%STUDIO_BDS%" (
         echo [build] bsd.exe not found.
         exit /b 1
     )
-    rem echo [build] Found bds.exe ^(%STUDIO_BDS%^).
-    "%STUDIO_BDS%" "%ROOT%Markdown4D.groupproj" -b -- -ns -b
+    "%STUDIO_BDS%" "%ROOT%Markdown4D.groupproj" -b
     if errorlevel 1 (
         echo [build] bsd -b failed.
         exit /b 1
     )
     echo [build] bsd -b succeeded.
+
 )
 
 rem If not Delphi Community Edition, call rsvars.bat and build using msbuild.
@@ -98,17 +99,18 @@ echo === Running FMX test suite ^(Win32^) ===
 "%FMX_TEST_EXE%" -xml:"%FMX_RESULTS_XML%" -exit:continue
 set FMX_EXIT=%ERRORLEVEL%
 
+rem If not Delphi Community Edition, run the Win64x test suites as well.
 if not defined DELPHI_CE (
 
-echo.
-echo === Running main test suite ^(Win64x^) ===
-"%TEST_EXE_X64%" -xml:"%RESULTS_XML_X64%" -exit:continue
-set MAIN_EXIT_X64=%ERRORLEVEL%
+    echo.
+    echo === Running main test suite ^(Win64x^) ===
+    "%TEST_EXE_X64%" -xml:"%RESULTS_XML_X64%" -exit:continue
+    set MAIN_EXIT_X64=%ERRORLEVEL%
 
-echo.
-echo === Running FMX test suite ^(Win64x^) ===
-"%FMX_TEST_EXE_X64%" -xml:"%FMX_RESULTS_XML_X64%" -exit:continue
-set FMX_EXIT_X64=%ERRORLEVEL%
+    echo.
+    echo === Running FMX test suite ^(Win64x^) ===
+    "%FMX_TEST_EXE_X64%" -xml:"%FMX_RESULTS_XML_X64%" -exit:continue
+    set FMX_EXIT_X64=%ERRORLEVEL%
 
 )
 
@@ -126,16 +128,16 @@ if "%FMX_EXIT%"=="0" (
 
 if not defined DELPHI_CE (
 
-if "%MAIN_EXIT_X64%"=="0" (
-    echo === Main suite ^(Win64x^): all tests passed ===
-) else (
-    echo === Main suite ^(Win64x^): failures reported, exit code %MAIN_EXIT_X64% ===
-)
-if "%FMX_EXIT_X64%"=="0" (
-    echo === FMX suite ^(Win64x^): all tests passed ===
-) else (
-    echo === FMX suite ^(Win64x^): failures reported, exit code %FMX_EXIT_X64% ===
-)
+    if "%MAIN_EXIT_X64%"=="0" (
+        echo === Main suite ^(Win64x^): all tests passed ===
+    ) else (
+        echo === Main suite ^(Win64x^): failures reported, exit code %MAIN_EXIT_X64% ===
+    )
+    if "%FMX_EXIT_X64%"=="0" (
+        echo === FMX suite ^(Win64x^): all tests passed ===
+    ) else (
+        echo === FMX suite ^(Win64x^): failures reported, exit code %FMX_EXIT_X64% ===
+    )
 
 )
 
