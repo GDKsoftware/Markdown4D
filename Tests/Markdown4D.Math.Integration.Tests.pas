@@ -66,6 +66,12 @@ type
     procedure InlineMath_KeepsTheSpaceAfterIt;
 
     [Test]
+    procedure InlineMath_AloneOnLine_KeepsTheTextLineHeight;
+
+    [Test]
+    procedure InlineMath_AloneInTableCell_SharesBaselineWithNeighbour;
+
+    [Test]
     procedure FormulaGlyphs_AreDrawingsWithOneSourceRun;
 
     [Test]
@@ -320,6 +326,27 @@ begin
   const Formula = RunWithText(DisplayList, 'x');
   const After = RunStartingWith(DisplayList, ' beta');
   Assert.IsTrue(After.Bounds.Left >= Formula.Bounds.Right, 'the space and the word follow the formula');
+end;
+
+// A small formula such as $m$ alone on a line must not make the line lower
+// than a line of text: the line keeps the height of its font, as in a browser.
+procedure TMathLayoutIntegrationTests.InlineMath_AloneOnLine_KeepsTheTextLineHeight;
+begin
+  const Text = Layout('alpha');
+  const Formula = Layout('$m$');
+
+  Assert.AreEqual(Text.BlockInfos[0].Height, Formula.BlockInfos[0].Height, SingleTolerance);
+end;
+
+// A table cell holding nothing but a formula sits on the same baseline as the
+// text in the cell next to it instead of rising to the top of the row.
+procedure TMathLayoutIntegrationTests.InlineMath_AloneInTableCell_SharesBaselineWithNeighbour;
+begin
+  const DisplayList = Layout('| a | b |' + sLineBreak + '|---|---|' + sLineBreak + '| $m$ | Masse |');
+
+  const Formula = RunWithText(DisplayList, 'm');
+  const Text = RunStartingWith(DisplayList, 'Masse');
+  Assert.AreEqual(BaselineOf(Text), BaselineOf(Formula), SingleTolerance);
 end;
 
 // The p of the second word reaches below the baseline, so the numerator
