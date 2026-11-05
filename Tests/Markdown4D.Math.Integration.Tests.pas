@@ -72,6 +72,12 @@ type
     procedure Tabular_KeepsRoomBetweenTextAndRules;
 
     [Test]
+    procedure InlineMath_AloneOnLine_KeepsTheTextLineHeight;
+
+    [Test]
+    procedure InlineMath_AloneInTableCell_SharesBaselineWithNeighbour;
+
+    [Test]
     procedure FormulaGlyphs_AreDrawingsWithOneSourceRun;
 
     [Test]
@@ -134,6 +140,15 @@ type
 
     [Test]
     procedure TrySelectNextMatch_InsideFormula_SelectsWholeFormula;
+
+    [Test]
+    procedure SelectedMarkdown_DisplayFormula_TakesItsClosingFence;
+
+    [Test]
+    procedure SelectedMarkdown_DisplayFormulaInQuote_TakesItsClosingFence;
+
+    [Test]
+    procedure SelectedMarkdown_OpenDisplayFormula_EndsWithTheDocument;
 
     [Test]
     procedure HighlightMatches_InsideFormula_MarksWholeFormulaOnce;
@@ -367,6 +382,27 @@ begin
   Assert.IsTrue(After.Bounds.Left >= Formula.Bounds.Right, 'the space and the word follow the formula');
 end;
 
+// A small formula such as $m$ alone on a line must not make the line lower
+// than a line of text: the line keeps the height of its font, as in a browser.
+procedure TMathLayoutIntegrationTests.InlineMath_AloneOnLine_KeepsTheTextLineHeight;
+begin
+  const Text = Layout('alpha');
+  const Formula = Layout('$m$');
+
+  Assert.AreEqual(Text.BlockInfos[0].Height, Formula.BlockInfos[0].Height, SingleTolerance);
+end;
+
+// A table cell holding nothing but a formula sits on the same baseline as the
+// text in the cell next to it instead of rising to the top of the row.
+procedure TMathLayoutIntegrationTests.InlineMath_AloneInTableCell_SharesBaselineWithNeighbour;
+begin
+  const DisplayList = Layout('| a | b |' + sLineBreak + '|---|---|' + sLineBreak + '| $m$ | Masse |');
+
+  const Formula = RunWithText(DisplayList, 'm');
+  const Text = RunStartingWith(DisplayList, 'Masse');
+  Assert.AreEqual(BaselineOf(Text), BaselineOf(Formula), SingleTolerance);
+end;
+
 // The p of the second word reaches below the baseline, so the numerator
 // stands higher above the bar than the one without it.
 procedure TMathLayoutIntegrationTests.TextWithDescender_KeepsFractionBarClear;
@@ -557,6 +593,41 @@ begin
 
   Assert.IsTrue(Found);
   Assert.AreEqual('$\pi r^2$', FModel.SelectedText, 'a formula is selected whole or not at all');
+end;
+
+// Pasted without the $$ that closes it, a display formula would swallow
+// everything after it.
+procedure TMathViewerTests.SelectedMarkdown_DisplayFormula_TakesItsClosingFence;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'before'#10#10'$$'#10'x + y'#10'$$'#10#10'after';
+
+  var Match: TMarkdownFoundRange;
+  Assert.IsTrue(FModel.TrySelectNextMatch('x + y', Match));
+
+  Assert.AreEqual('$$'#10'x + y'#10'$$', FModel.SelectedMarkdown.Replace(sLineBreak, #10));
+end;
+
+procedure TMathViewerTests.SelectedMarkdown_DisplayFormulaInQuote_TakesItsClosingFence;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '> $$'#10'> x + y'#10'> $$'#10#10'after';
+
+  var Match: TMarkdownFoundRange;
+  Assert.IsTrue(FModel.TrySelectNextMatch('x + y', Match));
+
+  Assert.AreEqual('> $$'#10'> x + y'#10'> $$', FModel.SelectedMarkdown.Replace(sLineBreak, #10));
+end;
+
+procedure TMathViewerTests.SelectedMarkdown_OpenDisplayFormula_EndsWithTheDocument;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'before'#10#10'$$'#10'x + y';
+
+  var Match: TMarkdownFoundRange;
+  Assert.IsTrue(FModel.TrySelectNextMatch('x + y', Match));
+
+  Assert.AreEqual('$$'#10'x + y', FModel.SelectedMarkdown.Replace(sLineBreak, #10));
 end;
 
 procedure TMathViewerTests.HighlightMatches_InsideFormula_MarksWholeFormulaOnce;

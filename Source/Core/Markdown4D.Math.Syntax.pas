@@ -364,6 +364,7 @@ const
   EndName = 'end';
   HorizontalRuleName = 'hline';
   EmptyDelimiter = '.';
+  ControlSpaceName = ' ';
 
 constructor TMathNode.Create(const Kind: TMathNodeKind);
 begin
@@ -777,7 +778,8 @@ begin
 end;
 
 // A command is a backslash followed by letters, or a backslash followed by
-// exactly one other character, which is how TeX spells \, \; \{ and \\.
+// exactly one other character, which is how TeX spells \, \; \{ and \\. A
+// backslash before a tab or the end of a line is \ and a space, as in TeX.
 function TMathScanner.ReadCommandName: string;
 begin
   const AtEndOfInput = (FPosition > Length(FSource));
@@ -788,6 +790,14 @@ begin
   end;
 
   const Start = FPosition;
+
+  const IsControlSpace = (FSource[Start].IsWhiteSpace);
+  if IsControlSpace then
+  begin
+    Inc(FPosition);
+    Result := ControlSpaceName;
+    Exit;
+  end;
 
   if not IsCommandLetter(FSource[Start]) then
   begin
@@ -1618,7 +1628,7 @@ begin
     Exit;
   end;
 
-  if Name = ' ' then
+  if Name = ControlSpaceName then
   begin
     Node := SpaceNode(WordSpaceEm);
     Exit;
