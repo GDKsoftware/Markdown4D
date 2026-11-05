@@ -66,6 +66,12 @@ type
     procedure InlineMath_KeepsTheSpaceAfterIt;
 
     [Test]
+    procedure Tabular_DrawsRulesAndUprightText;
+
+    [Test]
+    procedure Tabular_KeepsRoomBetweenTextAndRules;
+
+    [Test]
     procedure InlineMath_AloneOnLine_KeepsTheTextLineHeight;
 
     [Test]
@@ -326,6 +332,45 @@ begin
   const PlainHeight = Plain.BlockInfos[0].Height;
   const FractionHeight = WithFraction.BlockInfos[0].Height;
   Assert.IsTrue(FractionHeight > PlainHeight, 'a fraction must push the line apart');
+end;
+
+procedure TMathLayoutIntegrationTests.Tabular_DrawsRulesAndUprightText;
+begin
+  const DisplayList = Layout('$$'#10'\begin{tabular}{|c|c|}'#10'\hline'#10'Spalte 1 & Spalte 2 \\'#10'\hline'#10 +
+    '\end{tabular}'#10'$$');
+
+  const Words = RunWithText(DisplayList, 'Spalte 1');
+  Assert.IsFalse(Words.Font.Italic, 'tabular cells are text');
+
+  var Rules := 0;
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    var Rectangle: IDisplayRectangle;
+    if Supports(DisplayList.Items[Index], IDisplayRectangle, Rectangle) and (Rectangle.FillColor <> 0) then
+      Inc(Rules);
+  end;
+  Assert.AreEqual(5, Rules, 'two \hline and three vertical rules');
+end;
+
+// A row is as tall as LaTeX's strut, 1.2 em, with 0.2 em more above and below
+// it, so the rules keep clear of the text.
+procedure TMathLayoutIntegrationTests.Tabular_KeepsRoomBetweenTextAndRules;
+begin
+  const DisplayList = Layout('$$'#10'\begin{tabular}{c}'#10'\hline'#10'Word \\'#10'\hline'#10'\end{tabular}'#10'$$');
+  const MinimumRowHeight = 1.6 * FTheme.MathFont.Size;
+
+  var Rules: TArray<TLayoutRectF> := [];
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    var Rule: IDisplayRectangle;
+    const IsRule = (Supports(DisplayList.Items[Index], IDisplayRectangle, Rule) and (Rule.FillColor <> 0));
+    if IsRule then
+      Rules := Rules + [Rule.Bounds];
+  end;
+
+  Assert.AreEqual(2, Integer(Length(Rules)));
+  const RowHeight = Rules[1].Top - Rules[0].Bottom;
+  Assert.IsTrue(RowHeight >= MinimumRowHeight - SingleTolerance, 'the row keeps room above and below its text');
 end;
 
 procedure TMathLayoutIntegrationTests.InlineMath_KeepsTheSpaceAfterIt;

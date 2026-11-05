@@ -45,6 +45,9 @@ type
     function GetHasRule: Boolean;
     function GetAlignment: TMathColumnAlignment;
     function GetColor: Cardinal;
+    function GetColumnSpec: string;
+    function GetRulesAbove: Integer;
+    function GetRulesBelow: Integer;
     function IsEmpty: Boolean;
     property Kind: TMathNodeKind read GetKind;
     // Symbol: the glyphs to draw; Text: the words; Accent: the accent glyph,
@@ -78,6 +81,15 @@ type
     property Alignment: TMathColumnAlignment read GetAlignment;
     // Colored: the opaque ARGB colour the body is drawn in.
     property Color: Cardinal read GetColor;
+    // Matrix of an array or a tabular: its columns as the preamble gives
+    // them, l, c or r each, with | where a vertical rule runs; empty for the
+    // other environments, which align by Alignment.
+    property ColumnSpec: string read GetColumnSpec;
+    // Row of an array or a tabular: how many \hline rules run above it.
+    property RulesAbove: Integer read GetRulesAbove;
+    // Matrix of an array or a tabular: how many \hline rules run below its
+    // last row, after the \\ that closes it.
+    property RulesBelow: Integer read GetRulesBelow;
   end;
 
   TMathParser = class
@@ -112,6 +124,9 @@ type
     FHasRule: Boolean;
     FAlignment: TMathColumnAlignment;
     FColor: Cardinal;
+    FColumnSpec: string;
+    FRulesAbove: Integer;
+    FRulesBelow: Integer;
 
   public
     constructor Create(const Kind: TMathNodeKind);
@@ -131,6 +146,9 @@ type
     function GetHasRule: Boolean;
     function GetAlignment: TMathColumnAlignment;
     function GetColor: Cardinal;
+    function GetColumnSpec: string;
+    function GetRulesAbove: Integer;
+    function GetRulesBelow: Integer;
     function IsEmpty: Boolean;
     procedure AddChild(const Child: IMathNode);
     procedure SetChild(const Index: Integer; const Child: IMathNode);
@@ -146,6 +164,9 @@ type
     property HasRule: Boolean read FHasRule write FHasRule;
     property Alignment: TMathColumnAlignment read FAlignment write FAlignment;
     property Color: Cardinal read FColor write FColor;
+    property ColumnSpec: string read FColumnSpec write FColumnSpec;
+    property RulesAbove: Integer read FRulesAbove write FRulesAbove;
+    property RulesBelow: Integer read FRulesBelow write FRulesBelow;
   end;
 
   TMathSymbolInfo = record
@@ -215,6 +236,9 @@ type
     function ReadRawGroup: string;
     // Everything not read yet, a peeked token included, as typed.
     function ReadRemainder: string;
+    // The source of a tabular cell as typed, up to the & or \\ that ends it
+    // or the \end or \hline that follows it; braces keep an & inside them.
+    function ReadRawCell: string;
     function AtEnd: Boolean;
   end;
 
@@ -223,6 +247,10 @@ type
     const
       BeginCommand = 'begin';
       EndCommand = 'end';
+      HorizontalRuleCommand = 'hline';
+      // What a tabular cell understands besides its words.
+      CellEscapes = ['&', '%', '_', '#', '$', '{', '}'];
+      NoBreakSpace = #$00A0;
       LeftCommand = 'left';
       RightCommand = 'right';
       LineBreakCommand = '\';
@@ -296,7 +324,15 @@ type
     function ParseOperatorName(const TakesLimits: Boolean): TMathNode;
     function ParseAccent(const Glyph: string): TMathNode;
     function ParseEnvironment: TMathNode;
-    function ParseMatrix: TMathNode;
+    function ParseMatrix(const IsTable: Boolean = False; const HasTextCells: Boolean = False): TMathNode;
+    function ParseTextCell(const Source: string): IMathNode;
+    function ReadHorizontalRules: Integer;
+    function ReadColumnSpec: string;
+    class function IsEnvironmentEnd(const Token: TMathToken): Boolean; static;
+    class function TryTextVariant(const Name: string; out Variant: TMathFontVariant): Boolean; static;
+    class function TextNode(const Source: string; const Variant: TMathFontVariant): TMathNode; static;
+    class function CellText(const Source: string): string; static;
+    class function ClosingBrace(const Source: string; const Open: Integer): Integer; static;
     function ReadEnvironmentName: string;
     procedure ApplyLimitsCommands(const Atom: TMathNode);
     class function SpaceNode(const WidthEm: Single): TMathNode; static;
@@ -324,6 +360,9 @@ const
   AmpersandChar = '&';
   PrimeChar = '''';
   TildeChar = '~';
+  DollarChar = '$';
+  EndName = 'end';
+  HorizontalRuleName = 'hline';
   EmptyDelimiter = '.';
   ControlSpaceName = ' ';
 
@@ -416,6 +455,21 @@ end;
 function TMathNode.GetColor: Cardinal;
 begin
   Result := FColor;
+end;
+
+function TMathNode.GetColumnSpec: string;
+begin
+  Result := FColumnSpec;
+end;
+
+function TMathNode.GetRulesAbove: Integer;
+begin
+  Result := FRulesAbove;
+end;
+
+function TMathNode.GetRulesBelow: Integer;
+begin
+  Result := FRulesBelow;
 end;
 
 function TMathNode.IsEmpty: Boolean;
@@ -808,6 +862,41 @@ begin
     Dec(EndPosition);
 
   Result := Copy(FSource, Start, EndPosition - Start);
+end;
+
+function TMathScanner.ReadRawCell: string;
+begin
+  FPeeked := False;
+  SkipWhitespace;
+
+  const Start = FPosition;
+  var Depth := 0;
+  while FPosition <= Length(FSource) do
+  begin
+    const Current = FSource[FPosition];
+    if (Depth = 0) and (Current = AmpersandChar) then
+      Break;
+
+    if Current = Backslash then
+    begin
+      const After = Copy(FSource, FPosition + 1, Length(HorizontalRuleName));
+      const EndsCell = (Depth = 0) and (After.StartsWith(Backslash) or After.StartsWith(EndName) or
+        (After = HorizontalRuleName));
+      if EndsCell then
+        Break;
+
+      // \& or \{ is a character of the cell and ends nothing.
+      Inc(FPosition);
+    end
+    else if Current = OpenBraceChar then
+      Inc(Depth)
+    else if Current = CloseBraceChar then
+      Dec(Depth);
+
+    Inc(FPosition);
+  end;
+
+  Result := Copy(FSource, Start, FPosition - Start).TrimRight;
 end;
 
 function TMathScanner.ReadRemainder: string;
@@ -1853,6 +1942,17 @@ function TMathTreeParser.ParseEnvironment: TMathNode;
 begin
   const Name = ReadEnvironmentName;
 
+  // An array, and a tabular as LaTeX's text version of it, take their
+  // columns and vertical rules from the preamble; a tabular's cells are text.
+  const IsTable = (Name = 'array') or (Name = 'tabular');
+  if IsTable then
+  begin
+    const ColumnSpec = ReadColumnSpec;
+    Result := ParseMatrix(True, Name = 'tabular');
+    Result.ColumnSpec := ColumnSpec;
+    Exit;
+  end;
+
   var Left: string;
   var Right: string;
   var Alignment: TMathColumnAlignment;
@@ -1881,7 +1981,7 @@ begin
   Alignment := TMathColumnAlignment.Centre;
   Result := True;
 
-  if (Name = 'matrix') or (Name = 'array') or (Name = 'gathered') or (Name = 'gather') or (Name = 'gather*') then
+  if (Name = 'matrix') or (Name = 'gathered') or (Name = 'gather') or (Name = 'gather*') then
     Exit;
 
   if (Name = 'aligned') or (Name = 'align') or (Name = 'align*') then
@@ -1936,18 +2036,25 @@ begin
 end;
 
 // Cells are separated by &, rows by \\, the whole thing ends at \end{name}.
-// A missing \end closes the matrix at the end of the input.
-function TMathTreeParser.ParseMatrix: TMathNode;
+// A missing \end closes the matrix at the end of the input. In a table a row
+// can start with \hline, and a \\ before \end only closes the last row: the
+// rules after it run below the table.
+function TMathTreeParser.ParseMatrix(const IsTable, HasTextCells: Boolean): TMathNode;
 begin
   Result := TMathNode.Create(TMathNodeKind.Matrix);
   Result.AtomClass := TMathAtomClass.Inner;
 
   var Row := TMathNode.Create(TMathNodeKind.Row);
+  if IsTable then
+    Row.RulesAbove := ReadHorizontalRules;
   Result.AddChild(Row);
 
   while True do
   begin
-    Row.AddChild(ParseSequence);
+    if HasTextCells then
+      Row.AddChild(ParseTextCell(FScanner.ReadRawCell))
+    else
+      Row.AddChild(ParseSequence);
 
     const Token = FScanner.Peek;
 
@@ -1964,12 +2071,30 @@ begin
     if IsLineBreak(Token) then
     begin
       FScanner.Next;
+
+      var Rules := 0;
+      if IsTable then
+        Rules := ReadHorizontalRules;
+
+      const ClosesLastRow = IsTable and (IsEnvironmentEnd(FScanner.Peek) or FScanner.AtEnd);
+      if ClosesLastRow then
+      begin
+        Result.RulesBelow := Rules;
+        if IsEnvironmentEnd(FScanner.Peek) then
+        begin
+          FScanner.Next;
+          ReadEnvironmentName;
+        end;
+        Exit;
+      end;
+
       Row := TMathNode.Create(TMathNodeKind.Row);
+      Row.RulesAbove := Rules;
       Result.AddChild(Row);
       Continue;
     end;
 
-    const IsEnd = (Token.Kind = TMathTokenKind.Command) and (Token.Text = EndCommand);
+    const IsEnd = IsEnvironmentEnd(Token);
     if IsEnd then
     begin
       FScanner.Next;
@@ -2005,6 +2130,213 @@ class function TMathTreeParser.ErrorSymbol(const Text: string): TMathNode;
 begin
   Result := SymbolNode(Text, TMathAtomClass.Ordinary, TMathFontVariant.Upright);
   Result.IsError := True;
+end;
+
+// A tabular cell in LaTeX's text mode: words with their spaces, \textbf,
+// \textit, \emph and \text around words, and $...$ for a formula. Any other
+// command shows in the error colour, as it would in a formula. A cell of
+// words alone is one text node; an empty cell is an empty row.
+function TMathTreeParser.ParseTextCell(const Source: string): IMathNode;
+begin
+  const Cell = TMathNode.Create(TMathNodeKind.Row);
+  Result := Cell;
+
+  var Words := '';
+  var Index := 1;
+  while Index <= Length(Source) do
+  begin
+    const Current = Source[Index];
+    const HasNext = (Index < Length(Source));
+
+    const IsControlSymbol = (Current = Backslash) and HasNext and not TMathScanner.IsCommandLetter(Source[Index + 1]);
+    if IsControlSymbol then
+    begin
+      Words := Words + Copy(Source, Index, 2);
+      Inc(Index, 2);
+      Continue;
+    end;
+
+    var Part: IMathNode := nil;
+    var Stop := Index + 1;
+
+    const IsFormula = (Current = DollarChar) and (Pos(DollarChar, Source, Index + 1) > 0);
+    const IsCommand = (Current = Backslash) and HasNext;
+    if IsFormula then
+    begin
+      Stop := Pos(DollarChar, Source, Index + 1);
+      const Formula = TMathTreeParser.Create(Copy(Source, Index + 1, Stop - Index - 1), FChemistryDepth, FDepth + 1);
+      try
+        Part := Formula.Parse;
+      finally
+        Formula.Free;
+      end;
+      Inc(Stop);
+    end
+    else if IsCommand then
+    begin
+      while (Stop <= Length(Source)) and TMathScanner.IsCommandLetter(Source[Stop]) do
+        Inc(Stop);
+      const Name = Copy(Source, Index + 1, Stop - Index - 1);
+
+      var Variant: TMathFontVariant;
+      const IsTextCommand = TryTextVariant(Name, Variant);
+      while IsTextCommand and (Stop <= Length(Source)) and (Source[Stop] = ' ') do
+        Inc(Stop);
+      const Close = ClosingBrace(Source, Stop);
+      if IsTextCommand and (Close > 0) then
+      begin
+        Part := TextNode(Copy(Source, Stop + 1, Close - Stop - 1), Variant);
+        Stop := Close + 1;
+      end
+      else
+        Part := ErrorNode(Name);
+    end;
+
+    if Part = nil then
+    begin
+      Words := Words + Current;
+      Inc(Index);
+      Continue;
+    end;
+
+    if Words <> '' then
+      Cell.AddChild(TextNode(Words, TMathFontVariant.Upright));
+    Words := '';
+    Cell.AddChild(Part);
+    Index := Stop;
+  end;
+
+  const IsWordsOnly = ((Cell.GetChildCount = 0) and (Words <> ''));
+  if IsWordsOnly then
+  begin
+    Result := TextNode(Words, TMathFontVariant.Upright);
+    Exit;
+  end;
+
+  if Words <> '' then
+    Cell.AddChild(TextNode(Words, TMathFontVariant.Upright));
+end;
+
+class function TMathTreeParser.TextNode(const Source: string; const Variant: TMathFontVariant): TMathNode;
+begin
+  Result := TMathNode.Create(TMathNodeKind.Text);
+  Result.AtomClass := TMathAtomClass.Ordinary;
+  Result.Variant := Variant;
+  Result.Text := CellText(Source);
+end;
+
+class function TMathTreeParser.TryTextVariant(const Name: string; out Variant: TMathFontVariant): Boolean;
+begin
+  Result := True;
+  Variant := TMathFontVariant.Upright;
+
+  if Name = 'textbf' then
+    Variant := TMathFontVariant.Bold
+  else if (Name = 'textit') or (Name = 'emph') then
+    Variant := TMathFontVariant.Italic
+  else if not ((Name = 'text') or (Name = 'textrm') or (Name = 'textup') or (Name = 'mbox')) then
+    Result := False;
+end;
+
+// The words of a cell as they read: an escaped character is itself, ~ a space
+// that does not break, braces only group, and white space, a line break
+// included, is one space as in LaTeX.
+class function TMathTreeParser.CellText(const Source: string): string;
+begin
+  Result := '';
+
+  var Index := 1;
+  while Index <= Length(Source) do
+  begin
+    const Current = Source[Index];
+    Inc(Index);
+
+    const IsEscape = (Current = Backslash) and (Index <= Length(Source)) and CharInSet(Source[Index], CellEscapes);
+    if IsEscape then
+    begin
+      Result := Result + Source[Index];
+      Inc(Index);
+    end
+    else if Current = TildeChar then
+      Result := Result + NoBreakSpace
+    else if CharInSet(Current, [OpenBraceChar, CloseBraceChar]) then
+      Continue
+    else if CharInSet(Current, [' ', #9, #10, #13]) then
+    begin
+      if not Result.EndsWith(' ') then
+        Result := Result + ' ';
+    end
+    else
+      Result := Result + Current;
+  end;
+end;
+
+// The brace that closes the group opening at Open, or 0 when there is no
+// group there or it is left open.
+class function TMathTreeParser.ClosingBrace(const Source: string; const Open: Integer): Integer;
+begin
+  Result := 0;
+  if (Open > Length(Source)) or (Source[Open] <> OpenBraceChar) then
+    Exit;
+
+  var Depth := 0;
+  for var Index := Open to Length(Source) do
+  begin
+    if Source[Index] = OpenBraceChar then
+      Inc(Depth)
+    else if Source[Index] = CloseBraceChar then
+      Dec(Depth);
+
+    if Depth = 0 then
+    begin
+      Result := Index;
+      Exit;
+    end;
+  end;
+end;
+
+function TMathTreeParser.ReadHorizontalRules: Integer;
+begin
+  Result := 0;
+  while (FScanner.Peek.Kind = TMathTokenKind.Command) and (FScanner.Peek.Text = HorizontalRuleCommand) do
+  begin
+    FScanner.Next;
+    Inc(Result);
+  end;
+end;
+
+class function TMathTreeParser.IsEnvironmentEnd(const Token: TMathToken): Boolean;
+begin
+  Result := (Token.Kind = TMathTokenKind.Command) and (Token.Text = EndCommand);
+end;
+
+// The preamble of an array: l, c and r for the columns and | for the rules
+// between them. A paragraph column, p{...}, m{...} or b{...}, aligns left;
+// @{...}, !{...}, >{...} and <{...} only add to a column and are skipped.
+function TMathTreeParser.ReadColumnSpec: string;
+begin
+  const Preamble = FScanner.ReadRawGroup;
+
+  Result := '';
+  var Index := 1;
+  while Index <= Length(Preamble) do
+  begin
+    const Current = Preamble[Index];
+    Inc(Index);
+
+    if CharInSet(Current, ['l', 'c', 'r', '|']) then
+      Result := Result + Current
+    else if CharInSet(Current, ['p', 'm', 'b']) then
+      Result := Result + 'l';
+
+    const TakesGroup = CharInSet(Current, ['p', 'm', 'b', '@', '!', '>', '<']);
+    if TakesGroup then
+    begin
+      const Close = ClosingBrace(Preamble, Index);
+      if Close > 0 then
+        Index := Close + 1;
+    end;
+  end;
 end;
 
 class function TMathTreeParser.EmptyRow: TMathNode;
