@@ -192,11 +192,13 @@ type
       NullDelimiterSpaceEm = 0.12;
       MatrixRowGapEm = 0.5;
       MatrixColumnGapEm = 0.9;
-      // An array row is at least as tall as LaTeX's strut, so rules between
-      // rows keep clear of the text; its columns have half the matrix gap on
-      // either side, where the vertical rules run.
+      // An array row is at least as tall as LaTeX's strut, with some room
+      // above and below, so rules between rows keep clear of the text; its
+      // columns have half the matrix gap on either side, where the vertical
+      // rules run.
       ArrayStrutAscentEm = 0.84;
       ArrayStrutDescentEm = 0.36;
+      ArrayRowPaddingEm = 0.2;
       ArrayColumnPaddingEm = 0.5;
       ArrayDoubleRuleGapEm = 0.12;
       ParenthesisSegments = 12;
@@ -1453,6 +1455,7 @@ begin
   // when it is painted.
   const Thickness = Max(1, Round(RuleThicknessEm * Em));
   const Padding = ArrayColumnPaddingEm * Em;
+  const RowPadding = ArrayRowPaddingEm * Em;
   const RuleGap = ArrayDoubleRuleGapEm * Em;
 
   // The columns of the preamble and the rules at each border, 0 before the
@@ -1514,6 +1517,9 @@ begin
       RowAscents[RowIndex] := Max(RowAscents[RowIndex], Cell.Ascent);
       RowDescents[RowIndex] := Max(RowDescents[RowIndex], Cell.Descent);
     end;
+
+    RowAscents[RowIndex] := RowAscents[RowIndex] + RowPadding;
+    RowDescents[RowIndex] := RowDescents[RowIndex] + RowPadding;
   end;
 
   // Where each border runs: rules take their own room, the padding sits

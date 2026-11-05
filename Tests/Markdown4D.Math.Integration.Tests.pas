@@ -84,6 +84,9 @@ type
     procedure Tabular_DrawsRulesAndUprightText;
 
     [Test]
+    procedure Tabular_KeepsRoomBetweenTextAndRules;
+
+    [Test]
     procedure DisplayBlock_IsCentred;
 
     [Test]
@@ -506,6 +509,30 @@ begin
       Inc(Rules);
   end;
   Assert.AreEqual(5, Rules, 'two \hline and three vertical rules');
+end;
+
+procedure TMathLayoutIntegrationTests.Tabular_KeepsRoomBetweenTextAndRules;
+begin
+  const DisplayList = Layout('$$'#10'\begin{tabular}{c}'#10'\hline'#10'Word \\'#10'\hline'#10'\end{tabular}'#10'$$');
+  const Words = RunWithText(DisplayList, 'Word').Bounds;
+  const MinimumRoom = 0.2 * FTheme.MathFont.Size;
+
+  var RuleCount := 0;
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    var Rule: IDisplayRectangle;
+    const IsRule = (Supports(DisplayList.Items[Index], IDisplayRectangle, Rule) and (Rule.FillColor <> 0));
+    if not IsRule then
+      Continue;
+
+    Inc(RuleCount);
+    const IsAbove = (Rule.Bounds.Bottom <= Words.Top);
+    if IsAbove then
+      Assert.IsTrue(Words.Top - Rule.Bounds.Bottom >= MinimumRoom, 'room between the rule above and the text')
+    else
+      Assert.IsTrue(Rule.Bounds.Top - Words.Bottom >= MinimumRoom, 'room between the text and the rule below');
+  end;
+  Assert.AreEqual(2, RuleCount);
 end;
 
 procedure TMathLayoutIntegrationTests.FormulaGlyphs_HaveNoSourceRun;
