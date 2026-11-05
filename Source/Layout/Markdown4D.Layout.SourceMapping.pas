@@ -32,6 +32,12 @@ type
     class function StepAt(const Source: string; const Index, Limit: Integer): TSourceStep; static;
 
   public
+    // Where the literal of a formula starts in Source: it is typed between
+    // its markers, so a position in it is a position in the source. False
+    // for a literal that does not appear as typed, its line ends rewritten
+    // for instance.
+    class function TryMathLiteralStart(const Source: string; const Node: IMarkdownNode;
+                                       out Start: Integer): Boolean; static;
     // LiteralOffset counts characters into Node's literal from 0, and answers
     // the 1-based offset in Source of the character at that position. False
     // when the node carries no source of its own, as happens inside a diagram
@@ -44,6 +50,7 @@ type
 implementation
 
 uses
+  System.SysUtils,
   Markdown4D.Defines,
   Markdown4D.Text.Unescape;
 
@@ -61,6 +68,14 @@ begin
   if not IsSegmentInside(Source, Segment) then
   begin
     Result := False;
+    Exit;
+  end;
+
+  var LiteralStart: Integer;
+  if TryMathLiteralStart(Source, Node, LiteralStart) then
+  begin
+    Offset := LiteralStart + LiteralOffset;
+    Result := True;
     Exit;
   end;
 
@@ -85,6 +100,23 @@ end;
 class function TMarkdownSourceMapper.IsTakenWhole(const Node: IMarkdownNode): Boolean;
 begin
   Result := (Node.Kind <> TMarkdownNodeKind.Text);
+end;
+
+class function TMarkdownSourceMapper.TryMathLiteralStart(const Source: string; const Node: IMarkdownNode;
+  out Start: Integer): Boolean;
+begin
+  Start := 0;
+
+  var Math: IMarkdownMath;
+  if not Supports(Node, IMarkdownMath, Math) or (Math.Literal = '') then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  const Segment = Node.Segment;
+  Start := Pos(Math.Literal, Source, Segment.StartOffset);
+  Result := (Start > 0) and (Start + Length(Math.Literal) <= Segment.EndOffset);
 end;
 
 class function TMarkdownSourceMapper.IsSegmentInside(const Source: string;

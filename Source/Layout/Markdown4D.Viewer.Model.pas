@@ -59,6 +59,15 @@ type
       // whole words after a double click, whole lines after a triple click.
       TSelectionUnit = (Character, Word, Line);
       TCharacterClass = (WordCharacter, Space, Other);
+      // One stretch of a selection: the characters CharFrom to CharTo of Run,
+      // set apart from the stretch before it the way JoinRun is.
+      TSelectedPiece = record
+        ItemIndex: Integer;
+        Run: IDisplayTextRun;
+        JoinRun: IDisplayTextRun;
+        CharFrom: Integer;
+        CharTo: Integer;
+      end;
     const
       DefaultFlushIntervalMilliseconds = 100;
       BottomEpsilon = 0.5;
@@ -138,6 +147,15 @@ type
     function TryAdjacentRun(const ItemIndex, Direction: Integer; out AdjacentIndex: Integer;
       out Run: IDisplayTextRun): Boolean;
     class function ContinuesWord(const Run, Before: IDisplayTextRun): Boolean; static;
+    class function IsAtomicRun(const Run: IDisplayTextRun): Boolean; static;
+    class function RunCharacterClass(const Run: IDisplayTextRun; const Index: Integer): TCharacterClass; static;
+    function SelectedPieces(const Range: TTextRange): TArray<TSelectedPiece>;
+    function TryGetWholeFormula(const FirstGlyph: Integer; const Range: TTextRange; out SourceIndex: Integer): Boolean;
+    function TryFindFormulaSource(const LastGlyph: Integer; out SourceIndex: Integer): Boolean;
+    procedure SnapToFormulaEdge(const Point: TLayoutPointF; var Position: TTextPosition);
+    procedure FindFormulaGlyphs(const Index: Integer; out FirstGlyph, LastGlyph: Integer; out Left, Right: Single);
+    class function LiteralOffsetOf(const Run: IDisplayTextRun; const Character: Integer;
+                                   const IsLeading: Boolean): Integer; static;
     class function ContinuesLine(const Run, Before: IDisplayTextRun): Boolean; static;
     class function CharacterClassOf(const Character: Char): TCharacterClass; static;
     function TryFindScrollerAt(const Point: TLayoutPointF; out Index: Integer): Boolean;
@@ -168,6 +186,8 @@ type
       const PreviousTop: Single): string; static;
     class function FallbackSeparator(const Run: IDisplayTextRun; const StartsBlock: Boolean;
       const PreviousTop: Single): string; static;
+    function TryMapSelectionEdge(const Run: IDisplayTextRun; const Character: Integer; const IsLeading: Boolean;
+      out Offset: Integer): Boolean;
     function TryFindSelectionEdges(out FirstRun, LastRun: IDisplayTextRun;
                                    out FirstCharacter, LastCharacter: Integer): Boolean;
     function PrefixWidth(const Run: IDisplayTextRun; const CharacterCount: Integer): Single;
@@ -318,6 +338,7 @@ uses
   Markdown4D.Layout.HitTest,
   Markdown4D.Layout.SourceMapping,
   Markdown4D.Layout.SelectedMarkdown,
+  Markdown4D.Math.Layout,
   Markdown4D.Toc,
   Markdown4D.Layout.Zoom;
 
@@ -525,15 +546,15 @@ begin
   Result.StartPosition := Position;
   Result.EndPosition := Position;
 
-  const IsAtomic = (Run.Role = TDisplayTextRunRole.Source);
-  if IsAtomic then
+  const IsSource = (Run.Role = TDisplayTextRunRole.Source);
+  if IsSource then
   begin
     Result.StartPosition.CharacterIndex := 0;
     Result.EndPosition.CharacterIndex := Length(Run.Text);
     Exit;
   end;
 
-  const CharacterClass = CharacterClassOf(Run.Text[Position.CharacterIndex + 1]);
+  const CharacterClass = RunCharacterClass(Run, Position.CharacterIndex);
   if CharacterClass = TCharacterClass.Other then
   begin
     Result.EndPosition.CharacterIndex := Position.CharacterIndex + 1;
@@ -548,12 +569,12 @@ function TMarkdownViewerModel.WordStartFrom(const Position: TTextPosition): TTex
 begin
   var Run: IDisplayTextRun;
   TrySelectableRun(Position.ItemIndex, Run);
-  const CharacterClass = CharacterClassOf(Run.Text[Position.CharacterIndex + 1]);
+  const CharacterClass = RunCharacterClass(Run, Position.CharacterIndex);
 
   Result := Position;
   while True do
   begin
-    while (Result.CharacterIndex > 0) and (CharacterClassOf(Run.Text[Result.CharacterIndex]) = CharacterClass) do
+    while (Result.CharacterIndex > 0) and (RunCharacterClass(Run, Result.CharacterIndex - 1) = CharacterClass) do
       Result.CharacterIndex := Result.CharacterIndex - 1;
 
     const ReachedRunStart = (Result.CharacterIndex = 0);
@@ -574,13 +595,13 @@ function TMarkdownViewerModel.WordEndFrom(const Position: TTextPosition): TTextP
 begin
   var Run: IDisplayTextRun;
   TrySelectableRun(Position.ItemIndex, Run);
-  const CharacterClass = CharacterClassOf(Run.Text[Position.CharacterIndex + 1]);
+  const CharacterClass = RunCharacterClass(Run, Position.CharacterIndex);
 
   Result := Position;
   while True do
   begin
     while (Result.CharacterIndex < Length(Run.Text)) and
-          (CharacterClassOf(Run.Text[Result.CharacterIndex + 1]) = CharacterClass) do
+          (RunCharacterClass(Run, Result.CharacterIndex) = CharacterClass) do
       Result.CharacterIndex := Result.CharacterIndex + 1;
 
     const ReachedRunEnd = (Result.CharacterIndex = Length(Run.Text));
@@ -667,7 +688,10 @@ begin
 
   while (AdjacentIndex >= 0) and (AdjacentIndex < FDisplayList.ItemCount) do
   begin
-    if TrySelectableRun(AdjacentIndex, Run) then
+    // The glyphs of a formula stand for its source run where the selection
+    // moves from run to run.
+    const IsNeighbour = (TrySelectableRun(AdjacentIndex, Run) and (Run.Role <> TDisplayTextRunRole.Source));
+    if IsNeighbour then
     begin
       Result := True;
       Exit;
@@ -680,19 +704,66 @@ begin
   Result := False;
 end;
 
+// A source run is selected whole. So is a formula glyph that is a single
+// character beyond the basic plane, which a selection must not split; any
+// other formula glyph selects character by character like text.
+class function TMarkdownViewerModel.IsAtomicRun(const Run: IDisplayTextRun): Boolean;
+begin
+  const IsSurrogatePair = ((Length(Run.Text) = 2) and Run.Text[1].IsHighSurrogate);
+  Result := (Run.Role = TDisplayTextRunRole.Source) or
+            ((Run.Role = TDisplayTextRunRole.Formula) and IsSurrogatePair);
+end;
+
+// Where a character boundary of a run lies in its source literal. A glyph
+// spelled differently than it shows, \alpha or \sin, takes its whole spelling
+// along as soon as the selection touches it.
+class function TMarkdownViewerModel.LiteralOffsetOf(const Run: IDisplayTextRun; const Character: Integer;
+  const IsLeading: Boolean): Integer;
+begin
+  const IsSpelledAsShown = (Run.SourceLength = Length(Run.Text));
+  if IsSpelledAsShown then
+    Result := Run.StartOffset + Character
+  else if IsLeading and (Character < Length(Run.Text)) then
+    Result := Run.StartOffset
+  else if (not IsLeading) and (Character <= 0) then
+    Result := Run.StartOffset
+  else
+    Result := Run.StartOffset + Run.SourceLength;
+end;
+
 // Two runs make one word when the second follows the first directly on the
-// same line, as a change of formatting in the middle of a word does.
+// same line, as a change of formatting in the middle of a word does. In a
+// formula, glyphs on one baseline make a word, so a double click takes the
+// letters of a name like ac or 2a, but not a power or an index.
 class function TMarkdownViewerModel.ContinuesWord(const Run, Before: IDisplayTextRun): Boolean;
 begin
   const IsDirectlyAfter = ((Run.Join = TDisplayTextJoin.Adjacent) or
                            ((Run.Join = TDisplayTextJoin.None) and
                             SameValue(Run.Bounds.Top, Before.Bounds.Top, LineTopEpsilon)));
   const BothAreText = ((Run.Role = TDisplayTextRunRole.Text) and (Before.Role = TDisplayTextRunRole.Text));
+  const AreOneFormulaLine = ((Run.Role = TDisplayTextRunRole.Formula) and
+                             (Before.Role = TDisplayTextRunRole.Formula) and (Run.SourceNode = Before.SourceNode) and
+                             SameValue(Run.Bounds.Top + Run.Baseline, Before.Bounds.Top + Before.Baseline,
+                                       LineTopEpsilon) and
+                             SameValue(Run.Font.Size, Before.Font.Size, LineTopEpsilon));
   const MeetAtWordCharacters = ((Run.Text <> '') and (Before.Text <> '') and
-                                (CharacterClassOf(Run.Text[1]) = TCharacterClass.WordCharacter) and
-                                (CharacterClassOf(Before.Text[Length(Before.Text)]) = TCharacterClass.WordCharacter));
+                                (RunCharacterClass(Run, 0) = TCharacterClass.WordCharacter) and
+                                (RunCharacterClass(Before, Length(Before.Text) - 1) = TCharacterClass.WordCharacter));
 
-  Result := IsDirectlyAfter and BothAreText and MeetAtWordCharacters;
+  Result := IsDirectlyAfter and (BothAreText or AreOneFormulaLine) and MeetAtWordCharacters;
+end;
+
+// The class of the character at Index of a run, counted from 0. A letter of
+// the mathematical alphabets, two characters long, is a letter like the
+// plain one it stands for.
+class function TMarkdownViewerModel.RunCharacterClass(const Run: IDisplayTextRun;
+  const Index: Integer): TCharacterClass;
+begin
+  const IsMathLetter = ((Run.Role = TDisplayTextRunRole.Formula) and IsAtomicRun(Run));
+  if IsMathLetter then
+    Result := CharacterClassOf(TMathLayouter.PlainText(Run.Text)[1])
+  else
+    Result := CharacterClassOf(Run.Text[Index + 1]);
 end;
 
 class function TMarkdownViewerModel.ContinuesLine(const Run, Before: IDisplayTextRun): Boolean;
@@ -736,8 +807,10 @@ begin
 
   for var Index := 0 to FDisplayList.ItemCount - 1 do
   begin
+    // A formula starts and ends with its glyphs, its source run follows them.
     var Run: IDisplayTextRun;
-    if not TrySelectableRun(Index, Run) then
+    const IsBound = (TrySelectableRun(Index, Run) and (Run.Role <> TDisplayTextRunRole.Source));
+    if not IsBound then
       Continue;
 
     if Run.Text = '' then
@@ -801,20 +874,11 @@ begin
   if not HasSelection then
     Exit;
 
-  const Range = NormalizeSelection;
-
-  for var Index := Range.StartPosition.ItemIndex to Range.EndPosition.ItemIndex do
+  for var Piece in SelectedPieces(NormalizeSelection) do
   begin
-    var Run: IDisplayTextRun;
-    if not TrySelectableRun(Index, Run) then
-      Continue;
-
-    var CharFrom, CharTo: Integer;
-    if not SelectedCharacterRange(Run, Index, Range.StartPosition, Range.EndPosition, CharFrom, CharTo) then
-      Continue;
-
-    const RunRect = ClipToScroller(Index, TLayoutRectF.Create(Run.Bounds.Left + PrefixWidth(Run, CharFrom),
-      Run.Bounds.Top, Run.Bounds.Left + PrefixWidth(Run, CharTo), Run.Bounds.Bottom));
+    const Run = Piece.Run;
+    const RunRect = ClipToScroller(Piece.ItemIndex, TLayoutRectF.Create(Run.Bounds.Left + PrefixWidth(Run,
+      Piece.CharFrom), Run.Bounds.Top, Run.Bounds.Left + PrefixWidth(Run, Piece.CharTo), Run.Bounds.Bottom));
     if RunRect.Right <= RunRect.Left then
       Continue;
 
@@ -837,34 +901,148 @@ begin
   if not HasSelection then
     Exit;
 
-  const Range = NormalizeSelection;
-
   var HasPrevious := False;
   var PreviousTop := 0.0;
   var PreviousBlock := 0;
 
-  for var Index := Range.StartPosition.ItemIndex to Range.EndPosition.ItemIndex do
+  for var Piece in SelectedPieces(NormalizeSelection) do
   begin
-    var Run: IDisplayTextRun;
-    if not TrySelectableRun(Index, Run) then
-      Continue;
+    var Segment := Copy(Piece.Run.Text, Piece.CharFrom + 1, Piece.CharTo - Piece.CharFrom);
 
-    var CharFrom, CharTo: Integer;
-    if not SelectedCharacterRange(Run, Index, Range.StartPosition, Range.EndPosition, CharFrom, CharTo) then
-      Continue;
+    // Part of a formula copies as the characters it shows, a letter of the
+    // mathematical alphabets as the plain letter a reader would type.
+    if Piece.Run.Role = TDisplayTextRunRole.Formula then
+      Segment := TMathLayouter.PlainText(Segment);
 
-    const Segment = Copy(Run.Text, CharFrom + 1, CharTo - CharFrom);
-    const BlockIndex = BlockIndexOfItem(Index);
+    const BlockIndex = BlockIndexOfItem(Piece.ItemIndex);
 
     if HasPrevious then
-      Result := Result + SeparatorBefore(Run, BlockIndex <> PreviousBlock, PreviousTop);
+      Result := Result + SeparatorBefore(Piece.JoinRun, BlockIndex <> PreviousBlock, PreviousTop);
 
     Result := Result + Segment;
 
     HasPrevious := True;
-    PreviousTop := Run.Bounds.Top;
+    PreviousTop := Piece.Run.Bounds.Top;
     PreviousBlock := BlockIndex;
   end;
+end;
+
+// What a selection holds, run by run. A formula is in the display list twice:
+// as the glyphs it shows, then as its source run, the markdown with its
+// markers. A selection that holds the whole formula reads the source run, so
+// the formula copies as markdown and pastes back as the same formula; one that
+// holds part of it reads the glyphs. The source run counts on its own only
+// where the selection starts at it, as after find selected the formula.
+function TMarkdownViewerModel.SelectedPieces(const Range: TTextRange): TArray<TSelectedPiece>;
+begin
+  Result := [];
+
+  var Index := Range.StartPosition.ItemIndex;
+  while Index <= Range.EndPosition.ItemIndex do
+  begin
+    var NextIndex := Index + 1;
+
+    var Piece := Default(TSelectedPiece);
+    Piece.ItemIndex := Index;
+    const IsSelected = (TrySelectableRun(Index, Piece.Run) and
+      SelectedCharacterRange(Piece.Run, Index, Range.StartPosition, Range.EndPosition, Piece.CharFrom,
+        Piece.CharTo));
+    if IsSelected then
+    begin
+      Piece.JoinRun := Piece.Run;
+
+      var SourceIndex: Integer;
+      if Piece.Run.Role = TDisplayTextRunRole.Formula then
+      begin
+        if TryGetWholeFormula(Index, Range, SourceIndex) then
+        begin
+          TrySelectableRun(SourceIndex, Piece.Run);
+          Piece.ItemIndex := SourceIndex;
+          Piece.CharFrom := 0;
+          Piece.CharTo := Length(Piece.Run.Text);
+          NextIndex := SourceIndex + 1;
+        end;
+        Result := Result + [Piece];
+      end
+      else if Piece.Run.Role = TDisplayTextRunRole.Source then
+      begin
+        const StartsHere = ((Index = Range.StartPosition.ItemIndex) and (Piece.CharFrom = 0));
+        if StartsHere then
+          Result := Result + [Piece];
+      end
+      else
+        Result := Result + [Piece];
+    end;
+
+    Index := NextIndex;
+  end;
+end;
+
+// The glyphs of one formula follow one another in the display list, with its
+// bars and drawn delimiters in between, and its source run after them. The
+// selection holds the whole formula when it reaches from before its first
+// glyph to after its last.
+function TMarkdownViewerModel.TryGetWholeFormula(const FirstGlyph: Integer; const Range: TTextRange;
+  out SourceIndex: Integer): Boolean;
+begin
+  SourceIndex := -1;
+  Result := False;
+
+  var Run: IDisplayTextRun;
+  if not TrySelectableRun(FirstGlyph, Run) then
+    Exit;
+  const Formula = Run.SourceNode;
+
+  var Before: IDisplayTextRun;
+  var BeforeIndex: Integer;
+  const HasGlyphBefore = (TryAdjacentRun(FirstGlyph, -1, BeforeIndex, Before) and
+    (Before.Role = TDisplayTextRunRole.Formula) and (Before.SourceNode = Formula));
+  if HasGlyphBefore then
+    Exit;
+
+  var LastGlyph := FirstGlyph;
+  var Next: IDisplayTextRun;
+  var NextIndex: Integer;
+  while TryAdjacentRun(LastGlyph, 1, NextIndex, Next) and (Next.Role = TDisplayTextRunRole.Formula) and
+        (Next.SourceNode = Formula) do
+  begin
+    LastGlyph := NextIndex;
+    Run := Next;
+  end;
+
+  var FormulaStart: TTextPosition;
+  FormulaStart.ItemIndex := FirstGlyph;
+  FormulaStart.CharacterIndex := 0;
+
+  var FormulaEnd: TTextPosition;
+  FormulaEnd.ItemIndex := LastGlyph;
+  FormulaEnd.CharacterIndex := Length(Run.Text);
+
+  const HoldsFormula = ((ComparePositions(Range.StartPosition, FormulaStart) <= 0) and
+                        (ComparePositions(Range.EndPosition, FormulaEnd) >= 0));
+  Result := HoldsFormula and TryFindFormulaSource(LastGlyph, SourceIndex);
+end;
+
+// The source run of a formula is the first text after its last glyph; what
+// lies between is drawn, not text.
+function TMarkdownViewerModel.TryFindFormulaSource(const LastGlyph: Integer; out SourceIndex: Integer): Boolean;
+begin
+  SourceIndex := LastGlyph + 1;
+  while SourceIndex < FDisplayList.ItemCount do
+  begin
+    var Run: IDisplayTextRun;
+    const IsText = (Supports(FDisplayList.Items[SourceIndex], IDisplayTextRun, Run) and
+                    (Run.Role <> TDisplayTextRunRole.Drawing));
+    if IsText then
+    begin
+      Result := (Run.Role = TDisplayTextRunRole.Source);
+      Exit;
+    end;
+
+    Inc(SourceIndex);
+  end;
+
+  Result := False;
 end;
 
 // A run the layout gave a join copies with that join. One without, drawn by an
@@ -993,10 +1171,8 @@ begin
     Exit;
 
   var StartOffset, EndOffset: Integer;
-  const IsStartMapped = TMarkdownSourceMapper.TryMapLiteralOffset(FText, FirstRun.SourceNode,
-    FirstRun.StartOffset + FirstCharacter, TMarkdownSourceEdge.Leading, StartOffset);
-  const IsEndMapped = TMarkdownSourceMapper.TryMapLiteralOffset(FText, LastRun.SourceNode,
-    LastRun.StartOffset + LastCharacter, TMarkdownSourceEdge.Trailing, EndOffset);
+  const IsStartMapped = TryMapSelectionEdge(FirstRun, FirstCharacter, True, StartOffset);
+  const IsEndMapped = TryMapSelectionEdge(LastRun, LastCharacter, False, EndOffset);
 
   const CoversCharacters = IsStartMapped and IsEndMapped and (EndOffset > StartOffset);
   if not CoversCharacters then
@@ -1004,6 +1180,31 @@ begin
 
   Segment := TMarkdownSegment.Create(StartOffset, EndOffset);
   Result := True;
+end;
+
+// Where an end of the selection lies in the markdown. The source run of a
+// whole formula stands for all of it, its markers included, so the formula
+// keeps them at either end of a selection.
+function TMarkdownViewerModel.TryMapSelectionEdge(const Run: IDisplayTextRun; const Character: Integer;
+  const IsLeading: Boolean; out Offset: Integer): Boolean;
+begin
+  const IsFormulaSource = (Run.Role = TDisplayTextRunRole.Source);
+  if IsFormulaSource then
+  begin
+    Offset := Run.SourceNode.Segment.EndOffset;
+    if IsLeading then
+      Offset := Run.SourceNode.Segment.StartOffset;
+    Result := True;
+    Exit;
+  end;
+
+  const LiteralOffset = LiteralOffsetOf(Run, Character, IsLeading);
+  if IsLeading then
+    Result := TMarkdownSourceMapper.TryMapLiteralOffset(FText, Run.SourceNode, LiteralOffset,
+      TMarkdownSourceEdge.Leading, Offset)
+  else
+    Result := TMarkdownSourceMapper.TryMapLiteralOffset(FText, Run.SourceNode, LiteralOffset,
+      TMarkdownSourceEdge.Trailing, Offset);
 end;
 
 // The runs between the two ends of the selection follow one another in the
@@ -1022,26 +1223,16 @@ begin
     Exit;
   end;
 
-  const Range = NormalizeSelection;
-
-  for var Index := Range.StartPosition.ItemIndex to Range.EndPosition.ItemIndex do
+  for var Piece in SelectedPieces(NormalizeSelection) do
   begin
-    var Run: IDisplayTextRun;
-    if not TrySelectableRun(Index, Run) then
-      Continue;
-
-    var CharFrom, CharTo: Integer;
-    if not SelectedCharacterRange(Run, Index, Range.StartPosition, Range.EndPosition, CharFrom, CharTo) then
-      Continue;
-
     if FirstRun = nil then
     begin
-      FirstRun := Run;
-      FirstCharacter := CharFrom;
+      FirstRun := Piece.Run;
+      FirstCharacter := Piece.CharFrom;
     end;
 
-    LastRun := Run;
-    LastCharacter := CharTo;
+    LastRun := Piece.Run;
+    LastCharacter := Piece.CharTo;
   end;
 
   Result := (FirstRun <> nil);
@@ -1132,8 +1323,10 @@ begin
 
   for var Index := 0 to FDisplayList.ItemCount - 1 do
   begin
+    // Find searches a formula's source, which its glyphs only show.
     var Run: IDisplayTextRun;
-    if not TrySelectableRun(Index, Run) then
+    const IsSearched = (TrySelectableRun(Index, Run) and (Run.Role <> TDisplayTextRunRole.Formula));
+    if not IsSearched then
       Continue;
 
     const RunText = Run.Text;
@@ -1266,7 +1459,7 @@ begin
   Result.StartPosition.ItemIndex := Match.ItemIndex;
   Result.EndPosition.ItemIndex := Match.ItemIndex;
 
-  const IsAtomic = (Run.Role = TDisplayTextRunRole.Source);
+  const IsAtomic = IsAtomicRun(Run);
   if IsAtomic then
   begin
     Result.StartPosition.CharacterIndex := 0;
@@ -1795,8 +1988,10 @@ begin
 
   for var Index := 0 to FDisplayList.ItemCount - 1 do
   begin
+    // The pointer picks a glyph of a formula, not the source run over it.
     var Run: IDisplayTextRun;
-    if not TrySelectableRun(Index, Run) then
+    const IsPointable = (TrySelectableRun(Index, Run) and (Run.Role <> TDisplayTextRunRole.Source));
+    if not IsPointable then
       Continue;
 
     const Bounds = Run.Bounds;
@@ -1832,6 +2027,64 @@ begin
   Position.ItemIndex := BestIndex;
   Position.CharacterIndex := NearestCharacterBoundary(BestRun, Point.X);
   Result := True;
+
+  // Beside a formula the pointer means its edge, not the glyph of whatever
+  // part of it, numerator or limit, happens to be level with the pointer.
+  if BestRun.Role = TDisplayTextRunRole.Formula then
+    SnapToFormulaEdge(Point, Position);
+end;
+
+procedure TMarkdownViewerModel.SnapToFormulaEdge(const Point: TLayoutPointF; var Position: TTextPosition);
+begin
+  var FirstGlyph, LastGlyph: Integer;
+  var Left, Right: Single;
+  FindFormulaGlyphs(Position.ItemIndex, FirstGlyph, LastGlyph, Left, Right);
+
+  var Run: IDisplayTextRun;
+  if Point.X >= Right then
+  begin
+    TrySelectableRun(LastGlyph, Run);
+    Position.ItemIndex := LastGlyph;
+    Position.CharacterIndex := Length(Run.Text);
+  end
+  else if Point.X <= Left then
+  begin
+    Position.ItemIndex := FirstGlyph;
+    Position.CharacterIndex := 0;
+  end;
+end;
+
+// The glyphs of the formula the glyph at Index belongs to, and how far they
+// reach to the left and the right.
+procedure TMarkdownViewerModel.FindFormulaGlyphs(const Index: Integer; out FirstGlyph, LastGlyph: Integer;
+  out Left, Right: Single);
+begin
+  var Run: IDisplayTextRun;
+  TrySelectableRun(Index, Run);
+  const Formula = Run.SourceNode;
+
+  FirstGlyph := Index;
+  LastGlyph := Index;
+  Left := Run.Bounds.Left;
+  Right := Run.Bounds.Right;
+
+  var Other: IDisplayTextRun;
+  var OtherIndex: Integer;
+  while TryAdjacentRun(FirstGlyph, -1, OtherIndex, Other) and (Other.Role = TDisplayTextRunRole.Formula) and
+        (Other.SourceNode = Formula) do
+  begin
+    FirstGlyph := OtherIndex;
+    Left := Min(Left, Other.Bounds.Left);
+    Right := Max(Right, Other.Bounds.Right);
+  end;
+
+  while TryAdjacentRun(LastGlyph, 1, OtherIndex, Other) and (Other.Role = TDisplayTextRunRole.Formula) and
+        (Other.SourceNode = Formula) do
+  begin
+    LastGlyph := OtherIndex;
+    Left := Min(Left, Other.Bounds.Left);
+    Right := Max(Right, Other.Bounds.Right);
+  end;
 end;
 
 // The character the pointer is on, rather than the boundary nearest to it: a
@@ -1875,7 +2128,7 @@ function TMarkdownViewerModel.NearestCharacterBoundary(const Run: IDisplayTextRu
 begin
   const LocalX = X - Run.Bounds.Left;
 
-  const IsAtomic = (Run.Role = TDisplayTextRunRole.Source);
+  const IsAtomic = IsAtomicRun(Run);
   if IsAtomic then
   begin
     const PastMiddle = (LocalX > Run.Bounds.Width / 2);
@@ -1894,6 +2147,12 @@ begin
 
   for var Count := 1 to Length(Run.Text) do
   begin
+    // A letter of the mathematical alphabets is two characters; a boundary
+    // never falls between them.
+    const SplitsPair = ((Count < Length(Run.Text)) and Run.Text[Count].IsHighSurrogate);
+    if SplitsPair then
+      Continue;
+
     const Distance = Abs(LocalX - PrefixWidth(Run, Count));
     if Distance < BestDistance then
     begin
@@ -1962,7 +2221,7 @@ begin
   end;
 
   // The source of a drawing is as wide as the drawing, whatever its text measures.
-  const IsAtomic = (Run.Role = TDisplayTextRunRole.Source);
+  const IsAtomic = IsAtomicRun(Run);
   if IsAtomic then
   begin
     Result := Run.Bounds.Width;
