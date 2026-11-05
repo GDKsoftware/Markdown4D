@@ -2,18 +2,6 @@
 setlocal
 
 set ROOT=%~dp0
-rem The install root carries brackets, so every expansion of it stays quoted.
-if not defined STUDIO_ROOT set "STUDIO_ROOT=C:\Program Files (x86)\Embarcadero\Studio"
-
-rem Newest supported Delphi first: 37.0 is Delphi 13, 23.0 is Delphi 12 Athens.
-rem Set MARKDOWN4D_STUDIO to a version number to force one of them.
-if defined MARKDOWN4D_STUDIO (
-    set "RSVARS=%STUDIO_ROOT%\%MARKDOWN4D_STUDIO%\bin\rsvars.bat"
-) else (
-    for %%V in (37.0 23.0) do (
-        if not defined RSVARS if exist "%STUDIO_ROOT%\%%V\bin\rsvars.bat" set "RSVARS=%STUDIO_ROOT%\%%V\bin\rsvars.bat"
-    )
-)
 
 set TEST_PROJECT=%ROOT%Tests\Markdown4D.Tests.dproj
 set TEST_EXE=%ROOT%Tests\Win32\Debug\Markdown4D.Tests.exe
@@ -21,40 +9,82 @@ set FMX_TEST_PROJECT=%ROOT%Tests\Markdown4D.Fmx.Tests.dproj
 set FMX_TEST_EXE=%ROOT%Tests\Win32\Debug\Markdown4D.Fmx.Tests.exe
 set TEST_EXE_X64=%ROOT%Tests\Win64x\Debug\Markdown4D.Tests.exe
 set FMX_TEST_EXE_X64=%ROOT%Tests\Win64x\Debug\Markdown4D.Fmx.Tests.exe
+
 set RESULTS_DIR=%ROOT%Tests\results
 set RESULTS_XML=%RESULTS_DIR%\dunitx-results.xml
 set FMX_RESULTS_XML=%RESULTS_DIR%\dunitx-fmx-results.xml
 set RESULTS_XML_X64=%RESULTS_DIR%\dunitx-results-win64x.xml
 set FMX_RESULTS_XML_X64=%RESULTS_DIR%\dunitx-fmx-results-win64x.xml
 
-if not defined RSVARS (
-    echo [build] No supported Delphi found under "%STUDIO_ROOT%".
-    echo [build] Looked for 37.0 ^(Delphi 13^) and 23.0 ^(Delphi 12 Athens^).
-    echo [build] Set MARKDOWN4D_STUDIO to a version number, or STUDIO_ROOT to another install root.
-    exit /b 1
+rem Check for environment variable named DELPHI_CE or the existence of a file or directory named DELPHI.CE.
+if not defined DELPHI_CE (
+    if exist DELPHI.CE set DELPHI_CE=1
 )
 
-if not exist "%RSVARS%" (
-    echo [build] rsvars.bat not found at "%RSVARS%".
-    exit /b 1
-)
+rem The install root carries brackets, so every expansion of it stays quoted.
+if not defined STUDIO_ROOT set "STUDIO_ROOT=C:\Program Files (x86)\Embarcadero\Studio"
 
-echo [build] Using "%RSVARS%"
-
-call "%RSVARS%"
-
-echo.
-echo === Building test suites ^(Debug, Win32 and Win64x^) ===
-for %%A in (Win32 Win64x) do (
-    for %%T in ("%TEST_PROJECT%" "%FMX_TEST_PROJECT%") do (
-        msbuild "%%~T" /t:Build /p:Config=Debug /p:Platform=%%A /v:m
-        if errorlevel 1 (
-            echo.
-            echo === TEST BUILD FAILED ^(%%A^): %%~nxT ===
-            exit /b 1
-        )
+rem Newest supported Delphi first: 37.0 is Delphi 13 Florence, 23.0 is Delphi 12 Athens.
+rem Set STUDIO_VERSION to a version number to force one of them.
+if defined STUDIO_VERSION (
+    if defined DELPHI_CE set "STUDIO_BDS=%STUDIO_ROOT%\%STUDIO_VERSION%\bin\bds.exe"
+    set "RSVARS=%STUDIO_ROOT%\%STUDIO_VERSION%\bin\rsvars.bat"
+) else (
+    for %%V in (37.0 23.0) do (
+        if defined DELPHI_CE if not defined STUDIO_BDS if exist "%STUDIO_ROOT%\%%V\bin\bds.exe" set "STUDIO_BDS=%STUDIO_ROOT%\%%V\bin\bds.exe"
+        if not defined RSVARS if exist "%STUDIO_ROOT%\%%V\bin\rsvars.bat" set "RSVARS=%STUDIO_ROOT%\%%V\bin\rsvars.bat"
     )
 )
+
+if defined DELPHI_CE if defined STUDIO_BDS (
+    if not exist "%STUDIO_BDS%" (
+        echo [build] bsd.exe not found.
+        exit /b 1
+    )
+    rem echo [build] Found bds.exe ^(%STUDIO_BDS%^).
+    "%STUDIO_BDS%" "%ROOT%Markdown4D.groupproj" -b -- -ns -b
+    if errorlevel 1 (
+        echo [build] bsd -b failed.
+        exit /b 1
+    )
+    echo [build] bsd -b succeeded.
+)
+
+rem If not Delphi Community Edition, call rsvars.bat and build using msbuild.
+if not defined DELPHI_CE (
+
+    if not defined RSVARS (
+        echo [build] No supported Delphi found under "%STUDIO_ROOT%".
+        echo [build] Looked for 37.0 ^(Delphi 13 Florence^) and 23.0 ^(Delphi 12 Athens^).
+        echo [build] Set STUDIO_VERSION to a version number, or STUDIO_ROOT to another install root.
+        exit /b 1
+    )
+
+    if not exist "%RSVARS%" (
+        echo [build] rsvars.bat not found at "%RSVARS%".
+        exit /b 1
+    )
+
+    echo [build] Using "%RSVARS%"
+
+    call "%RSVARS%"
+
+    echo.
+    echo === Building test suites ^(Debug, Win32 and Win64x^) ===
+    for %%A in (Win32 Win64x) do (
+        for %%T in ("%TEST_PROJECT%" "%FMX_TEST_PROJECT%") do (
+            msbuild "%%~T" /t:Build /p:Config=Debug /p:Platform=%%A /v:m
+            if errorlevel 1 (
+                echo.
+                echo === TEST BUILD FAILED ^(%%A^): %%~nxT ===
+                exit /b 1
+            )
+        )
+    )
+
+)
+
+rem Run the test suites, collecting results in XML files.
 
 if not exist "%RESULTS_DIR%" mkdir "%RESULTS_DIR%"
 
@@ -68,6 +98,8 @@ echo === Running FMX test suite ^(Win32^) ===
 "%FMX_TEST_EXE%" -xml:"%FMX_RESULTS_XML%" -exit:continue
 set FMX_EXIT=%ERRORLEVEL%
 
+if not defined DELPHI_CE (
+
 echo.
 echo === Running main test suite ^(Win64x^) ===
 "%TEST_EXE_X64%" -xml:"%RESULTS_XML_X64%" -exit:continue
@@ -77,6 +109,8 @@ echo.
 echo === Running FMX test suite ^(Win64x^) ===
 "%FMX_TEST_EXE_X64%" -xml:"%FMX_RESULTS_XML_X64%" -exit:continue
 set FMX_EXIT_X64=%ERRORLEVEL%
+
+)
 
 echo.
 if "%MAIN_EXIT%"=="0" (
@@ -89,6 +123,9 @@ if "%FMX_EXIT%"=="0" (
 ) else (
     echo === FMX suite ^(Win32^): failures reported, exit code %FMX_EXIT% ===
 )
+
+if not defined DELPHI_CE (
+
 if "%MAIN_EXIT_X64%"=="0" (
     echo === Main suite ^(Win64x^): all tests passed ===
 ) else (
@@ -100,68 +137,75 @@ if "%FMX_EXIT_X64%"=="0" (
     echo === FMX suite ^(Win64x^): failures reported, exit code %FMX_EXIT_X64% ===
 )
 
-echo.
-echo === Building example projects ^(Debug, Win32^) ===
-for %%P in (
-    "%ROOT%Examples\Markdown4DStudioVCL\Markdown4DStudioVCL.dproj"
-    "%ROOT%Examples\StreamingMarkdownVCL\StreamingMarkdownVCL.dproj"
-    "%ROOT%Examples\Markdown4DStudioFMX\Markdown4DStudioFMX.dproj"
-    "%ROOT%Examples\StreamingMarkdownFMX\StreamingMarkdownFMX.dproj"
-) do (
-    msbuild "%%~P" /t:Build /p:Config=Debug /p:Platform=Win32 /v:m
-    if errorlevel 1 (
-        echo.
-        echo === EXAMPLE BUILD FAILED: %%~nxP ===
-        exit /b 1
-    )
 )
 
-echo.
-echo === Building Markdown4D packages ^(Release, Win32^) ===
-for %%K in (
-    "%ROOT%packages\Markdown4D.Core.dproj"
-    "%ROOT%packages\Markdown4D.Vcl.dproj"
-    "%ROOT%packages\Markdown4D.Fmx.dproj"
-    "%ROOT%packages\Markdown4D.Vcl.Design.dproj"
-    "%ROOT%packages\Markdown4D.Fmx.Design.dproj"
-) do (
-    msbuild "%%~K" /t:Build /p:Config=Release /p:Platform=Win32 /v:m
-    if errorlevel 1 (
-        echo.
-        echo === PACKAGE BUILD FAILED: %%~nxK ===
-        exit /b 1
-    )
-)
+rem Build example projects and packages using MSBuild (when not Delphi Community Edition).
+if not defined DELPHI_CE (
 
-echo.
-echo === Building runtime packages ^(Release, Win64 and Win64x^) ===
-for %%A in (Win64 Win64x) do (
+    echo.
+    echo === Building example projects ^(Debug, Win32^) ===
+    for %%P in (
+        "%ROOT%Examples\Markdown4DStudioVCL\Markdown4DStudioVCL.dproj"
+        "%ROOT%Examples\StreamingMarkdownVCL\StreamingMarkdownVCL.dproj"
+        "%ROOT%Examples\Markdown4DStudioFMX\Markdown4DStudioFMX.dproj"
+        "%ROOT%Examples\StreamingMarkdownFMX\StreamingMarkdownFMX.dproj"
+    ) do (
+        msbuild "%%~P" /t:Build /p:Config=Debug /p:Platform=Win32 /v:m
+        if errorlevel 1 (
+            echo.
+            echo === EXAMPLE BUILD FAILED: %%~nxP ===
+            exit /b 1
+        )
+    )
+
+    echo.
+    echo === Building Markdown4D packages ^(Release, Win32^) ===
     for %%K in (
         "%ROOT%packages\Markdown4D.Core.dproj"
         "%ROOT%packages\Markdown4D.Vcl.dproj"
         "%ROOT%packages\Markdown4D.Fmx.dproj"
+        "%ROOT%packages\Markdown4D.Vcl.Design.dproj"
+        "%ROOT%packages\Markdown4D.Fmx.Design.dproj"
     ) do (
-        msbuild "%%~K" /t:Build /p:Config=Release /p:Platform=%%A /v:m
+        msbuild "%%~K" /t:Build /p:Config=Release /p:Platform=Win32 /v:m
         if errorlevel 1 (
             echo.
-            echo === PACKAGE BUILD FAILED ^(%%A^): %%~nxK ===
+            echo === PACKAGE BUILD FAILED: %%~nxK ===
             exit /b 1
         )
     )
-)
 
-echo.
-echo === Building design packages ^(Release, Win64x^) ===
-for %%K in (
-    "%ROOT%packages\Markdown4D.Vcl.Design.dproj"
-    "%ROOT%packages\Markdown4D.Fmx.Design.dproj"
-) do (
-    msbuild "%%~K" /t:Build /p:Config=Release /p:Platform=Win64x /v:m
-    if errorlevel 1 (
-        echo.
-        echo === PACKAGE BUILD FAILED ^(Win64x^): %%~nxK ===
-        exit /b 1
+    echo.
+    echo === Building runtime packages ^(Release, Win64 and Win64x^) ===
+    for %%A in (Win64 Win64x) do (
+        for %%K in (
+            "%ROOT%packages\Markdown4D.Core.dproj"
+            "%ROOT%packages\Markdown4D.Vcl.dproj"
+            "%ROOT%packages\Markdown4D.Fmx.dproj"
+        ) do (
+            msbuild "%%~K" /t:Build /p:Config=Release /p:Platform=%%A /v:m
+            if errorlevel 1 (
+                echo.
+                echo === PACKAGE BUILD FAILED ^(%%A^): %%~nxK ===
+                exit /b 1
+            )
+        )
     )
+
+    echo.
+    echo === Building design packages ^(Release, Win64x^) ===
+    for %%K in (
+        "%ROOT%packages\Markdown4D.Vcl.Design.dproj"
+        "%ROOT%packages\Markdown4D.Fmx.Design.dproj"
+    ) do (
+        msbuild "%%~K" /t:Build /p:Config=Release /p:Platform=Win64x /v:m
+        if errorlevel 1 (
+            echo.
+            echo === PACKAGE BUILD FAILED ^(Win64x^): %%~nxK ===
+            exit /b 1
+        )
+    )
+
 )
 
 echo.
