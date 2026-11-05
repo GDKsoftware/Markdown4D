@@ -66,6 +66,9 @@ type
     procedure InlineMath_KeepsTheSpaceAfterIt;
 
     [Test]
+    procedure Tabular_DrawsRulesAndUprightText;
+
+    [Test]
     procedure FormulaGlyphs_AreDrawingsWithOneSourceRun;
 
     [Test]
@@ -311,6 +314,24 @@ begin
   const PlainHeight = Plain.BlockInfos[0].Height;
   const FractionHeight = WithFraction.BlockInfos[0].Height;
   Assert.IsTrue(FractionHeight > PlainHeight, 'a fraction must push the line apart');
+end;
+
+procedure TMathLayoutIntegrationTests.Tabular_DrawsRulesAndUprightText;
+begin
+  const DisplayList = Layout('$$'#10'\begin{tabular}{|c|c|}'#10'\hline'#10'Spalte 1 & Spalte 2 \\'#10'\hline'#10 +
+    '\end{tabular}'#10'$$');
+
+  const Words = RunWithText(DisplayList, 'Spalte 1');
+  Assert.IsFalse(Words.Font.Italic, 'tabular cells are text');
+
+  var Rules := 0;
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    var Rectangle: IDisplayRectangle;
+    if Supports(DisplayList.Items[Index], IDisplayRectangle, Rectangle) and (Rectangle.FillColor <> 0) then
+      Inc(Rules);
+  end;
+  Assert.AreEqual(5, Rules, 'two \hline and three vertical rules');
 end;
 
 procedure TMathLayoutIntegrationTests.InlineMath_KeepsTheSpaceAfterIt;
