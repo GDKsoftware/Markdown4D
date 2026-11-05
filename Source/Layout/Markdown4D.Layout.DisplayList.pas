@@ -16,8 +16,11 @@ type
   // such as a formula. Source is the opposite, never painted but selected and
   // copied as one unit, so a formula copies as its markdown. Marker is the
   // bullet or number of a list item: painted and copied like text, but not
-  // part of the item's line when a whole line is selected.
-  TDisplayTextRunRole = (Text, Drawing, Source, Marker);
+  // part of the item's line when a whole line is selected. Formula is a glyph
+  // of a formula: painted, selected and copied like text, while its SourceNode
+  // is the formula and StartOffset and SourceLength name the part of the
+  // formula's source the glyph was set from.
+  TDisplayTextRunRole = (Text, Drawing, Source, Marker, Formula);
 
   // What stands between a text run and the text before it when a selection is
   // copied as plain text. The order matters: of two joins that meet, the later
@@ -44,6 +47,7 @@ type
     function GetColor: TLayoutColor;
     function GetBaseline: Single;
     function GetStartOffset: Integer;
+    function GetSourceLength: Integer;
     function GetSourceNode: IMarkdownNode;
     function GetRole: TDisplayTextRunRole;
     function GetJoin: TDisplayTextJoin;
@@ -55,6 +59,9 @@ type
     property Baseline: Single read GetBaseline;
     // Where this run starts inside the literal of SourceNode, counted from 0.
     property StartOffset: Integer read GetStartOffset;
+    // How many characters of that literal the run was set from: as many as
+    // it shows, except for a formula glyph such as \alpha drawn as one letter.
+    property SourceLength: Integer read GetSourceLength;
     // The inline node whose literal the characters come from. Node is the node
     // the run is attributed to for styling and hit testing, which for a link is
     // the link itself, while SourceNode stays the text leaf inside it.

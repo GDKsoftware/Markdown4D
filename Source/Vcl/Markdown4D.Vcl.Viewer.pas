@@ -100,11 +100,13 @@ type
       FHasLastMousePoint: Boolean;
       FCodeHoverActive: Boolean;
       FCodeHoverRect: TLayoutRectF;
-      FCodeHoverText: string;
-      FCopyButtonRect: TLayoutRectF;
+      FCopyRegion: TMarkdownCopyButtonRegion;
+      FCopyButtonRects: TArray<TLayoutRectF>;
+      FCopiedButton: Integer;
       FCopyFeedback: Boolean;
       FCopyFeedbackTimer: TTimer;
       FContextMenu: TPopupMenu;
+      FContextFormula: IMarkdownMath;
       FPressedLinkUrl: string;
       FHasPressedDisclosure: Boolean;
       FPressedDisclosureKey: Integer;
@@ -163,6 +165,7 @@ type
     procedure UpdateCodeHover(const Point: TLayoutPointF);
     procedure RefreshCodeHover;
     function PointOnCopyButton(const Point: TLayoutPointF): Boolean;
+    function CopyButtonIndexAt(const Point: TLayoutPointF): Integer;
     procedure ClearCodeHover;
     procedure CopyCodeToClipboard(const Text: string);
     procedure SelectForPress(const Point: TLayoutPointF; const X, Y: Integer; const IsDoubleClick: Boolean);
@@ -176,6 +179,8 @@ type
     procedure CopyForShortcut(const Shift: TShiftState);
     function GetZoom: Integer;
     procedure SetZoom(const Value: Integer);
+    function GetFormulaCopyButtons: TMarkdownFormulaFormats;
+    procedure SetFormulaCopyButtons(const Value: TMarkdownFormulaFormats);
     procedure PaintAutoScrollOrigin;
     procedure SetAutoScroll(const Value: Boolean);
     procedure SetTextRendering(const Value: TMarkdownTextRendering);
@@ -186,7 +191,7 @@ type
     procedure WMKillFocus(var Message: TWMKillFocus); message WM_KILLFOCUS;
     procedure WMCaptureChanged(var Message: TMessage); message WM_CAPTURECHANGED;
     procedure HandleCopyFeedbackTimer(Sender: TObject);
-    procedure DrawCopyButton(const Painter: IPainter);
+    procedure DrawCopyButtons(const Painter: IPainter);
     procedure ShowContextMenu(const X, Y: Integer);
     procedure HandleContextItemClick(Sender: TObject);
     function GetContentHeight: Integer;
@@ -247,6 +252,12 @@ type
     function HighlightCount: Integer;
     procedure CopySelectionToClipboard;
     procedure CopySelectionAsMarkdown;
+    // The formula at a point of the control, or nil, for an application with
+    // a context menu of its own that offers to copy it with CopyFormula.
+    function FormulaAt(const X, Y: Integer): IMarkdownMath;
+    // Copies a formula as LaTeX, its source without the markers, or as Text,
+    // its UnicodeMath plain text.
+    procedure CopyFormula(const Formula: IMarkdownMath; const Format: TMarkdownFormulaFormat);
     // Scrolls the heading a link like #getting-started points at to the top.
     // A click on such a link does this itself; OnLinkClick is raised only for
     // an anchor the document does not have.
@@ -316,6 +327,12 @@ type
     // menu leaves the entry out and Ctrl+Shift+C copies plain text, for an
     // application that keeps the source to itself.
     property CopyAsMarkdown: Boolean read FCopyAsMarkdown write FCopyAsMarkdown default True;
+    // Shows small buttons over a display formula while the pointer is on it,
+    // as the Copy button over a code block: LaTeX copies its source, Text its
+    // UnicodeMath plain text. None by default; the context menu offers both
+    // over any formula.
+    property FormulaCopyButtons: TMarkdownFormulaFormats read GetFormulaCopyButtons write SetFormulaCopyButtons
+      default [];
     // DirectWrite draws emoji in colour, Gdi draws them in one colour. Widths
     // differ slightly where DirectWrite kerns; line heights are the same in both.
     property TextRendering: TMarkdownTextRendering read FTextRendering write SetTextRendering
@@ -649,7 +666,11 @@ begin
 
   FContextMenu.Items.Clear;
 
-  for var Item in TMarkdownViewerContextMenu.Build(FModel, FCopyAsMarkdown) do
+  // The entries that copy a formula act on the one the menu was opened over,
+  // whatever the pointer is over when one is clicked.
+  FContextFormula := FormulaAt(X, Y);
+
+  for var Item in TMarkdownViewerContextMenu.Build(FModel, FCopyAsMarkdown, FContextFormula) do
   begin
     if Item.StartsGroup and (FContextMenu.Items.Count > 0) then
     begin
@@ -682,8 +703,10 @@ begin
   end;
 
   case Command of
-    TViewerContextCommand.Copy           : CopySelectionToClipboard;
-    TViewerContextCommand.CopyAsMarkdown : CopySelectionAsMarkdown;
+    TViewerContextCommand.Copy               : CopySelectionToClipboard;
+    TViewerContextCommand.CopyAsMarkdown     : CopySelectionAsMarkdown;
+    TViewerContextCommand.CopyFormulaAsLaTeX : CopyFormula(FContextFormula, TMarkdownFormulaFormat.LaTeX);
+    TViewerContextCommand.CopyFormulaAsText  : CopyFormula(FContextFormula, TMarkdownFormulaFormat.Text);
   else
     raise ENotSupportedException.CreateFmt('Unhandled context command: %d', [Ord(Command)]);
   end;
@@ -829,7 +852,7 @@ begin
     end;
 
     if FCodeHoverActive then
-      DrawCopyButton(PainterLifetime);
+      DrawCopyButtons(PainterLifetime);
   finally
     SetWindowOrgEx(FBuffer.Canvas.Handle, 0, 0, nil);
   end;
@@ -876,9 +899,11 @@ begin
     Exit;
   end;
 
-  if PointOnCopyButton(Point) then
+  const CopyButton = CopyButtonIndexAt(Point);
+  if CopyButton >= 0 then
   begin
-    CopyCodeToClipboard(FCodeHoverText);
+    TMarkdownViewerModel.CopyFromButton(FCopyRegion, FCopyRegion.Buttons[CopyButton], CopyCodeToClipboard);
+    FCopiedButton := CopyButton;
     FCopyFeedback := True;
     FCopyFeedbackTimer.Enabled := False;
     FCopyFeedbackTimer.Enabled := True;
@@ -965,6 +990,17 @@ begin
   end;
 
   UpdateHoverCursor(ContentPoint);
+end;
+
+function TMarkdownViewer.GetFormulaCopyButtons: TMarkdownFormulaFormats;
+begin
+  Result := FModel.FormulaCopyButtons;
+end;
+
+procedure TMarkdownViewer.SetFormulaCopyButtons(const Value: TMarkdownFormulaFormats);
+begin
+  FModel.FormulaCopyButtons := Value;
+  RefreshCodeHover;
 end;
 
 procedure TMarkdownViewer.RefreshCodeHover;
@@ -1475,12 +1511,12 @@ end;
 
 procedure TMarkdownViewer.UpdateCodeHover(const Point: TLayoutPointF);
 begin
-  var Region: TMarkdownCodeBlockRegion;
-  const OverCode = FModel.TryGetCodeBlockAt(Point, Region);
-  const Fits = OverCode and (Region.Rect.Width >= CopyButtonWidth + 2 * CopyButtonMargin) and
-    (Region.Rect.Height >= CopyButtonHeight + CopyButtonMargin);
+  var Region: TMarkdownCopyButtonRegion;
+  var ButtonRects: TArray<TLayoutRectF> := [];
+  if FModel.TryGetCopyButtonsAt(Point, Region) then
+    ButtonRects := TMarkdownViewerModel.CopyButtonRects(Region, CopyButtonWidth, CopyButtonHeight, CopyButtonMargin);
 
-  if not Fits then
+  if ButtonRects = nil then
   begin
     if FCodeHoverActive then
     begin
@@ -1491,26 +1527,37 @@ begin
     Exit;
   end;
 
-  const Right = Region.Rect.Right - CopyButtonMargin;
-  const Top = Region.Rect.Top + CopyButtonMargin;
-  const ButtonRect = TLayoutRectF.Create(Right - CopyButtonWidth, Top, Right, Top + CopyButtonHeight);
-
-  const Unchanged = FCodeHoverActive and SameValue(FCodeHoverRect.Top, Region.Rect.Top) and
-    SameValue(FCodeHoverRect.Left, Region.Rect.Left) and (FCodeHoverText = Region.Text);
+  const Unchanged = FCodeHoverActive and FCopyRegion.IsSameAs(Region);
   if Unchanged then
     Exit;
 
   FCodeHoverActive := True;
   FCodeHoverRect := Region.Rect;
-  FCodeHoverText := Region.Text;
-  FCopyButtonRect := ButtonRect;
+  FCopyRegion := Region;
+  FCopyButtonRects := ButtonRects;
   FCopyFeedback := False;
   Invalidate;
 end;
 
 function TMarkdownViewer.PointOnCopyButton(const Point: TLayoutPointF): Boolean;
 begin
-  Result := FCodeHoverActive and FCopyButtonRect.Contains(Point);
+  Result := (CopyButtonIndexAt(Point) >= 0);
+end;
+
+function TMarkdownViewer.CopyButtonIndexAt(const Point: TLayoutPointF): Integer;
+begin
+  Result := -1;
+  if not FCodeHoverActive then
+    Exit;
+
+  for var Index := 0 to High(FCopyButtonRects) do
+  begin
+    if FCopyButtonRects[Index].Contains(Point) then
+    begin
+      Result := Index;
+      Exit;
+    end;
+  end;
 end;
 
 procedure TMarkdownViewer.ClearCodeHover;
@@ -1519,7 +1566,7 @@ begin
   begin
     FCodeHoverActive := False;
     FCopyFeedback := False;
-    FCodeHoverText := '';
+    FCopyRegion := Default(TMarkdownCopyButtonRegion);
     Invalidate;
   end;
 end;
@@ -1537,6 +1584,18 @@ begin
   end;
 end;
 
+function TMarkdownViewer.FormulaAt(const X, Y: Integer): IMarkdownMath;
+begin
+  if not FModel.TryGetFormulaAt(ContentPointOf(X, Y), Result) then
+    Result := nil;
+end;
+
+procedure TMarkdownViewer.CopyFormula(const Formula: IMarkdownMath; const Format: TMarkdownFormulaFormat);
+begin
+  if Formula <> nil then
+    TMarkdownViewerModel.CopyFormula(Formula, Format, CopyCodeToClipboard);
+end;
+
 procedure TMarkdownViewer.HandleCopyFeedbackTimer(Sender: TObject);
 begin
   FCopyFeedback := False;
@@ -1544,26 +1603,31 @@ begin
   Invalidate;
 end;
 
-procedure TMarkdownViewer.DrawCopyButton(const Painter: IPainter);
+procedure TMarkdownViewer.DrawCopyButtons(const Painter: IPainter);
 begin
-  var Caption := CopyCodeCaption;
-  if FCopyFeedback then
-    Caption := CopiedCodeCaption;
-
   const Font = TMarkdownFontStyle.Create(FTheme.BaseFont.FamilyName, CopyButtonFontSize);
 
-  Painter.FillRect(FCopyButtonRect, FTheme.BackgroundColor);
-  Painter.DrawRect(FCopyButtonRect, FTheme.TableBorderColor, CopyButtonStrokeWidth);
+  for var Index := 0 to High(FCopyButtonRects) do
+  begin
+    const ButtonRect = FCopyButtonRects[Index];
+    const IsCopied = (FCopyFeedback and (Index = FCopiedButton));
 
-  const Size = Painter.MeasureText(Caption, Font);
-  const Tx = FCopyButtonRect.Left + (CopyButtonWidth - Size.Width) / 2;
-  const Ty = FCopyButtonRect.Top + (CopyButtonHeight - Painter.LineHeight(Font)) / 2;
+    var Caption := TMarkdownViewerModel.CopyButtonCaption(FCopyRegion.Buttons[Index]);
+    var LabelColor := FTheme.BlockQuoteTextColor;
+    if IsCopied then
+    begin
+      Caption := CopiedCodeCaption;
+      LabelColor := FTheme.LinkColor;
+    end;
 
-  var LabelColor := FTheme.BlockQuoteTextColor;
-  if FCopyFeedback then
-    LabelColor := FTheme.LinkColor;
+    Painter.FillRect(ButtonRect, FTheme.BackgroundColor);
+    Painter.DrawRect(ButtonRect, FTheme.TableBorderColor, CopyButtonStrokeWidth);
 
-  Painter.DrawTextRun(TLayoutPointF.Create(Tx, Ty), Caption, Font, LabelColor);
+    const Size = Painter.MeasureText(Caption, Font);
+    const Tx = ButtonRect.Left + (CopyButtonWidth - Size.Width) / 2;
+    const Ty = ButtonRect.Top + (CopyButtonHeight - Painter.LineHeight(Font)) / 2;
+    Painter.DrawTextRun(TLayoutPointF.Create(Tx, Ty), Caption, Font, LabelColor);
+  end;
 end;
 
 procedure TMarkdownViewer.ResolvePendingImages;
