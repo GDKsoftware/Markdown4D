@@ -23,6 +23,9 @@ type
     class function WidenOverMathBlocks(const Source: string; const Node: IMarkdownNode;
                                        const Range: TMarkdownSegment): TMarkdownSegment; static;
     class function WidenOverTables(const Node: IMarkdownNode; const Range: TMarkdownSegment): TMarkdownSegment; static;
+    // Where a display formula block ends in Source together with the line that
+    // closes it; a block left open ends where its segment does.
+    class function MathBlockEnd(const Source: string; const Block: IMarkdownNode): Integer; static;
     class function Overlaps(const Left, Right: TMarkdownSegment): Boolean; static;
     class function SpansLines(const Source: string; const Range: TMarkdownSegment): Boolean; static;
     class function WholeLines(const Source: string; const Range: TMarkdownSegment): TMarkdownSegment; static;
@@ -36,9 +39,6 @@ type
     class function Extract(const Source: string; const Document: IMarkdownNode;
                            const Selection: TMarkdownSegment): string; static;
     class function WithPlatformLineBreaks(const Text: string): string; static;
-    // Where a display formula block ends in Source together with the line that
-    // closes it; a block left open ends where its segment does.
-    class function MathBlockEnd(const Source: string; const Block: IMarkdownNode): Integer; static;
   end;
 
 implementation
@@ -68,8 +68,6 @@ begin
   Result := LineFeedsOnly.Replace(LineFeed, sLineBreak);
 end;
 
-// The cells of a table have no source of their own worth copying apart, so a
-// selection that touches one takes the table whole, wherever it is nested.
 // The segment of a display formula block ends with its last line, before the
 // $$ that closes it; pasted without that line, the formula would swallow
 // everything after it.
@@ -121,6 +119,8 @@ begin
   Result := Position;
 end;
 
+// The cells of a table have no source of their own worth copying apart, so a
+// selection that touches one takes the table whole, wherever it is nested.
 class function TMarkdownSelectedSource.WidenOverTables(const Node: IMarkdownNode;
   const Range: TMarkdownSegment): TMarkdownSegment;
 begin
