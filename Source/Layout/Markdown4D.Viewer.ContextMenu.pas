@@ -10,10 +10,11 @@ interface
 
 uses
   System.Classes,
+  Markdown4D.Ast.Interfaces,
   Markdown4D.Viewer.Model;
 
 type
-  TViewerContextCommand = (Copy, CopyAsMarkdown, SelectAll);
+  TViewerContextCommand = (Copy, CopyAsMarkdown, SelectAll, CopyFormulaAsLaTeX, CopyFormulaAsText);
 
   TViewerContextItem = record
     Command: TViewerContextCommand;
@@ -31,7 +32,11 @@ type
     // ShowsCopyAsMarkdown leaves the Copy as Markdown entry out when False, for
     // an application that does not offer the source to its readers.
     class function Build(const Model: TMarkdownViewerModel;
-                         const ShowsCopyAsMarkdown: Boolean): TArray<TViewerContextItem>; static;
+                         const ShowsCopyAsMarkdown: Boolean): TArray<TViewerContextItem>; overload; static;
+    // Formula is the formula the menu was opened over, or nil. Over one, the
+    // menu offers to copy it as LaTeX and as text, whatever is selected.
+    class function Build(const Model: TMarkdownViewerModel; const ShowsCopyAsMarkdown: Boolean;
+                         const Formula: IMarkdownMath): TArray<TViewerContextItem>; overload; static;
     // Runs the entries that only touch the selection. Copy returns False because
     // it needs the host's clipboard.
     class function Execute(const Model: TMarkdownViewerModel;
@@ -62,12 +67,24 @@ end;
 class function TMarkdownViewerContextMenu.Build(const Model: TMarkdownViewerModel;
   const ShowsCopyAsMarkdown: Boolean): TArray<TViewerContextItem>;
 begin
+  Result := Build(Model, ShowsCopyAsMarkdown, nil);
+end;
+
+class function TMarkdownViewerContextMenu.Build(const Model: TMarkdownViewerModel; const ShowsCopyAsMarkdown: Boolean;
+  const Formula: IMarkdownMath): TArray<TViewerContextItem>;
+begin
   const HasSelection = Model.HasSelection;
   Result := [TViewerContextItem.Create(TViewerContextCommand.Copy, CopyMenuCaption, HasSelection, False, CopyShortCut)];
 
   if ShowsCopyAsMarkdown then
     Result := Result + [TViewerContextItem.Create(TViewerContextCommand.CopyAsMarkdown, CopyAsMarkdownMenuCaption,
                                                   HasSelection, False, CopyAsMarkdownShortCut)];
+
+  if Formula <> nil then
+    Result := Result + [TViewerContextItem.Create(TViewerContextCommand.CopyFormulaAsLaTeX,
+                                                  CopyFormulaAsLaTeXMenuCaption, True, True, 0),
+                        TViewerContextItem.Create(TViewerContextCommand.CopyFormulaAsText,
+                                                  CopyFormulaAsTextMenuCaption, True, False, 0)];
 
   Result := Result + [TViewerContextItem.Create(TViewerContextCommand.SelectAll, SelectAllMenuCaption,
                                                 Model.HasSelectableText, True, SelectAllShortCut)];

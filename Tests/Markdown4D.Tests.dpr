@@ -13,6 +13,7 @@ uses
   Markdown4D.Extensions.Alerts.Tests in 'Markdown4D.Extensions.Alerts.Tests.pas',
   Markdown4D.Extensions.Toc.Tests in 'Markdown4D.Extensions.Toc.Tests.pas',
   Markdown4D.Math.Layout.Tests in 'Markdown4D.Math.Layout.Tests.pas',
+  Markdown4D.Math.Linear.Tests in 'Markdown4D.Math.Linear.Tests.pas',
   Markdown4D.Math.Integration.Tests in 'Markdown4D.Math.Integration.Tests.pas',
   Markdown4D.Writer.RoundTrip.Tests in 'Markdown4D.Writer.RoundTrip.Tests.pas',
   Markdown4D.Writer.Canonical.Tests in 'Markdown4D.Writer.Canonical.Tests.pas',

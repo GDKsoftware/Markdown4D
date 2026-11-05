@@ -39,6 +39,7 @@ type
     FColor: TLayoutColor;
     FBaseline: Single;
     FStartOffset: Integer;
+    FSourceLength: Integer;
     FSourceNode: IMarkdownNode;
     FRole: TDisplayTextRunRole;
     FJoin: TDisplayTextJoin;
@@ -48,6 +49,7 @@ type
     function GetColor: TLayoutColor;
     function GetBaseline: Single;
     function GetStartOffset: Integer;
+    function GetSourceLength: Integer;
     function GetSourceNode: IMarkdownNode;
     function GetRole: TDisplayTextRunRole;
     function GetJoin: TDisplayTextJoin;
@@ -59,6 +61,11 @@ type
     constructor Create(const Bounds: TLayoutRectF; const Node: IMarkdownNode; const Text: string;
       const Font: TMarkdownFontStyle; const Color: TLayoutColor; const Baseline: Single; const StartOffset: Integer;
       const Role: TDisplayTextRunRole = TDisplayTextRunRole.Text; const SourceNode: IMarkdownNode = nil);
+    // A formula glyph, set from SourceLength characters of the formula's
+    // source starting at StartOffset.
+    constructor CreateFormula(const Bounds: TLayoutRectF; const Node: IMarkdownNode; const Text: string;
+      const Font: TMarkdownFontStyle; const Color: TLayoutColor; const Baseline: Single;
+      const StartOffset, SourceLength: Integer; const SourceNode: IMarkdownNode);
     function Shifted(const DeltaX, DeltaY: Single): IDisplayItem; override;
     function Joined(const Join: TDisplayTextJoin; const IndentLevel: Integer): IDisplayTextRun;
   end;
@@ -276,8 +283,18 @@ begin
   FColor := Color;
   FBaseline := Baseline;
   FStartOffset := StartOffset;
+  FSourceLength := Length(Text);
   FSourceNode := SourceNode;
   FRole := Role;
+end;
+
+constructor TDisplayTextRun.CreateFormula(const Bounds: TLayoutRectF; const Node: IMarkdownNode; const Text: string;
+  const Font: TMarkdownFontStyle; const Color: TLayoutColor; const Baseline: Single;
+  const StartOffset, SourceLength: Integer; const SourceNode: IMarkdownNode);
+begin
+  Create(Bounds, Node, Text, Font, Color, Baseline, StartOffset, TDisplayTextRunRole.Formula, SourceNode);
+
+  FSourceLength := SourceLength;
 end;
 
 function TDisplayTextRun.GetText: string;
@@ -303,6 +320,11 @@ end;
 function TDisplayTextRun.GetStartOffset: Integer;
 begin
   Result := FStartOffset;
+end;
+
+function TDisplayTextRun.GetSourceLength: Integer;
+begin
+  Result := FSourceLength;
 end;
 
 // A run with no leaf of its own reads its characters straight off the node it
@@ -337,6 +359,7 @@ function TDisplayTextRun.CopyWith(const Bounds: TLayoutRectF; const Join: TDispl
   const IndentLevel: Integer): TDisplayTextRun;
 begin
   Result := TDisplayTextRun.Create(Bounds, FNode, FText, FFont, FColor, FBaseline, FStartOffset, FRole, FSourceNode);
+  Result.FSourceLength := FSourceLength;
   Result.FJoin := Join;
   Result.FIndentLevel := IndentLevel;
 end;
