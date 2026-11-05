@@ -422,6 +422,18 @@ so each way of copying gives what it promises:
 Find searches the LaTeX source, not the drawn glyphs, and a match selects the
 whole formula.
 
+Over any formula the context menu adds `Copy Formula as LaTeX`, its source
+without the markers, and `Copy Formula as Text`, the formula as UnicodeMath
+plain text: the linear format of Unicode Technical Note 28 that Word and
+OneNote write for a formula, such as `πr²`, `(a+1)/b` or `√(x+1)`, which reads
+in any editor or mail; an `array` or `tabular` comes as cells split by tabs and
+rows by line breaks, so it pastes into a spreadsheet as a table. `FormulaCopyButtons` shows the same two as small
+buttons over a display formula while the pointer is on it, either or both,
+none by default. An application with a context menu of its own offers the
+same with `FormulaAt(X, Y)`, the formula at a point of the control or `nil`,
+and `CopyFormula(Formula, Format)`. `TMathLinearFormat.FromSource` in
+`Markdown4D.Math.Linear` turns any formula into that text.
+
 A display formula wider than the column scrolls sideways in its band, the way
 browsers show a long KaTeX or MathJax formula: a thin track below it shows
 which part is in view, and `Shift` with the mouse wheel, a sideways swipe on a
@@ -546,6 +558,7 @@ same.
 | `Images` | `TMarkdownViewerImageSettings` | How image destinations are resolved and fetched (see below) |
 | `Zoom` | `Integer` | In percent (default `100`, from `25` to `500`). Every font, spacing and image grows with it; the theme the application assigned stays as it is. Ctrl+wheel and Ctrl+Plus/Minus step through the levels browsers use (25, 33, 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400, 500), Ctrl+0 resets it. The line at the top of the view stays there, and a document that lays out slowly waits until the wheel rests |
 | `CopyAsMarkdown` | `Boolean` | Offers `Copy as Markdown` on the context menu and `Ctrl+Shift+C` (default `True`). Off, the menu leaves the entry out and `Ctrl+Shift+C` copies plain text, for an application that keeps the source to itself |
+| `FormulaCopyButtons` | `TMarkdownFormulaFormats` | Which buttons show over a display formula while the pointer is on it, as the Copy button over a code block: `LaTeX` copies its source, `Text` its UnicodeMath plain text (default `[]`, none) |
 | `TextRendering` | `TMarkdownTextRendering` | VCL only. `DirectWrite` (default) draws emoji in colour; `Gdi` draws them in one colour. Line heights are the same in both, and widths match except where DirectWrite kerns a pair of letters such as `AV` |
 | `AutoScroll` | `Boolean` | Middle-click autoscroll: the content scrolls faster the further the pointer is from where it was pressed, until the next click, key or wheel turn (default `True`). The key that ends it reaches no shortcut, menu or form handler; only an Alt+letter accelerator in FMX goes to the form first |
 
@@ -564,6 +577,7 @@ same.
 | `HighlightCount: Integer` | How many matches are marked |
 | `CopySelectionToClipboard` | Copy the current selection |
 | `CopySelectionAsMarkdown` / `SelectedMarkdown: string` | Copy, or read, the markdown behind the selection. Within one line that is the selected source with the markup directly around it (selecting *bold* in `**bold**` gives `**bold**`); over several lines whole source lines, so list markers, quote markers and indentation come along; a table always whole; a display formula with the `$$` line that closes it; and a selection of everything the whole source. Line ends are the platform's |
+| `FormulaAt(X, Y): IMarkdownMath` / `CopyFormula(Formula, Format)` | The formula at a point of the control, or `nil`, and copying it as `LaTeX` or `Text`: for an application with a context menu of its own |
 | `SelectAll` | Select the whole document |
 | `ClearSelection` | Drop the selection |
 | `SelectedText: string` | The selected text |

@@ -56,6 +56,9 @@ type
     class function Extract(const Source: string; const Document: IMarkdownNode;
                            const Selection: TMarkdownSegment): string; static;
     class function WithPlatformLineBreaks(const Text: string): string; static;
+    // Whether Math is a display formula block of Document rather than a
+    // formula inside a paragraph, a heading or a table cell.
+    class function IsMathBlock(const Document, Math: IMarkdownNode): Boolean; static;
   end;
 
 implementation
@@ -130,6 +133,23 @@ class function TMarkdownSelectedSource.IsBlockContainer(const Node: IMarkdownNod
 begin
   Result := (Node.Kind in [TMarkdownNodeKind.Document, TMarkdownNodeKind.BlockQuote, TMarkdownNodeKind.List,
                            TMarkdownNodeKind.ListItem]);
+end;
+
+class function TMarkdownSelectedSource.IsMathBlock(const Document, Math: IMarkdownNode): Boolean;
+begin
+  Result := False;
+  if (Document = nil) or not IsBlockContainer(Document) then
+    Exit;
+
+  for var Index := 0 to Document.ChildCount - 1 do
+  begin
+    const Child = Document.Children[Index];
+    if (Child = Math) or IsMathBlock(Child, Math) then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
 end;
 
 // Within one formula a reader copies TeX that still works: a command whole,

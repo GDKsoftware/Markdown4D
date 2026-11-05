@@ -31,6 +31,28 @@ type
     class function Create(const Rect: TLayoutRectF; const Text: string): TMarkdownCodeBlockRegion; static;
   end;
 
+  // How a formula copies apart from Ctrl+C, which copies its markdown. LaTeX
+  // is its source without the markers, for a LaTeX editor; Text is the
+  // formula as UnicodeMath plain text (Unicode Technical Note 28), such as
+  // x squared as x with a superscript two and a fraction as (a+1)/b, which
+  // reads in any editor or mail.
+  TMarkdownFormulaFormat = (LaTeX, Text);
+  TMarkdownFormulaFormats = set of TMarkdownFormulaFormat;
+
+  // A button the viewer shows over a block while the pointer is on it: Copy
+  // over a code block, LaTeX and Text over a display formula.
+  TMarkdownCopyButton = (Code, FormulaAsLaTeX, FormulaAsText);
+
+  // The block under the pointer, where its copy buttons sit and which they are.
+  TMarkdownCopyButtonRegion = record
+    Rect: TLayoutRectF;
+    Node: IMarkdownNode;
+    Buttons: TArray<TMarkdownCopyButton>;
+    // The same block at the same place with the same buttons, so the
+    // buttons the viewer shows for it are still right.
+    function IsSameAs(const Other: TMarkdownCopyButtonRegion): Boolean;
+  end;
+
   // Raised when a block override or a document processor fails. The document
   // shows without what that extension would have drawn or added.
   TMarkdownExtensionErrorEvent = procedure(const Sender: TObject; const Extension: string;
@@ -76,12 +98,14 @@ type
       CopiedSpace = ' ';
       CopiedTab = #9;
       AnchorMark = '#';
+      DisplayMathMarker = '$$';
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
       FText: string;
       FPendingMarkdown: string;
       FDirty: Boolean;
+      FFormulaCopyButtons: TMarkdownFormulaFormats;
       FDirtySince: Int64;
       FFlushIntervalMilliseconds: Cardinal;
       FViewportWidth: Single;
@@ -192,6 +216,10 @@ type
                                    out FirstCharacter, LastCharacter: Integer): Boolean;
     function PrefixWidth(const Run: IDisplayTextRun; const CharacterCount: Integer): Single;
     class function CodeTextOf(const Code: IMarkdownCodeBlock): string; static;
+    function TryGetFormulaSourceAt(const Point: TLayoutPointF; out Index: Integer; out Math: IMarkdownMath): Boolean;
+    function FormulaBand(const SourceIndex: Integer): TLayoutRectF;
+    function IsDisplayBlock(const Source: IDisplayTextRun): Boolean;
+    class function IsCopyableCode(const Item: IDisplayItem; out Code: IMarkdownCodeBlock): Boolean; static;
     function GetText: string;
     procedure SetText(const Value: string);
     function GetPendingText: string;
@@ -300,6 +328,24 @@ type
     procedure EndScrollerDrag;
     function IsDraggingScroller: Boolean;
     function TryGetCodeBlockAt(const Point: TLayoutPointF; out Region: TMarkdownCodeBlockRegion): Boolean;
+    // The formula under the point, inline or display, for the entries of the
+    // context menu that copy it.
+    function TryGetFormulaAt(const Point: TLayoutPointF; out Math: IMarkdownMath): Boolean;
+    class function FormulaText(const Math: IMarkdownMath; const Format: TMarkdownFormulaFormat): string; static;
+    // The copy buttons the viewer shows while the pointer is at Point: Copy
+    // over a code block, and over a display formula one button for each of
+    // FormulaCopyButtons.
+    function TryGetCopyButtonsAt(const Point: TLayoutPointF; out Region: TMarkdownCopyButtonRegion): Boolean;
+    class function CopyButtonCaption(const Button: TMarkdownCopyButton): string; static;
+    // Where the buttons of a region sit, side by side in its top right
+    // corner; none when the region is too small for them.
+    class function CopyButtonRects(const Region: TMarkdownCopyButtonRegion;
+      const Width, Height, Margin: Single): TArray<TLayoutRectF>; static;
+    class function CopyButtonText(const Region: TMarkdownCopyButtonRegion;
+      const Button: TMarkdownCopyButton): string; static;
+    // Which buttons show over a display formula, none by default; Ctrl+C on
+    // a selected formula copies its markdown all the same.
+    property FormulaCopyButtons: TMarkdownFormulaFormats read FFormulaCopyButtons write FFormulaCopyButtons;
     // The <details> section whose summary line is under the point. Key
     // identifies the section to ToggleDisclosure.
     function TryGetDisclosureAt(const Point: TLayoutPointF; out Key: Integer): Boolean;
@@ -339,6 +385,8 @@ uses
   Markdown4D.Layout.SourceMapping,
   Markdown4D.Layout.SelectedMarkdown,
   Markdown4D.Math.Layout,
+  Markdown4D.Math.Linear,
+  Markdown4D.Consts,
   Markdown4D.Toc,
   Markdown4D.Layout.Zoom;
 
@@ -348,6 +396,23 @@ begin
   Result.ItemIndex := ItemIndex;
   Result.StartCharacter := StartCharacter;
   Result.CharacterCount := CharacterCount;
+end;
+
+function TMarkdownCopyButtonRegion.IsSameAs(const Other: TMarkdownCopyButtonRegion): Boolean;
+begin
+  Result := SameValue(Rect.Top, Other.Rect.Top) and SameValue(Rect.Left, Other.Rect.Left) and
+            (Node = Other.Node) and (Length(Buttons) = Length(Other.Buttons));
+  if not Result then
+    Exit;
+
+  for var Index := 0 to High(Buttons) do
+  begin
+    if Buttons[Index] <> Other.Buttons[Index] then
+    begin
+      Result := False;
+      Exit;
+    end;
+  end;
 end;
 
 class function TMarkdownCodeBlockRegion.Create(const Rect: TLayoutRectF;
@@ -1835,6 +1900,187 @@ begin
   Result := (FDraggedScroller >= 0) and (FDisplayList <> nil) and (FDraggedScroller < FDisplayList.ItemCount);
 end;
 
+// A code block offers its text over the rectangle behind it, unless a layout
+// override (chart, mermaid, ...) renders it as graphics: then the rectangles
+// are the drawing, not copyable source, so the copy button must not appear.
+class function TMarkdownViewerModel.IsCopyableCode(const Item: IDisplayItem; out Code: IMarkdownCodeBlock): Boolean;
+begin
+  Result := (Item.Kind = TDisplayItemKind.Rectangle) and (Item.Node <> nil) and
+            Supports(Item.Node, IMarkdownCodeBlock, Code);
+  if not Result then
+    Exit;
+
+  var Handler: ILayoutBlockOverride;
+  Result := not TLayoutBlockOverrideRegistry.TryFind(Item.Node, Handler);
+end;
+
+function TMarkdownViewerModel.TryGetFormulaAt(const Point: TLayoutPointF; out Math: IMarkdownMath): Boolean;
+begin
+  var Index: Integer;
+  Result := TryGetFormulaSourceAt(Point, Index, Math);
+end;
+
+// A formula is under the point when its band is: the line it sits on for an
+// inline formula, the width of the column for a display formula.
+function TMarkdownViewerModel.TryGetFormulaSourceAt(const Point: TLayoutPointF; out Index: Integer;
+  out Math: IMarkdownMath): Boolean;
+begin
+  Math := nil;
+  Result := False;
+  if FDisplayList = nil then
+    Exit;
+
+  for var Candidate := 0 to FDisplayList.ItemCount - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    const IsFormulaSource = (Supports(FDisplayList.Items[Candidate], IDisplayTextRun, Run) and
+                             (Run.Role = TDisplayTextRunRole.Source) and Supports(Run.SourceNode, IMarkdownMath, Math));
+    if IsFormulaSource and FormulaBand(Candidate).Contains(Point) then
+    begin
+      Index := Candidate;
+      Result := True;
+      Exit;
+    end;
+  end;
+
+  Index := -1;
+  Math := nil;
+end;
+
+// A display formula is centred in its column, so its band reaches as far to
+// the left of it as to the right; a wide one has the band it scrolls in.
+function TMarkdownViewerModel.FormulaBand(const SourceIndex: Integer): TLayoutRectF;
+begin
+  const Run = FDisplayList.Items[SourceIndex] as IDisplayTextRun;
+  Result := Run.Bounds;
+  if not IsDisplayBlock(Run) then
+    Exit;
+
+  var ScrollerIndex: Integer;
+  if TryFindScrollerOf(SourceIndex, ScrollerIndex) then
+  begin
+    Result := FDisplayList.Items[ScrollerIndex].Bounds;
+    Exit;
+  end;
+
+  const ColumnRight = Max(Result.Right, FViewportWidth - FTheme.ContentPadding);
+  Result := TLayoutRectF.Create(Result.Left - (ColumnRight - Result.Right), Result.Top, ColumnRight, Result.Bottom);
+end;
+
+function TMarkdownViewerModel.IsDisplayBlock(const Source: IDisplayTextRun): Boolean;
+begin
+  Result := TMarkdownSelectedSource.IsMathBlock(FDocument, Source.SourceNode);
+end;
+
+class function TMarkdownViewerModel.FormulaText(const Math: IMarkdownMath;
+  const Format: TMarkdownFormulaFormat): string;
+begin
+  case Format of
+    TMarkdownFormulaFormat.LaTeX : Result := Math.Literal;
+    TMarkdownFormulaFormat.Text  : Result := TMathLinearFormat.FromSource(Math.Literal);
+  else
+    Result := '';
+  end;
+end;
+
+function TMarkdownViewerModel.TryGetCopyButtonsAt(const Point: TLayoutPointF;
+  out Region: TMarkdownCopyButtonRegion): Boolean;
+begin
+  Region := Default(TMarkdownCopyButtonRegion);
+
+  if FDisplayList = nil then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  for var Index := 0 to FDisplayList.ItemCount - 1 do
+  begin
+    const Item = FDisplayList.Items[Index];
+    var Code: IMarkdownCodeBlock;
+    if Item.Bounds.Contains(Point) and IsCopyableCode(Item, Code) then
+    begin
+      Region.Rect := Item.Bounds;
+      Region.Node := Code;
+      Region.Buttons := [TMarkdownCopyButton.Code];
+      Result := True;
+      Exit;
+    end;
+  end;
+
+  Result := False;
+  if FFormulaCopyButtons = [] then
+    Exit;
+
+  var Index: Integer;
+  var Math: IMarkdownMath;
+  const IsOverDisplayFormula = (TryGetFormulaSourceAt(Point, Index, Math) and
+                                IsDisplayBlock(FDisplayList.Items[Index] as IDisplayTextRun));
+  if not IsOverDisplayFormula then
+    Exit;
+
+  Region.Rect := FormulaBand(Index);
+  Region.Node := Math;
+  if TMarkdownFormulaFormat.LaTeX in FFormulaCopyButtons then
+    Region.Buttons := Region.Buttons + [TMarkdownCopyButton.FormulaAsLaTeX];
+  if TMarkdownFormulaFormat.Text in FFormulaCopyButtons then
+    Region.Buttons := Region.Buttons + [TMarkdownCopyButton.FormulaAsText];
+  Result := True;
+end;
+
+class function TMarkdownViewerModel.CopyButtonCaption(const Button: TMarkdownCopyButton): string;
+begin
+  case Button of
+    TMarkdownCopyButton.FormulaAsLaTeX : Result := CopyFormulaLaTeXCaption;
+    TMarkdownCopyButton.FormulaAsText  : Result := CopyFormulaTextCaption;
+  else
+    Result := CopyCodeCaption;
+  end;
+end;
+
+class function TMarkdownViewerModel.CopyButtonRects(const Region: TMarkdownCopyButtonRegion;
+  const Width, Height, Margin: Single): TArray<TLayoutRectF>;
+begin
+  Result := [];
+
+  const Count = Length(Region.Buttons);
+  const Fits = ((Count > 0) and (Region.Rect.Width >= Count * Width + (Count + 1) * Margin) and
+                (Region.Rect.Height >= Height + Margin));
+  if not Fits then
+    Exit;
+
+  SetLength(Result, Count);
+  const Top = Region.Rect.Top + Margin;
+  var Right := Region.Rect.Right - Margin;
+  for var Index := Count - 1 downto 0 do
+  begin
+    Result[Index] := TLayoutRectF.Create(Right - Width, Top, Right, Top + Height);
+    Right := Right - Width - Margin;
+  end;
+end;
+
+class function TMarkdownViewerModel.CopyButtonText(const Region: TMarkdownCopyButtonRegion;
+  const Button: TMarkdownCopyButton): string;
+begin
+  Result := '';
+
+  var Code: IMarkdownCodeBlock;
+  var Math: IMarkdownMath;
+  case Button of
+    TMarkdownCopyButton.Code:
+      if Supports(Region.Node, IMarkdownCodeBlock, Code) then
+        Result := CodeTextOf(Code);
+    TMarkdownCopyButton.FormulaAsLaTeX:
+      if Supports(Region.Node, IMarkdownMath, Math) then
+        Result := FormulaText(Math, TMarkdownFormulaFormat.LaTeX);
+    TMarkdownCopyButton.FormulaAsText:
+      if Supports(Region.Node, IMarkdownMath, Math) then
+        Result := FormulaText(Math, TMarkdownFormulaFormat.Text);
+  else
+    raise EMarkdownError.CreateFmt('Unhandled copy button: %d', [Ord(Button)]);
+  end;
+end;
+
 function TMarkdownViewerModel.CodeBlockRegions: TArray<TMarkdownCodeBlockRegion>;
 begin
   Result := [];
@@ -1844,21 +2090,9 @@ begin
   for var Index := 0 to FDisplayList.ItemCount - 1 do
   begin
     const Item = FDisplayList.Items[Index];
-    if Item.Kind <> TDisplayItemKind.Rectangle then
-      Continue;
-
     var Code: IMarkdownCodeBlock;
-    if (Item.Node = nil) or not Supports(Item.Node, IMarkdownCodeBlock, Code) then
-      Continue;
-
-    // Skip code blocks that a layout override (chart, mermaid, ...) renders as
-    // graphics: their rectangles are the drawing, not copyable source, so the
-    // hover copy button must not appear over them.
-    var Handler: ILayoutBlockOverride;
-    if TLayoutBlockOverrideRegistry.TryFind(Item.Node, Handler) then
-      Continue;
-
-    Result := Result + [TMarkdownCodeBlockRegion.Create(Item.Bounds, CodeTextOf(Code))];
+    if IsCopyableCode(Item, Code) then
+      Result := Result + [TMarkdownCodeBlockRegion.Create(Item.Bounds, CodeTextOf(Code))];
   end;
 end;
 

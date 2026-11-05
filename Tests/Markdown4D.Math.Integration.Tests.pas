@@ -242,6 +242,33 @@ type
 
     [Test]
     procedure Drag_InScrolledFormula_SelectsTheGlyphsInView;
+
+    [Test]
+    procedure CopyButtons_DisplayFormulaByDefault_OffersNone;
+
+    [Test]
+    procedure CopyButtons_DisplayFormula_OffersTheChosenFormats;
+
+    [Test]
+    procedure CopyButtons_TextOnly_OffersOneButton;
+
+    [Test]
+    procedure CopyButtons_InlineFormula_OffersNone;
+
+    [Test]
+    procedure CopyButtons_OtherFormats_AreAnotherRegion;
+
+    [Test]
+    procedure CopyButtonRects_TwoButtons_SitSideBySideInTheCorner;
+
+    [Test]
+    procedure TryGetFormulaAt_InlineFormula_FindsIt;
+
+    [Test]
+    procedure ContextMenu_OverFormula_OffersToCopyIt;
+
+    [Test]
+    procedure ContextMenu_ElsewhereOffersNoFormulaEntries;
   end;
 
 implementation
@@ -256,7 +283,8 @@ uses
   Markdown4D.Layout.Engine,
   Markdown4D.Math.Layout,
   Markdown4D.Layout.HitTest,
-  Markdown4D.Layout.FakeMeasurer;
+  Markdown4D.Layout.FakeMeasurer,
+  Markdown4D.Viewer.ContextMenu;
 
 procedure TMathThemeTests.MathFont_Default_IsGenericMathFamilyAtBaseSize;
 begin
@@ -1144,6 +1172,135 @@ begin
   Assert.IsTrue(FModel.SelectAll);
 
   Assert.AreEqual('area $\pi r^2$ done', FModel.SelectedMarkdown);
+end;
+
+procedure TMathViewerTests.CopyButtons_DisplayFormulaByDefault_OffersNone;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '$$'#10'\frac{a}{b}'#10'$$';
+
+  var Region: TMarkdownCopyButtonRegion;
+  Assert.IsFalse(FModel.TryGetCopyButtonsAt(CentreOf(GlyphRun('a').Bounds), Region));
+end;
+
+procedure TMathViewerTests.CopyButtons_DisplayFormula_OffersTheChosenFormats;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.FormulaCopyButtons := [TMarkdownFormulaFormat.LaTeX, TMarkdownFormulaFormat.Text];
+  FModel.Text := '$$'#10'\frac{a}{b}'#10'$$';
+
+  var Region: TMarkdownCopyButtonRegion;
+  Assert.IsTrue(FModel.TryGetCopyButtonsAt(CentreOf(GlyphRun('a').Bounds), Region));
+
+  Assert.AreEqual(2, Integer(Length(Region.Buttons)));
+  Assert.AreEqual<TMarkdownCopyButton>(TMarkdownCopyButton.FormulaAsLaTeX, Region.Buttons[0]);
+  Assert.AreEqual<TMarkdownCopyButton>(TMarkdownCopyButton.FormulaAsText, Region.Buttons[1]);
+  Assert.AreEqual('\frac{a}{b}', TMarkdownViewerModel.CopyButtonText(Region, Region.Buttons[0]));
+  Assert.AreEqual('a/b', TMarkdownViewerModel.CopyButtonText(Region, Region.Buttons[1]));
+  Assert.AreEqual(DefaultWidth - FTheme.ContentPadding, Region.Rect.Right, ScrollTolerance,
+    'the buttons sit at the right of the column, not of the formula');
+end;
+
+procedure TMathViewerTests.CopyButtons_TextOnly_OffersOneButton;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.FormulaCopyButtons := [TMarkdownFormulaFormat.Text];
+  FModel.Text := '$$'#10'x^2'#10'$$';
+
+  var Region: TMarkdownCopyButtonRegion;
+  Assert.IsTrue(FModel.TryGetCopyButtonsAt(CentreOf(GlyphRun('x').Bounds), Region));
+
+  Assert.AreEqual(1, Integer(Length(Region.Buttons)));
+  Assert.AreEqual<TMarkdownCopyButton>(TMarkdownCopyButton.FormulaAsText, Region.Buttons[0]);
+  Assert.AreEqual('x'#$00B2, TMarkdownViewerModel.CopyButtonText(Region, Region.Buttons[0]));
+end;
+
+// The viewer keeps the buttons it shows while the region is the same, so a
+// change of FormulaCopyButtons under a resting pointer must count as another.
+procedure TMathViewerTests.CopyButtons_OtherFormats_AreAnotherRegion;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '$$'#10'x + y'#10'$$';
+  const Point = TLayoutPointF.Create(DefaultWidth / 2, GlyphRun('x').Bounds.Top);
+
+  FModel.FormulaCopyButtons := [TMarkdownFormulaFormat.LaTeX];
+  var LaTeXRegion: TMarkdownCopyButtonRegion;
+  Assert.IsTrue(FModel.TryGetCopyButtonsAt(Point, LaTeXRegion));
+
+  FModel.FormulaCopyButtons := [TMarkdownFormulaFormat.Text];
+  var TextRegion: TMarkdownCopyButtonRegion;
+  Assert.IsTrue(FModel.TryGetCopyButtonsAt(Point, TextRegion));
+
+  Assert.IsFalse(LaTeXRegion.IsSameAs(TextRegion));
+  Assert.IsTrue(TextRegion.IsSameAs(TextRegion));
+end;
+
+procedure TMathViewerTests.CopyButtons_InlineFormula_OffersNone;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.FormulaCopyButtons := [TMarkdownFormulaFormat.LaTeX, TMarkdownFormulaFormat.Text];
+  FModel.Text := 'area $\pi r^2$ done';
+
+  var Region: TMarkdownCopyButtonRegion;
+  Assert.IsFalse(FModel.TryGetCopyButtonsAt(CentreOf(GlyphRun('r').Bounds), Region),
+    'buttons would cover the text around an inline formula');
+end;
+
+procedure TMathViewerTests.CopyButtonRects_TwoButtons_SitSideBySideInTheCorner;
+begin
+  var Region := Default(TMarkdownCopyButtonRegion);
+  Region.Rect := TLayoutRectF.Create(0, 100, 300, 160);
+  Region.Buttons := [TMarkdownCopyButton.FormulaAsLaTeX, TMarkdownCopyButton.FormulaAsText];
+
+  const Rects = TMarkdownViewerModel.CopyButtonRects(Region, 50, 20, 5);
+
+  Assert.AreEqual(2, Integer(Length(Rects)));
+  Assert.AreEqual(Single(295), Rects[1].Right, ScrollTolerance);
+  Assert.AreEqual(Single(105), Rects[1].Top, ScrollTolerance);
+  Assert.AreEqual(Single(240), Rects[0].Right, ScrollTolerance, 'the first button stands left of the second');
+  Assert.AreEqual(0, Integer(Length(TMarkdownViewerModel.CopyButtonRects(Region, 200, 20, 5))), 'no room, no buttons');
+end;
+
+procedure TMathViewerTests.TryGetFormulaAt_InlineFormula_FindsIt;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'area $\pi r^2$ done';
+
+  var Math: IMarkdownMath;
+  Assert.IsTrue(FModel.TryGetFormulaAt(CentreOf(GlyphRun('r').Bounds), Math));
+  Assert.AreEqual('\pi r^2', TMarkdownViewerModel.FormulaText(Math, TMarkdownFormulaFormat.LaTeX));
+  Assert.AreEqual(#$03C0'r'#$00B2, TMarkdownViewerModel.FormulaText(Math, TMarkdownFormulaFormat.Text));
+
+  Assert.IsFalse(FModel.TryGetFormulaAt(CentreOf(GlyphRun(' done').Bounds), Math));
+end;
+
+procedure TMathViewerTests.ContextMenu_OverFormula_OffersToCopyIt;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'area $\pi r^2$ done';
+
+  var Math: IMarkdownMath;
+  Assert.IsTrue(FModel.TryGetFormulaAt(CentreOf(GlyphRun('r').Bounds), Math));
+
+  var Commands: TArray<TViewerContextCommand> := [];
+  for var Item in TMarkdownViewerContextMenu.Build(FModel, True, Math) do
+    Commands := Commands + [Item.Command];
+
+  Assert.AreEqual(5, Integer(Length(Commands)));
+  Assert.AreEqual<TViewerContextCommand>(TViewerContextCommand.CopyFormulaAsLaTeX, Commands[2]);
+  Assert.AreEqual<TViewerContextCommand>(TViewerContextCommand.CopyFormulaAsText, Commands[3]);
+  Assert.IsFalse(TMarkdownViewerContextMenu.Execute(FModel, TViewerContextCommand.CopyFormulaAsText),
+    'copying is left to the host, which owns the clipboard');
+end;
+
+procedure TMathViewerTests.ContextMenu_ElsewhereOffersNoFormulaEntries;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'area $\pi r^2$ done';
+
+  for var Item in TMarkdownViewerContextMenu.Build(FModel, True, nil) do
+    Assert.IsTrue(Item.Command in [TViewerContextCommand.Copy, TViewerContextCommand.CopyAsMarkdown,
+      TViewerContextCommand.SelectAll], 'no formula under the pointer, no formula entries');
 end;
 
 end.

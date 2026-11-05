@@ -14,11 +14,15 @@ resourcestring
   PasteMenuCaption = 'Paste';
   DeleteMenuCaption = 'Delete';
   SelectAllMenuCaption = 'Select All';
+  CopyFormulaAsLaTeXMenuCaption = 'Copy Formula as LaTeX';
+  CopyFormulaAsTextMenuCaption = 'Copy Formula as Text';
   UndoMenuCaption = 'Undo';
   RedoMenuCaption = 'Redo';
 
   CopyCodeCaption = 'Copy';
   CopiedCodeCaption = 'Copied';
+  CopyFormulaLaTeXCaption = 'LaTeX';
+  CopyFormulaTextCaption = 'Text';
 
   NoteAlertTitle = 'Note';
   TipAlertTitle = 'Tip';
