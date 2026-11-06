@@ -14,20 +14,29 @@ type
   // block that opens it and holds the summary, the blocks of its content, and
   // an HTML block that closes it. This finds those runs and says which blocks
   // a closed section hides. A section written as one HTML block, closing tag
-  // included, is not a run and stays as it is.
+  // included, is a whole section: its summary and its content are the parts
+  // of that block before and after </summary>.
   TMarkdownDisclosures = class
   private
     const
       OpenerTag = '<details';
       CloserTag = '</details';
+      SummaryCloserTag = '</summary>';
       OpenAttribute = 'open';
     class function TryGetHtmlLiteral(const Node: IMarkdownNode; out Literal: string): Boolean; static;
     class function StartsWithTag(const Text, Tag: string): Boolean; static;
     class function HasOpenAttribute(const Literal: string): Boolean; static;
+    class function SummaryEnd(const Literal: string): Integer; static;
 
   public
     class function IsOpener(const Node: IMarkdownNode; out OpenByDefault: Boolean): Boolean; static;
     class function IsCloser(const Node: IMarkdownNode): Boolean; static;
+    class function IsWholeSection(const Node: IMarkdownNode; out OpenByDefault: Boolean): Boolean; static;
+    // The HTML of a whole section up to and including </summary>; without a
+    // summary, the opening tag alone.
+    class function SummaryHtml(const Node: IMarkdownNode): string; static;
+    // The HTML of a whole section between </summary> and its closing tag.
+    class function ContentHtml(const Node: IMarkdownNode): string; static;
     class function KeyOf(const Opener: IMarkdownNode): Integer; static;
     // A missing state means every section shows the way its tag asks for:
     // closed, unless it carries `open`.
@@ -72,6 +81,44 @@ class function TMarkdownDisclosures.IsCloser(const Node: IMarkdownNode): Boolean
 begin
   var Literal: string;
   Result := TryGetHtmlLiteral(Node, Literal) and StartsWithTag(Literal, CloserTag);
+end;
+
+class function TMarkdownDisclosures.IsWholeSection(const Node: IMarkdownNode; out OpenByDefault: Boolean): Boolean;
+begin
+  OpenByDefault := False;
+  Result := False;
+
+  var Literal: string;
+  if not TryGetHtmlLiteral(Node, Literal) then
+    Exit;
+
+  const Trimmed = Literal.TrimRight;
+  const IsSection = (StartsWithTag(Literal, OpenerTag) and EndsText(CloserTag + '>', Trimmed));
+  if not IsSection then
+    Exit;
+
+  OpenByDefault := HasOpenAttribute(Literal);
+  Result := True;
+end;
+
+class function TMarkdownDisclosures.SummaryHtml(const Node: IMarkdownNode): string;
+begin
+  var Literal: string;
+  if not TryGetHtmlLiteral(Node, Literal) then
+    Exit('');
+
+  Result := Copy(Literal, 1, SummaryEnd(Literal));
+end;
+
+class function TMarkdownDisclosures.ContentHtml(const Node: IMarkdownNode): string;
+begin
+  var Literal: string;
+  if not TryGetHtmlLiteral(Node, Literal) then
+    Exit('');
+
+  const ContentStart = SummaryEnd(Literal) + 1;
+  const ContentEnd = LastDelimiter('<', Literal.TrimRight);
+  Result := Copy(Literal, ContentStart, ContentEnd - ContentStart);
 end;
 
 class function TMarkdownDisclosures.KeyOf(const Opener: IMarkdownNode): Integer;
@@ -161,6 +208,17 @@ begin
     Exit;
 
   Result := CharInSet(Trimmed[NextIndex], ['>', '/', ' ', #9, #10, #13]);
+end;
+
+// Where the summary of a whole section ends: after </summary>, or after the
+// opening tag when there is none.
+class function TMarkdownDisclosures.SummaryEnd(const Literal: string): Integer;
+begin
+  const SummaryCloser = Pos(SummaryCloserTag, LowerCase(Literal));
+  if SummaryCloser > 0 then
+    Exit(SummaryCloser + Length(SummaryCloserTag) - 1);
+
+  Result := Pos('>', Literal);
 end;
 
 class function TMarkdownDisclosures.HasOpenAttribute(const Literal: string): Boolean;

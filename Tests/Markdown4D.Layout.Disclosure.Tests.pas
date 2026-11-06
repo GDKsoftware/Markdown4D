@@ -27,6 +27,8 @@ type
       AfterText = 'After';
       ClosedSection = '<details>'#10'<summary>' + SummaryText + '</summary>'#10#10 + ContentText + #10#10'</details>';
       OpenSection = '<details open>'#10'<summary>' + SummaryText + '</summary>'#10#10 + ContentText + #10#10'</details>';
+      WholeSection = '<details><summary>' + SummaryText + '</summary>'#10 + ContentText + ' <b>bold</b>'#10'- one'#10 +
+                     '</details>';
     class function Parse(const Source: string): IMarkdownDocument;
     class function CreateTestTheme: TMarkdownTheme;
     class function LayoutMarkdown(const Source: string;
@@ -50,6 +52,23 @@ type
 
     [Test]
     procedure IsOpener_TagThatOnlyStartsWithDetails_ReturnsFalse;
+
+    [Test]
+    [TestCase('Closed', '<details>,False')]
+    [TestCase('Open', '<details open>,True')]
+    procedure IsWholeSection_OneBlock_ReturnsTrue(const OpeningTag: string; const OpenByDefault: Boolean);
+
+    [Test]
+    procedure IsWholeSection_BlockThatOnlyOpensASection_ReturnsFalse;
+
+    [Test]
+    procedure SummaryHtml_WholeSection_EndsAfterSummary;
+
+    [Test]
+    procedure SummaryHtml_WithoutSummary_IsOpeningTag;
+
+    [Test]
+    procedure ContentHtml_WholeSection_LiesBetweenSummaryAndClosingTag;
 
     [Test]
     procedure IsCloser_ClosingTag_ReturnsTrue;
@@ -106,7 +125,16 @@ type
     procedure Layout_ClosedSectionInListItem_HidesContent;
 
     [Test]
-    procedure Layout_WholeSectionInOneBlock_ShowsEverythingWithoutDisclosure;
+    procedure Layout_WholeSectionInOneBlock_ShowsSummaryOnly;
+
+    [Test]
+    procedure Layout_WholeSectionOpenedByState_ShowsContent;
+
+    [Test]
+    procedure Layout_OpenWholeSection_PlacesContentAsARunDoes;
+
+    [Test]
+    procedure Layout_ClosedWholeSection_KeepsFollowingText;
 
     [Test]
     procedure Layout_ClosedSection_KeepsOneBlockInfoPerChild;
@@ -183,6 +211,55 @@ begin
   const IsOpener = TMarkdownDisclosures.IsOpener(Document.Children[0], OpenByDefault);
 
   Assert.IsFalse(IsOpener);
+end;
+
+procedure TMarkdownDisclosureTests.IsWholeSection_OneBlock_ReturnsTrue(const OpeningTag: string;
+  const OpenByDefault: Boolean);
+begin
+  const Document = Parse(OpeningTag + '<summary>' + SummaryText + '</summary>' + ContentText + '</details>');
+
+  var ActualOpenByDefault: Boolean;
+  const IsWholeSection = TMarkdownDisclosures.IsWholeSection(Document.Children[0], ActualOpenByDefault);
+
+  Assert.IsTrue(IsWholeSection);
+  Assert.AreEqual(OpenByDefault, ActualOpenByDefault);
+end;
+
+procedure TMarkdownDisclosureTests.IsWholeSection_BlockThatOnlyOpensASection_ReturnsFalse;
+begin
+  const Document = Parse(ClosedSection);
+
+  var OpenByDefault: Boolean;
+  const IsWholeSection = TMarkdownDisclosures.IsWholeSection(Document.Children[0], OpenByDefault);
+
+  Assert.IsFalse(IsWholeSection);
+end;
+
+procedure TMarkdownDisclosureTests.SummaryHtml_WholeSection_EndsAfterSummary;
+begin
+  const Document = Parse(WholeSection);
+
+  const Summary = TMarkdownDisclosures.SummaryHtml(Document.Children[0]);
+
+  Assert.AreEqual('<details><summary>' + SummaryText + '</summary>', Summary);
+end;
+
+procedure TMarkdownDisclosureTests.SummaryHtml_WithoutSummary_IsOpeningTag;
+begin
+  const Document = Parse('<details open>' + ContentText + '</details>');
+
+  const Summary = TMarkdownDisclosures.SummaryHtml(Document.Children[0]);
+
+  Assert.AreEqual('<details open>', Summary);
+end;
+
+procedure TMarkdownDisclosureTests.ContentHtml_WholeSection_LiesBetweenSummaryAndClosingTag;
+begin
+  const Document = Parse('<details><summary>' + SummaryText + '</summary><p>' + ContentText + '</p></details>');
+
+  const Content = TMarkdownDisclosures.ContentHtml(Document.Children[0]);
+
+  Assert.AreEqual('<p>' + ContentText + '</p>', Content);
 end;
 
 procedure TMarkdownDisclosureTests.IsCloser_ClosingTag_ReturnsTrue;
@@ -373,15 +450,47 @@ begin
   Assert.AreEqual(1, Integer(Length(Disclosures)));
 end;
 
-procedure TMarkdownDisclosureTests.Layout_WholeSectionInOneBlock_ShowsEverythingWithoutDisclosure;
+procedure TMarkdownDisclosureTests.Layout_WholeSectionInOneBlock_ShowsSummaryOnly;
 begin
-  const DisplayList = LayoutMarkdown('<details><summary>' + SummaryText + '</summary><p>' + ContentText +
-    '</p></details>');
+  const DisplayList = LayoutMarkdown(WholeSection);
+
+  const Disclosures = DisclosuresOf(DisplayList);
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(DisplayList, SummaryText));
+  Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(DisplayList, ContentText));
+  Assert.AreEqual(1, Integer(Length(Disclosures)));
+  Assert.IsFalse(Disclosures[0].IsOpen);
+end;
+
+procedure TMarkdownDisclosureTests.Layout_WholeSectionOpenedByState_ShowsContent;
+begin
+  const State: IMarkdownDisclosureState = TToggledDisclosureState.Create;
+
+  const DisplayList = LayoutMarkdown(WholeSection, State);
 
   const Disclosures = DisclosuresOf(DisplayList);
   Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(DisplayList, SummaryText));
   Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(DisplayList, ContentText));
-  Assert.AreEqual(0, Integer(Length(Disclosures)));
+  Assert.AreEqual(1, Integer(Length(Disclosures)));
+  Assert.IsTrue(Disclosures[0].IsOpen);
+end;
+
+procedure TMarkdownDisclosureTests.Layout_OpenWholeSection_PlacesContentAsARunDoes;
+begin
+  const Run = LayoutMarkdown(OpenSection);
+  const Whole = LayoutMarkdown('<details open><summary>' + SummaryText + '</summary><p>' + ContentText +
+    '</p></details>');
+
+  const Expected = TMarkdownTestDisplayListHelpers.TextRunShowing(Run, ContentText).Bounds;
+  const Actual = TMarkdownTestDisplayListHelpers.TextRunShowing(Whole, ContentText).Bounds;
+  Assert.AreEqual(Expected.Left, Actual.Left, SingleTolerance, 'left edge of the content');
+  Assert.AreEqual(Expected.Top, Actual.Top, SingleTolerance, 'top of the content');
+end;
+
+procedure TMarkdownDisclosureTests.Layout_ClosedWholeSection_KeepsFollowingText;
+begin
+  const DisplayList = LayoutMarkdown(WholeSection + #10#10 + AfterText);
+
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(DisplayList, AfterText));
 end;
 
 procedure TMarkdownDisclosureTests.Layout_ClosedSection_KeepsOneBlockInfoPerChild;
