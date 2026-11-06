@@ -67,6 +67,8 @@ uses
 
 const
   HtmlSubsetCacheKey = 'markdown4d.html.subset';
+  SectionSummaryCacheKey = 'markdown4d.html.subset.summary';
+  SectionContentCacheKey = 'markdown4d.html.subset.content';
   InlineMathMarker = '$';
   DisplayMathMarker = '$$';
 
@@ -395,7 +397,10 @@ type
       const LineStart: Integer);
     class function CodeLanguageOf(const Code: IMarkdownCodeBlock): string;
     function HtmlBlockDocument(const Node: IMarkdownNode): IMarkdownDocument;
+    function HtmlDocument(const Node: IMarkdownNode; const CacheKey, Html: string): IMarkdownDocument;
     procedure EmitHtmlBlock(const Command: TLayoutCommand);
+    procedure EmitWholeSection(const Command: TLayoutCommand; const OpenByDefault: Boolean);
+    procedure PushSectionContent(const Command: TLayoutCommand);
     procedure PushDisclosure(const Command: TLayoutCommand; const IsOpen: Boolean);
     procedure EmitDisclosure(const Command: TLayoutCommand);
     function DisclosureIndent: Single;
@@ -1394,21 +1399,26 @@ end;
 // resize and on every streamed chunk.
 function TLayoutWorker.HtmlBlockDocument(const Node: IMarkdownNode): IMarkdownDocument;
 begin
+  const Html = Node as IMarkdownText;
+  Result := HtmlDocument(Node, HtmlSubsetCacheKey, Html.Literal);
+end;
+
+function TLayoutWorker.HtmlDocument(const Node: IMarkdownNode; const CacheKey, Html: string): IMarkdownDocument;
+begin
   Result := nil;
 
   var Cached: IInterface;
-  if Node.TryGetExtensionData(HtmlSubsetCacheKey, Cached) then
+  if Node.TryGetExtensionData(CacheKey, Cached) then
   begin
     Supports(Cached, IMarkdownDocument, Result);
     Exit;
   end;
 
-  const Html = Node as IMarkdownText;
-  const Translated = TMarkdownHtmlSubset.ToMarkdown(Html.Literal);
+  const Translated = TMarkdownHtmlSubset.ToMarkdown(Html);
   if Translated <> '' then
     Result := TMarkdown.Parse(Translated, TMarkdownDialect.Gfm);
 
-  Node.SetExtensionData(HtmlSubsetCacheKey, Result);
+  Node.SetExtensionData(CacheKey, Result);
 end;
 
 procedure TLayoutWorker.EmitHtmlBlock(const Command: TLayoutCommand);
@@ -1416,6 +1426,12 @@ begin
   var ContentX := Command.X;
 
   var OpenByDefault: Boolean;
+  if TMarkdownDisclosures.IsWholeSection(Command.Node, OpenByDefault) then
+  begin
+    EmitWholeSection(Command, OpenByDefault);
+    Exit;
+  end;
+
   if TMarkdownDisclosures.IsOpener(Command.Node, OpenByDefault) then
   begin
     const IsOpen = TMarkdownDisclosures.IsOpen(FDisclosures, Command.Node, OpenByDefault);
@@ -1428,6 +1444,36 @@ begin
     Exit;
 
   PushContainerChildren(Document, ContentX, Command.Color);
+end;
+
+// Laid out as a run would be: the summary next to the triangle and, when the
+// section is open, the content below it from the left edge. The commands run
+// in the reverse order of pushing.
+procedure TLayoutWorker.EmitWholeSection(const Command: TLayoutCommand; const OpenByDefault: Boolean);
+begin
+  const IsOpen = TMarkdownDisclosures.IsOpen(FDisclosures, Command.Node, OpenByDefault);
+  if IsOpen then
+    PushSectionContent(Command);
+
+  PushDisclosure(Command, IsOpen);
+
+  const SummaryHtml = TMarkdownDisclosures.SummaryHtml(Command.Node);
+  const Summary = HtmlDocument(Command.Node, SectionSummaryCacheKey, SummaryHtml);
+  if Summary <> nil then
+    PushContainerChildren(Summary, Command.X + DisclosureIndent, Command.Color);
+end;
+
+procedure TLayoutWorker.PushSectionContent(const Command: TLayoutCommand);
+begin
+  const ContentHtml = TMarkdownDisclosures.ContentHtml(Command.Node);
+  const Content = HtmlDocument(Command.Node, SectionContentCacheKey, ContentHtml);
+  if (Content = nil) or (Content.ChildCount = 0) then
+    Exit;
+
+  PushContainerChildren(Content, Command.X, Command.Color);
+
+  const Gap = GapBetweenNodes(Command.Node, Content.Children[0]);
+  PushGap(Gap);
 end;
 
 // Pushed before the summary, so it runs after it: the summary has been laid
