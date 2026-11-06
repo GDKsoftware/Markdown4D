@@ -551,7 +551,7 @@ same.
 | `HighlightMatches(const Needle[; const Options])` / `ClearHighlights` | Mark every match, independently of the selection; the marks follow the document as it changes, an empty needle clears them, and a formula is marked once |
 | `HighlightCount: Integer` | How many matches are marked |
 | `CopySelectionToClipboard` | Copy the current selection |
-| `CopySelectionAsMarkdown` / `SelectedMarkdown: string` | Copy, or read, the markdown behind the selection. Within one line that is the selected source with the markup directly around it (selecting *bold* in `**bold**` gives `**bold**`); over several lines whole source lines, so list markers, quote markers and indentation come along; a table always whole; a display formula with the `$$` line that closes it; and a selection of everything the whole source. Line ends are the platform's |
+| `CopySelectionAsMarkdown` / `SelectedMarkdown: string` | Copy, or read, the markdown behind the selection. Within one line that is the selected source with the markup directly around it (selecting *bold* in `**bold**` gives `**bold**`), and an emphasis, code span or link the selection starts or ends in comes along whole; over several lines whole source lines, so list markers, quote markers and indentation come along; a table always whole; a display formula with the `$$` line that closes it; and a selection of everything the whole source. Line ends are the platform's |
 | `SelectAll` | Select the whole document |
 | `ClearSelection` | Drop the selection |
 | `SelectedText: string` | The selected text |
