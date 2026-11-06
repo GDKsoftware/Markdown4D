@@ -60,6 +60,11 @@ type
 
     [Test]
     procedure IndentCommand_InvokesIndent;
+
+    // The chevron that hides the toolbar is part of it, so the palette has to
+    // offer the same switch.
+    [Test]
+    procedure ToolbarCommand_InvokesToggleToolbar;
   end;
 
 implementation
@@ -95,6 +100,7 @@ begin
   Result.ToggleZen := procedure begin FFired := 'Zen'; end;
   Result.ToggleTheme := procedure begin FFired := 'Theme'; end;
   Result.ToggleToc := procedure begin FFired := 'Toc'; end;
+  Result.ToggleToolbar := procedure begin FFired := 'Toolbar'; end;
   Result.ShowFind := procedure begin FFired := 'Find'; end;
   Result.ShowReplace := procedure begin FFired := 'Replace'; end;
   Result.FindInPreview := procedure begin FFired := 'FindPreview'; end;
@@ -127,7 +133,14 @@ end;
 procedure TPadCommandSetTests.Register_AddsEveryCommand;
 begin
   TPadCommandSet.Register(FRegistry, BuildActions);
-  Assert.AreEqual(35, FRegistry.Count);
+  Assert.AreEqual(36, FRegistry.Count);
+end;
+
+procedure TPadCommandSetTests.ToolbarCommand_InvokesToggleToolbar;
+begin
+  TPadCommandSet.Register(FRegistry, BuildActions);
+  Invoke(CmdToolbarName);
+  Assert.AreEqual('Toolbar', FFired);
 end;
 
 procedure TPadCommandSetTests.NewCommand_InvokesNewDocument;

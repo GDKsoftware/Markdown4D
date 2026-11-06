@@ -42,6 +42,9 @@ type
     // Per-app / per-framework values the controller reads.
     function SampleMarkdown: string;
     function DarkThemeActive: Boolean;
+    // The user's choice, not whether the toolbar is on screen: zen mode hides it
+    // without changing what the next session should start with.
+    function ToolbarVisible: Boolean;
     function EffectiveViewMode: TPadViewMode;
 
     // Dialogs and app lifetime, implemented with the native framework toolkit.

@@ -378,6 +378,7 @@ begin
   FSession.SetOpenFiles(Titled, FilteredActive);
   FSession.DarkTheme := FShell.DarkThemeActive;
   FSession.ViewMode := FShell.EffectiveViewMode;
+  FSession.ToolbarVisible := FShell.ToolbarVisible;
 
   FSession.Save;
 end;

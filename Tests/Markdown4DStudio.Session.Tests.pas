@@ -70,6 +70,12 @@ type
     procedure Load_MissingViewMode_DefaultsToSplit;
 
     [Test]
+    procedure ToolbarVisible_RoundTrips;
+
+    [Test]
+    procedure Load_MissingToolbarVisible_DefaultsToVisible;
+
+    [Test]
     procedure ResolvePath_UsesMarkdown4DAppDataSubfolder;
 
     [Test]
@@ -294,6 +300,31 @@ begin
 
   Assert.IsTrue(FSession.ViewMode = TPadViewMode.Split);
   Assert.IsTrue(FSession.DarkTheme);
+end;
+
+procedure TPadSessionTests.ToolbarVisible_RoundTrips;
+begin
+  FSession.ToolbarVisible := False;
+  FSession.Save;
+
+  const Loaded = TPadSession.Create(FPath);
+  try
+    Loaded.Load;
+
+    Assert.IsFalse(Loaded.ToolbarVisible);
+  finally
+    Loaded.Free;
+  end;
+end;
+
+// A session written before the toolbar could be hidden must not start without one.
+procedure TPadSessionTests.Load_MissingToolbarVisible_DefaultsToVisible;
+begin
+  TFile.WriteAllText(FPath, '{"darkTheme":true}');
+
+  FSession.Load;
+
+  Assert.IsTrue(FSession.ToolbarVisible);
 end;
 
 procedure TPadSessionTests.ResolvePath_UsesMarkdown4DAppDataSubfolder;

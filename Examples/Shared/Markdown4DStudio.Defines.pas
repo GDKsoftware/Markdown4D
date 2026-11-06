@@ -31,6 +31,8 @@ const
   GlyphFind = Char($E721);
   GlyphZen = Char($E740);
   GlyphCommands = Char($E712);
+  GlyphHideToolbar = Char($E96D); // ChevronUpSmall
+  GlyphShowToolbar = Char($E96E); // ChevronDownSmall
 
   // Toolbar hints
   HintNew = 'New (Ctrl+N)';
@@ -52,12 +54,18 @@ const
   HintFind = 'Find in preview';
   HintZen = 'Zen mode (F11)';
   HintCommands = 'All commands (Ctrl+K)';
+  HintHideToolbar = 'Hide toolbar';
+  HintShowToolbar = 'Show toolbar';
 
   // Layout metrics identical to both frameworks
   TitleBarHeight = 40;
   TitleBarLeftInset = 8;
   IconButtonSize = 32;
   SeparatorWidth = 1;
+  // The strip left behind by a hidden toolbar: just tall enough to hold the
+  // chevron that brings the toolbar back.
+  ToolbarHandleHeight = 12;
+  ToolbarHandleGlyphSize = 8;
   TocPanelWidth = 240;
   // Neither half of the split view may be squeezed below this, whether by a
   // remembered width, a window resize or a splitter drag.
@@ -115,6 +123,8 @@ const
   CmdThemeShortcut = '';
   CmdTocName = 'Toggle contents';
   CmdTocShortcut = '';
+  CmdToolbarName = 'Toggle toolbar';
+  CmdToolbarShortcut = '';
   CmdViewEditorName = 'Editor only';
   CmdViewEditorShortcut = 'Ctrl+1';
   CmdViewSplitName = 'Split view';
