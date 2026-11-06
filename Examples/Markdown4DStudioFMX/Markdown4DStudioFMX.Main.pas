@@ -881,8 +881,6 @@ begin
       ExecuteFormatCommand(TEditorCommand.Table);
     vkE:
       DoExportHtml;
-    vkC:
-      DoCopyHtml;
     vkS:
       FController.SaveAs;
     vkTab:

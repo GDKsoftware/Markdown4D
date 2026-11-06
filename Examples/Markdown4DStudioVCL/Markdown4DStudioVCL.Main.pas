@@ -655,8 +655,6 @@ begin
       ExecuteFormatCommand(TEditorCommand.Table);
     Ord('E'):
       DoExportHtml;
-    Ord('C'):
-      DoCopyHtml;
     Ord('S'):
       FController.SaveAs;
     VK_TAB:
