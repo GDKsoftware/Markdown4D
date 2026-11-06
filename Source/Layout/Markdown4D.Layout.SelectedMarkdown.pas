@@ -10,8 +10,8 @@ uses
 type
   // The markdown a reader means when copying a selection as markdown: within one
   // line the selected source with the markup directly around it, over several
-  // lines whole source lines, a table always whole, and a display formula with
-  // the line that closes it.
+  // lines whole source lines, an inline element the selection starts or ends in
+  // whole, a table always whole, and a display formula with the line that closes it.
   TMarkdownSelectedSource = record
   private
     const
@@ -20,9 +20,15 @@ type
       Delimiters = ['*', '_', '~', '`'];
       DisplayMathMarker = '$$';
       ContainerPrefix = [' ', #9, '>'];
+      InlineElements = [TMarkdownNodeKind.Emphasis, TMarkdownNodeKind.Strong, TMarkdownNodeKind.CodeSpan,
+                        TMarkdownNodeKind.Link, TMarkdownNodeKind.Image, TMarkdownNodeKind.Autolink,
+                        TMarkdownNodeKind.CustomInline];
     class function WidenOverMathBlocks(const Source: string; const Node: IMarkdownNode;
                                        const Range: TMarkdownSegment): TMarkdownSegment; static;
     class function WidenOverTables(const Node: IMarkdownNode; const Range: TMarkdownSegment): TMarkdownSegment; static;
+    class function WidenOverCutInlines(const Node: IMarkdownNode;
+                                       const Range: TMarkdownSegment): TMarkdownSegment; static;
+    class function IsCut(const Element, Range: TMarkdownSegment): Boolean; static;
     // Where a display formula block ends in Source together with the line that
     // closes it; a block left open ends where its segment does.
     class function MathBlockEnd(const Source: string; const Block: IMarkdownNode): Integer; static;
@@ -52,6 +58,7 @@ class function TMarkdownSelectedSource.Extract(const Source: string; const Docum
 begin
   var Range := WidenOverTables(Document, Selection);
   Range := WidenOverMathBlocks(Source, Document, Range);
+  Range := WidenOverCutInlines(Document, Range);
 
   if SpansLines(Source, Range) then
     Range := WholeLines(Source, Range)
@@ -143,6 +150,38 @@ begin
       Result := WidenOverTables(Child, Result);
     end;
   end;
+end;
+
+// Pasted with only one of its delimiters, an element would format the text
+// after it as well, so a selection that starts or ends inside one takes it whole.
+// Outer elements come before the ones nested in them, so one pass is enough.
+class function TMarkdownSelectedSource.WidenOverCutInlines(const Node: IMarkdownNode;
+  const Range: TMarkdownSegment): TMarkdownSegment;
+begin
+  Result := Range;
+  if Node = nil then
+    Exit;
+
+  for var Index := 0 to Node.ChildCount - 1 do
+  begin
+    const Child = Node.Children[Index];
+    const Element = Child.Segment;
+    const IsCutElement = ((Child.Kind in InlineElements) and IsCut(Element, Result));
+    if IsCutElement then
+      Result := TMarkdownSegment.Create(Min(Result.StartOffset, Element.StartOffset),
+                                        Max(Result.EndOffset, Element.EndOffset));
+
+    Result := WidenOverCutInlines(Child, Result);
+  end;
+end;
+
+// The range covers part of the element and something outside it.
+class function TMarkdownSelectedSource.IsCut(const Element, Range: TMarkdownSegment): Boolean;
+begin
+  const IsMapped = (Element.StartOffset > 0);
+  const IsInside = ((Range.StartOffset >= Element.StartOffset) and (Range.EndOffset <= Element.EndOffset));
+  const IsWhole = ((Range.StartOffset <= Element.StartOffset) and (Range.EndOffset >= Element.EndOffset));
+  Result := (IsMapped and Overlaps(Element, Range) and not IsInside and not IsWhole);
 end;
 
 class function TMarkdownSelectedSource.Overlaps(const Left, Right: TMarkdownSegment): Boolean;

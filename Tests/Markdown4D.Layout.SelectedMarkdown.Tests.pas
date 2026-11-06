@@ -13,6 +13,7 @@ type
   TMarkdownSelectedSourceTests = class
   private
     class function ExtractSelecting(const Source, Selected: string): string; static;
+    class function ExtractSelectingFromTo(const Source, First, Last: string): string; static;
     class function Lines(const Values: array of string): string; static;
 
   public
@@ -29,6 +30,15 @@ type
 
     [Test]
     procedure Extract_PartOfAWordInsideMarkup_CopiesOnlyThatPart;
+
+    [Test]
+    [TestCase('EndsInStrong', 'Innen ein **Absatz**.|Innen|Absatz|Innen ein **Absatz**', '|')]
+    [TestCase('StartsInEmphasis', 'An *italic word* here|word|here|*italic word* here', '|')]
+    [TestCase('EndsInStrikethrough', 'Keep ~~gone word~~ now|Keep|gone|Keep ~~gone word~~', '|')]
+    [TestCase('EndsInLinkText', 'See [the docs](d.md) now|See|the|See [the docs](d.md)', '|')]
+    [TestCase('EndsInCodeSpan', 'Run `make all` now|Run|make|Run `make all`', '|')]
+    [TestCase('EndsInNestedEmphasis', 'A **b *c d* e** f|A|c|A **b *c d* e**', '|')]
+    procedure Extract_EdgeInsideMarkup_TakesTheWholeElement(const Source, First, Last, Expected: string);
 
     [Test]
     procedure Extract_AcrossListItems_CopiesWholeLines;
@@ -70,6 +80,14 @@ begin
   Assert.AreEqual('bol', Actual);
 end;
 
+procedure TMarkdownSelectedSourceTests.Extract_EdgeInsideMarkup_TakesTheWholeElement(const Source, First, Last,
+  Expected: string);
+begin
+  const Actual = ExtractSelectingFromTo(Source, First, Last);
+
+  Assert.AreEqual(Expected, Actual);
+end;
+
 procedure TMarkdownSelectedSourceTests.Extract_AcrossListItems_CopiesWholeLines;
 begin
   const Source = Lines(['- one', '- two', '- three']);
@@ -105,6 +123,19 @@ begin
   Assert.IsTrue(Start > 0, Format('"%s" does not occur in the source', [Selected]));
 
   const Selection = TMarkdownSegment.Create(Start, Start + Length(Selected));
+  Result := TMarkdownSelectedSource.Extract(Source, Document, Selection);
+end;
+
+// Selects from the first occurrence of First up to and including the first
+// occurrence of Last after it.
+class function TMarkdownSelectedSourceTests.ExtractSelectingFromTo(const Source, First, Last: string): string;
+begin
+  const Document = TMarkdown.Parse(Source, TMarkdownDialect.Gfm);
+  const Start = Pos(First, Source);
+  const LastStart = Pos(Last, Source, Start);
+  Assert.IsTrue((Start > 0) and (LastStart > 0), Format('"%s" to "%s" does not occur in the source', [First, Last]));
+
+  const Selection = TMarkdownSegment.Create(Start, LastStart + Length(Last));
   Result := TMarkdownSelectedSource.Extract(Source, Document, Selection);
 end;
 
