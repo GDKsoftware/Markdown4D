@@ -118,12 +118,7 @@ end;
 // viewer maps back to the source.
 class function TMarkdownSelectedSourceTests.ExtractSelecting(const Source, Selected: string): string;
 begin
-  const Document = TMarkdown.Parse(Source, TMarkdownDialect.Gfm);
-  const Start = Pos(Selected, Source);
-  Assert.IsTrue(Start > 0, Format('"%s" does not occur in the source', [Selected]));
-
-  const Selection = TMarkdownSegment.Create(Start, Start + Length(Selected));
-  Result := TMarkdownSelectedSource.Extract(Source, Document, Selection);
+  Result := ExtractSelectingFromTo(Source, Selected, Selected);
 end;
 
 // Selects from the first occurrence of First up to and including the first
