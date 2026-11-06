@@ -39,7 +39,7 @@ const
   HintSaveAs = 'Save As (Ctrl+Shift+S)';
   HintRecent = 'Recent files';
   HintExport = 'Export HTML (Ctrl+Shift+E)';
-  HintCopyHtml = 'Copy HTML (Ctrl+Shift+C)';
+  HintCopyHtml = 'Copy HTML';
   HintBold = 'Bold (Ctrl+B)';
   HintItalic = 'Italic (Ctrl+I)';
   HintLink = 'Link (Ctrl+K)';
@@ -168,7 +168,7 @@ const
   CmdExportName = 'Export HTML...';
   CmdExportShortcut = 'Ctrl+Shift+E';
   CmdCopyHtmlName = 'Copy HTML';
-  CmdCopyHtmlShortcut = 'Ctrl+Shift+C';
+  CmdCopyHtmlShortcut = '';
 
   // Command palette categories
   CatFile = 'File';
