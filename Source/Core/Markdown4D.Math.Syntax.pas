@@ -48,6 +48,8 @@ type
     function GetColumnSpec: string;
     function GetRulesAbove: Integer;
     function GetRulesBelow: Integer;
+    function GetSourceStart: Integer;
+    function GetSourceLength: Integer;
     function IsEmpty: Boolean;
     property Kind: TMathNodeKind read GetKind;
     // Symbol: the glyphs to draw; Text: the words; Accent: the accent glyph,
@@ -90,6 +92,13 @@ type
     // Matrix of an array or a tabular: how many \hline rules run below its
     // last row, after the \\ that closes it.
     property RulesBelow: Integer read GetRulesBelow;
+    // Where the node is spelled in the formula's source, counted from 0 like
+    // the start of a display run in its literal, or -1 when it has no place
+    // of its own, like a script node or the rows of a column of lines; it is
+    // then part of the nearest node that has one. What \ce makes has no place
+    // of its own: the \ce command stands for all of it.
+    property SourceStart: Integer read GetSourceStart;
+    property SourceLength: Integer read GetSourceLength;
   end;
 
   TMathParser = class
@@ -127,6 +136,8 @@ type
     FColumnSpec: string;
     FRulesAbove: Integer;
     FRulesBelow: Integer;
+    FSourceStart: Integer;
+    FSourceLength: Integer;
 
   public
     constructor Create(const Kind: TMathNodeKind);
@@ -149,7 +160,10 @@ type
     function GetColumnSpec: string;
     function GetRulesAbove: Integer;
     function GetRulesBelow: Integer;
+    function GetSourceStart: Integer;
+    function GetSourceLength: Integer;
     function IsEmpty: Boolean;
+    procedure SetSource(const Start, Length: Integer);
     procedure AddChild(const Child: IMathNode);
     procedure SetChild(const Index: Integer; const Child: IMathNode);
     property Text: string read FText write FText;
@@ -167,6 +181,8 @@ type
     property ColumnSpec: string read FColumnSpec write FColumnSpec;
     property RulesAbove: Integer read FRulesAbove write FRulesAbove;
     property RulesBelow: Integer read FRulesBelow write FRulesBelow;
+    property SourceStart: Integer read FSourceStart;
+    property SourceLength: Integer read FSourceLength;
   end;
 
   TMathSymbolInfo = record
@@ -222,6 +238,8 @@ type
     FPeeked: Boolean;
     FPeekedToken: TMathToken;
     FPeekedPosition: Integer;
+    FPeekedStart: Integer;
+    FGroupStart: Integer;
     procedure SkipWhitespace;
     function ReadToken: TMathToken;
     function ReadCommandName: string;
@@ -240,6 +258,11 @@ type
     // or the \end or \hline that follows it; braces keep an & inside them.
     function ReadRawCell: string;
     function AtEnd: Boolean;
+    // Where the next token starts, past any white space, counted from 1.
+    function NextTokenStart: Integer;
+    // Where the content of the last raw group or cell starts, counted from 1.
+    property GroupStart: Integer read FGroupStart;
+    property Position: Integer read FPosition;
   end;
 
   TMathTreeParser = class
@@ -278,10 +301,13 @@ type
       // and its cell), so this keeps the deepest tree at about half of what
       // a default Win64 stack survives. A real formula never comes close.
       MaxNestingDepth = 100;
+      UntypedSource = -1;
     var
       FScanner: TMathScanner;
       FDepth: Integer;
       FChemistryDepth: Integer;
+      FSourceOffset: Integer;
+    procedure Place(const Node: TMathNode; const Start, Length: Integer);
     function ParseLines: IMathNode;
     procedure ParseSequenceInto(const Row: TMathNode);
     function ParseSequence: TMathNode;
@@ -325,12 +351,12 @@ type
     function ParseAccent(const Glyph: string): TMathNode;
     function ParseEnvironment: TMathNode;
     function ParseMatrix(const IsTable: Boolean = False; const HasTextCells: Boolean = False): TMathNode;
-    function ParseTextCell(const Source: string): IMathNode;
+    function ParseTextCell(const Source: string; const CellStart: Integer): IMathNode;
     function ReadHorizontalRules: Integer;
     function ReadColumnSpec: string;
     class function IsEnvironmentEnd(const Token: TMathToken): Boolean; static;
     class function TryTextVariant(const Name: string; out Variant: TMathFontVariant): Boolean; static;
-    class function TextNode(const Source: string; const Variant: TMathFontVariant): TMathNode; static;
+    function TextNode(const Source: string; const Variant: TMathFontVariant; const Start: Integer): TMathNode;
     class function CellText(const Source: string): string; static;
     class function ClosingBrace(const Source: string; const Open: Integer): Integer; static;
     function ReadEnvironmentName: string;
@@ -347,7 +373,10 @@ type
   public
     // ChemistryDepth counts the \ce commands this formula is nested in, and
     // Depth the nesting levels around it, so a \ce cannot reset the limit.
-    constructor Create(const Source: string; const ChemistryDepth: Integer = 0; const Depth: Integer = 0);
+    // SourceOffset is where Source starts in the formula as typed, counted
+    // from 0, or UntypedSource for TeX that was never typed, as \ce makes.
+    constructor Create(const Source: string; const ChemistryDepth: Integer = 0; const Depth: Integer = 0;
+                       const SourceOffset: Integer = 0);
     destructor Destroy; override;
     function Parse: IMathNode;
   end;
@@ -373,6 +402,7 @@ begin
   FKind := Kind;
   FChildren := TList<IMathNode>.Create;
   FHasRule := True;
+  FSourceStart := -1;
 end;
 
 destructor TMathNode.Destroy;
@@ -470,6 +500,22 @@ end;
 function TMathNode.GetRulesBelow: Integer;
 begin
   Result := FRulesBelow;
+end;
+
+function TMathNode.GetSourceStart: Integer;
+begin
+  Result := FSourceStart;
+end;
+
+function TMathNode.GetSourceLength: Integer;
+begin
+  Result := FSourceLength;
+end;
+
+procedure TMathNode.SetSource(const Start, Length: Integer);
+begin
+  FSourceStart := Start;
+  FSourceLength := Length;
 end;
 
 function TMathNode.IsEmpty: Boolean;
@@ -715,6 +761,8 @@ begin
   if not FPeeked then
   begin
     const Start = FPosition;
+    SkipWhitespace;
+    FPeekedStart := FPosition;
     FPeekedToken := ReadToken;
     FPeekedPosition := FPosition;
     FPosition := Start;
@@ -722,6 +770,12 @@ begin
   end;
 
   Result := FPeekedToken;
+end;
+
+function TMathScanner.NextTokenStart: Integer;
+begin
+  Peek;
+  Result := FPeekedStart;
 end;
 
 function TMathScanner.Next: TMathToken;
@@ -822,6 +876,7 @@ function TMathScanner.ReadRawGroup: string;
 begin
   FPeeked := False;
   SkipWhitespace;
+  FGroupStart := FPosition;
 
   const HasBrace = (FPosition <= Length(FSource)) and (FSource[FPosition] = OpenBraceChar);
   if not HasBrace then
@@ -840,6 +895,7 @@ begin
 
   Inc(FPosition);
   const Start = FPosition;
+  FGroupStart := Start;
   var Depth := 1;
 
   while (FPosition <= Length(FSource)) and (Depth > 0) do
@@ -868,6 +924,7 @@ function TMathScanner.ReadRawCell: string;
 begin
   FPeeked := False;
   SkipWhitespace;
+  FGroupStart := FPosition;
 
   const Start = FPosition;
   var Depth := 0;
@@ -917,13 +974,24 @@ begin
   end;
 end;
 
-constructor TMathTreeParser.Create(const Source: string; const ChemistryDepth: Integer; const Depth: Integer);
+constructor TMathTreeParser.Create(const Source: string; const ChemistryDepth: Integer; const Depth: Integer;
+  const SourceOffset: Integer);
 begin
   inherited Create;
 
   FScanner := TMathScanner.Create(Source);
   FChemistryDepth := ChemistryDepth;
   FDepth := Depth;
+  FSourceOffset := SourceOffset;
+end;
+
+// Start counts from 1 in the source this parser reads; a source that was
+// never typed places nothing.
+procedure TMathTreeParser.Place(const Node: TMathNode; const Start, Length: Integer);
+begin
+  const IsTyped = (FSourceOffset <> UntypedSource);
+  if IsTyped then
+    Node.SetSource(FSourceOffset + Start - 1, Length);
 end;
 
 destructor TMathTreeParser.Destroy;
@@ -1198,12 +1266,20 @@ begin
     Exit;
   end;
 
+  const Start = FScanner.NextTokenStart;
+
   Inc(FDepth);
   try
     Result := ParseAtomToken;
   finally
     Dec(FDepth);
   end;
+
+  // The innermost atom names the source of what it built, so a symbol made
+  // inside a command keeps its own place and the command keeps the rest.
+  const IsUnplaced = ((Result <> nil) and (Result.SourceStart < 0));
+  if IsUnplaced then
+    Place(Result, Start, FScanner.Position - Start);
 end;
 
 function TMathTreeParser.IsAtDepthLimit: Boolean;
@@ -1386,7 +1462,7 @@ begin
     Exit;
   end;
 
-  const Parser = TMathTreeParser.Create(TMathChemistry.ToTeX(Source), FChemistryDepth + 1, FDepth);
+  const Parser = TMathTreeParser.Create(TMathChemistry.ToTeX(Source), FChemistryDepth + 1, FDepth, UntypedSource);
   try
     const Parsed = Parser.Parse;
 
@@ -1914,6 +1990,8 @@ begin
   Result.AtomClass := TMathAtomClass.Ordinary;
   Result.Variant := Variant;
   Result.Text := FScanner.ReadRawGroup;
+  // The words are spelled as typed, character for character.
+  Place(Result, FScanner.GroupStart, Length(Result.Text));
 end;
 
 function TMathTreeParser.ParseStyled(const Variant: TMathFontVariant): TMathNode;
@@ -2052,9 +2130,15 @@ begin
   while True do
   begin
     if HasTextCells then
-      Row.AddChild(ParseTextCell(FScanner.ReadRawCell))
+    begin
+      const CellSource = FScanner.ReadRawCell;
+      const Cell = ParseTextCell(CellSource, FScanner.GroupStart);
+      Row.AddChild(Cell);
+    end
     else
+    begin
       Row.AddChild(ParseSequence);
+    end;
 
     const Token = FScanner.Peek;
 
@@ -2136,12 +2220,14 @@ end;
 // \textit, \emph and \text around words, and $...$ for a formula. Any other
 // command shows in the error colour, as it would in a formula. A cell of
 // words alone is one text node; an empty cell is an empty row.
-function TMathTreeParser.ParseTextCell(const Source: string): IMathNode;
+function TMathTreeParser.ParseTextCell(const Source: string; const CellStart: Integer): IMathNode;
 begin
   const Cell = TMathNode.Create(TMathNodeKind.Row);
   Result := Cell;
 
+  const IsTyped = (FSourceOffset <> UntypedSource);
   var Words := '';
+  var WordsStart := 1;
   var Index := 1;
   while Index <= Length(Source) do
   begin
@@ -2151,6 +2237,9 @@ begin
     const IsControlSymbol = (Current = Backslash) and HasNext and not TMathScanner.IsCommandLetter(Source[Index + 1]);
     if IsControlSymbol then
     begin
+      const StartsWords = (Words = '');
+      if StartsWords then
+        WordsStart := Index;
       Words := Words + Copy(Source, Index, 2);
       Inc(Index, 2);
       Continue;
@@ -2164,7 +2253,11 @@ begin
     if IsFormula then
     begin
       Stop := Pos(DollarChar, Source, Index + 1);
-      const Formula = TMathTreeParser.Create(Copy(Source, Index + 1, Stop - Index - 1), FChemistryDepth, FDepth + 1);
+      var FormulaOffset := UntypedSource;
+      if IsTyped then
+        FormulaOffset := FSourceOffset + CellStart + Index - 1;
+      const Formula = TMathTreeParser.Create(Copy(Source, Index + 1, Stop - Index - 1), FChemistryDepth, FDepth + 1,
+        FormulaOffset);
       try
         Part := Formula.Parse;
       finally
@@ -2185,22 +2278,29 @@ begin
       const Close = ClosingBrace(Source, Stop);
       if IsTextCommand and (Close > 0) then
       begin
-        Part := TextNode(Copy(Source, Stop + 1, Close - Stop - 1), Variant);
+        Part := TextNode(Copy(Source, Stop + 1, Close - Stop - 1), Variant, CellStart + Stop);
         Stop := Close + 1;
       end
       else
-        Part := ErrorNode(Name);
+      begin
+        const Error = ErrorNode(Name);
+        Place(Error, CellStart + Index - 1, Stop - Index);
+        Part := Error;
+      end;
     end;
 
     if Part = nil then
     begin
+      const StartsWords = (Words = '');
+      if StartsWords then
+        WordsStart := Index;
       Words := Words + Current;
       Inc(Index);
       Continue;
     end;
 
     if Words <> '' then
-      Cell.AddChild(TextNode(Words, TMathFontVariant.Upright));
+      Cell.AddChild(TextNode(Words, TMathFontVariant.Upright, CellStart + WordsStart - 1));
     Words := '';
     Cell.AddChild(Part);
     Index := Stop;
@@ -2209,20 +2309,24 @@ begin
   const IsWordsOnly = ((Cell.GetChildCount = 0) and (Words <> ''));
   if IsWordsOnly then
   begin
-    Result := TextNode(Words, TMathFontVariant.Upright);
+    Result := TextNode(Words, TMathFontVariant.Upright, CellStart + WordsStart - 1);
     Exit;
   end;
 
   if Words <> '' then
-    Cell.AddChild(TextNode(Words, TMathFontVariant.Upright));
+    Cell.AddChild(TextNode(Words, TMathFontVariant.Upright, CellStart + WordsStart - 1));
 end;
 
-class function TMathTreeParser.TextNode(const Source: string; const Variant: TMathFontVariant): TMathNode;
+// Words of a cell, placed where they are typed; Start counts from 1 in the
+// source this parser reads.
+function TMathTreeParser.TextNode(const Source: string; const Variant: TMathFontVariant;
+  const Start: Integer): TMathNode;
 begin
   Result := TMathNode.Create(TMathNodeKind.Text);
   Result.AtomClass := TMathAtomClass.Ordinary;
   Result.Variant := Variant;
   Result.Text := CellText(Source);
+  Place(Result, Start, Length(Source));
 end;
 
 class function TMathTreeParser.TryTextVariant(const Name: string; out Variant: TMathFontVariant): Boolean;

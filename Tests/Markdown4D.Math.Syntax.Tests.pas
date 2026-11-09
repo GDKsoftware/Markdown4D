@@ -267,12 +267,130 @@ type
     procedure Matrix_ClosingLineBreak_KeepsItsEmptyRow;
   end;
 
+  [TestFixture]
+  TMathSourcePlacementTests = class
+  private
+    class function SourceOf(const Source: string; const Node: IMathNode): string; static;
+    class function SymbolWithText(const Node: IMathNode; const Text: string): IMathNode; static;
+  public
+    [Test]
+    [TestCase('Letter', 'a+b,b,b')]
+    [TestCase('Digits', 'x+123,123,123')]
+    [TestCase('Command', 'x+\alpha,' + #$03B1 + ',\alpha')]
+    [TestCase('Operator name', '\sin x,sin,\sin')]
+    [TestCase('Inside a fraction', '\frac{a}{b},b,b')]
+    [TestCase('Script', 'x^{2},2,2')]
+    [TestCase('Inside a link', '\href{https://example.com}{y},y,y')]
+    procedure Symbol_IsPlacedAtItsSpelling(const Source, Text, Expected: string);
+
+    [Test]
+    procedure TextCommand_IsPlacedAtItsWords;
+
+    [Test]
+    procedure Fraction_CoversTheCommand;
+
+    [Test]
+    procedure Chemistry_SymbolsHaveNoPlaceOfTheirOwn;
+
+    [Test]
+    procedure TabularCell_WordsArePlacedWhereTyped;
+
+    [Test]
+    procedure TabularCell_FormulaIsPlacedInTheWholeFormula;
+  end;
+
 implementation
 
 uses
   System.SysUtils,
   System.Math,
   System.StrUtils;
+
+class function TMathSourcePlacementTests.SourceOf(const Source: string; const Node: IMathNode): string;
+begin
+  Result := Copy(Source, Node.SourceStart + 1, Node.SourceLength);
+end;
+
+class function TMathSourcePlacementTests.SymbolWithText(const Node: IMathNode; const Text: string): IMathNode;
+begin
+  const IsMatch = ((Node.Kind in [TMathNodeKind.Symbol, TMathNodeKind.Text]) and (Node.Text = Text));
+  if IsMatch then
+  begin
+    Result := Node;
+    Exit;
+  end;
+
+  for var Index := 0 to Node.ChildCount - 1 do
+  begin
+    Result := SymbolWithText(Node.Children[Index], Text);
+    const IsFound = (Result <> nil);
+    if IsFound then
+      Exit;
+  end;
+
+  Result := nil;
+end;
+
+procedure TMathSourcePlacementTests.Symbol_IsPlacedAtItsSpelling(const Source, Text, Expected: string);
+begin
+  const Symbol = SymbolWithText(TMathParser.Parse(Source), Text);
+
+  Assert.IsNotNull(Symbol);
+  Assert.AreEqual(Expected, SourceOf(Source, Symbol));
+end;
+
+procedure TMathSourcePlacementTests.TextCommand_IsPlacedAtItsWords;
+begin
+  const Source = 'x \text{if so} y';
+  const Words = SymbolWithText(TMathParser.Parse(Source), 'if so');
+
+  Assert.AreEqual('if so', SourceOf(Source, Words), 'the words are placed character for character');
+end;
+
+procedure TMathSourcePlacementTests.Fraction_CoversTheCommand;
+begin
+  const Source = 'x+\frac{a}{b}';
+  const Row = TMathParser.Parse(Source);
+
+  const Fraction = Row.Children[2];
+  Assert.AreEqual<TMathNodeKind>(TMathNodeKind.Fraction, Fraction.Kind);
+  Assert.AreEqual('\frac{a}{b}', SourceOf(Source, Fraction));
+end;
+
+// \ce translates its argument into TeX that was never typed, so nothing it
+// makes has a place of its own; the \ce command stands for all of it.
+procedure TMathSourcePlacementTests.Chemistry_SymbolsHaveNoPlaceOfTheirOwn;
+begin
+  const Source = 'x+\ce{H2O}';
+  const Row = TMathParser.Parse(Source);
+
+  const Chemistry = Row.Children[2];
+  Assert.AreEqual('\ce{H2O}', SourceOf(Source, Chemistry));
+  for var Index := 0 to Chemistry.ChildCount - 1 do
+  begin
+    Assert.AreEqual(-1, Chemistry.Children[Index].SourceStart, 'the translated TeX has no place in the source');
+  end;
+end;
+
+procedure TMathSourcePlacementTests.TabularCell_WordsArePlacedWhereTyped;
+begin
+  const Source = '\begin{tabular}{ll} Ingredient & \textbf{Amount} \end{tabular}';
+  const Row = TMathParser.Parse(Source);
+
+  Assert.AreEqual('Ingredient', SourceOf(Source, SymbolWithText(Row, 'Ingredient')));
+  Assert.AreEqual('Amount', SourceOf(Source, SymbolWithText(Row, 'Amount')), 'the words inside \textbf');
+end;
+
+// A formula in a cell is parsed on its own, but its symbols are placed in the
+// formula that holds the table, as for every other symbol.
+procedure TMathSourcePlacementTests.TabularCell_FormulaIsPlacedInTheWholeFormula;
+begin
+  const Source = '\begin{tabular}{l} Area $\pi r^2$ \end{tabular}';
+  const Row = TMathParser.Parse(Source);
+
+  Assert.AreEqual('\pi', SourceOf(Source, SymbolWithText(Row, #$03C0)));
+  Assert.AreEqual('r', SourceOf(Source, SymbolWithText(Row, 'r')));
+end;
 
 class function TMathSyntaxTests.Parse(const Source: string): IMathNode;
 begin
