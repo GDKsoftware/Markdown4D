@@ -50,6 +50,19 @@ type
     procedure EndLink;
   end;
 
+  // A canvas that can tell where drawn text is spelled in the source, as a
+  // formula knows for each of its glyphs. SourceStart counts from 0 in the
+  // source of what is being drawn, and SourceLength is how much of it the text
+  // was set from: \alpha for a single letter, for instance. Ascent and
+  // Descent are the ink of the text above and below its baseline, tighter
+  // than the font's line, which in a math font is several em tall. A canvas
+  // without this interface draws the text as plain content.
+  IExtensionSourceCanvas = interface
+    ['{EE4D3D33-AAD3-4CF5-AEEF-2029B1F59D08}']
+    procedure DrawSourceText(const TopLeft: TLayoutPointF; const Text: string; const Font: TMarkdownFontStyle;
+      const Color: TLayoutColor; const SourceStart, SourceLength: Integer; const Ascent, Descent: Single);
+  end;
+
   ILayoutBlockContext = interface
     ['{5E1A7C34-9B62-4D08-A5F1-72C0E4B36D91}']
     function GetMeasurer: ITextMeasurer;

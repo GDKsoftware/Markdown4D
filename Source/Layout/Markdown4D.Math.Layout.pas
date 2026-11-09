@@ -87,6 +87,10 @@ type
     FPoints: TArray<TLayoutPointF>;
     FChildren: TList<TMathPlacement>;
     FUrl: string;
+    FSourceStart: Integer;
+    FSourceLength: Integer;
+    FIsAttached: Boolean;
+    procedure DrawGlyph(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
     procedure DrawGroup(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
     procedure DrawChildren(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
     procedure DrawPolygon(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
@@ -102,6 +106,10 @@ type
     // Grows the group so the placed child fits; the group's extent is never
     // smaller than its parts.
     procedure Enclose(const Child: TMathBox; const DX, DY: Single);
+    // Gives every glyph inside that has no place in the formula's source yet
+    // this one, so a delimiter drawn for \left or a glyph of \ce belongs to
+    // the command that drew it.
+    procedure AttachSource(const Start, Length: Integer);
     property Width: Single read FWidth write FWidth;
     property Ascent: Single read FAscent write FAscent;
     property Descent: Single read FDescent write FDescent;
@@ -328,6 +336,7 @@ begin
 
   FKind := Kind;
   FChildren := TList<TMathPlacement>.Create;
+  FSourceStart := -1;
 end;
 
 destructor TMathBox.Destroy;
@@ -378,7 +387,7 @@ begin
     TMathBoxKind.Group:
       DrawGroup(Canvas, Left, Baseline);
     TMathBoxKind.Glyph:
-      Canvas.DrawText(TLayoutPointF.Create(Left, Baseline - FFontBaseline), FText, FFont, FColor);
+      DrawGlyph(Canvas, Left, Baseline);
     TMathBoxKind.Rule:
       Canvas.FillRectangle(TLayoutRectF.Create(Left + FRule.Left, Baseline + FRule.Top, Left + FRule.Right,
         Baseline + FRule.Bottom), FColor);
@@ -387,6 +396,41 @@ begin
   else
     raise EMathSyntaxError.CreateFmt('Unhandled math box kind: %d', [Ord(FKind)]);
   end;
+end;
+
+// A box once attached has given its glyphs their places, so the boxes around
+// it need not look into it again.
+procedure TMathBox.AttachSource(const Start, Length: Integer);
+begin
+  if FIsAttached then
+    Exit;
+  FIsAttached := True;
+
+  const IsUnplacedGlyph = ((FKind = TMathBoxKind.Glyph) and (FSourceStart < 0));
+  if IsUnplacedGlyph then
+  begin
+    FSourceStart := Start;
+    FSourceLength := Length;
+  end;
+
+  for var Placement in FChildren do
+  begin
+    Placement.Box.AttachSource(Start, Length);
+  end;
+end;
+
+// A glyph with a place in the source is drawn as text placed there when the
+// canvas can take it; any other canvas just draws it.
+procedure TMathBox.DrawGlyph(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
+begin
+  const TopLeft = TLayoutPointF.Create(Left, Baseline - FFontBaseline);
+
+  var SourceCanvas: IExtensionSourceCanvas;
+  const IsPlaced = ((FSourceStart >= 0) and Supports(Canvas, IExtensionSourceCanvas, SourceCanvas));
+  if IsPlaced then
+    SourceCanvas.DrawSourceText(TopLeft, FText, FFont, FColor, FSourceStart, FSourceLength, FAscent, FDescent)
+  else
+    Canvas.DrawText(TopLeft, FText, FFont, FColor);
 end;
 
 // A canvas that cannot attribute drawing to a link still draws the linked
@@ -643,6 +687,10 @@ begin
   else
     raise EMathSyntaxError.CreateFmt('Unhandled math node kind: %d', [Ord(Node.Kind)]);
   end;
+
+  const IsPlaced = (Node.SourceStart >= 0);
+  if IsPlaced then
+    Result.AttachSource(Node.SourceStart, Node.SourceLength);
 end;
 
 // Every box reads the text colour from the options as it is built, so the

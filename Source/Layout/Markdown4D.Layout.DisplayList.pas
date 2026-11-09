@@ -44,6 +44,7 @@ type
     function GetColor: TLayoutColor;
     function GetBaseline: Single;
     function GetStartOffset: Integer;
+    function GetSourceLength: Integer;
     function GetSourceNode: IMarkdownNode;
     function GetRole: TDisplayTextRunRole;
     function GetJoin: TDisplayTextJoin;
@@ -55,6 +56,9 @@ type
     property Baseline: Single read GetBaseline;
     // Where this run starts inside the literal of SourceNode, counted from 0.
     property StartOffset: Integer read GetStartOffset;
+    // How many characters of that literal the run was set from: as many as it
+    // shows, except for a glyph of a formula such as \alpha drawn as one letter.
+    property SourceLength: Integer read GetSourceLength;
     // The inline node whose literal the characters come from. Node is the node
     // the run is attributed to for styling and hit testing, which for a link is
     // the link itself, while SourceNode stays the text leaf inside it.
