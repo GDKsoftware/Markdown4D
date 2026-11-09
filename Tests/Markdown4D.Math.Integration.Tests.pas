@@ -196,6 +196,15 @@ type
     procedure Drag_InScrolledFormula_SelectsTheGlyphsInView;
 
     [Test]
+    procedure Drag_OverMathematicalAlphabets_CopiesPlainLetters;
+
+    [Test]
+    procedure Drag_OverTableCells_CopiesTabsAndLineBreaks;
+
+    [Test]
+    procedure Drag_OverMatrix_CopiesItsRowsAndCells;
+
+    [Test]
     procedure WideDisplayFormula_ScrollsInsteadOfOverflowing;
 
     [Test]
@@ -840,6 +849,40 @@ begin
 
   Assert.AreEqual(Before - 30, GlyphRun('f').Bounds.Left, ScrollTolerance, 'the glyphs moved with the scroll');
   Assert.AreEqual('f+g+h', FModel.SelectedText);
+end;
+
+procedure TMathViewerTests.Drag_OverMathematicalAlphabets_CopiesPlainLetters;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'so $a + \mathbb{R}\mathfrak{g} + b$ holds';
+
+  Drag(#$211D, #$D835#$DD24);
+
+  Assert.AreEqual('Rg', FModel.SelectedText, 'the letters a reader would type');
+end;
+
+// As a browser copies a table: cells apart by tabs, rows by line breaks.
+procedure TMathViewerTests.Drag_OverTableCells_CopiesTabsAndLineBreaks;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'Table:'#10#10'$$'#10'\begin{tabular}{lr} Ingredient & Amount \\ Sugar & 20 \end{tabular}'#10 +
+    '$$'#10#10'End.';
+
+  Drag('Ingredient', 'Amount');
+  Assert.AreEqual('Ingredient'#9'Amount', FModel.SelectedText, 'cells of a row are split by a tab');
+
+  Drag('Amount', 'Sugar');
+  Assert.AreEqual('Amount' + sLineBreak + 'Sugar', FModel.SelectedText, 'a new row starts a new line');
+end;
+
+procedure TMathViewerTests.Drag_OverMatrix_CopiesItsRowsAndCells;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'so $\begin{pmatrix} a & b \\ c & d \end{pmatrix} = M$ holds';
+
+  Drag('a', 'd');
+
+  Assert.AreEqual('a'#9'b' + sLineBreak + 'c'#9'd', FModel.SelectedText);
 end;
 
 procedure TMathViewerTests.WideDisplayFormula_ScrollsInsteadOfOverflowing;

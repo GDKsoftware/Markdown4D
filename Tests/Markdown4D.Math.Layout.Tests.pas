@@ -160,6 +160,14 @@ type
 
     [Test]
     procedure Draw_CanvasWithoutFormula_DrawsPlainText;
+
+    [Test]
+    [TestCase('Double-struck from the letterlike symbols', #$211D + ',R')]
+    [TestCase('Script from the letterlike symbols', #$2112 + ',L')]
+    [TestCase('Fraktur', #$D835#$DD24 + ',g')]
+    [TestCase('Sans-serif digit', #$D835#$DFE4 + ',2')]
+    [TestCase('Plain stays', 'x+1,x+1')]
+    procedure PlainText_MathematicalAlphabets_FoldToPlainOnes(const Glyphs, Expected: string);
   end;
 
 implementation
@@ -624,6 +632,11 @@ begin
   const Numerator = RunWithText(Drawn, 'a');
   const Denominator = RunWithText(Drawn, 'b');
   Assert.IsTrue(Numerator.Bounds.Bottom <= Denominator.Bounds.Top, 'the numerator ends above the denominator');
+end;
+
+procedure TMathLayoutTests.PlainText_MathematicalAlphabets_FoldToPlainOnes(const Glyphs, Expected: string);
+begin
+  Assert.AreEqual(Expected, TMathLayouter.PlainText(Glyphs));
 end;
 
 procedure TMathLayoutTests.Draw_CanvasWithoutFormula_DrawsPlainText;
