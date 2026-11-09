@@ -185,6 +185,7 @@ type
     procedure ScrollCaretIntoView;
     procedure RevealSelection;
     procedure UpdateScrollBar;
+    procedure ShowScrollBarForLongText;
     procedure UpdateCaret;
     function CaretPixelPos: TPoint;
     procedure RecreateCaret;
@@ -386,6 +387,10 @@ begin
     function(const Text: string): Single
     begin
       Result := Round(FMeasurePainter.MeasureText(Text, CodeFont).Width);
+    end,
+    function(const Text: string): TArray<Single>
+    begin
+      Result := FMeasurePainter.CharacterEdges(Text, CodeFont);
     end);
   FHighlighter := TMarkdownSourceHighlighter.Create;
   FMatches := TMarkdownEditorHighlights.Create;
@@ -935,6 +940,7 @@ procedure TMarkdownEditor.HandleModelChange(const Sender: TObject; const Range: 
 begin
   FMatches.Refresh(FModel);
 
+  ShowScrollBarForLongText;
   RebuildRows;
   UpdateScrollBar;
   ScrollCaretIntoView;
@@ -1642,6 +1648,21 @@ begin
   FVerticalScrollBar.Update(Handle, ContentHeightPx, ClientHeight, FScrollOffset);
 end;
 
+// Wrapping a text that turns out to need the scroll bar makes the bar appear, and
+// the narrower client area wraps the whole text again. A text with more lines than
+// fit gets the bar before it is wrapped, so it is wrapped once, at its final width.
+procedure TMarkdownEditor.ShowScrollBarForLongText;
+begin
+  if not HandleAllocated then
+    Exit;
+
+  const LinesHeight = FModel.LineCount * LineHeightPx;
+  const ContentFitsNow = (ContentHeightPx <= ClientHeight);
+  const NeedsScrollBar = (ContentFitsNow and (LinesHeight > ClientHeight));
+  if NeedsScrollBar then
+    FVerticalScrollBar.Update(Handle, LinesHeight, ClientHeight, FScrollOffset);
+end;
+
 procedure TMarkdownEditor.UpdateCaret;
 begin
   if not (Focused and HandleAllocated) then
@@ -2297,6 +2318,7 @@ begin
   FDesignSampleActive := False;
   FModel.LoadText(Value);
   FScrollOffset := 0;
+  ShowScrollBarForLongText;
   RebuildRows;
   UpdateScrollBar;
   ScrollCaretIntoView;

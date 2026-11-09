@@ -89,6 +89,11 @@ type
     /// </summary>
     function MeasureWidth(const Text: string; const Font: TMarkdownDirectWriteFont): Single;
     /// <summary>
+    /// The right edge of every character of <c>Text</c>, measured from its start, from
+    /// one layout. The characters of a cluster, such as a surrogate pair, share its edge.
+    /// </summary>
+    function CharacterEdges(const Text: string; const Font: TMarkdownDirectWriteFont): TArray<Single>;
+    /// <summary>
     /// Lays out <c>Text</c> with its baseline at <c>Baseline</c>, both in the logical
     /// coordinates <c>DC</c> has now, ready for <c>DrawRuns</c>.
     /// </summary>
@@ -194,6 +199,32 @@ begin
   const TextLayout = CreateLayout(Text, Font);
 
   Result := MetricsOf(TextLayout).widthIncludingTrailingWhitespace;
+end;
+
+function TMarkdownDirectWriteText.CharacterEdges(const Text: string; const Font: TMarkdownDirectWriteFont): TArray<Single>;
+begin
+  SetLength(Result, Length(Text));
+  if Text.IsEmpty then
+    Exit;
+
+  const TextLayout = CreateLayout(Text, Font);
+  var Clusters: TArray<TDwriteClusterMetrics>;
+  SetLength(Clusters, Length(Text));
+  var ClusterCount: Cardinal := 0;
+  Check(TextLayout.GetClusterMetrics(@Clusters[0], Length(Clusters), ClusterCount), 'GetClusterMetrics');
+
+  var Edge: Single := 0;
+  var CharIndex := 0;
+  for var ClusterIndex := 0 to Integer(ClusterCount) - 1 do
+  begin
+    const Cluster = Clusters[ClusterIndex];
+    Edge := Edge + Cluster.width;
+    for var UnitInCluster := 1 to Cluster.length do
+    begin
+      Result[CharIndex] := Edge;
+      Inc(CharIndex);
+    end;
+  end;
 end;
 
 function TMarkdownDirectWriteText.PrepareRun(const DC: HDC; const Left, Baseline: Single; const Text: string;
