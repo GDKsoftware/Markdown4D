@@ -67,6 +67,7 @@ type
     class function UserLocaleName: string; static;
     class function D2DFactory: ID2D1Factory; static;
     class function DWriteFactory: IDWriteFactory; static;
+    class procedure KeepLoaded(const LibraryName: string); static;
     class procedure Check(const Status: HResult; const CallName: string); static;
     class function BaselineOf(const Layout: IDWriteTextLayout): Single; static;
     class function MetricsOf(const Layout: IDWriteTextLayout): TDwriteTextMetrics; static;
@@ -142,8 +143,11 @@ end;
 class function TMarkdownDirectWriteText.D2DFactory: ID2D1Factory;
 begin
   if FD2DFactory = nil then
+  begin
+    KeepLoaded(d2d1lib);
     Check(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, IID_ID2D1Factory, nil, FD2DFactory),
           'D2D1CreateFactory');
+  end;
 
   Result := FD2DFactory;
 end;
@@ -152,12 +156,22 @@ class function TMarkdownDirectWriteText.DWriteFactory: IDWriteFactory;
 begin
   if FDWriteFactory = nil then
   begin
+    KeepLoaded(dwritelib);
     var Factory: IUnknown;
     Check(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, IID_IDWriteFactory, Factory), 'DWriteCreateFactory');
     FDWriteFactory := Factory as IDWriteFactory;
   end;
 
   Result := FDWriteFactory;
+end;
+
+// Winapi.D2D1 frees the library in its finalization. A control the application frees
+// later, as it does with the forms it owns, then releases its layouts into code that is
+// gone. A reference of our own that is never given back keeps the library loaded until
+// the process ends.
+class procedure TMarkdownDirectWriteText.KeepLoaded(const LibraryName: string);
+begin
+  LoadLibrary(PChar(LibraryName));
 end;
 
 class procedure TMarkdownDirectWriteText.Check(const Status: HResult; const CallName: string);
