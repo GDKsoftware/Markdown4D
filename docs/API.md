@@ -406,9 +406,12 @@ with the clearance rules, limits above and below large operators in display
 style, radicals with an optional index, delimiters that grow into drawn shapes
 when a glyph is too short, accents, and matrix environments. An inline formula
 sits on the text baseline and pushes the lines apart when it is tall; a display
-formula is centred in the column. A formula selects as one unit and copies as
-its markdown, `$...$` or a `$$` block, so a paste lands back in a document as
-the same formula; find searches the LaTeX source, not the drawn glyphs.
+formula is centred in the column. A formula selects glyph by glyph, as a
+browser selects the MathML it renders. A selection that holds the whole formula
+copies its markdown, `$...$` or a `$$` block, so a paste lands back in a
+document as the same formula; part of a formula copies as the glyphs shown, and
+Copy as Markdown takes a formula the selection cuts whole. Find searches the
+LaTeX source, not the drawn glyphs, and a match selects the whole formula.
 
 A display formula wider than the column scrolls sideways in its band, the way
 browsers show a long KaTeX or MathJax formula: a thin track below it shows

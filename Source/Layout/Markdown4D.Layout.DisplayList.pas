@@ -16,8 +16,11 @@ type
   // such as a formula. Source is the opposite, never painted but selected and
   // copied as one unit, so a formula copies as its markdown. Marker is the
   // bullet or number of a list item: painted and copied like text, but not
-  // part of the item's line when a whole line is selected.
-  TDisplayTextRunRole = (Text, Drawing, Source, Marker);
+  // part of the item's line when a whole line is selected. Formula is a glyph
+  // of a formula: painted and selected like text, while its SourceNode is the
+  // formula and StartOffset and SourceLength name the part of the formula's
+  // source it was set from.
+  TDisplayTextRunRole = (Text, Drawing, Source, Marker, Formula);
 
   // What stands between a text run and the text before it when a selection is
   // copied as plain text. The order matters: of two joins that meet, the later

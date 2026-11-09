@@ -188,6 +188,7 @@ type
     procedure EmitImageItem(const Atom: TInlineAtom);
     procedure EmitMathItem(const Atom: TInlineAtom);
     procedure EmitMathSource(const Atom: TInlineAtom);
+    procedure JoinMathGlyphs(const FirstItem: Integer);
     function TakeLineJoin(const Run: IDisplayTextRun): IDisplayTextRun;
     procedure MeasureLine(out MaxAscent, MaxDescent, MaxImageHeight: Single);
 
@@ -411,6 +412,7 @@ type
     procedure EmitThematicBreak(const Command: TLayoutCommand);
     procedure EmitMathBlock(const Command: TLayoutCommand);
     class function MathSourceOf(const Math: IMarkdownMath; const AsBlock: Boolean): string;
+    procedure JoinFormulaGlyphs(const FirstItem: Integer);
     procedure LayoutTable(const Command: TLayoutCommand);
     function CollectInlineAtoms(const Container: IMarkdownNode; const BaseFont: TMarkdownFontStyle;
       const BaseColor: TLayoutColor): TList<TInlineAtom>;
@@ -1585,6 +1587,7 @@ begin
     TDisplayTextRunRole.Drawing, Command.Node);
   const Baseline = FCurrentY + Padding + Formula.Ascent;
   Formula.Draw(Canvas, Left, Baseline);
+  JoinFormulaGlyphs(FirstItem);
 
   const SourceBounds = TLayoutRectF.Create(Left, FCurrentY, Left + Formula.Width, FCurrentY + Height);
   FItems.Add(TDisplayTextRun.Create(SourceBounds, Command.Node, MathSourceOf(Math, True), Font, Command.Color,
@@ -1595,6 +1598,25 @@ begin
       Command.Node.Segment.StartOffset));
 
   FCurrentY := FCurrentY + Height;
+end;
+
+// The glyphs of a display formula copy as one stretch of text: the first
+// carries how the block began, the others follow on directly, whatever line
+// of the formula they sit on.
+procedure TLayoutWorker.JoinFormulaGlyphs(const FirstItem: Integer);
+begin
+  var IsFirst := True;
+  for var Index := FirstItem to FItems.Count - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    const IsGlyph = (Supports(FItems[Index], IDisplayTextRun, Run) and (Run.Role = TDisplayTextRunRole.Formula));
+    if not IsGlyph then
+      Continue;
+
+    if not IsFirst then
+      FItems[Index] := Run.Joined(TDisplayTextJoin.Adjacent, 0);
+    IsFirst := False;
+  end;
 end;
 
 // What a formula copies as: its markdown, so a paste lands back in a document
@@ -2823,7 +2845,9 @@ procedure TInlineWrapper.EmitMathItem(const Atom: TInlineAtom);
 begin
   const Canvas: IExtensionCanvas = TDisplayListExtensionCanvas.Create(FMeasurer, FItems, Atom.Node,
     TDisplayTextRunRole.Drawing, Atom.SourceNode);
+  const FirstItem = FItems.Count;
   Atom.Formula.Draw(Canvas, FCursor, FLineTop + FLineBaseline);
+  JoinMathGlyphs(FirstItem);
   EmitMathSource(Atom);
 
   FCursor := FCursor + Atom.Width;
@@ -2838,8 +2862,21 @@ begin
   const Top = FLineTop + (FLineBaseline - RunBaseline);
   const Bounds = TLayoutRectF.Create(FCursor, Top, FCursor + Atom.Width, Top + FMeasurer.LineHeight(Atom.Font));
   const Run: IDisplayTextRun = TDisplayTextRun.Create(Bounds, Atom.Node, Atom.Text, Atom.Font, Atom.Color,
-    RunBaseline, 0, TDisplayTextRunRole.Source);
+    RunBaseline, 0, TDisplayTextRunRole.Source, Atom.SourceNode);
   FItems.Add(TakeLineJoin(Run));
+end;
+
+// The first glyph of a formula carries how the line began; the glyphs after
+// it follow on directly, raised or lowered as they may be.
+procedure TInlineWrapper.JoinMathGlyphs(const FirstItem: Integer);
+begin
+  for var Index := FirstItem to FItems.Count - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    const IsGlyph = (Supports(FItems[Index], IDisplayTextRun, Run) and (Run.Role = TDisplayTextRunRole.Formula));
+    if IsGlyph then
+      FItems[Index] := TakeLineJoin(Run);
+  end;
 end;
 
 // The first run of a line carries how the line began; the runs after it on
