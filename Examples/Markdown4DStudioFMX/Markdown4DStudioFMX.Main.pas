@@ -274,6 +274,8 @@ type
     procedure SetEditorCaret(const Value: Integer);
     function GetPreviewScrollOffset: Single;
     procedure SetPreviewScrollOffset(const Value: Single);
+    function GetPreviewToggledSections: TArray<Integer>;
+    procedure SetPreviewToggledSections(const Value: TArray<Integer>);
     function FirstVisibleSourceLine: Integer;
     procedure ScrollToSourceLine(const LineIndex: Integer);
     function SaveEditState: IMarkdownEditorState;
@@ -1757,6 +1759,16 @@ end;
 procedure TMarkdown4DStudioFMXForm.SetPreviewScrollOffset(const Value: Single);
 begin
   mdPreview.ScrollOffset := Value;
+end;
+
+function TMarkdown4DStudioFMXForm.GetPreviewToggledSections: TArray<Integer>;
+begin
+  Result := mdPreview.ToggledSections;
+end;
+
+procedure TMarkdown4DStudioFMXForm.SetPreviewToggledSections(const Value: TArray<Integer>);
+begin
+  mdPreview.ToggledSections := Value;
 end;
 
 function TMarkdown4DStudioFMXForm.FirstVisibleSourceLine: Integer;

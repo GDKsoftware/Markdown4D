@@ -132,6 +132,9 @@ type
     procedure Layout_SameTextAgain_KeepsKeys;
 
     [Test]
+    procedure Layout_TextAddedAbove_KeepsKey;
+
+    [Test]
     procedure Layout_ClosedSection_PutsFollowingTextBelowSummary;
 
     [Test]
@@ -489,6 +492,14 @@ begin
   const FirstDisclosures = DisclosuresOf(FirstLayout);
   const SecondDisclosures = DisclosuresOf(SecondLayout);
   Assert.AreEqual(FirstDisclosures[0].Key, SecondDisclosures[0].Key);
+end;
+
+procedure TMarkdownDisclosureTests.Layout_TextAddedAbove_KeepsKey;
+begin
+  const Before = DisclosuresOf(LayoutMarkdown(ClosedSection));
+  const After = DisclosuresOf(LayoutMarkdown(AfterText + #10#10 + ClosedSection));
+
+  Assert.AreEqual(Before[0].Key, After[0].Key);
 end;
 
 procedure TMarkdownDisclosureTests.Layout_ClosedSection_PutsFollowingTextBelowSummary;

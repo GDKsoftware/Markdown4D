@@ -154,6 +154,8 @@ type
     procedure SetScrollPosition(const Value: Single);
     procedure ScrollToMatch(const Match: TMarkdownFoundRange);
     procedure ShowChangedSections;
+    function GetToggledSections: TArray<Integer>;
+    procedure SetToggledSections(const Value: TArray<Integer>);
     procedure UpdateScrollBar;
     function LineScrollAmount: Integer;
     function ContentPixelsPerInch: Integer;
@@ -254,6 +256,12 @@ type
     // A click on such a link does this itself; OnLinkClick is raised only for
     // an anchor the document does not have.
     function ScrollToAnchor(const Anchor: string): Boolean;
+    // The <details> sections the reader opened or closed. They stay so while
+    // Text changes, as an editor beside the viewer changes it, and a section
+    // keeps its state as long as its summary stays the same. LoadFromFile and
+    // LoadFromStream start over. A host that shows several documents in one
+    // viewer reads this before it switches and hands it back on return.
+    property ToggledSections: TArray<Integer> read GetToggledSections write SetToggledSections;
     // Where a line of Text shows, as the ScrollOffset that brings it to the
     // top, and which line shows at an offset, so an editor beside the viewer
     // can keep both in step. Lines count from 0.
@@ -465,6 +473,7 @@ begin
 
   const Reader = TStreamReader.Create(FileName, True);
   try
+    FModel.ResetDisclosures;
     Text := Reader.ReadToEnd;
   finally
     Reader.Free;
@@ -475,6 +484,7 @@ procedure TMarkdownViewer.LoadFromStream(const Stream: TStream);
 begin
   const Reader = TStreamReader.Create(Stream, True);
   try
+    FModel.ResetDisclosures;
     Text := Reader.ReadToEnd;
   finally
     Reader.Free;
@@ -1059,6 +1069,17 @@ begin
     Exit;
 
   FModel.ToggleDisclosure(FPressedDisclosureKey);
+  ShowChangedSections;
+end;
+
+function TMarkdownViewer.GetToggledSections: TArray<Integer>;
+begin
+  Result := FModel.ToggledDisclosures;
+end;
+
+procedure TMarkdownViewer.SetToggledSections(const Value: TArray<Integer>);
+begin
+  FModel.ToggledDisclosures := Value;
   ShowChangedSections;
 end;
 

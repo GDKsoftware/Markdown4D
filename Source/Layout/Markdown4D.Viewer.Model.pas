@@ -186,6 +186,8 @@ type
     class function CodeTextOf(const Code: IMarkdownCodeBlock): string; static;
     function GetText: string;
     procedure SetText(const Value: string);
+    function GetToggledDisclosures: TArray<Integer>;
+    procedure SetToggledDisclosures(const Value: TArray<Integer>);
     function GetPendingText: string;
     function GetFullText: string;
     function GetDisplayList: IMarkdownDisplayList;
@@ -301,11 +303,17 @@ type
     // The <details> section whose summary line is under the point. Key
     // identifies the section to ToggleDisclosure.
     function TryGetDisclosureAt(const Point: TLayoutPointF; out Key: Integer): Boolean;
-    // Opens a closed section or closes an open one, and lays out again. Setting
-    // Text shows every section as its tag asks once more.
+    // Opens a closed section or closes an open one, and lays out again. The
+    // choice outlives a new Text, as long as the section keeps its summary.
     procedure ToggleDisclosure(const Key: Integer);
     function IsDisclosureOpen(const Key: Integer; const OpenByDefault: Boolean): Boolean;
+    // Forgets which sections the reader opened or closed, so the next Text
+    // shows every section as its tag asks, as a newly loaded document should.
+    procedure ResetDisclosures;
     property Text: string read GetText write SetText;
+    // The keys of the sections the reader opened or closed, to hand back later
+    // and show a document as the reader left it. Setting it lays out again.
+    property ToggledDisclosures: TArray<Integer> read GetToggledDisclosures write SetToggledDisclosures;
     property PendingText: string read GetPendingText;
     property FullText: string read GetFullText;
     property DisplayList: IMarkdownDisplayList read GetDisplayList;
@@ -1708,6 +1716,25 @@ begin
     FToggledDisclosures.Add(Key);
 end;
 
+procedure TMarkdownViewerModel.ResetDisclosures;
+begin
+  FToggledDisclosures.Clear;
+end;
+
+function TMarkdownViewerModel.GetToggledDisclosures: TArray<Integer>;
+begin
+  Result := FToggledDisclosures.ToArray;
+end;
+
+procedure TMarkdownViewerModel.SetToggledDisclosures(const Value: TArray<Integer>);
+begin
+  FToggledDisclosures.Clear;
+  FToggledDisclosures.AddRange(Value);
+
+  RefreshLayout;
+  SetScrollOffset(FScrollOffset);
+end;
+
 function TMarkdownViewerModel.IsDisclosureOpen(const Key: Integer; const OpenByDefault: Boolean): Boolean;
 begin
   const IsToggled = FToggledDisclosures.Contains(Key);
@@ -2216,7 +2243,6 @@ begin
   FText := Value;
   FPendingMarkdown := '';
   FDirty := False;
-  FToggledDisclosures.Clear;
   ClearSelection;
   Relayout;
 end;

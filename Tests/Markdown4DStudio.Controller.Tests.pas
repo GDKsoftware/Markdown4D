@@ -19,6 +19,7 @@ type
   strict private
     FModel: TMarkdownEditorModel;
     FPreviewScrollOffset: Single;
+    FPreviewToggledSections: TArray<Integer>;
     FFirstVisibleSourceLine: Integer;
     FFlushCount: Integer;
     FSwapDepth: Integer;
@@ -34,6 +35,8 @@ type
     procedure SetEditorCaret(const Value: Integer);
     function GetPreviewScrollOffset: Single;
     procedure SetPreviewScrollOffset(const Value: Single);
+    function GetPreviewToggledSections: TArray<Integer>;
+    procedure SetPreviewToggledSections(const Value: TArray<Integer>);
     function FirstVisibleSourceLine: Integer;
     procedure ScrollToSourceLine(const LineIndex: Integer);
     function SaveEditState: IMarkdownEditorState;
@@ -241,6 +244,9 @@ type
 
     [Test]
     procedure ApplyDiskText_RefreshesStatusOnNextTick;
+
+    [Test]
+    procedure SwitchToDocument_AndBack_RestoresToggledSections;
   end;
 
 implementation
@@ -299,6 +305,16 @@ end;
 procedure TFakeEditorView.SetPreviewScrollOffset(const Value: Single);
 begin
   FPreviewScrollOffset := Value;
+end;
+
+function TFakeEditorView.GetPreviewToggledSections: TArray<Integer>;
+begin
+  Result := FPreviewToggledSections;
+end;
+
+procedure TFakeEditorView.SetPreviewToggledSections(const Value: TArray<Integer>);
+begin
+  FPreviewToggledSections := Value;
 end;
 
 function TFakeEditorView.FirstVisibleSourceLine: Integer;
@@ -963,6 +979,22 @@ begin
   Assert.AreEqual(0, FView.EditorCaret);
   Assert.AreEqual('42 characters', FShell.StatusCharacters);
   Assert.AreEqual('8 words', FShell.StatusWords);
+end;
+
+procedure TPadControllerTests.SwitchToDocument_AndBack_RestoresToggledSections;
+begin
+  const ToggledKey = 42;
+  FController.NewDocument;
+  const FirstIndex = FController.Workspace.ActiveIndex;
+  FView.PreviewToggledSections := [ToggledKey];
+
+  FController.NewDocument;
+  const ToggledInSecond = FView.PreviewToggledSections;
+  FController.SwitchToDocument(FirstIndex);
+
+  Assert.AreEqual(0, Integer(Length(ToggledInSecond)), 'a new tab starts with every section as its tag asks');
+  Assert.AreEqual(1, Integer(Length(FView.PreviewToggledSections)));
+  Assert.AreEqual(ToggledKey, FView.PreviewToggledSections[0]);
 end;
 
 end.

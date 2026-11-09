@@ -26,6 +26,8 @@ type
     procedure SetEditorCaret(const Value: Integer);
     function GetPreviewScrollOffset: Single;
     procedure SetPreviewScrollOffset(const Value: Single);
+    function GetPreviewToggledSections: TArray<Integer>;
+    procedure SetPreviewToggledSections(const Value: TArray<Integer>);
     function FirstVisibleSourceLine: Integer;
     procedure ScrollToSourceLine(const LineIndex: Integer);
     function SaveEditState: IMarkdownEditorState;
@@ -55,6 +57,8 @@ type
     property EditorText: string read GetEditorText write SetEditorText;
     property EditorCaret: Integer read GetEditorCaret write SetEditorCaret;
     property PreviewScrollOffset: Single read GetPreviewScrollOffset write SetPreviewScrollOffset;
+    property PreviewToggledSections: TArray<Integer> read GetPreviewToggledSections
+      write SetPreviewToggledSections;
   end;
 
   TPadDocumentSwitch = record
@@ -97,6 +101,7 @@ begin
       View.EditorText := Result.Text;
 
     View.FlushPreview;
+    View.PreviewToggledSections := Result.ToggledSections;
     View.EditorCaret := Result.CaretPosition;
     View.ScrollToSourceLine(Round(Result.EditorScrollOffset));
     View.PreviewScrollOffset := Result.PreviewScrollOffset;
@@ -111,6 +116,7 @@ begin
   Document.CaretPosition       := View.EditorCaret;
   Document.EditorScrollOffset  := View.FirstVisibleSourceLine;
   Document.PreviewScrollOffset := View.PreviewScrollOffset;
+  Document.ToggledSections     := View.PreviewToggledSections;
   Document.EditState           := View.SaveEditState;
 end;
 
