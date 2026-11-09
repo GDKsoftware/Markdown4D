@@ -41,6 +41,14 @@ type
     procedure Convert_Strikethrough_BecomesTildes;
 
     [Test]
+    [TestCase('Subscript', '<p>H<sub>2</sub>O</p>,H<sub>2</sub>O')]
+    [TestCase('Superscript', '<div>m<sup>2</sup></div>,m<sup>2</sup>')]
+    [TestCase('Inserted', '<p>an <ins>added</ins> word</p>,an <ins>added</ins> word')]
+    [TestCase('Mark', '<p>a <mark>marked</mark> word</p>,a <mark>marked</mark> word')]
+    [TestCase('Small', '<p>a <small>small</small> print</p>,a <small>small</small> print')]
+    procedure Convert_InlineTagWithoutMarkdown_StaysInlineHtml(const Html, Expected: string);
+
+    [Test]
     procedure Convert_Image_BecomesImageLink;
 
     [Test]
@@ -173,6 +181,13 @@ end;
 procedure TMarkdownHtmlSubsetTests.Convert_Strikethrough_BecomesTildes;
 begin
   AssertConverts('<del>gone</del>', '~~gone~~');
+end;
+
+// GitHub renders these tags inside an HTML block as it does in a paragraph,
+// and the paragraph already draws them as inline HTML.
+procedure TMarkdownHtmlSubsetTests.Convert_InlineTagWithoutMarkdown_StaysInlineHtml(const Html, Expected: string);
+begin
+  AssertConverts(Html, Expected);
 end;
 
 procedure TMarkdownHtmlSubsetTests.Convert_Image_BecomesImageLink;

@@ -282,6 +282,9 @@ type
     procedure InlineHtml_SuperscriptAndSubscript_LeaveTheBaseline;
 
     [Test]
+    procedure HtmlBlock_SuperscriptAndSubscript_LeaveTheBaseline;
+
+    [Test]
     procedure InlineHtml_Code_UsesTheCodeFont;
 
     [Test]
@@ -1315,6 +1318,20 @@ begin
   FModel.SetViewport(DefaultWidth, DefaultHeight);
 
   FModel.Text := 'm<sup>2</sup> H<sub>3</sub>';
+
+  const Base = RunShowing('m');
+  const Raised = RunShowing('2');
+  const Lowered = RunShowing('3');
+  Assert.IsTrue(Raised.Font.Size < Base.Font.Size, 'smaller');
+  Assert.IsTrue(Raised.Bounds.Top < Base.Bounds.Top, 'raised');
+  Assert.IsTrue(Lowered.Bounds.Bottom > Base.Bounds.Bottom, 'lowered');
+end;
+
+procedure TMarkdownViewerModelTests.HtmlBlock_SuperscriptAndSubscript_LeaveTheBaseline;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := '<p>m<sup>2</sup> H<sub>3</sub></p>';
 
   const Base = RunShowing('m');
   const Raised = RunShowing('2');
