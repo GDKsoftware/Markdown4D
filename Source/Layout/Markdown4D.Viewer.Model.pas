@@ -210,6 +210,8 @@ type
       const PreviousTop: Single): string; static;
     class function FallbackSeparator(const Run: IDisplayTextRun; const StartsBlock: Boolean;
       const PreviousTop: Single): string; static;
+    function TryGetSelectionSegment(const WidensToBlocks: Boolean; out Segment: TMarkdownSegment): Boolean;
+    function TryGetBlockEdge(const ItemIndex: Integer; const AtStart: Boolean; out Offset: Integer): Boolean;
     function TryFindSelectionEdges(out FirstRun, LastRun: IDisplayTextRun;
                                    out FirstCharacter, LastCharacter: Integer): Boolean;
     function PrefixWidth(const Run: IDisplayTextRun; const CharacterCount: Integer): Single;
@@ -1289,7 +1291,7 @@ begin
   end;
 
   var Segment: TMarkdownSegment;
-  if TryGetSelectionSourceSegment(Segment) then
+  if TryGetSelectionSegment(True, Segment) then
     Result := TMarkdownSelectedSource.Extract(FText, FDocument, Segment);
 end;
 
@@ -1307,6 +1309,15 @@ end;
 
 function TMarkdownViewerModel.TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean;
 begin
+  Result := TryGetSelectionSegment(False, Segment);
+end;
+
+// The text in a table cell has no place in the source of its own. Copy as
+// Markdown takes the table whole anyway, so with WidensToBlocks an edge of the
+// selection in such text stands at the edge of the block around it.
+function TMarkdownViewerModel.TryGetSelectionSegment(const WidensToBlocks: Boolean;
+                                                     out Segment: TMarkdownSegment): Boolean;
+begin
   Segment := Default(TMarkdownSegment);
   Result := False;
 
@@ -1315,11 +1326,17 @@ begin
   if not TryFindSelectionEdges(FirstRun, LastRun, FirstCharacter, LastCharacter) then
     Exit;
 
+  const Range = NormalizeSelection;
   var StartOffset, EndOffset: Integer;
-  const IsStartMapped = TMarkdownSourceMapper.TryMapLiteralOffset(FText, FirstRun.SourceNode,
+  var IsStartMapped := TMarkdownSourceMapper.TryMapLiteralOffset(FText, FirstRun.SourceNode,
     FirstRun.StartOffset + FirstCharacter, TMarkdownSourceEdge.Leading, StartOffset);
-  const IsEndMapped = TMarkdownSourceMapper.TryMapLiteralOffset(FText, LastRun.SourceNode,
+  if WidensToBlocks and not IsStartMapped then
+    IsStartMapped := TryGetBlockEdge(Range.StartPosition.ItemIndex, True, StartOffset);
+
+  var IsEndMapped := TMarkdownSourceMapper.TryMapLiteralOffset(FText, LastRun.SourceNode,
     LastRun.StartOffset + LastCharacter, TMarkdownSourceEdge.Trailing, EndOffset);
+  if WidensToBlocks and not IsEndMapped then
+    IsEndMapped := TryGetBlockEdge(Range.EndPosition.ItemIndex, False, EndOffset);
 
   const CoversCharacters = IsStartMapped and IsEndMapped and (EndOffset > StartOffset);
   if not CoversCharacters then
@@ -1327,6 +1344,28 @@ begin
 
   Segment := TMarkdownSegment.Create(StartOffset, EndOffset);
   Result := True;
+end;
+
+function TMarkdownViewerModel.TryGetBlockEdge(const ItemIndex: Integer; const AtStart: Boolean;
+                                              out Offset: Integer): Boolean;
+begin
+  Offset := 0;
+
+  const BlockIndex = BlockIndexOfItem(ItemIndex);
+  Result := ((BlockIndex >= 0) and (BlockIndex < FDocument.ChildCount));
+  if not Result then
+    Exit;
+
+  const Block = FDocument.Children[BlockIndex];
+  const Segment = Block.Segment;
+  Result := (Segment.EndOffset > Segment.StartOffset);
+  if not Result then
+    Exit;
+
+  if AtStart then
+    Offset := Segment.StartOffset
+  else
+    Offset := Segment.EndOffset;
 end;
 
 // The runs between the two ends of the selection follow one another in the
