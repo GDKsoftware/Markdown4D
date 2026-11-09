@@ -49,6 +49,7 @@ uses
   Markdown4D.Image.Svg.Path.Tests in 'Markdown4D.Image.Svg.Path.Tests.pas',
   Markdown4D.Image.Svg.Native.Tests in 'Markdown4D.Image.Svg.Native.Tests.pas',
   Markdown4D.Layout.Incremental.Tests in 'Markdown4D.Layout.Incremental.Tests.pas',
+  Markdown4D.Layout.ChangedBlocks.Tests in 'Markdown4D.Layout.ChangedBlocks.Tests.pas',
   Markdown4D.Highlighter.Tests in 'Markdown4D.Highlighter.Tests.pas',
   Markdown4D.Viewer.Model.Tests in 'Markdown4D.Viewer.Model.Tests.pas',
   Markdown4D.Viewer.Clicks.Tests in 'Markdown4D.Viewer.Clicks.Tests.pas',

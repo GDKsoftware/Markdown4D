@@ -107,7 +107,12 @@ type
       // The layout the source line map was built for; it is built again on
       // first use after the next layout.
       FSourceLinesLayoutCount: Integer;
+      // The text the current layout shows, and whether Text changed since:
+      // then only the blocks that changed are laid out again.
+      FLaidOutText: string;
+      FTextChanged: Boolean;
     procedure Relayout;
+    function LayoutFor(const Document: IMarkdownDocument): IMarkdownDisplayList;
     procedure RefreshSourceLines;
     function ZoomFactor: Single;
     function LayoutTheme: TMarkdownTheme;
@@ -340,6 +345,7 @@ uses
   Markdown4D,
   Markdown4D.Defines,
   Markdown4D.Layout.BlockOverride,
+  Markdown4D.Layout.ChangedBlocks,
   Markdown4D.Layout.Disclosure,
   Markdown4D.Layout.Engine,
   Markdown4D.Layout.HitTest,
@@ -458,6 +464,7 @@ begin
   FText := FText + FPendingMarkdown;
   FPendingMarkdown := '';
   FDirty := False;
+  FTextChanged := True;
   Relayout;
 
   Result := True;
@@ -1947,11 +1954,12 @@ begin
   const Watch = TStopwatch.StartNew;
   const Document = TMarkdown.Parse(FText, TMarkdownDialect.Gfm);
   TLayoutDocumentProcessorRegistry.Process(Document, Self);
-  FDocument := Document;
   RefreshZoomedTheme;
 
-  FDisplayList := TMarkdownLayoutEngine.LayoutDocument(Document, FViewportWidth, LayoutTheme, FMeasurer, Self,
-                                                       Self, Self);
+  FDisplayList := LayoutFor(Document);
+  FDocument := Document;
+  FLaidOutText := FText;
+  FTextChanged := False;
   FLastLayoutMilliseconds := Watch.ElapsedMilliseconds;
   Inc(FLayoutCount);
   FDraggedScroller := -1;
@@ -1965,6 +1973,21 @@ begin
 
   RegisterImageSlots;
   RefreshHighlights;
+end;
+
+// After an edit only the blocks that changed are laid out again, as long as
+// the rest of the previous layout still fits: same width, and nothing else
+// that triggered this layout, such as a theme, a zoom or an image.
+function TMarkdownViewerModel.LayoutFor(const Document: IMarkdownDocument): IMarkdownDisplayList;
+begin
+  const HasPreviousLayout = ((FDisplayList <> nil) and SameValue(FDisplayList.Width, FViewportWidth));
+  var Range: TLayoutBlockRange;
+  const CanReuse = (FTextChanged and HasPreviousLayout and
+                    TMarkdownChangedBlocks.TryReuse(FDocument, FLaidOutText, Document, FText, Self, Range));
+  if CanReuse then
+    Result := TMarkdownLayoutEngine.UpdateLayout(FDisplayList, Document, Range, LayoutTheme, FMeasurer, Self, Self, Self)
+  else
+    Result := TMarkdownLayoutEngine.LayoutDocument(Document, FViewportWidth, LayoutTheme, FMeasurer, Self, Self, Self);
 end;
 
 function TMarkdownViewerModel.TryCaptureSelection(out Selection: TSelectionAnchors): Boolean;
@@ -2241,6 +2264,7 @@ end;
 procedure TMarkdownViewerModel.SetText(const Value: string);
 begin
   FText := Value;
+  FTextChanged := True;
   FPendingMarkdown := '';
   FDirty := False;
   ClearSelection;
