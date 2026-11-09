@@ -411,6 +411,18 @@ type
     procedure TryGetDisclosureAt_PointBelowSummary_ReturnsFalse;
 
     [Test]
+    procedure Text_EditInOneBlock_LaysOutOnlyThatBlock;
+
+    [Test]
+    procedure Text_EditInOneBlock_MatchesFreshLayout;
+
+    [Test]
+    procedure Text_EditAbove_SelectedMarkdownOfLaterBlockIsItsSource;
+
+    [Test]
+    procedure Text_EditAbove_AnchorOfLaterHeadingMatchesFreshLayout;
+
+    [Test]
     procedure TrySelectNextMatch_MatchInClosedSection_OpensSectionAndSelectsMatch;
 
     [Test]
@@ -1954,6 +1966,79 @@ begin
 
   Assert.IsFalse(Revealed);
   Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+end;
+
+procedure TMarkdownViewerModelTests.Text_EditInOneBlock_LaysOutOnlyThatBlock;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'one'#10#10'two'#10#10'three';
+
+  FModel.Text := 'one'#10#10'two more'#10#10'three';
+
+  const Recomputed = FModel.DisplayList.RecomputedBlockIndexes;
+  Assert.AreEqual(1, Integer(Length(Recomputed)));
+  Assert.AreEqual(1, Recomputed[0]);
+end;
+
+procedure TMarkdownViewerModelTests.Text_EditInOneBlock_MatchesFreshLayout;
+begin
+  const Edited = '# Title'#10#10'one'#10#10'two grown considerably longer so that it wraps'#10#10'- three'#10'- four';
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '# Title'#10#10'one'#10#10'two'#10#10'- three'#10'- four';
+  FModel.Text := Edited;
+
+  const Fresh = TMarkdownViewerModel.Create(FTheme, FMeasurer);
+  try
+    Fresh.SetViewport(DefaultWidth, DefaultHeight);
+    Fresh.Text := Edited;
+
+    Assert.AreEqual(Fresh.DisplayList.ItemCount, FModel.DisplayList.ItemCount, 'item count');
+    for var Index := 0 to Fresh.DisplayList.ItemCount - 1 do
+    begin
+      const Expected = Fresh.DisplayList.Items[Index].Bounds;
+      const Actual = FModel.DisplayList.Items[Index].Bounds;
+      AssertSingle(Expected.Left, Actual.Left);
+      AssertSingle(Expected.Top, Actual.Top);
+      AssertSingle(Expected.Bottom, Actual.Bottom);
+    end;
+    AssertSingle(Fresh.DisplayList.Height, FModel.DisplayList.Height);
+  finally
+    Fresh.Free;
+  end;
+end;
+
+procedure TMarkdownViewerModelTests.Text_EditAbove_SelectedMarkdownOfLaterBlockIsItsSource;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'one'#10#10'two **three**';
+  FModel.Text := 'one more'#10#10'two **three**';
+
+  var Match: TMarkdownFoundRange;
+  FModel.TrySelectNextMatch('three', Match);
+
+  Assert.AreEqual('**three**', FModel.SelectedMarkdown);
+end;
+
+procedure TMarkdownViewerModelTests.Text_EditAbove_AnchorOfLaterHeadingMatchesFreshLayout;
+begin
+  const Edited = 'one more'#10'and more'#10#10'## Target';
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'one'#10#10'## Target';
+  FModel.Text := Edited;
+
+  const Fresh = TMarkdownViewerModel.Create(FTheme, FMeasurer);
+  try
+    Fresh.SetViewport(DefaultWidth, DefaultHeight);
+    Fresh.Text := Edited;
+
+    var Expected: Single;
+    var Actual: Single;
+    Assert.IsTrue(Fresh.TryGetAnchorOffset('#target', Expected));
+    Assert.IsTrue(FModel.TryGetAnchorOffset('#target', Actual));
+    AssertSingle(Expected, Actual);
+  finally
+    Fresh.Free;
+  end;
 end;
 
 procedure TMarkdownViewerModelTests.ToggleFirstDisclosure;

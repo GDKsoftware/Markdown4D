@@ -529,7 +529,7 @@ same.
 
 | Property | Type | Notes |
 |----------|------|-------|
-| `Text` | `string` | The whole markdown document as one value |
+| `Text` | `string` | The whole markdown document as one value. Setting it on every keystroke is fine: only the blocks that changed are laid out again |
 | `ThemePreset` | `TMarkdownThemePreset` | `Light` / `Dark`, editable in the Object Inspector |
 | `Images` | `TMarkdownViewerImageSettings` | How image destinations are resolved and fetched (see below) |
 | `Zoom` | `Integer` | In percent (default `100`, from `25` to `500`). Every font, spacing and image grows with it; the theme the application assigned stays as it is. Ctrl+wheel and Ctrl+Plus/Minus step through the levels browsers use (25, 33, 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400, 500), Ctrl+0 resets it. The line at the top of the view stays there, and a document that lays out slowly waits until the wheel rests |
