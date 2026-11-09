@@ -5,10 +5,19 @@ unit Markdown4D.Layout.Disclosure;
 interface
 
 uses
+  System.Generics.Collections,
   Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Interfaces;
 
 type
+  // A closed section whose summary is in view, with the source of what it
+  // hides: markdown for a section written as a run of blocks, HTML for a
+  // whole section.
+  TMarkdownClosedSection = record
+    Opener: IMarkdownNode;
+    HiddenSource: string;
+  end;
+
   // A <details> section written the way GitHub and GitLab need it, with blank
   // lines around its markdown, is not one node but a run of siblings: an HTML
   // block that opens it and holds the summary, the blocks of its content, and
@@ -31,6 +40,17 @@ type
     class function HasSummary(const Literal: string): Boolean; static;
     class function DefaultSummaryHtml: string; static;
     class function SummaryEnd(const Literal: string): Integer; static;
+    class function IsContainer(const Node: IMarkdownNode): Boolean; static;
+    class procedure CollectClosedSections(const Container: IMarkdownNode; const Source: string;
+      const State: IMarkdownDisclosureState; const Sections: TList<TMarkdownClosedSection>); static;
+    class function TryGetClosedSection(const Container: IMarkdownNode; const Index: Integer; const Source: string;
+      const State: IMarkdownDisclosureState; out Section: TMarkdownClosedSection): Boolean; static;
+    class function RunHiddenSource(const Container: IMarkdownNode; const OpenerIndex: Integer;
+      const Source: string): string; static;
+    class function CollectSectionsAround(const Container, Node: IMarkdownNode;
+      const Openers: TList<IMarkdownNode>): Boolean; static;
+    class function IsSameNode(const Left, Right: IMarkdownNode): Boolean; static;
+    class function Encloses(const Outer, Inner: IMarkdownNode): Boolean; static;
 
   public
     class function IsOpener(const Node: IMarkdownNode; out OpenByDefault: Boolean): Boolean; static;
@@ -55,6 +75,14 @@ type
     // because its summary is what the reader clicks.
     class function HiddenChildren(const Container: IMarkdownNode;
       const State: IMarkdownDisclosureState): TArray<Boolean>; static;
+    // The closed sections whose summary is in view, in document order, also
+    // inside block quotes and list items. Source is the text Document was
+    // parsed from. A closed section inside a closed one is left out: its
+    // source is part of the outer one's.
+    class function ClosedSections(const Document: IMarkdownNode; const Source: string;
+      const State: IMarkdownDisclosureState): TArray<TMarkdownClosedSection>; static;
+    // The blocks that open the sections around Node, outermost first.
+    class function SectionsAround(const Document, Node: IMarkdownNode): TArray<IMarkdownNode>; static;
   end;
 
 implementation
@@ -62,7 +90,6 @@ implementation
 uses
   System.SysUtils,
   System.StrUtils,
-  System.Generics.Collections,
   Markdown4D.Consts;
 
 class function TMarkdownDisclosures.IsOpener(const Node: IMarkdownNode; out OpenByDefault: Boolean): Boolean;
@@ -202,6 +229,171 @@ begin
   finally
     OpenSections.Free;
   end;
+end;
+
+class function TMarkdownDisclosures.ClosedSections(const Document: IMarkdownNode; const Source: string;
+  const State: IMarkdownDisclosureState): TArray<TMarkdownClosedSection>;
+begin
+  const Sections = TList<TMarkdownClosedSection>.Create;
+  try
+    CollectClosedSections(Document, Source, State, Sections);
+    Result := Sections.ToArray;
+  finally
+    Sections.Free;
+  end;
+end;
+
+class procedure TMarkdownDisclosures.CollectClosedSections(const Container: IMarkdownNode; const Source: string;
+  const State: IMarkdownDisclosureState; const Sections: TList<TMarkdownClosedSection>);
+begin
+  const Hidden = HiddenChildren(Container, State);
+
+  for var Index := 0 to Container.ChildCount - 1 do
+  begin
+    if Hidden[Index] then
+      Continue;
+
+    var Section: TMarkdownClosedSection;
+    if TryGetClosedSection(Container, Index, Source, State, Section) then
+    begin
+      Sections.Add(Section);
+      Continue;
+    end;
+
+    const Child = Container.Children[Index];
+    if IsContainer(Child) then
+      CollectClosedSections(Child, Source, State, Sections);
+  end;
+end;
+
+class function TMarkdownDisclosures.TryGetClosedSection(const Container: IMarkdownNode; const Index: Integer;
+  const Source: string; const State: IMarkdownDisclosureState; out Section: TMarkdownClosedSection): Boolean;
+begin
+  Section := Default(TMarkdownClosedSection);
+  Section.Opener := Container.Children[Index];
+
+  var OpenByDefault: Boolean;
+  if IsWholeSection(Section.Opener, OpenByDefault) then
+  begin
+    Section.HiddenSource := ContentHtml(Section.Opener);
+    Result := not IsOpen(State, Section.Opener, OpenByDefault);
+    Exit;
+  end;
+
+  if IsOpener(Section.Opener, OpenByDefault) then
+  begin
+    Section.HiddenSource := RunHiddenSource(Container, Index, Source);
+    Result := not IsOpen(State, Section.Opener, OpenByDefault);
+    Exit;
+  end;
+
+  Result := False;
+end;
+
+// The source from the end of the opening block to the block that closes the
+// section, or to the end of the container when nothing closes it.
+class function TMarkdownDisclosures.RunHiddenSource(const Container: IMarkdownNode; const OpenerIndex: Integer;
+  const Source: string): string;
+begin
+  const Opener = Container.Children[OpenerIndex];
+  const LastChild = Container.Children[Container.ChildCount - 1];
+  var HiddenEnd := LastChild.Segment.EndOffset;
+  var Depth := 1;
+
+  for var Index := OpenerIndex + 1 to Container.ChildCount - 1 do
+  begin
+    const Child = Container.Children[Index];
+
+    var OpenByDefault: Boolean;
+    if IsOpener(Child, OpenByDefault) then
+      Inc(Depth)
+    else if IsCloser(Child) then
+      Dec(Depth);
+
+    const IsSectionEnd = (Depth = 0);
+    if IsSectionEnd then
+    begin
+      HiddenEnd := Child.Segment.StartOffset;
+      Break;
+    end;
+  end;
+
+  const HiddenStart = Opener.Segment.EndOffset;
+  Result := Copy(Source, HiddenStart, HiddenEnd - HiddenStart);
+end;
+
+class function TMarkdownDisclosures.SectionsAround(const Document, Node: IMarkdownNode): TArray<IMarkdownNode>;
+begin
+  const Openers = TList<IMarkdownNode>.Create;
+  try
+    if CollectSectionsAround(Document, Node, Openers) then
+      Result := Openers.ToArray
+    else
+      Result := nil;
+  finally
+    Openers.Free;
+  end;
+end;
+
+// Walks the siblings the way HiddenChildren does, keeping the openers of the
+// sections still running, and goes down into the child that holds Node.
+class function TMarkdownDisclosures.CollectSectionsAround(const Container, Node: IMarkdownNode;
+  const Openers: TList<IMarkdownNode>): Boolean;
+begin
+  const OuterCount = Openers.Count;
+
+  for var Index := 0 to Container.ChildCount - 1 do
+  begin
+    const Child = Container.Children[Index];
+    if IsSameNode(Child, Node) then
+      Exit(True);
+
+    var OpenByDefault: Boolean;
+    if IsOpener(Child, OpenByDefault) then
+    begin
+      Openers.Add(Child);
+      Continue;
+    end;
+
+    const ClosesASection = (IsCloser(Child) and (Openers.Count > OuterCount));
+    if ClosesASection then
+    begin
+      Openers.Delete(Openers.Count - 1);
+      Continue;
+    end;
+
+    if Encloses(Child, Node) then
+    begin
+      const FoundInside = CollectSectionsAround(Child, Node, Openers);
+      Exit(FoundInside);
+    end;
+  end;
+
+  Result := False;
+end;
+
+// The same node can reach here through different interfaces, whose
+// references do not compare equal, so it is recognised by kind and place.
+class function TMarkdownDisclosures.IsSameNode(const Left, Right: IMarkdownNode): Boolean;
+begin
+  const LeftSegment = Left.Segment;
+  const RightSegment = Right.Segment;
+  Result := ((Left.Kind = Right.Kind) and
+             (LeftSegment.StartOffset = RightSegment.StartOffset) and
+             (LeftSegment.EndOffset = RightSegment.EndOffset));
+end;
+
+class function TMarkdownDisclosures.Encloses(const Outer, Inner: IMarkdownNode): Boolean;
+begin
+  const OuterSegment = Outer.Segment;
+  const InnerSegment = Inner.Segment;
+  Result := ((InnerSegment.StartOffset >= OuterSegment.StartOffset) and
+             (InnerSegment.EndOffset <= OuterSegment.EndOffset));
+end;
+
+class function TMarkdownDisclosures.IsContainer(const Node: IMarkdownNode): Boolean;
+begin
+  Result := (Node.Kind in [TMarkdownNodeKind.BlockQuote, TMarkdownNodeKind.List, TMarkdownNodeKind.ListItem]);
 end;
 
 class function TMarkdownDisclosures.TryGetHtmlLiteral(const Node: IMarkdownNode; out Literal: string): Boolean;

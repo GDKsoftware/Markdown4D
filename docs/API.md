@@ -544,7 +544,7 @@ same.
 | `Theme: TMarkdownTheme` | Assign a fully customised theme at run time; the caller keeps ownership and frees it after the control |
 | `AppendMarkdown(const Markdown: string)` | Append text and repaint; thread-safe, debounced |
 | `LoadFromFile(const FileName)` / `LoadFromStream(const Stream)` | Load a document |
-| `FindText(const Needle[; const Options]): Boolean` | Select the next match and scroll it to the middle of the view when it is out of sight; a repeated search moves on to the following match and wraps to the first after the last. `TMarkdownFindOptions` (unit `Markdown4D.Layout.TextSearch`) adds `MatchCase` and `WholeWord`, as in the editor |
+| `FindText(const Needle[; const Options]): Boolean` | Select the next match and scroll it to the middle of the view when it is out of sight; a repeated search moves on to the following match and wraps to the first after the last; a match inside a closed `details` section opens the section. `TMarkdownFindOptions` (unit `Markdown4D.Layout.TextSearch`) adds `MatchCase` and `WholeWord`, as in the editor |
 | `FindPrevious(const Needle[; const Options]): Boolean` | The same walk backwards; wraps to the last match before the first |
 | `FindMatchCount(const Needle[; const Options]): Integer` | How many matches a walk with `FindText` visits; a formula counts once |
 | `FindMatchIndex(const Needle; const Options): Integer` | Which of those matches the selection is, counted from 0, for a "3 of 12"; -1 when the selection is not a match |
@@ -560,7 +560,7 @@ same.
 | `TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean` | The stretch of markdown the selection was rendered from, so an editor can format exactly those characters; `False` when there is no selection or the runs carry no source |
 | `ContentHeight: Integer` | Laid-out document height, for auto-sizing |
 | `ScrollOffset: Single` | Read / set the vertical scroll position |
-| `ScrollToAnchor(const Anchor: string): Boolean` | Scroll the heading a link such as `#getting-started` points at to the top of the view. Anchors follow GitHub: lower case, punctuation dropped, accented letters kept, every space a dash, and a repeated heading gets `-1`, `-2`. A percent-encoded anchor is decoded first. `False` when the document has no such heading |
+| `ScrollToAnchor(const Anchor: string): Boolean` | Scroll the heading a link such as `#getting-started` points at to the top of the view. Anchors follow GitHub: lower case, punctuation dropped, accented letters kept, every space a dash, and a repeated heading gets `-1`, `-2`. A percent-encoded anchor is decoded first, and closed `details` sections around the heading open. `False` when the document has no such heading |
 | `SourceLineToScrollOffset(const SourceLine: Integer): Single` / `ScrollOffsetToSourceLine(const Offset: Single): Integer` | Where a line of `Text` shows, as the `ScrollOffset` that brings it to the top, and which line shows at an offset, so a host with its own editor can keep it in step with the viewer. Lines count from 0. Every rendered line knows the source line it came from, inside long lists, tables and code blocks too; between them the answer is interpolated |
 | `LayoutCount: Integer` | Advances on every relayout (first width, resize, arriving images), so a host can notice layout-derived state going stale |
 | `DisplayList: IMarkdownDisplayList` | The rendered primitives, for advanced hosts |
@@ -612,7 +612,11 @@ fold inside block quotes and list items too. A section written as one HTML
 block, closing tag included, folds as well; its content is HTML then, as on
 GitHub, and a `details` section inside it does not fold. A section without a
 `summary` shows `DefaultDetailsSummary` ("Details") on its summary line, and a
-`summary` that is one `h1` to `h6` shows as that heading. Without the viewer,
+`summary` that is one `h1` to `h6` shows as that heading. As in a browser,
+`FindText` and `FindPrevious` open a closed section when the next match lies
+inside it, and `ScrollToAnchor` and a click on a link to a heading open the
+sections around that heading; `FindMatchCount` and `HighlightMatches` count
+and mark the matches in view. Without the viewer,
 `TMarkdownLayoutEngine.LayoutDocument` and `UpdateLayout` take an
 `IMarkdownDisclosureState` that says which sections are open; without one,
 each section shows as its tag asks.
