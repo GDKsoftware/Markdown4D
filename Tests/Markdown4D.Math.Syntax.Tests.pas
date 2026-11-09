@@ -313,7 +313,8 @@ end;
 
 class function TMathSourcePlacementTests.SymbolWithText(const Node: IMathNode; const Text: string): IMathNode;
 begin
-  if (Node.Kind in [TMathNodeKind.Symbol, TMathNodeKind.Text]) and (Node.Text = Text) then
+  const IsMatch = ((Node.Kind in [TMathNodeKind.Symbol, TMathNodeKind.Text]) and (Node.Text = Text));
+  if IsMatch then
   begin
     Result := Node;
     Exit;
@@ -322,7 +323,8 @@ begin
   for var Index := 0 to Node.ChildCount - 1 do
   begin
     Result := SymbolWithText(Node.Children[Index], Text);
-    if Result <> nil then
+    const IsFound = (Result <> nil);
+    if IsFound then
       Exit;
   end;
 
@@ -365,23 +367,25 @@ begin
   const Chemistry = Row.Children[2];
   Assert.AreEqual('\ce{H2O}', SourceOf(Source, Chemistry));
   for var Index := 0 to Chemistry.ChildCount - 1 do
+  begin
     Assert.AreEqual(-1, Chemistry.Children[Index].SourceStart, 'the translated TeX has no place in the source');
+  end;
 end;
 
 procedure TMathSourcePlacementTests.TabularCell_WordsArePlacedWhereTyped;
 begin
-  const Source = '\begin{tabular}{ll} Zutat & \textbf{Menge} \end{tabular}';
+  const Source = '\begin{tabular}{ll} Ingredient & \textbf{Amount} \end{tabular}';
   const Row = TMathParser.Parse(Source);
 
-  Assert.AreEqual('Zutat', SourceOf(Source, SymbolWithText(Row, 'Zutat')));
-  Assert.AreEqual('Menge', SourceOf(Source, SymbolWithText(Row, 'Menge')), 'the words inside \textbf');
+  Assert.AreEqual('Ingredient', SourceOf(Source, SymbolWithText(Row, 'Ingredient')));
+  Assert.AreEqual('Amount', SourceOf(Source, SymbolWithText(Row, 'Amount')), 'the words inside \textbf');
 end;
 
 // A formula in a cell is parsed on its own, but its symbols are placed in the
 // formula that holds the table, as for every other symbol.
 procedure TMathSourcePlacementTests.TabularCell_FormulaIsPlacedInTheWholeFormula;
 begin
-  const Source = '\begin{tabular}{l} Fl $\pi r^2$ \end{tabular}';
+  const Source = '\begin{tabular}{l} Area $\pi r^2$ \end{tabular}';
   const Row = TMathParser.Parse(Source);
 
   Assert.AreEqual('\pi', SourceOf(Source, SymbolWithText(Row, #$03C0)));

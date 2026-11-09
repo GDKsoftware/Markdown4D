@@ -2131,11 +2131,14 @@ begin
   begin
     if HasTextCells then
     begin
-      const Cell = FScanner.ReadRawCell;
-      Row.AddChild(ParseTextCell(Cell, FScanner.GroupStart));
+      const CellSource = FScanner.ReadRawCell;
+      const Cell = ParseTextCell(CellSource, FScanner.GroupStart);
+      Row.AddChild(Cell);
     end
     else
+    begin
       Row.AddChild(ParseSequence);
+    end;
 
     const Token = FScanner.Peek;
 
@@ -2222,6 +2225,7 @@ begin
   const Cell = TMathNode.Create(TMathNodeKind.Row);
   Result := Cell;
 
+  const IsTyped = (FSourceOffset <> UntypedSource);
   var Words := '';
   var WordsStart := 1;
   var Index := 1;
@@ -2233,7 +2237,8 @@ begin
     const IsControlSymbol = (Current = Backslash) and HasNext and not TMathScanner.IsCommandLetter(Source[Index + 1]);
     if IsControlSymbol then
     begin
-      if Words = '' then
+      const StartsWords = (Words = '');
+      if StartsWords then
         WordsStart := Index;
       Words := Words + Copy(Source, Index, 2);
       Inc(Index, 2);
@@ -2249,7 +2254,7 @@ begin
     begin
       Stop := Pos(DollarChar, Source, Index + 1);
       var FormulaOffset := UntypedSource;
-      if FSourceOffset <> UntypedSource then
+      if IsTyped then
         FormulaOffset := FSourceOffset + CellStart + Index - 1;
       const Formula = TMathTreeParser.Create(Copy(Source, Index + 1, Stop - Index - 1), FChemistryDepth, FDepth + 1,
         FormulaOffset);
@@ -2286,7 +2291,8 @@ begin
 
     if Part = nil then
     begin
-      if Words = '' then
+      const StartsWords = (Words = '');
+      if StartsWords then
         WordsStart := Index;
       Words := Words + Current;
       Inc(Index);
