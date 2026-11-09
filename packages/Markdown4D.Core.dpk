@@ -96,6 +96,7 @@ contains
   Markdown4D.Extensions.Mermaid.Layout in '..\Source\Layout\Markdown4D.Extensions.Mermaid.Layout.pas',
   Markdown4D.Layout.BlockOverride in '..\Source\Layout\Markdown4D.Layout.BlockOverride.pas',
   Markdown4D.Layout.ExtensionData in '..\Source\Layout\Markdown4D.Layout.ExtensionData.pas',
+  Markdown4D.Layout.HtmlAlignment in '..\Source\Layout\Markdown4D.Layout.HtmlAlignment.pas',
   Markdown4D.Math.Layout in '..\Source\Layout\Markdown4D.Math.Layout.pas',
   Markdown4D.Math.Font in '..\Source\Layout\Markdown4D.Math.Font.pas',
   Markdown4D.Layout.Defaults in '..\Source\Layout\Markdown4D.Layout.Defaults.pas',

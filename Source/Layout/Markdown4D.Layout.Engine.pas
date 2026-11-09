@@ -60,6 +60,7 @@ uses
   Markdown4D,
   Markdown4D.Ast,
   Markdown4D.Html.Subset,
+  Markdown4D.Layout.HtmlAlignment,
   Markdown4D.Layout.Disclosure,
   Markdown4D.Layout.AlertIcons,
   Markdown4D.Layout.ExtensionCanvas,
@@ -228,7 +229,7 @@ type
     procedure AppendNested(const DisplayList: IMarkdownDisplayList; const Left, Top: Single);
   end;
 
-  TLayoutCommandKind = (Block, Gap, QuoteBar, ListItem, AlertTitle, Disclosure);
+  TLayoutCommandKind = (Block, Gap, QuoteBar, ListItem, AlertTitle, Disclosure, Alignment);
 
   // Where the next block of a list item starts its copied line: on a line of
   // its own, after the item's marker, or in place of a marker the item lacks.
@@ -256,6 +257,9 @@ type
     // height of the summary's first line, which the triangle is centred on.
     DisclosureOpen: Boolean;
     SummaryLineHeight: Single;
+    // For an alignment command: the first item it moves, and where to.
+    FirstItem: Integer;
+    LineAlignment: TMarkdownHtmlAlignment;
   end;
 
   TInlineAtomCollector = class
@@ -302,10 +306,24 @@ type
       const BaseColor: TLayoutColor): TList<TInlineAtom>;
   end;
 
-  TTableLayout = class
+  // Moves every line of a stretch of laid-out items to the right edge or to the
+  // middle, as a table column or an HTML block with align asks. A line is
+  // what overlaps an item vertically, so a raised superscript stays on it.
+  TLayoutLineAlignment = class
   private
     const
       LineEpsilon = 0.01;
+    class function MaxRightOnLine(const Items: TList<IDisplayItem>; const FirstIndex, LastIndex: Integer;
+                                  const Reference: TLayoutRectF): Single; static;
+
+  public
+    class procedure AlignLines(const Items: TList<IDisplayItem>; const FirstIndex, LastIndex: Integer;
+                               const RightEdge: Single; const IsCentered: Boolean); static;
+  end;
+
+  TTableLayout = class
+  private
+    const
       GridThickness = 1.0;
     var
       FTheme: TMarkdownTheme;
@@ -329,7 +347,6 @@ type
       const CellLeft, RowTop, ColumnWidth: Single; const RowFont: TMarkdownFontStyle): Single;
     procedure AlignCellItems(const FirstIndex, LastIndex: Integer; const Alignment: TMarkdownTableColumnAlignment;
       const ContentRightEdge: Single);
-    function MaxRightOnLine(const FirstIndex, LastIndex: Integer; const Reference: TLayoutRectF): Single;
     function TableRowFont(const Row: IMarkdownNode): TMarkdownFontStyle;
     class function NaturalWidthOf(const Atoms: TList<TInlineAtom>): Single;
 
@@ -412,6 +429,9 @@ type
     function HtmlBlockDocument(const Node: IMarkdownNode): IMarkdownDocument;
     function HtmlDocument(const Node: IMarkdownNode; const CacheKey, Html: string): IMarkdownDocument;
     procedure EmitHtmlBlock(const Command: TLayoutCommand);
+    procedure PushAlignment(const Command: TLayoutCommand);
+    procedure AlignBlockLines(const Command: TLayoutCommand);
+    procedure AlignItemsFrom(const FirstItem: Integer; const Alignment: TMarkdownHtmlAlignment);
     procedure EmitSectionOpener(const Command: TLayoutCommand; const OpenByDefault: Boolean);
     procedure EmitWholeSection(const Command: TLayoutCommand; const OpenByDefault: Boolean);
     procedure PushSectionContent(const Command: TLayoutCommand);
@@ -437,7 +457,7 @@ type
       const ExtensionData: IMarkdownExtensionData);
     destructor Destroy; override;
     function RecomputeBlock(const Node: IMarkdownNode; const Index: Integer; var Y: Single;
-      const PreviousBelow: Single): TLayoutBlockInfo;
+      const PreviousBelow: Single; const Alignment: TMarkdownHtmlAlignment): TLayoutBlockInfo;
     // A block that a <details> section hides takes no room and draws nothing,
     // but keeps its place in the list of blocks.
     function HiddenBlock(const Y: Single): TLayoutBlockInfo;
@@ -478,6 +498,7 @@ begin
 
       TMarkdownDisclosures.AssignKeys(Document);
       const Hidden = TMarkdownDisclosures.HiddenChildren(Document, Disclosures);
+      const Alignments = TMarkdownHtmlAlignments.ChildAlignments(Document);
       var Y: Single := Theme.ContentPadding;
       var PreviousBelow: Single := 0.0;
 
@@ -490,7 +511,7 @@ begin
           Continue;
         end;
 
-        const Info = Worker.RecomputeBlock(Document.Children[Index], Index, Y, PreviousBelow);
+        const Info = Worker.RecomputeBlock(Document.Children[Index], Index, Y, PreviousBelow, Alignments[Index]);
 
         Blocks[Index] := Info;
         Y := Y + Info.Height;
@@ -541,6 +562,7 @@ begin
 
       TMarkdownDisclosures.AssignKeys(Document);
       const Hidden = TMarkdownDisclosures.HiddenChildren(Document, Disclosures);
+      const Alignments = TMarkdownHtmlAlignments.ChildAlignments(Document);
       var Y: Single := Theme.ContentPadding;
       var PreviousBelow: Single := 0.0;
 
@@ -559,7 +581,7 @@ begin
 
         var Info := Default(TLayoutBlockInfo);
         if IsRecomputed then
-          Info := Worker.RecomputeBlock(Document.Children[Index], Index, Y, PreviousBelow)
+          Info := Worker.RecomputeBlock(Document.Children[Index], Index, Y, PreviousBelow, Alignments[Index])
         else
           Info := Worker.ReusePreviousBlock(Previous, ChangedRange, Index, Y, PreviousBelow);
 
@@ -665,7 +687,7 @@ begin
 end;
 
 function TLayoutWorker.RecomputeBlock(const Node: IMarkdownNode; const Index: Integer; var Y: Single;
-  const PreviousBelow: Single): TLayoutBlockInfo;
+  const PreviousBelow: Single; const Alignment: TMarkdownHtmlAlignment): TLayoutBlockInfo;
 begin
   const Above = SpacingAboveOf(Node);
 
@@ -679,6 +701,7 @@ begin
 
   const FirstItemIndex = FItems.Count;
   const Height = LayoutBlock(Node, Y);
+  AlignItemsFrom(FirstItemIndex, Alignment);
 
   Result := TLayoutBlockInfo.Create(FirstItemIndex, FItems.Count - FirstItemIndex, Y, Height, Above,
     SpacingBelowOf(Node));
@@ -782,6 +805,8 @@ begin
       EmitAlertTitle(Command);
     TLayoutCommandKind.Disclosure:
       EmitDisclosure(Command);
+    TLayoutCommandKind.Alignment:
+      AlignBlockLines(Command);
   else
     raise EMarkdownError.CreateFmt(UnhandledCommandKindMessage, [Ord(Command.Kind)]);
   end;
@@ -801,7 +826,8 @@ begin
       JoinListItemRuns(Command, FirstItemIndex);
     TLayoutCommandKind.AlertTitle:
       JoinLeafRuns(Command.ListDepth, FirstItemIndex, TDisplayTextJoin.BlankLine, TDisplayTextJoin.LineBreak);
-    TLayoutCommandKind.Gap, TLayoutCommandKind.QuoteBar, TLayoutCommandKind.Disclosure:
+    TLayoutCommandKind.Gap, TLayoutCommandKind.QuoteBar, TLayoutCommandKind.Disclosure,
+    TLayoutCommandKind.Alignment:
       Exit;
   else
     raise EMarkdownError.CreateFmt(UnhandledCommandKindMessage, [Ord(Command.Kind)]);
@@ -1463,7 +1489,42 @@ begin
   if (Document = nil) or (Document.ChildCount = 0) then
     Exit;
 
+  PushAlignment(Command);
   PushContainerChildren(Document, Command.X, Command.Color);
+end;
+
+// Pushed before the block's content, so it runs after it and moves the lines
+// that content laid out, as GitHub lines up <p align="center"> and the like.
+procedure TLayoutWorker.PushAlignment(const Command: TLayoutCommand);
+begin
+  const Html = Command.Node as IMarkdownText;
+  const LineAlignment = TMarkdownHtmlSubset.BlockAlignment(Html.Literal);
+  const MovesLines = (LineAlignment in [TMarkdownHtmlAlignment.Center, TMarkdownHtmlAlignment.Right]);
+  if not MovesLines then
+    Exit;
+
+  var Alignment := Default(TLayoutCommand);
+  Alignment.Kind          := TLayoutCommandKind.Alignment;
+  Alignment.Node          := Command.Node;
+  Alignment.FirstItem     := FItems.Count;
+  Alignment.LineAlignment := LineAlignment;
+
+  FCommands.Add(Alignment);
+end;
+
+procedure TLayoutWorker.AlignBlockLines(const Command: TLayoutCommand);
+begin
+  AlignItemsFrom(Command.FirstItem, Command.LineAlignment);
+end;
+
+procedure TLayoutWorker.AlignItemsFrom(const FirstItem: Integer; const Alignment: TMarkdownHtmlAlignment);
+begin
+  const MovesLines = (Alignment in [TMarkdownHtmlAlignment.Center, TMarkdownHtmlAlignment.Right]);
+  if not MovesLines then
+    Exit;
+
+  const IsCentered = (Alignment = TMarkdownHtmlAlignment.Center);
+  TLayoutLineAlignment.AlignLines(FItems, FirstItem, FItems.Count - 1, ContentRight, IsCentered);
 end;
 
 procedure TLayoutWorker.EmitSectionOpener(const Command: TLayoutCommand; const OpenByDefault: Boolean);
@@ -1904,7 +1965,17 @@ procedure TTableLayout.AlignCellItems(const FirstIndex, LastIndex: Integer;
   const Alignment: TMarkdownTableColumnAlignment; const ContentRightEdge: Single);
 begin
   const NeedsShift = Alignment in [TMarkdownTableColumnAlignment.Right, TMarkdownTableColumnAlignment.Center];
-  const HasItems = NeedsShift and (LastIndex >= FirstIndex);
+  if not NeedsShift then
+    Exit;
+
+  const IsCentered = (Alignment = TMarkdownTableColumnAlignment.Center);
+  TLayoutLineAlignment.AlignLines(FItems, FirstIndex, LastIndex, ContentRightEdge, IsCentered);
+end;
+
+class procedure TLayoutLineAlignment.AlignLines(const Items: TList<IDisplayItem>; const FirstIndex, LastIndex: Integer;
+                                                const RightEdge: Single; const IsCentered: Boolean);
+begin
+  const HasItems = (LastIndex >= FirstIndex);
   if not HasItems then
     Exit;
 
@@ -1913,10 +1984,10 @@ begin
 
   for var Index := FirstIndex to LastIndex do
   begin
-    const LineRight = MaxRightOnLine(FirstIndex, LastIndex, FItems[Index].Bounds);
+    const LineRight = MaxRightOnLine(Items, FirstIndex, LastIndex, Items[Index].Bounds);
 
-    var Delta := ContentRightEdge - LineRight;
-    if Alignment = TMarkdownTableColumnAlignment.Center then
+    var Delta := RightEdge - LineRight;
+    if IsCentered then
       Delta := Delta / 2;
 
     Deltas[Index - FirstIndex] := Delta;
@@ -1927,17 +1998,18 @@ begin
     const Delta = Deltas[Index - FirstIndex];
     const ShouldShift = (Delta > LineEpsilon);
     if ShouldShift then
-      FItems[Index] := TLayoutWorker.ShiftedItem(FItems[Index], Delta, 0);
+      Items[Index] := TLayoutWorker.ShiftedItem(Items[Index], Delta, 0);
   end;
 end;
 
-function TTableLayout.MaxRightOnLine(const FirstIndex, LastIndex: Integer; const Reference: TLayoutRectF): Single;
+class function TLayoutLineAlignment.MaxRightOnLine(const Items: TList<IDisplayItem>; const FirstIndex,
+                                                   LastIndex: Integer; const Reference: TLayoutRectF): Single;
 begin
   Result := 0;
 
   for var Index := FirstIndex to LastIndex do
   begin
-    const Candidate = FItems[Index].Bounds;
+    const Candidate = Items[Index].Bounds;
     const OnSameLine = (Candidate.Top < Reference.Bottom - LineEpsilon) and
       (Candidate.Bottom > Reference.Top + LineEpsilon);
     if OnSameLine then

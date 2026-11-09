@@ -5,7 +5,8 @@ unit Markdown4D.Html.Subset.Tests;
 interface
 
 uses
-  DUnitX.TestFramework;
+  DUnitX.TestFramework,
+  Markdown4D.Html.Subset;
 
 type
   [TestFixture]
@@ -47,6 +48,16 @@ type
     [TestCase('Mark', '<p>a <mark>marked</mark> word</p>,a <mark>marked</mark> word')]
     [TestCase('Small', '<p>a <small>small</small> print</p>,a <small>small</small> print')]
     procedure Convert_InlineTagWithoutMarkdown_StaysInlineHtml(const Html, Expected: string);
+
+    [Test]
+    [TestCase('Centred paragraph', '<p align="center">Title</p>,Center')]
+    [TestCase('Centred div', '<div align=center><img src="logo.png"></div>,Center')]
+    [TestCase('Right heading', '<h1 ALIGN="Right">Title</h1>,Right')]
+    [TestCase('Left paragraph', '<p align="left">Text</p>,Left')]
+    [TestCase('Center tag', '<center>Title</center>,Center')]
+    [TestCase('No align', '<p>Text</p>,None')]
+    [TestCase('Align on an inner element', '<p>Text <img align="right" src="a.png"></p>,None')]
+    procedure BlockAlignment_OfTheOuterElement(const Html: string; const Expected: TMarkdownHtmlAlignment);
 
     [Test]
     procedure Convert_Image_BecomesImageLink;
@@ -127,8 +138,7 @@ type
 implementation
 
 uses
-  System.SysUtils,
-  Markdown4D.Html.Subset;
+  System.SysUtils;
 
 procedure TMarkdownHtmlSubsetTests.AssertConverts(const Html, Expected: string);
 begin
@@ -181,6 +191,12 @@ end;
 procedure TMarkdownHtmlSubsetTests.Convert_Strikethrough_BecomesTildes;
 begin
   AssertConverts('<del>gone</del>', '~~gone~~');
+end;
+
+procedure TMarkdownHtmlSubsetTests.BlockAlignment_OfTheOuterElement(const Html: string;
+  const Expected: TMarkdownHtmlAlignment);
+begin
+  Assert.AreEqual(Expected, TMarkdownHtmlSubset.BlockAlignment(Html));
 end;
 
 // GitHub renders these tags inside an HTML block as it does in a paragraph,

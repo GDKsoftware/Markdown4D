@@ -34,7 +34,7 @@ type
       const Current: IMarkdownDocument; const CurrentText: string; const PrefixCount: Integer): Integer; static;
     class function ChangesOtherBlocks(const ChangedText: string): Boolean; static;
     class function HasTableOfContents(const Document: IMarkdownDocument): Boolean; static;
-    class function HasSameHiddenBlocks(const Previous, Current: IMarkdownDocument;
+    class function HasSameBlockStates(const Previous, Current: IMarkdownDocument;
       const State: IMarkdownDisclosureState; const Range: TLayoutBlockRange): Boolean; static;
     class procedure ReusePreviousNodes(const Previous, Current: IMarkdownDocument; const Range: TLayoutBlockRange;
       const OffsetShift, LineShift: Integer); static;
@@ -57,7 +57,8 @@ uses
   System.RegularExpressions,
   Markdown4D.Ast,
   Markdown4D.Extensions.Toc,
-  Markdown4D.Layout.Disclosure;
+  Markdown4D.Layout.Disclosure,
+  Markdown4D.Layout.HtmlAlignment;
 
 class function TMarkdownChangedBlocks.TryReuse(const Previous: IMarkdownDocument; const PreviousText: string;
   const Current: IMarkdownDocument; const CurrentText: string; const State: IMarkdownDisclosureState;
@@ -88,7 +89,7 @@ begin
 
   TMarkdownDisclosures.AssignKeys(Previous);
   TMarkdownDisclosures.AssignKeys(Current);
-  if not HasSameHiddenBlocks(Previous, Current, State, Range) then
+  if not HasSameBlockStates(Previous, Current, State, Range) then
     Exit;
 
   const OffsetShift = Length(CurrentText) - Length(PreviousText);
@@ -204,13 +205,16 @@ begin
   Result := False;
 end;
 
-// A block the previous layout hid, or showed, has to stay so: its layout is
+// A block the previous layout hid, or showed, has to stay so, and a block an
+// aligned element around it lines up has to keep that alignment: its layout is
 // reused as it was.
-class function TMarkdownChangedBlocks.HasSameHiddenBlocks(const Previous, Current: IMarkdownDocument;
+class function TMarkdownChangedBlocks.HasSameBlockStates(const Previous, Current: IMarkdownDocument;
   const State: IMarkdownDisclosureState; const Range: TLayoutBlockRange): Boolean;
 begin
   const PreviousHidden = TMarkdownDisclosures.HiddenChildren(Previous, State);
   const CurrentHidden = TMarkdownDisclosures.HiddenChildren(Current, State);
+  const PreviousAlignments = TMarkdownHtmlAlignments.ChildAlignments(Previous);
+  const CurrentAlignments = TMarkdownHtmlAlignments.ChildAlignments(Current);
   const SuffixStart = Range.FirstBlockIndex + Range.NewBlockCount;
   const IndexShift = Range.NewBlockCount - Range.OldBlockCount;
 
@@ -225,8 +229,9 @@ begin
     if IsInSuffix then
       PreviousIndex := Index - IndexShift;
 
-    const KeepsVisibility = (PreviousHidden[PreviousIndex] = CurrentHidden[Index]);
-    if not KeepsVisibility then
+    const KeepsState = ((PreviousHidden[PreviousIndex] = CurrentHidden[Index]) and
+                        (PreviousAlignments[PreviousIndex] = CurrentAlignments[Index]));
+    if not KeepsState then
       Exit(False);
   end;
 

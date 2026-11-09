@@ -50,6 +50,9 @@ type
     procedure TryReuse_SectionThatNoLongerCloses_ReturnsFalse;
 
     [Test]
+    procedure TryReuse_AlignedElementThatNoLongerCloses_ReturnsFalse;
+
+    [Test]
     procedure TryReuse_EveryBlockChanged_ReturnsFalse;
   end;
 
@@ -170,6 +173,20 @@ begin
   const Reused = TMarkdownChangedBlocks.TryReuse(Previous, PreviousText, Current, CurrentText, nil, Range);
 
   Assert.IsFalse(Reused, 'the block after the section was shown and is hidden now');
+end;
+
+procedure TMarkdownChangedBlocksTests.TryReuse_AlignedElementThatNoLongerCloses_ReturnsFalse;
+begin
+  const Opening = '<div align="center">';
+  const PreviousText = Opening + Separator + First + Separator + '</div>' + Separator + Third;
+  const CurrentText = Opening + Separator + First + Separator + Third;
+  const Previous = Parse(PreviousText);
+  const Current = Parse(CurrentText);
+
+  var Range: TLayoutBlockRange;
+  const Reused = TMarkdownChangedBlocks.TryReuse(Previous, PreviousText, Current, CurrentText, nil, Range);
+
+  Assert.IsFalse(Reused, 'the block after the element was at the left and is centred now');
 end;
 
 procedure TMarkdownChangedBlocksTests.TryReuse_EveryBlockChanged_ReturnsFalse;

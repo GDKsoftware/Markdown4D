@@ -24,13 +24,26 @@ unit Markdown4D.Html.Subset;
 interface
 
 type
+  TMarkdownHtmlAlignment = (None, Left, Center, Right);
+
   TMarkdownHtmlSubset = class
+  private
+    const
+      OpeningTagPattern = '^\s*<([A-Za-z][A-Za-z0-9]*)\b([^>]*)>';
+      AlignPattern = '\balign\s*=\s*["'']?\s*(left|center|right)\b';
+      CenterTag = 'center';
+    class function AlignmentNamed(const Name: string): TMarkdownHtmlAlignment; static;
+
   public
     // Converts an HTML fragment to markdown. Returns an empty string when
     // nothing survives the translation.
     class function ToMarkdown(const Html: string): string; static;
     // True when the fragment holds nothing a reader would see.
     class function IsEmpty(const Html: string): Boolean; static;
+    // How the outermost element of the fragment lines its content up: its
+    // align attribute, as GitHub honours on <p>, <div> and headings, or a
+    // <center> tag. None when it says nothing.
+    class function BlockAlignment(const Html: string): TMarkdownHtmlAlignment; static;
   end;
 
 implementation
@@ -909,6 +922,36 @@ end;
 class function TMarkdownHtmlSubset.IsEmpty(const Html: string): Boolean;
 begin
   Result := ToMarkdown(Html) = '';
+end;
+
+class function TMarkdownHtmlSubset.BlockAlignment(const Html: string): TMarkdownHtmlAlignment;
+begin
+  Result := TMarkdownHtmlAlignment.None;
+
+  const Opening = TRegEx.Match(Html, OpeningTagPattern);
+  if not Opening.Success then
+    Exit;
+
+  const TagName = Opening.Groups[1].Value;
+  const IsCenterTag = SameText(TagName, CenterTag);
+  if IsCenterTag then
+    Exit(TMarkdownHtmlAlignment.Center);
+
+  const Attributes = Opening.Groups[2].Value;
+  const Align = TRegEx.Match(Attributes, AlignPattern, [roIgnoreCase]);
+  if Align.Success then
+    Result := AlignmentNamed(Align.Groups[1].Value);
+end;
+
+class function TMarkdownHtmlSubset.AlignmentNamed(const Name: string): TMarkdownHtmlAlignment;
+begin
+  const Lowered = Name.ToLower;
+  if Lowered = 'center' then
+    Result := TMarkdownHtmlAlignment.Center
+  else if Lowered = 'right' then
+    Result := TMarkdownHtmlAlignment.Right
+  else
+    Result := TMarkdownHtmlAlignment.Left;
 end;
 
 end.
