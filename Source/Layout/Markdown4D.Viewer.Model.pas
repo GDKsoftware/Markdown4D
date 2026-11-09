@@ -78,6 +78,8 @@ type
       AnchorMark = '#';
       MathAlphanumericFirst = $1D400;
       MathAlphanumericLast = $1D7FF;
+      FormulaCellEnd = '&';
+      FormulaRowEnd = '\\';
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
@@ -158,6 +160,9 @@ type
     procedure SnapToFormulaEdge(const Point: TLayoutPointF; var Position: TTextPosition);
     function TryGetWholeFormula(const Glyph: Integer; const Range: TTextRange; out SourceIndex: Integer): Boolean;
     function SelectedPieces(const Range: TTextRange): TArray<TSelectedPiece>;
+    class function SeparatorBetween(const Previous, Piece: TSelectedPiece; const StartsBlock: Boolean;
+      const PreviousTop: Single): string; static;
+    class function TableBreakBetween(const Before, After: IDisplayTextRun): string; static;
     function TryFindScrollerAt(const Point: TLayoutPointF; out Index: Integer): Boolean;
     function TryFindScrollerOf(const ItemIndex: Integer; out Index: Integer): Boolean;
     function IsOverScrollerTrack(const Point: TLayoutPointF): Boolean;
@@ -355,6 +360,7 @@ uses
   Markdown4D.Layout.HitTest,
   Markdown4D.Layout.SourceMapping,
   Markdown4D.Layout.SelectedMarkdown,
+  Markdown4D.Math.Layout,
   Markdown4D.Toc,
   Markdown4D.Layout.Zoom;
 
@@ -1056,20 +1062,63 @@ begin
   var PreviousTop := 0.0;
   var PreviousBlock := 0;
 
+  var Previous := Default(TSelectedPiece);
+
   for var Piece in SelectedPieces(NormalizeSelection) do
   begin
-    const Segment = Copy(Piece.Run.Text, Piece.CharFrom + 1, Piece.CharTo - Piece.CharFrom);
-    const BlockIndex = BlockIndexOfItem(Piece.ItemIndex);
+    var Segment := Copy(Piece.Run.Text, Piece.CharFrom + 1, Piece.CharTo - Piece.CharFrom);
 
+    // Part of a formula copies as the characters it shows, a letter of the
+    // mathematical alphabets as the plain letter a reader would type.
+    const IsGlyph = (Piece.Run.Role = TDisplayTextRunRole.Formula);
+    if IsGlyph then
+      Segment := TMathLayouter.PlainText(Segment);
+
+    const BlockIndex = BlockIndexOfItem(Piece.ItemIndex);
     if HasPrevious then
-      Result := Result + SeparatorBefore(Piece.JoinRun, BlockIndex <> PreviousBlock, PreviousTop);
+      Result := Result + SeparatorBetween(Previous, Piece, BlockIndex <> PreviousBlock, PreviousTop);
 
     Result := Result + Segment;
 
     HasPrevious := True;
+    Previous := Piece;
     PreviousTop := Piece.Run.Bounds.Top;
     PreviousBlock := BlockIndex;
   end;
+end;
+
+// Two glyphs of one formula follow on directly, except where a cell or a row
+// of a table ends between them; anything else is set apart as its run says.
+class function TMarkdownViewerModel.SeparatorBetween(const Previous, Piece: TSelectedPiece;
+  const StartsBlock: Boolean; const PreviousTop: Single): string;
+begin
+  const AreGlyphsOfOneFormula = (IsGlyphOf(Previous.Run, Piece.Run.SourceNode) and
+                                 IsGlyphOf(Piece.Run, Previous.Run.SourceNode));
+  if AreGlyphsOfOneFormula then
+    Result := TableBreakBetween(Previous.Run, Piece.Run)
+  else
+    Result := SeparatorBefore(Piece.JoinRun, StartsBlock, PreviousTop);
+end;
+
+// The TeX between two glyphs tells where a cell of an array, a matrix or a
+// tabular ends, at an &, and where a row ends, at a \\. The glyphs then copy
+// as a table copies from a browser: cells apart by tabs, rows by line breaks.
+class function TMarkdownViewerModel.TableBreakBetween(const Before, After: IDisplayTextRun): string;
+begin
+  Result := '';
+
+  var Math: IMarkdownMath;
+  if not Supports(After.SourceNode, IMarkdownMath, Math) then
+    Exit;
+
+  const GapStart = Before.StartOffset + Before.SourceLength;
+  const Gap = Copy(Math.Literal, GapStart + 1, After.StartOffset - GapStart);
+  const EndsRow = Gap.Contains(FormulaRowEnd);
+  const EndsCell = Gap.Contains(FormulaCellEnd);
+  if EndsRow then
+    Result := sLineBreak
+  else if EndsCell then
+    Result := CopiedTab;
 end;
 
 // A run the layout gave a join copies with that join. One without, drawn by an
