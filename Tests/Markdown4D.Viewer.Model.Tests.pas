@@ -390,7 +390,22 @@ type
     procedure ToggleDisclosure_ClosingAtEnd_KeepsScrollInsideDocument;
 
     [Test]
-    procedure SetText_AfterToggle_ShowsSectionsAsTheirTagsAsk;
+    procedure SetText_AfterToggle_KeepsSectionOpen;
+
+    [Test]
+    procedure SetText_TextAddedAboveOpenedSection_KeepsItOpen;
+
+    [Test]
+    procedure SetText_SummaryOfOpenedSectionChanged_ShowsItAsItsTagAsks;
+
+    [Test]
+    procedure ToggleDisclosure_SecondSectionWithSameSummary_StaysClosed;
+
+    [Test]
+    procedure ResetDisclosures_ThenSetText_ShowsSectionsAsTheirTagsAsk;
+
+    [Test]
+    procedure ToggledDisclosures_HandedBack_ReopensSection;
 
     [Test]
     procedure TryGetDisclosureAt_PointBelowSummary_ReturnsFalse;
@@ -1770,7 +1785,7 @@ begin
   AssertSingle(MaxOffset, FModel.ScrollOffset);
 end;
 
-procedure TMarkdownViewerModelTests.SetText_AfterToggle_ShowsSectionsAsTheirTagsAsk;
+procedure TMarkdownViewerModelTests.SetText_AfterToggle_KeepsSectionOpen;
 begin
   FModel.SetViewport(DefaultWidth, DefaultHeight);
   FModel.Text := ClosedSectionMarkdown;
@@ -1778,7 +1793,67 @@ begin
 
   FModel.Text := ClosedSectionMarkdown;
 
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+end;
+
+procedure TMarkdownViewerModelTests.SetText_TextAddedAboveOpenedSection_KeepsItOpen;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := ClosedSectionMarkdown;
+  ToggleFirstDisclosure;
+
+  FModel.Text := 'A new line above.'#10#10 + ClosedSectionMarkdown;
+
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+end;
+
+procedure TMarkdownViewerModelTests.SetText_SummaryOfOpenedSectionChanged_ShowsItAsItsTagAsks;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := ClosedSectionMarkdown;
+  ToggleFirstDisclosure;
+
+  FModel.Text := ClosedSectionMarkdown.Replace(SummaryText, 'Less');
+
   Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+end;
+
+procedure TMarkdownViewerModelTests.ToggleDisclosure_SecondSectionWithSameSummary_StaysClosed;
+begin
+  const OtherContentText = 'Other';
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := ClosedSectionMarkdown + #10#10 + ClosedSectionMarkdown.Replace(SectionContentText, OtherContentText);
+
+  ToggleFirstDisclosure;
+
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+  Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, OtherContentText));
+end;
+
+procedure TMarkdownViewerModelTests.ResetDisclosures_ThenSetText_ShowsSectionsAsTheirTagsAsk;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := ClosedSectionMarkdown;
+  ToggleFirstDisclosure;
+
+  FModel.ResetDisclosures;
+  FModel.Text := ClosedSectionMarkdown;
+
+  Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+end;
+
+procedure TMarkdownViewerModelTests.ToggledDisclosures_HandedBack_ReopensSection;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := ClosedSectionMarkdown;
+  ToggleFirstDisclosure;
+  const Toggled = FModel.ToggledDisclosures;
+  FModel.ResetDisclosures;
+  FModel.Text := ClosedSectionMarkdown;
+
+  FModel.ToggledDisclosures := Toggled;
+
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
 end;
 
 procedure TMarkdownViewerModelTests.TryGetDisclosureAt_PointBelowSummary_ReturnsFalse;

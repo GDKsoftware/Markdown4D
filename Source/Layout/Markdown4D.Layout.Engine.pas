@@ -462,6 +462,7 @@ begin
       var Recomputed: TArray<Integer>;
       SetLength(Recomputed, BlockCount);
 
+      TMarkdownDisclosures.AssignKeys(Document);
       const Hidden = TMarkdownDisclosures.HiddenChildren(Document, Disclosures);
       var Y: Single := Theme.ContentPadding;
       var PreviousBelow: Single := 0.0;
@@ -523,6 +524,7 @@ begin
       var Recomputed: TArray<Integer>;
       SetLength(Recomputed, ChangedRange.NewBlockCount);
 
+      TMarkdownDisclosures.AssignKeys(Document);
       const Hidden = TMarkdownDisclosures.HiddenChildren(Document, Disclosures);
       var Y: Single := Theme.ContentPadding;
       var PreviousBelow: Single := 0.0;

@@ -34,12 +34,17 @@ type
       SummaryOpenerTag = '<summary';
       SummaryCloserTag = '</summary>';
       OpenAttribute = 'open';
+      KeyDataName = 'markdown4d.disclosure.key';
     class function TryGetHtmlLiteral(const Node: IMarkdownNode; out Literal: string): Boolean; static;
     class function StartsWithTag(const Text, Tag: string): Boolean; static;
     class function HasOpenAttribute(const Literal: string): Boolean; static;
     class function HasSummary(const Literal: string): Boolean; static;
     class function DefaultSummaryHtml: string; static;
     class function SummaryEnd(const Literal: string): Integer; static;
+    class procedure CollectKeys(const Container: IMarkdownNode;
+      const Occurrences: TDictionary<string, Integer>); static;
+    class function SummarySource(const Section: IMarkdownNode): string; static;
+    class function KeyFor(const Summary: string; const Occurrence: Integer): Integer; static;
     class function IsContainer(const Node: IMarkdownNode): Boolean; static;
     class procedure CollectClosedSections(const Container: IMarkdownNode; const Source: string;
       const State: IMarkdownDisclosureState; const Sections: TList<TMarkdownClosedSection>); static;
@@ -64,6 +69,13 @@ type
     class function SummaryHtml(const Node: IMarkdownNode): string; static;
     // The HTML of a whole section between </summary> and its closing tag.
     class function ContentHtml(const Node: IMarkdownNode): string; static;
+    // Gives every section in Document the key a reader's choice to open or
+    // close it is kept under: its summary, and which section with that summary
+    // it is. Typing elsewhere leaves the key as it is, so an opened section
+    // stays open while the text around it changes.
+    class procedure AssignKeys(const Document: IMarkdownNode); static;
+    // The key AssignKeys gave the section; before that, the key of the first
+    // section with its summary.
     class function KeyOf(const Opener: IMarkdownNode): Integer; static;
     // A missing state means every section shows the way its tag asks for:
     // closed, unless it carries `open`.
@@ -90,7 +102,35 @@ implementation
 uses
   System.SysUtils,
   System.StrUtils,
+  System.Hash,
   Markdown4D.Consts;
+
+type
+  // The key of a section, kept on its node as extension data.
+  IDisclosureKey = interface
+    ['{6E1B2C47-9A3D-4F58-B0C2-7D4E8A19F356}']
+    function Value: Integer;
+  end;
+
+  TDisclosureKey = class(TInterfacedObject, IDisclosureKey)
+  private
+    FValue: Integer;
+
+  public
+    constructor Create(const Value: Integer);
+    function Value: Integer;
+  end;
+
+constructor TDisclosureKey.Create(const Value: Integer);
+begin
+  inherited Create;
+  FValue := Value;
+end;
+
+function TDisclosureKey.Value: Integer;
+begin
+  Result := FValue;
+end;
 
 class function TMarkdownDisclosures.IsOpener(const Node: IMarkdownNode; out OpenByDefault: Boolean): Boolean;
 begin
@@ -175,9 +215,72 @@ begin
   Result := Copy(Literal, ContentStart, ContentEnd - ContentStart);
 end;
 
+class procedure TMarkdownDisclosures.AssignKeys(const Document: IMarkdownNode);
+begin
+  const Occurrences = TDictionary<string, Integer>.Create;
+  try
+    CollectKeys(Document, Occurrences);
+  finally
+    Occurrences.Free;
+  end;
+end;
+
+class procedure TMarkdownDisclosures.CollectKeys(const Container: IMarkdownNode;
+  const Occurrences: TDictionary<string, Integer>);
+begin
+  for var Index := 0 to Container.ChildCount - 1 do
+  begin
+    const Child = Container.Children[Index];
+
+    var OpenByDefault: Boolean;
+    const IsSection = (IsOpener(Child, OpenByDefault) or IsWholeSection(Child, OpenByDefault));
+    if IsSection then
+    begin
+      const Summary = SummarySource(Child);
+      var Occurrence := 0;
+      Occurrences.TryGetValue(Summary, Occurrence);
+      Inc(Occurrence);
+      Occurrences.AddOrSetValue(Summary, Occurrence);
+
+      const Key = KeyFor(Summary, Occurrence);
+      const StoredKey: IDisclosureKey = TDisclosureKey.Create(Key);
+      Child.SetExtensionData(KeyDataName, StoredKey);
+      Continue;
+    end;
+
+    if IsContainer(Child) then
+      CollectKeys(Child, Occurrences);
+  end;
+end;
+
 class function TMarkdownDisclosures.KeyOf(const Opener: IMarkdownNode): Integer;
 begin
-  Result := Opener.Segment.StartOffset;
+  var Stored: IInterface;
+  var Key: IDisclosureKey;
+  const IsAssigned = (Opener.TryGetExtensionData(KeyDataName, Stored) and Supports(Stored, IDisclosureKey, Key));
+  if IsAssigned then
+    Exit(Key.Value);
+
+  const Summary = SummarySource(Opener);
+  Result := KeyFor(Summary, 1);
+end;
+
+// The opening tag and the summary as written, so that a change anywhere
+// else keeps the key.
+class function TMarkdownDisclosures.SummarySource(const Section: IMarkdownNode): string;
+begin
+  var Literal: string;
+  if not TryGetHtmlLiteral(Section, Literal) then
+    Exit('');
+
+  const Summary = Copy(Literal, 1, SummaryEnd(Literal));
+  Result := Summary.Trim;
+end;
+
+class function TMarkdownDisclosures.KeyFor(const Summary: string; const Occurrence: Integer): Integer;
+begin
+  const Identity = Format('%s#%d', [Summary, Occurrence]);
+  Result := THashBobJenkins.GetHashValue(Identity);
 end;
 
 class function TMarkdownDisclosures.IsOpen(const State: IMarkdownDisclosureState; const Opener: IMarkdownNode;

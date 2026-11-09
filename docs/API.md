@@ -607,7 +607,11 @@ A `details` section folds as it does on GitHub when it is written the way
 GitHub needs it: the opening tag and its `summary`, a blank line, the markdown
 of the section, a blank line and `</details>`. It starts closed, or open when
 the tag carries `open`, and a click on the summary line opens or closes it.
-Setting `Text` shows every section as its tag asks again. Sections nest, and
+The viewer knows a section by its summary, so a section the reader opened
+stays open while `Text` changes, as it does with an editor beside it, until
+its summary changes; `LoadFromFile` and `LoadFromStream` show every section as
+its tag asks again. `ToggledSections` holds the reader's choices, for a host
+that shows several documents in one viewer to keep per document. Sections nest, and
 fold inside block quotes and list items too. A section written as one HTML
 block, closing tag included, folds as well; its content is HTML then, as on
 GitHub, and a `details` section inside it does not fold. A section without a
