@@ -39,6 +39,7 @@ uses
   System.StrUtils,
   System.Classes,
   System.Generics.Collections,
+  System.RegularExpressions,
   Markdown4D.Html.Entities;
 
 type
@@ -125,6 +126,7 @@ type
     procedure HandleCloseTag(const Name: string);
     procedure HandleImage(const Tag: TParsedTag);
     procedure HandleListItem;
+    function IsHeadingSummary: Boolean;
   public
     constructor Create(const Html: string);
     destructor Destroy; override;
@@ -635,6 +637,22 @@ begin
     Write(Marker);
 end;
 
+// A summary that is exactly one heading shows as that heading, as GitHub sets
+// it next to the triangle, instead of as bold text around a heading block.
+function TSubsetConverter.IsHeadingSummary: Boolean;
+begin
+  var SummaryEnd := PosEx('</summary', FLowered, FPosition);
+  const IsClosed = (SummaryEnd > 0);
+  if not IsClosed then
+    SummaryEnd := Length(FLowered) + 1;
+
+  const Content = Copy(FLowered, FPosition, SummaryEnd - FPosition);
+  const Inner = Content.Trim;
+  const IsOneHeading = TRegEx.IsMatch(Inner, '^<h([1-6])[\s>].*</h\1\s*>$', [roSingleLine]);
+  const HeadingTags = TRegEx.Matches(Inner, '<h[1-6][\s>]');
+  Result := (IsOneHeading and (HeadingTags.Count = 1));
+end;
+
 procedure TSubsetConverter.HandleOpenTag(const Tag: TParsedTag);
 begin
   const Info = TagInfoOf(Tag.Name);
@@ -696,6 +714,16 @@ begin
         Exit;
       end;
 
+    TTagKind.Summary:
+      begin
+        if IsHeadingSummary then
+        begin
+          StartBlock;
+          FOpen.Add(TOpenTag.Create(Tag.Name, Info.Kind, ''));
+          Exit;
+        end;
+      end;
+
     TTagKind.Preformatted:
       begin
         StartBlock;
@@ -717,8 +745,8 @@ begin
       end;
   else
     // Every other kind (Transparent, Paragraph, headings, inline styles,
-    // anchors, Details/Summary, ...) shares the generic block/opener/closer
-    // handling below instead of a dedicated branch here.
+    // anchors, Details, ...) and a summary with more than a heading share the
+    // generic block/opener/closer handling below.
   end;
 
   if Info.IsBlock then

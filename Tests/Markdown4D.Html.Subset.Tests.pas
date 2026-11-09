@@ -74,6 +74,14 @@ type
     procedure Convert_Details_PutsSummaryInBold;
 
     [Test]
+    [TestCase('Level1', '<h1>Large</h1>,# Large')]
+    [TestCase('Level4WithAttribute', '<h4 id="large">Large</h4>,#### Large')]
+    procedure Convert_SummaryThatIsOneHeading_BecomesThatHeading(const Heading, Expected: string);
+
+    [Test]
+    procedure Convert_SummaryWithMoreThanAHeading_StaysBold;
+
+    [Test]
     procedure Convert_Preformatted_BecomesFencedBlock;
 
     [Test]
@@ -225,6 +233,18 @@ begin
 
   Assert.IsTrue(Converted.Contains('**Show more**'), Format('summary should survive in bold: %s', [Converted]));
   Assert.IsTrue(Converted.Contains('The hidden part.'), Format('body should survive: %s', [Converted]));
+end;
+
+procedure TMarkdownHtmlSubsetTests.Convert_SummaryThatIsOneHeading_BecomesThatHeading(const Heading, Expected: string);
+begin
+  AssertConverts(Format('<details><summary>%s</summary></details>', [Heading]), Expected);
+end;
+
+procedure TMarkdownHtmlSubsetTests.Convert_SummaryWithMoreThanAHeading_StaysBold;
+begin
+  const Converted = TMarkdownHtmlSubset.ToMarkdown('<details><summary>Large <h3>part</h3></summary></details>');
+
+  Assert.IsTrue(Converted.StartsWith('**Large'), Format('summary should stay bold: %s', [Converted]));
 end;
 
 procedure TMarkdownHtmlSubsetTests.Convert_Preformatted_BecomesFencedBlock;

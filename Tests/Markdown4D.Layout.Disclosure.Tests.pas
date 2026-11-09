@@ -25,6 +25,7 @@ type
       SummaryText = 'More';
       ContentText = 'Body';
       AfterText = 'After';
+      StrongMarker = '**';
       ClosedSection = '<details>'#10'<summary>' + SummaryText + '</summary>'#10#10 + ContentText + #10#10'</details>';
       OpenSection = '<details open>'#10'<summary>' + SummaryText + '</summary>'#10#10 + ContentText + #10#10'</details>';
       WholeSection = '<details><summary>' + SummaryText + '</summary>'#10 + ContentText + ' <b>bold</b>'#10'- one'#10 +
@@ -65,7 +66,13 @@ type
     procedure SummaryHtml_WholeSection_EndsAfterSummary;
 
     [Test]
-    procedure SummaryHtml_WithoutSummary_IsOpeningTag;
+    procedure SummaryHtml_WithoutSummary_AddsDefaultSummary;
+
+    [Test]
+    procedure OpenerHtml_WithoutSummary_AddsDefaultSummaryAfterOpeningTag;
+
+    [Test]
+    procedure OpenerHtml_WithSummary_IsTheBlock;
 
     [Test]
     procedure ContentHtml_WholeSection_LiesBetweenSummaryAndClosingTag;
@@ -137,6 +144,15 @@ type
     procedure Layout_ClosedWholeSection_KeepsFollowingText;
 
     [Test]
+    procedure Layout_SectionWithoutSummary_ShowsDefaultSummary;
+
+    [Test]
+    procedure Layout_WholeSectionWithoutSummary_ShowsDefaultSummary;
+
+    [Test]
+    procedure Layout_HeadingAsSummary_ShowsHeadingNextToMarker;
+
+    [Test]
     procedure Layout_ClosedSection_KeepsOneBlockInfoPerChild;
 
     [Test]
@@ -151,6 +167,7 @@ implementation
 uses
   System.SysUtils,
   Markdown4D,
+  Markdown4D.Consts,
   Markdown4D.Defines,
   Markdown4D.Layout.Engine,
   Markdown4D.Layout.Disclosure,
@@ -244,13 +261,32 @@ begin
   Assert.AreEqual('<details><summary>' + SummaryText + '</summary>', Summary);
 end;
 
-procedure TMarkdownDisclosureTests.SummaryHtml_WithoutSummary_IsOpeningTag;
+procedure TMarkdownDisclosureTests.SummaryHtml_WithoutSummary_AddsDefaultSummary;
 begin
   const Document = Parse('<details open>' + ContentText + '</details>');
 
   const Summary = TMarkdownDisclosures.SummaryHtml(Document.Children[0]);
 
-  Assert.AreEqual('<details open>', Summary);
+  Assert.AreEqual(Format('<details open><summary>%s</summary>', [DefaultDetailsSummary]), Summary);
+end;
+
+procedure TMarkdownDisclosureTests.OpenerHtml_WithoutSummary_AddsDefaultSummaryAfterOpeningTag;
+begin
+  const Document = Parse('<details>'#10#10 + ContentText + #10#10'</details>');
+
+  const Opener = TMarkdownDisclosures.OpenerHtml(Document.Children[0]);
+
+  const Expected = Format('<details><summary>%s</summary>', [DefaultDetailsSummary]);
+  Assert.AreEqual(Expected, Opener.TrimRight);
+end;
+
+procedure TMarkdownDisclosureTests.OpenerHtml_WithSummary_IsTheBlock;
+begin
+  const Document = Parse(ClosedSection);
+  const Opener = Document.Children[0];
+
+  const Html = Opener as IMarkdownText;
+  Assert.AreEqual(Html.Literal, TMarkdownDisclosures.OpenerHtml(Opener));
 end;
 
 procedure TMarkdownDisclosureTests.ContentHtml_WholeSection_LiesBetweenSummaryAndClosingTag;
@@ -491,6 +527,38 @@ begin
   const DisplayList = LayoutMarkdown(WholeSection + #10#10 + AfterText);
 
   Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(DisplayList, AfterText));
+end;
+
+procedure TMarkdownDisclosureTests.Layout_SectionWithoutSummary_ShowsDefaultSummary;
+begin
+  const DisplayList = LayoutMarkdown('<details>'#10#10 + ContentText + #10#10'</details>');
+
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(DisplayList, DefaultDetailsSummary));
+  Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(DisplayList, ContentText));
+end;
+
+procedure TMarkdownDisclosureTests.Layout_WholeSectionWithoutSummary_ShowsDefaultSummary;
+begin
+  const DisplayList = LayoutMarkdown('<details><p>' + ContentText + '</p></details>');
+
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(DisplayList, DefaultDetailsSummary));
+  Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(DisplayList, ContentText));
+end;
+
+procedure TMarkdownDisclosureTests.Layout_HeadingAsSummary_ShowsHeadingNextToMarker;
+begin
+  const DisplayList = LayoutMarkdown('<details>'#10'<summary><h2>' + SummaryText + '</h2></summary>'#10#10 +
+    ContentText + #10#10'</details>');
+
+  const Disclosures = DisclosuresOf(DisplayList);
+  const Disclosure = Disclosures[0];
+  const Summary = TMarkdownTestDisplayListHelpers.TextRunShowing(DisplayList, SummaryText);
+  const SummaryCentre = (Summary.Bounds.Top + Summary.Bounds.Bottom) / 2;
+  const MarkerCentre = (Disclosure.Marker.Top + Disclosure.Marker.Bottom) / 2;
+  Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(DisplayList, StrongMarker));
+  Assert.IsTrue(Summary.Font.Size > BaseFontSize, 'the summary is set as a heading');
+  Assert.IsTrue(Summary.Bounds.Left >= Disclosure.Marker.Right, 'the heading starts after the triangle');
+  Assert.AreEqual(SummaryCentre, MarkerCentre, SingleTolerance, 'the triangle is centred on the heading');
 end;
 
 procedure TMarkdownDisclosureTests.Layout_ClosedSection_KeepsOneBlockInfoPerChild;

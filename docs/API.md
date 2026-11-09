@@ -610,7 +610,9 @@ the tag carries `open`, and a click on the summary line opens or closes it.
 Setting `Text` shows every section as its tag asks again. Sections nest, and
 fold inside block quotes and list items too. A section written as one HTML
 block, closing tag included, folds as well; its content is HTML then, as on
-GitHub, and a `details` section inside it does not fold. Without the viewer,
+GitHub, and a `details` section inside it does not fold. A section without a
+`summary` shows `DefaultDetailsSummary` ("Details") on its summary line, and a
+`summary` that is one `h1` to `h6` shows as that heading. Without the viewer,
 `TMarkdownLayoutEngine.LayoutDocument` and `UpdateLayout` take an
 `IMarkdownDisclosureState` that says which sections are open; without one,
 each section shows as its tag asks.
