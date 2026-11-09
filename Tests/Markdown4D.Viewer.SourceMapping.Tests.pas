@@ -667,6 +667,12 @@ begin
 
     Assert.AreEqual(Word, FModel.SelectedText, Format('Selecting "%s"', [Word]));
 
+    // The markdown behind part of a formula is the whole formula, as for any
+    // inline element the selection cuts.
+    const IsGlyph = (Run.Role = TDisplayTextRunRole.Formula);
+    if IsGlyph then
+      Continue;
+
     var Segment: TMarkdownSegment;
     Assert.IsTrue(FModel.TryGetSelectionSourceSegment(Segment), Format('No source range for "%s"', [Word]));
     Assert.AreEqual(Word, Copy(FSource, Segment.StartOffset, Segment.Length),

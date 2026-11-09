@@ -26,8 +26,8 @@ type
   public
     // Text drawn on the canvas is selectable and searchable like paragraph
     // text unless the role says otherwise, which a drawing such as a formula
-    // asks for. SourceNode is the formula whose source DrawSourceText places
-    // text in; without one that text is drawn as with DrawText.
+    // asks for. SourceNode is the formula whose glyphs DrawSourceText draws,
+    // selectable like text; without one that text is drawn as with DrawText.
     constructor Create(const Measurer: ITextMeasurer; const Items: TList<IDisplayItem>; const Node: IMarkdownNode;
       const TextRole: TDisplayTextRunRole = TDisplayTextRunRole.Text; const SourceNode: IMarkdownNode = nil);
     destructor Destroy; override;
@@ -141,7 +141,7 @@ begin
   const Bounds = TLayoutRectF.Create(TopLeft.X, BaselineY - Ascent, TopLeft.X + Width, BaselineY + Descent);
 
   FItems.Add(TDisplayTextRun.CreateGlyph(Bounds, FNode, Text, Font, Color, Ascent, SourceStart, SourceLength,
-    FTextRole, FSourceNode));
+    TDisplayTextRunRole.Formula, FSourceNode));
 end;
 
 procedure TDisplayListExtensionCanvas.DrawLine(const StartPoint, EndPoint: TLayoutPointF; const Color: TLayoutColor;
