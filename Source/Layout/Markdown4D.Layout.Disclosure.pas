@@ -15,25 +15,32 @@ type
   // an HTML block that closes it. This finds those runs and says which blocks
   // a closed section hides. A section written as one HTML block, closing tag
   // included, is a whole section: its summary and its content are the parts
-  // of that block before and after </summary>.
+  // of that block before and after </summary>. A section without a summary
+  // shows DefaultDetailsSummary, as a browser does.
   TMarkdownDisclosures = class
   private
     const
       OpenerTag = '<details';
       CloserTag = '</details';
+      SummaryOpenerTag = '<summary';
       SummaryCloserTag = '</summary>';
       OpenAttribute = 'open';
     class function TryGetHtmlLiteral(const Node: IMarkdownNode; out Literal: string): Boolean; static;
     class function StartsWithTag(const Text, Tag: string): Boolean; static;
     class function HasOpenAttribute(const Literal: string): Boolean; static;
+    class function HasSummary(const Literal: string): Boolean; static;
+    class function DefaultSummaryHtml: string; static;
     class function SummaryEnd(const Literal: string): Integer; static;
 
   public
     class function IsOpener(const Node: IMarkdownNode; out OpenByDefault: Boolean): Boolean; static;
     class function IsCloser(const Node: IMarkdownNode): Boolean; static;
     class function IsWholeSection(const Node: IMarkdownNode; out OpenByDefault: Boolean): Boolean; static;
+    // The HTML of the block that opens a section, with the default summary
+    // after the opening tag when it has none.
+    class function OpenerHtml(const Node: IMarkdownNode): string; static;
     // The HTML of a whole section up to and including </summary>; without a
-    // summary, the opening tag alone.
+    // summary, the opening tag and the default summary.
     class function SummaryHtml(const Node: IMarkdownNode): string; static;
     // The HTML of a whole section between </summary> and its closing tag.
     class function ContentHtml(const Node: IMarkdownNode): string; static;
@@ -55,7 +62,8 @@ implementation
 uses
   System.SysUtils,
   System.StrUtils,
-  System.Generics.Collections;
+  System.Generics.Collections,
+  Markdown4D.Consts;
 
 class function TMarkdownDisclosures.IsOpener(const Node: IMarkdownNode; out OpenByDefault: Boolean): Boolean;
 begin
@@ -101,13 +109,32 @@ begin
   Result := True;
 end;
 
+class function TMarkdownDisclosures.OpenerHtml(const Node: IMarkdownNode): string;
+begin
+  var Literal: string;
+  if not TryGetHtmlLiteral(Node, Literal) then
+    Exit('');
+
+  if HasSummary(Literal) then
+    Exit(Literal);
+
+  const TagEnd = Pos('>', Literal);
+  const OpeningTag = Copy(Literal, 1, TagEnd);
+  const Rest = Copy(Literal, TagEnd + 1, MaxInt);
+  Result := Format('%s%s%s', [OpeningTag, DefaultSummaryHtml, Rest]);
+end;
+
 class function TMarkdownDisclosures.SummaryHtml(const Node: IMarkdownNode): string;
 begin
   var Literal: string;
   if not TryGetHtmlLiteral(Node, Literal) then
     Exit('');
 
-  Result := Copy(Literal, 1, SummaryEnd(Literal));
+  const Summary = Copy(Literal, 1, SummaryEnd(Literal));
+  if HasSummary(Literal) then
+    Exit(Summary);
+
+  Result := Format('%s%s', [Summary, DefaultSummaryHtml]);
 end;
 
 class function TMarkdownDisclosures.ContentHtml(const Node: IMarkdownNode): string;
@@ -219,6 +246,22 @@ begin
     Exit(SummaryCloser + Length(SummaryCloserTag) - 1);
 
   Result := Pos('>', Literal);
+end;
+
+class function TMarkdownDisclosures.HasSummary(const Literal: string): Boolean;
+begin
+  const SummaryStart = Pos(SummaryOpenerTag, LowerCase(Literal));
+  const MentionsSummary = (SummaryStart > 0);
+  if not MentionsSummary then
+    Exit(False);
+
+  const FromSummary = Copy(Literal, SummaryStart, MaxInt);
+  Result := StartsWithTag(FromSummary, SummaryOpenerTag);
+end;
+
+class function TMarkdownDisclosures.DefaultSummaryHtml: string;
+begin
+  Result := Format('<summary>%s</summary>', [DefaultDetailsSummary]);
 end;
 
 class function TMarkdownDisclosures.HasOpenAttribute(const Literal: string): Boolean;

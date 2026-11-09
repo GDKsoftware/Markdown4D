@@ -26,6 +26,8 @@ resourcestring
   WarningAlertTitle = 'Warning';
   CautionAlertTitle = 'Caution';
 
+  DefaultDetailsSummary = 'Details';
+
 implementation
 
 end.

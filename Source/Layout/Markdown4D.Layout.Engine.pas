@@ -242,8 +242,10 @@ type
     ListDepth: Integer;
     InTightItem: Boolean;
     FirstOfList: Boolean;
-    // For a disclosure command: whether its <details> section is open.
+    // For a disclosure command: whether its <details> section is open, and the
+    // height of the summary's first line, which the triangle is centred on.
     DisclosureOpen: Boolean;
+    SummaryLineHeight: Single;
   end;
 
   TInlineAtomCollector = class
@@ -399,9 +401,11 @@ type
     function HtmlBlockDocument(const Node: IMarkdownNode): IMarkdownDocument;
     function HtmlDocument(const Node: IMarkdownNode; const CacheKey, Html: string): IMarkdownDocument;
     procedure EmitHtmlBlock(const Command: TLayoutCommand);
+    procedure EmitSectionOpener(const Command: TLayoutCommand; const OpenByDefault: Boolean);
     procedure EmitWholeSection(const Command: TLayoutCommand; const OpenByDefault: Boolean);
     procedure PushSectionContent(const Command: TLayoutCommand);
-    procedure PushDisclosure(const Command: TLayoutCommand; const IsOpen: Boolean);
+    procedure PushDisclosure(const Command: TLayoutCommand; const IsOpen: Boolean; const Summary: IMarkdownDocument);
+    function SummaryLineHeight(const Summary: IMarkdownDocument): Single;
     procedure EmitDisclosure(const Command: TLayoutCommand);
     function DisclosureIndent: Single;
     procedure EmitThematicBreak(const Command: TLayoutCommand);
@@ -1423,8 +1427,6 @@ end;
 
 procedure TLayoutWorker.EmitHtmlBlock(const Command: TLayoutCommand);
 begin
-  var ContentX := Command.X;
-
   var OpenByDefault: Boolean;
   if TMarkdownDisclosures.IsWholeSection(Command.Node, OpenByDefault) then
   begin
@@ -1434,16 +1436,26 @@ begin
 
   if TMarkdownDisclosures.IsOpener(Command.Node, OpenByDefault) then
   begin
-    const IsOpen = TMarkdownDisclosures.IsOpen(FDisclosures, Command.Node, OpenByDefault);
-    PushDisclosure(Command, IsOpen);
-    ContentX := Command.X + DisclosureIndent;
+    EmitSectionOpener(Command, OpenByDefault);
+    Exit;
   end;
 
   const Document = HtmlBlockDocument(Command.Node);
   if (Document = nil) or (Document.ChildCount = 0) then
     Exit;
 
-  PushContainerChildren(Document, ContentX, Command.Color);
+  PushContainerChildren(Document, Command.X, Command.Color);
+end;
+
+procedure TLayoutWorker.EmitSectionOpener(const Command: TLayoutCommand; const OpenByDefault: Boolean);
+begin
+  const IsOpen = TMarkdownDisclosures.IsOpen(FDisclosures, Command.Node, OpenByDefault);
+  const OpenerHtml = TMarkdownDisclosures.OpenerHtml(Command.Node);
+  const Summary = HtmlDocument(Command.Node, HtmlSubsetCacheKey, OpenerHtml);
+
+  PushDisclosure(Command, IsOpen, Summary);
+  if Summary <> nil then
+    PushContainerChildren(Summary, Command.X + DisclosureIndent, Command.Color);
 end;
 
 // Laid out as a run would be: the summary next to the triangle and, when the
@@ -1455,10 +1467,10 @@ begin
   if IsOpen then
     PushSectionContent(Command);
 
-  PushDisclosure(Command, IsOpen);
-
   const SummaryHtml = TMarkdownDisclosures.SummaryHtml(Command.Node);
   const Summary = HtmlDocument(Command.Node, SectionSummaryCacheKey, SummaryHtml);
+
+  PushDisclosure(Command, IsOpen, Summary);
   if Summary <> nil then
     PushContainerChildren(Summary, Command.X + DisclosureIndent, Command.Color);
 end;
@@ -1478,24 +1490,41 @@ end;
 
 // Pushed before the summary, so it runs after it: the summary has been laid
 // out by then, and the clickable line can cover all of it.
-procedure TLayoutWorker.PushDisclosure(const Command: TLayoutCommand; const IsOpen: Boolean);
+procedure TLayoutWorker.PushDisclosure(const Command: TLayoutCommand; const IsOpen: Boolean;
+  const Summary: IMarkdownDocument);
 begin
   var Disclosure := Default(TLayoutCommand);
-  Disclosure.Kind := TLayoutCommandKind.Disclosure;
-  Disclosure.Node := Command.Node;
-  Disclosure.X := Command.X;
-  Disclosure.Color := Command.Color;
-  Disclosure.StartY := FCurrentY;
-  Disclosure.DisclosureOpen := IsOpen;
+  Disclosure.Kind              := TLayoutCommandKind.Disclosure;
+  Disclosure.Node              := Command.Node;
+  Disclosure.X                 := Command.X;
+  Disclosure.Color             := Command.Color;
+  Disclosure.StartY            := FCurrentY;
+  Disclosure.DisclosureOpen    := IsOpen;
+  Disclosure.SummaryLineHeight := SummaryLineHeight(Summary);
 
   FCommands.Add(Disclosure);
 end;
 
-// A section without a summary still gets one line, so there is a triangle to
-// click and its content does not stay out of reach.
+// A summary that is a heading, as GitHub allows, sets its first line in the
+// heading's font.
+function TLayoutWorker.SummaryLineHeight(const Summary: IMarkdownDocument): Single;
+begin
+  Result := FMeasurer.LineHeight(FTheme.BaseFont);
+
+  const HasChildren = (Summary <> nil) and (Summary.ChildCount > 0);
+  if not HasChildren then
+    Exit;
+
+  var Heading: IMarkdownHeading;
+  if Supports(Summary.Children[0], IMarkdownHeading, Heading) then
+    Result := FMeasurer.LineHeight(FTheme.HeadingFonts[Heading.Level]);
+end;
+
+// A section always gets at least one line, so there is a triangle to click
+// and its content does not stay out of reach.
 procedure TLayoutWorker.EmitDisclosure(const Command: TLayoutCommand);
 begin
-  const LineHeight = FMeasurer.LineHeight(FTheme.BaseFont);
+  const LineHeight = Command.SummaryLineHeight;
   FCurrentY := Max(FCurrentY, Command.StartY + LineHeight);
 
   const MarkerSize = FTheme.BaseFont.Size * DisclosureMarkerScale;
