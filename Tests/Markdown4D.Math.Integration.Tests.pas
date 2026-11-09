@@ -127,6 +127,7 @@ type
     class function FindScroller(const DisplayList: IMarkdownDisplayList): IDisplayScroller;
     class function GlyphBounds(const DisplayList: IMarkdownDisplayList; const Glyph: string): TLayoutRectF;
     class function CentreOf(const Bounds: TLayoutRectF): TLayoutPointF;
+    class function GlyphPlaces(const DisplayList: IMarkdownDisplayList): string;
 
   public
     [Setup]
@@ -158,6 +159,9 @@ type
 
     [Test]
     procedure SelectAll_DisplayBlock_CopiesDollarFences;
+
+    [Test]
+    procedure Glyphs_ArePlacedInTheirFormula;
 
     [Test]
     procedure WideDisplayFormula_ScrollsInsteadOfOverflowing;
@@ -668,6 +672,16 @@ begin
     FModel.SelectedText);
 end;
 
+// Inside a link a glyph is attributed to the link, so a click follows it,
+// while its place stays in the formula.
+procedure TMathViewerTests.Glyphs_ArePlacedInTheirFormula;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '[so $a+\alpha$](#target)'#10#10'$$'#10'\frac{b}{c}'#10'$$';
+
+  Assert.AreEqual('a|+|\alpha|b|c', GlyphPlaces(FModel.DisplayList));
+end;
+
 procedure TMathViewerTests.WideDisplayFormula_ScrollsInsteadOfOverflowing;
 begin
   FModel.SetViewport(200, DefaultHeight);
@@ -781,6 +795,26 @@ end;
 class function TMathViewerTests.CentreOf(const Bounds: TLayoutRectF): TLayoutPointF;
 begin
   Result := TLayoutPointF.Create((Bounds.Left + Bounds.Right) / 2, (Bounds.Top + Bounds.Bottom) / 2);
+end;
+
+// The source each glyph of a formula was set from, in the order of the
+// display list.
+class function TMathViewerTests.GlyphPlaces(const DisplayList: IMarkdownDisplayList): string;
+begin
+  var Places: TArray<string> := [];
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    if not Supports(DisplayList.Items[Index], IDisplayTextRun, Run) then
+      Continue;
+
+    var Math: IMarkdownMath;
+    const IsGlyph = ((Run.Role = TDisplayTextRunRole.Drawing) and Supports(Run.SourceNode, IMarkdownMath, Math));
+    if IsGlyph then
+      Places := Places + [Copy(Math.Literal, Run.StartOffset + 1, Run.SourceLength)];
+  end;
+
+  Result := string.Join('|', Places);
 end;
 
 end.

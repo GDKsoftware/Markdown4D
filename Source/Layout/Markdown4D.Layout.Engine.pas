@@ -1582,7 +1582,7 @@ begin
   const FirstItem = FItems.Count;
 
   const Canvas: IExtensionCanvas = TDisplayListExtensionCanvas.Create(FMeasurer, FItems, Command.Node,
-    TDisplayTextRunRole.Drawing);
+    TDisplayTextRunRole.Drawing, Command.Node);
   const Baseline = FCurrentY + Padding + Formula.Ascent;
   Formula.Draw(Canvas, Left, Baseline);
 
@@ -2158,6 +2158,7 @@ begin
   var Atom := Default(TInlineAtom);
   Atom.Kind := TInlineAtomKind.MathToken;
   Atom.Node := Attribution;
+  Atom.SourceNode := Child;
   Atom.Text := TLayoutWorker.MathSourceOf(Math, False);
   Atom.Font := Style.Font;
   Atom.Color := Style.Color;
@@ -2821,7 +2822,7 @@ end;
 procedure TInlineWrapper.EmitMathItem(const Atom: TInlineAtom);
 begin
   const Canvas: IExtensionCanvas = TDisplayListExtensionCanvas.Create(FMeasurer, FItems, Atom.Node,
-    TDisplayTextRunRole.Drawing);
+    TDisplayTextRunRole.Drawing, Atom.SourceNode);
   Atom.Formula.Draw(Canvas, FCursor, FLineTop + FLineBaseline);
   EmitMathSource(Atom);
 
