@@ -69,6 +69,13 @@ type
         CharFrom: Integer;
         CharTo: Integer;
       end;
+      // One stretch of the copied selection: the separator before it, the
+      // text it copies as, and the formula when it is one.
+      TCopiedPiece = record
+        Separator: string;
+        Text: string;
+        Formula: IMarkdownMath;
+      end;
     const
       DefaultFlushIntervalMilliseconds = 100;
       BottomEpsilon = 0.5;
@@ -76,6 +83,9 @@ type
       CopiedIndentWidth = 2;
       CopiedSpace = ' ';
       CopiedTab = #9;
+      HtmlParagraphStart = '<p>';
+      HtmlParagraphEnd = '</p>';
+      HtmlLineBreak = '<br>';
       AnchorMark = '#';
       MathAlphanumericFirst = $1D400;
       MathAlphanumericLast = $1D7FF;
@@ -206,6 +216,11 @@ type
     function SelectedCharacterRange(const Run: IDisplayTextRun; const ItemIndex: Integer;
       const StartPosition, EndPosition: TTextPosition; out CharFrom, CharTo: Integer): Boolean;
     function BlockIndexOfItem(const ItemIndex: Integer): Integer;
+    function CopiedPieces: TArray<TCopiedPiece>;
+    class function CopiedPiece(const Selected: TSelectedPiece): TCopiedPiece; static;
+    class function HoldsFormula(const Pieces: TArray<TCopiedPiece>): Boolean; static;
+    class function FormulaMathML(const Formula: IMarkdownMath): string; static;
+    class function HtmlSeparator(const Separator: string): string; static;
     class function SeparatorBefore(const Run: IDisplayTextRun; const StartsBlock: Boolean;
       const PreviousTop: Single): string; static;
     class function FallbackSeparator(const Run: IDisplayTextRun; const StartsBlock: Boolean;
@@ -254,6 +269,14 @@ type
     function HasSelection: Boolean;
     function SelectionRects: TArray<TLayoutRectF>;
     function SelectedText: string;
+    // The selection as HTML with a MathML element for every formula in it, so
+    // a paste into Word or LibreOffice makes equations of them; empty when the
+    // selection holds no formula.
+    function SelectedHtml: string;
+    // The selected formula as MathML when the selection is exactly one
+    // formula, for the formats Word and LibreOffice read on their own; empty
+    // otherwise.
+    function SelectedMathML: string;
     // Answers the stretch of markdown source the selection was rendered from,
     // so a formatting command can change exactly those characters. False when
     // there is no selection, or when the runs it covers carry no source of
@@ -382,6 +405,7 @@ uses
   Markdown4D.Layout.SourceMapping,
   Markdown4D.Layout.SelectedMarkdown,
   Markdown4D.Math.Layout,
+  Markdown4D.Math.MathML,
   Markdown4D.Toc,
   Markdown4D.Layout.Zoom;
 
@@ -1092,36 +1116,109 @@ end;
 function TMarkdownViewerModel.SelectedText: string;
 begin
   Result := '';
+  for var Piece in CopiedPieces do
+  begin
+    Result := Result + Piece.Separator + Piece.Text;
+  end;
+end;
+
+function TMarkdownViewerModel.SelectedHtml: string;
+begin
+  Result := '';
+
+  const Pieces = CopiedPieces;
+  if not HoldsFormula(Pieces) then
+    Exit;
+
+  for var Piece in Pieces do
+  begin
+    Result := Result + HtmlSeparator(Piece.Separator);
+
+    const IsFormula = (Piece.Formula <> nil);
+    if IsFormula then
+      Result := Result + FormulaMathML(Piece.Formula)
+    else
+      Result := Result + TNetEncoding.HTML.Encode(Piece.Text);
+  end;
+
+  Result := HtmlParagraphStart + Result + HtmlParagraphEnd;
+end;
+
+function TMarkdownViewerModel.SelectedMathML: string;
+begin
+  Result := '';
+
+  const Pieces = CopiedPieces;
+  const IsOneFormula = ((Length(Pieces) = 1) and (Pieces[0].Formula <> nil));
+  if IsOneFormula then
+    Result := FormulaMathML(Pieces[0].Formula);
+end;
+
+class function TMarkdownViewerModel.HoldsFormula(const Pieces: TArray<TCopiedPiece>): Boolean;
+begin
+  Result := False;
+  for var Piece in Pieces do
+  begin
+    const IsFormula = (Piece.Formula <> nil);
+    if IsFormula then
+      Exit(True);
+  end;
+end;
+
+class function TMarkdownViewerModel.FormulaMathML(const Formula: IMarkdownMath): string;
+begin
+  Result := TMathMLFormat.FromSource(Formula.Literal, Formula.IsDisplay);
+end;
+
+// The selection as the stretches it copies as: a whole formula is one piece,
+// part of one copies as the glyphs it shows.
+function TMarkdownViewerModel.CopiedPieces: TArray<TCopiedPiece>;
+begin
+  Result := [];
   if not HasSelection then
     Exit;
 
   var HasPrevious := False;
   var PreviousTop := 0.0;
   var PreviousBlock := 0;
-
   var Previous := Default(TSelectedPiece);
 
-  for var Piece in SelectedPieces(NormalizeSelection) do
+  const Range = NormalizeSelection;
+  for var Selected in SelectedPieces(Range) do
   begin
-    var Segment := Copy(Piece.Run.Text, Piece.CharFrom + 1, Piece.CharTo - Piece.CharFrom);
+    var Piece := CopiedPiece(Selected);
 
-    // Part of a formula copies as the characters it shows, a letter of the
-    // mathematical alphabets as the plain letter a reader would type.
-    const IsGlyph = (Piece.Run.Role = TDisplayTextRunRole.Formula);
-    if IsGlyph then
-      Segment := TMathLayouter.PlainText(Segment);
-
-    const BlockIndex = BlockIndexOfItem(Piece.ItemIndex);
+    const BlockIndex = BlockIndexOfItem(Selected.ItemIndex);
+    const StartsBlock = (BlockIndex <> PreviousBlock);
     if HasPrevious then
-      Result := Result + SeparatorBetween(Previous, Piece, BlockIndex <> PreviousBlock, PreviousTop);
+      Piece.Separator := SeparatorBetween(Previous, Selected, StartsBlock, PreviousTop);
 
-    Result := Result + Segment;
+    Result := Result + [Piece];
 
     HasPrevious := True;
-    Previous := Piece;
-    PreviousTop := Piece.Run.Bounds.Top;
+    Previous := Selected;
+    PreviousTop := Selected.Run.Bounds.Top;
     PreviousBlock := BlockIndex;
   end;
+end;
+
+// Part of a formula copies as the characters it shows, a letter of the
+// mathematical alphabets as the plain letter a reader would type; a whole
+// formula copies as its source and keeps the formula for the MathML.
+class function TMarkdownViewerModel.CopiedPiece(const Selected: TSelectedPiece): TCopiedPiece;
+begin
+  Result := Default(TCopiedPiece);
+  Result.Text := Copy(Selected.Run.Text, Selected.CharFrom + 1, Selected.CharTo - Selected.CharFrom);
+
+  const IsGlyph = (Selected.Run.Role = TDisplayTextRunRole.Formula);
+  if IsGlyph then
+    Result.Text := TMathLayouter.PlainText(Result.Text);
+
+  var Formula: IMarkdownMath;
+  const IsSource = (Selected.Run.Role = TDisplayTextRunRole.Source);
+  const IsFormula = (IsSource and Supports(Selected.Run.SourceNode, IMarkdownMath, Formula));
+  if IsFormula then
+    Result.Formula := Formula;
 end;
 
 // Two glyphs of one formula follow on directly, except where a cell or a row
@@ -1156,6 +1253,17 @@ begin
     Result := sLineBreak
   else if EndsCell then
     Result := CopiedTab;
+end;
+
+// A blank line between blocks starts a new paragraph, a line break within one
+// breaks the line; spaces and tabs stay as they are.
+class function TMarkdownViewerModel.HtmlSeparator(const Separator: string): string;
+begin
+  const BlankLine: string = sLineBreak + sLineBreak;
+  const ParagraphBreak = HtmlParagraphEnd + HtmlParagraphStart;
+
+  Result := Separator.Replace(BlankLine, ParagraphBreak);
+  Result := Result.Replace(sLineBreak, HtmlLineBreak);
 end;
 
 // A run the layout gave a join copies with that join. One without, drawn by an

@@ -163,7 +163,7 @@ type
     function GetAutoScroll: Boolean;
     function GetIsAutoScrolling: Boolean;
     function GetSelectedMarkdown: string;
-    procedure PutOnClipboard(const Text: string);
+    procedure PutOnClipboard(const Text: string; const Html: string = ''; const MathML: string = '');
     procedure CopyForShortcut(const Shift: TShiftState);
     function GetZoom: Integer;
     procedure SetZoom(const Value: Integer);
@@ -352,6 +352,7 @@ uses
   Markdown4D.Layout.Defaults,
   Markdown4D.Layout.HitTest,
   Markdown4D.Layout.Renderer,
+  Markdown4D.Viewer.Clipboard,
   Markdown4D.Viewer.Shared;
 
 
@@ -642,7 +643,7 @@ end;
 
 procedure TMarkdownViewer.CopySelectionToClipboard;
 begin
-  PutOnClipboard(FModel.SelectedText);
+  PutOnClipboard(FModel.SelectedText, FModel.SelectedHtml, FModel.SelectedMathML);
 end;
 
 procedure TMarkdownViewer.CopySelectionAsMarkdown;
@@ -666,9 +667,17 @@ begin
     CopySelectionToClipboard;
 end;
 
-procedure TMarkdownViewer.PutOnClipboard(const Text: string);
+// Formulas go on the clipboard as MathML, in HTML and on their own, next to
+// the text where the platform allows it: Word and LibreOffice paste them as
+// equations, every other program takes the text.
+procedure TMarkdownViewer.PutOnClipboard(const Text: string; const Html: string; const MathML: string);
 begin
   if Text = '' then
+    Exit;
+
+  const HasMath = ((Html <> '') or (MathML <> ''));
+  const IsPutWithMath = (HasMath and TMarkdownMathClipboard.TryPutTextWithMath(Text, Html, MathML));
+  if IsPutWithMath then
     Exit;
 
   var Clipboard: IFMXClipboardService;
