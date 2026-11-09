@@ -10,12 +10,6 @@ uses
   Markdown4D.Layout.Engine;
 
 type
-  // Finds which top-level blocks an edit changed, so a viewer can lay out only
-  // those and keep the rest of the previous layout. The blocks before and
-  // after the change keep the nodes of the previous parse, moved to their new
-  // place in the text, so the display items laid out for them still point at
-  // the right source.
-  //
   // A block is compared together with the text up to the next block, so a
   // closing fence, a link definition or a blank line after it counts as part
   // of it; the first block also takes the text before it. Equal blocks at the
@@ -48,13 +42,8 @@ type
     class function LineCount(const Text: string): Integer; static;
 
   public
-    // Compares Current, parsed from CurrentText, with Previous, parsed from
-    // PreviousText, block by block. When one stretch of blocks differs and
-    // nothing in it can change how other blocks render (a link definition, a
-    // footnote, a table of contents, a <details> section that opens or closes
-    // elsewhere), the blocks around it in Current become the nodes of
-    // Previous, and Range says which blocks to lay out again. False when the
-    // whole document has to be laid out.
+    // Gives Current the nodes of Previous around the blocks that changed;
+    // False when the whole document has to be laid out.
     class function TryReuse(const Previous: IMarkdownDocument; const PreviousText: string;
       const Current: IMarkdownDocument; const CurrentText: string; const State: IMarkdownDisclosureState;
       out Range: TLayoutBlockRange): Boolean; static;

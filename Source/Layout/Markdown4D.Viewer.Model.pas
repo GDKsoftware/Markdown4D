@@ -107,8 +107,6 @@ type
       // The layout the source line map was built for; it is built again on
       // first use after the next layout.
       FSourceLinesLayoutCount: Integer;
-      // The text the current layout shows, and whether Text changed since:
-      // then only the blocks that changed are laid out again.
       FLaidOutText: string;
       FTextChanged: Boolean;
     procedure Relayout;
