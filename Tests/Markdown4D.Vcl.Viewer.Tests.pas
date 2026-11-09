@@ -90,6 +90,9 @@ type
     procedure Keyboard_CtrlShiftC_CopiesMarkdownWhenOffered(const CopyAsMarkdown: Boolean; const Expected: string);
 
     [Test]
+    procedure Keyboard_CtrlInsert_CopiesTheSelection;
+
+    [Test]
     procedure CtrlWheel_Up_ZoomsInOneLevel;
 
     [Test]
@@ -290,6 +293,23 @@ begin
   var Copied: string;
   Assert.IsTrue(TVclTestClipboard.TryGetText(Copied));
   Assert.AreEqual(Expected, Copied);
+end;
+
+procedure TMarkdownVclViewerTests.Keyboard_CtrlInsert_CopiesTheSelection;
+begin
+  if not TVclTestClipboard.IsAccessible then
+    Assert.Pass('The clipboard is held by another process');
+
+  const Viewer = NewHostedViewer;
+  Viewer.Text := 'A **bold** word';
+  Viewer.FindText('bold');
+  Assert.IsTrue(TVclTestClipboard.TrySetText('earlier'));
+
+  Viewer.SimulateKeyDown(VK_INSERT, [ssCtrl]);
+
+  var Copied: string;
+  Assert.IsTrue(TVclTestClipboard.TryGetText(Copied));
+  Assert.AreEqual('bold', Copied);
 end;
 
 procedure TMarkdownVclViewerTests.CtrlWheel_Up_ZoomsInOneLevel;

@@ -1205,6 +1205,12 @@ begin
     Ord('C'):
       if ssCtrl in Shift then
         CopyForShortcut(Shift);
+    VK_INSERT:
+      begin
+        const IsCopyKey = (Shift * [ssShift, ssCtrl, ssAlt] = [ssCtrl]);
+        if IsCopyKey then
+          CopySelectionToClipboard;
+      end;
   end;
 end;
 
