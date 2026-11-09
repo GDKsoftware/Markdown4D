@@ -99,6 +99,21 @@ type
     procedure HiddenChildren_StateOpensSection_HidesOnlyCloser;
 
     [Test]
+    procedure ClosedSections_ClosedAndOpenSection_GivesTheClosedOneWithItsContent;
+
+    [Test]
+    procedure ClosedSections_ClosedSectionInListItem_IsFound;
+
+    [Test]
+    procedure ClosedSections_WholeSection_GivesItsContentHtml;
+
+    [Test]
+    procedure SectionsAround_HeadingInNestedSections_GivesOutermostFirst;
+
+    [Test]
+    procedure SectionsAround_HeadingAfterSection_IsEmpty;
+
+    [Test]
     procedure Layout_ClosedSection_ShowsSummaryOnly;
 
     [Test]
@@ -362,6 +377,63 @@ begin
   const Hidden = TMarkdownDisclosures.HiddenChildren(Document, State);
 
   AssertFlags([False, False, True], Hidden);
+end;
+
+procedure TMarkdownDisclosureTests.ClosedSections_ClosedAndOpenSection_GivesTheClosedOneWithItsContent;
+begin
+  const Source = OpenSection + #10#10 + ClosedSection;
+  const Document = Parse(Source);
+
+  const Sections = TMarkdownDisclosures.ClosedSections(Document, Source, nil);
+
+  Assert.AreEqual(1, Integer(Length(Sections)));
+  Assert.AreEqual(ContentText, Sections[0].HiddenSource.Trim);
+end;
+
+procedure TMarkdownDisclosureTests.ClosedSections_ClosedSectionInListItem_IsFound;
+begin
+  const Source = '- <details>'#10'  <summary>' + SummaryText + '</summary>'#10#10'  ' + ContentText +
+    #10#10'  </details>';
+  const Document = Parse(Source);
+
+  const Sections = TMarkdownDisclosures.ClosedSections(Document, Source, nil);
+
+  Assert.AreEqual(1, Integer(Length(Sections)));
+  Assert.IsTrue(Sections[0].HiddenSource.Contains(ContentText));
+end;
+
+procedure TMarkdownDisclosureTests.ClosedSections_WholeSection_GivesItsContentHtml;
+begin
+  const Source = '<details><summary>' + SummaryText + '</summary><p>' + ContentText + '</p></details>';
+  const Document = Parse(Source);
+
+  const Sections = TMarkdownDisclosures.ClosedSections(Document, Source, nil);
+
+  Assert.AreEqual(1, Integer(Length(Sections)));
+  Assert.AreEqual('<p>' + ContentText + '</p>', Sections[0].HiddenSource);
+end;
+
+procedure TMarkdownDisclosureTests.SectionsAround_HeadingInNestedSections_GivesOutermostFirst;
+begin
+  const Document = Parse('<details>'#10'<summary>Outer</summary>'#10#10'<details>'#10'<summary>Inner</summary>'#10#10 +
+    '## Target'#10#10'</details>'#10#10'</details>');
+  const Heading = Document.Children[2];
+
+  const Openers = TMarkdownDisclosures.SectionsAround(Document, Heading);
+
+  Assert.AreEqual(2, Integer(Length(Openers)));
+  Assert.IsTrue(Openers[0] = Document.Children[0], 'the outer section comes first');
+  Assert.IsTrue(Openers[1] = Document.Children[1]);
+end;
+
+procedure TMarkdownDisclosureTests.SectionsAround_HeadingAfterSection_IsEmpty;
+begin
+  const Document = Parse(ClosedSection + #10#10'## Target');
+  const Heading = Document.Children[Document.ChildCount - 1];
+
+  const Openers = TMarkdownDisclosures.SectionsAround(Document, Heading);
+
+  Assert.AreEqual(0, Integer(Length(Openers)));
 end;
 
 procedure TMarkdownDisclosureTests.Layout_ClosedSection_ShowsSummaryOnly;

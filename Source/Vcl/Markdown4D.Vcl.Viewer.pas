@@ -153,6 +153,7 @@ type
     procedure ScrollToBottom;
     procedure SetScrollPosition(const Value: Single);
     procedure ScrollToMatch(const Match: TMarkdownFoundRange);
+    procedure ShowChangedSections;
     procedure UpdateScrollBar;
     function LineScrollAmount: Integer;
     function ContentPixelsPerInch: Integer;
@@ -230,6 +231,7 @@ type
     procedure AppendMarkdown(const Markdown: string);
     // Select the next match and scroll it into view; a repeated search moves
     // on and wraps to the first match after the last. FindPrevious walks back.
+    // A closed <details> section opens when the match lies inside it.
     function FindText(const Needle: string): Boolean; overload;
     function FindText(const Needle: string; const Options: TMarkdownFindOptions): Boolean; overload;
     function FindPrevious(const Needle: string): Boolean; overload;
@@ -247,7 +249,8 @@ type
     function HighlightCount: Integer;
     procedure CopySelectionToClipboard;
     procedure CopySelectionAsMarkdown;
-    // Scrolls the heading a link like #getting-started points at to the top.
+    // Scrolls the heading a link like #getting-started points at to the top,
+    // opening the closed <details> sections around it.
     // A click on such a link does this itself; OnLinkClick is raised only for
     // an anchor the document does not have.
     function ScrollToAnchor(const Anchor: string): Boolean;
@@ -522,8 +525,14 @@ end;
 
 function TMarkdownViewer.FindText(const Needle: string; const Options: TMarkdownFindOptions): Boolean;
 begin
+  const LayoutsBefore = FModel.LayoutCount;
   var Match: TMarkdownFoundRange;
   Result := FModel.TrySelectNextMatch(Needle, Options, Match);
+
+  const OpenedSections = (FModel.LayoutCount <> LayoutsBefore);
+  if OpenedSections then
+    ShowChangedSections;
+
   if Result then
     ScrollToMatch(Match);
 end;
@@ -535,8 +544,14 @@ end;
 
 function TMarkdownViewer.FindPrevious(const Needle: string; const Options: TMarkdownFindOptions): Boolean;
 begin
+  const LayoutsBefore = FModel.LayoutCount;
   var Match: TMarkdownFoundRange;
   Result := FModel.TrySelectPreviousMatch(Needle, Options, Match);
+
+  const OpenedSections = (FModel.LayoutCount <> LayoutsBefore);
+  if OpenedSections then
+    ShowChangedSections;
+
   if Result then
     ScrollToMatch(Match);
 end;
@@ -1044,6 +1059,11 @@ begin
     Exit;
 
   FModel.ToggleDisclosure(FPressedDisclosureKey);
+  ShowChangedSections;
+end;
+
+procedure TMarkdownViewer.ShowChangedSections;
+begin
   ResolvePendingImages;
   RefreshCodeHover;
   UpdateScrollBar;
@@ -1062,6 +1082,9 @@ end;
 
 function TMarkdownViewer.ScrollToAnchor(const Anchor: string): Boolean;
 begin
+  if FModel.RevealAnchor(Anchor) then
+    ShowChangedSections;
+
   var Offset: Single;
   Result := FModel.TryGetAnchorOffset(Anchor, Offset);
   if Result then

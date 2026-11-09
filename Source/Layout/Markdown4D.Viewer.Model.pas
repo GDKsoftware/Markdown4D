@@ -149,6 +149,18 @@ type
     function ClipToScroller(const ItemIndex: Integer; const Rect: TLayoutRectF): TLayoutRectF;
     function NextMatchAfterSelection(const Matches: TArray<TMarkdownFoundRange>): TMarkdownFoundRange;
     function PreviousMatchBeforeSelection(const Matches: TArray<TMarkdownFoundRange>): TMarkdownFoundRange;
+    function TryGetMatchAhead(const Matches: TArray<TMarkdownFoundRange>; out Match: TMarkdownFoundRange): Boolean;
+    function TryGetMatchBehind(const Matches: TArray<TMarkdownFoundRange>; out Match: TMarkdownFoundRange): Boolean;
+    procedure OpenSectionsBeforeNextMatch(const Needle: string; const Options: TMarkdownFindOptions);
+    procedure OpenSectionsBeforePreviousMatch(const Needle: string; const Options: TMarkdownFindOptions);
+    function TryOpenSectionBeforeNextMatch(const Needle: string; const Options: TMarkdownFindOptions): Boolean;
+    function TryOpenSectionBeforePreviousMatch(const Needle: string; const Options: TMarkdownFindOptions): Boolean;
+    function SectionsHolding(const Needle: string; const Options: TMarkdownFindOptions): TArray<Integer>;
+    function TryGetDisclosureItem(const Key: Integer; out ItemIndex: Integer): Boolean;
+    procedure OpenSectionAt(const ItemIndex: Integer);
+    function CaretItemIndex(const WithoutCaret: Integer): Integer;
+    function TryFindAnchorHeading(const Anchor: string; out Heading: IMarkdownHeading): Boolean;
+    procedure FlipDisclosure(const Key: Integer);
     function HasCaret: Boolean;
     procedure SelectMatch(const Match: TMarkdownFoundRange);
     function RangeOfMatch(const Match: TMarkdownFoundRange): TTextRange;
@@ -220,6 +232,10 @@ type
     // The scroll offset that brings the heading a link like #getting-started
     // points at to the top of the view. The anchor may be percent-encoded.
     function TryGetAnchorOffset(const Anchor: string; out Offset: Single): Boolean;
+    // Opens the closed <details> sections around the heading an anchor points
+    // at, as a browser does when it follows a link there, and lays out again.
+    // True when a section opened.
+    function RevealAnchor(const Anchor: string): Boolean;
     // Where a line of Text shows, as the scroll offset that brings it to the
     // top of the view, and which line shows at an offset. Lines count from 0.
     // A line that renders nothing of its own, such as a blank line, falls
@@ -244,8 +260,10 @@ type
     // Select the first match after the start of the current selection, or
     // from the caret when nothing is selected, or else the first match in the
     // document, so a repeated search walks through every match. A match in a
-    // formula selects the whole formula. False when the needle does not
-    // occur; the selection is then left as is.
+    // formula selects the whole formula. When the next match lies in a closed
+    // <details> section, the section opens first, as find in a browser does;
+    // LayoutCount then changes. False when the needle does not occur; the
+    // selection is then left as is.
     function TrySelectNextMatch(const Needle: string; out Match: TMarkdownFoundRange): Boolean; overload;
     function TrySelectNextMatch(const Needle: string; const Options: TMarkdownFindOptions;
                                 out Match: TMarkdownFoundRange): Boolean; overload;
@@ -314,6 +332,7 @@ uses
   Markdown4D,
   Markdown4D.Defines,
   Markdown4D.Layout.BlockOverride,
+  Markdown4D.Layout.Disclosure,
   Markdown4D.Layout.Engine,
   Markdown4D.Layout.HitTest,
   Markdown4D.Layout.SourceMapping,
@@ -927,12 +946,11 @@ function TMarkdownViewerModel.TryGetAnchorOffset(const Anchor: string; out Offse
 begin
   Offset := 0;
   Result := False;
-  if (FDocument = nil) or (FDisplayList = nil) then
+  if FDisplayList = nil then
     Exit;
 
-  const Name = TNetEncoding.URL.Decode(Anchor.TrimLeft([AnchorMark]));
   var Heading: IMarkdownHeading;
-  if not TMarkdownToc.TryFindHeading(FDocument, Name, Heading) then
+  if not TryFindAnchorHeading(Anchor, Heading) then
     Exit;
 
   const Segment = Heading.Segment;
@@ -951,6 +969,41 @@ begin
       Exit;
     end;
   end;
+end;
+
+function TMarkdownViewerModel.RevealAnchor(const Anchor: string): Boolean;
+begin
+  Result := False;
+
+  var Heading: IMarkdownHeading;
+  if not TryFindAnchorHeading(Anchor, Heading) then
+    Exit;
+
+  const Openers = TMarkdownDisclosures.SectionsAround(FDocument, Heading);
+  for var Opener in Openers do
+  begin
+    var OpenByDefault: Boolean;
+    TMarkdownDisclosures.IsOpener(Opener, OpenByDefault);
+    if TMarkdownDisclosures.IsOpen(Self, Opener, OpenByDefault) then
+      Continue;
+
+    const Key = TMarkdownDisclosures.KeyOf(Opener);
+    FlipDisclosure(Key);
+    Result := True;
+  end;
+
+  if Result then
+    RefreshLayout;
+end;
+
+function TMarkdownViewerModel.TryFindAnchorHeading(const Anchor: string; out Heading: IMarkdownHeading): Boolean;
+begin
+  Heading := nil;
+  if FDocument = nil then
+    Exit(False);
+
+  const Name = TNetEncoding.URL.Decode(Anchor.TrimLeft([AnchorMark]));
+  Result := TMarkdownToc.TryFindHeading(FDocument, Name, Heading);
 end;
 
 function TMarkdownViewerModel.SelectedMarkdown: string;
@@ -1158,6 +1211,7 @@ function TMarkdownViewerModel.TrySelectNextMatch(const Needle: string; const Opt
   out Match: TMarkdownFoundRange): Boolean;
 begin
   Match := Default(TMarkdownFoundRange);
+  OpenSectionsBeforeNextMatch(Needle, Options);
 
   const Matches = FindText(Needle, Options);
   Result := (Length(Matches) > 0);
@@ -1177,6 +1231,7 @@ function TMarkdownViewerModel.TrySelectPreviousMatch(const Needle: string; const
   out Match: TMarkdownFoundRange): Boolean;
 begin
   Match := Default(TMarkdownFoundRange);
+  OpenSectionsBeforePreviousMatch(Needle, Options);
 
   const Matches = FindText(Needle, Options);
   Result := (Length(Matches) > 0);
@@ -1187,11 +1242,31 @@ begin
   SelectMatch(Match);
 end;
 
-// A bare caret sits between two characters, so a match that starts right at
-// it is still ahead; a selection is past its own start.
 function TMarkdownViewerModel.NextMatchAfterSelection(const Matches: TArray<TMarkdownFoundRange>): TMarkdownFoundRange;
 begin
-  Result := Matches[0];
+  if not TryGetMatchAhead(Matches, Result) then
+    Result := Matches[0];
+end;
+
+function TMarkdownViewerModel.PreviousMatchBeforeSelection(
+  const Matches: TArray<TMarkdownFoundRange>): TMarkdownFoundRange;
+begin
+  if not TryGetMatchBehind(Matches, Result) then
+    Result := Matches[High(Matches)];
+end;
+
+// A bare caret sits between two characters, so a match that starts right at
+// it is still ahead; a selection is past its own start. Without a caret the
+// first match is ahead.
+function TMarkdownViewerModel.TryGetMatchAhead(const Matches: TArray<TMarkdownFoundRange>;
+  out Match: TMarkdownFoundRange): Boolean;
+begin
+  Match := Default(TMarkdownFoundRange);
+  Result := (Length(Matches) > 0);
+  if not Result then
+    Exit;
+
+  Match := Matches[0];
   if not HasCaret then
     Exit;
 
@@ -1205,20 +1280,29 @@ begin
     const IsAhead = ((Order > 0) or (IsBareCaret and (Order = 0)));
     if IsAhead then
     begin
-      Result := Candidate;
+      Match := Candidate;
       Exit;
     end;
   end;
+
+  Result := False;
 end;
 
-function TMarkdownViewerModel.PreviousMatchBeforeSelection(
-  const Matches: TArray<TMarkdownFoundRange>): TMarkdownFoundRange;
+// Without a caret the last match is behind.
+function TMarkdownViewerModel.TryGetMatchBehind(const Matches: TArray<TMarkdownFoundRange>;
+  out Match: TMarkdownFoundRange): Boolean;
 begin
-  Result := Matches[High(Matches)];
+  Match := Default(TMarkdownFoundRange);
+  Result := (Length(Matches) > 0);
+  if not Result then
+    Exit;
+
+  Match := Matches[High(Matches)];
   if not HasCaret then
     Exit;
 
   const Selection = NormalizeSelection;
+  Result := False;
 
   for var Candidate in Matches do
   begin
@@ -1227,8 +1311,153 @@ begin
     if not IsBeforeSelectionStart then
       Break;
 
-    Result := Candidate;
+    Match := Candidate;
+    Result := True;
   end;
+end;
+
+// Each pass opens at most one section, and a section inside it may hold the
+// match, so this repeats until the next match is in view.
+procedure TMarkdownViewerModel.OpenSectionsBeforeNextMatch(const Needle: string;
+  const Options: TMarkdownFindOptions);
+begin
+  var Opened := TryOpenSectionBeforeNextMatch(Needle, Options);
+  while Opened do
+    Opened := TryOpenSectionBeforeNextMatch(Needle, Options);
+end;
+
+procedure TMarkdownViewerModel.OpenSectionsBeforePreviousMatch(const Needle: string;
+  const Options: TMarkdownFindOptions);
+begin
+  var Opened := TryOpenSectionBeforePreviousMatch(Needle, Options);
+  while Opened do
+    Opened := TryOpenSectionBeforePreviousMatch(Needle, Options);
+end;
+
+// A closed section holding the needle that comes after the caret and before
+// the next match in view; when the walk wraps to the start of the document,
+// the first such section before the first match.
+function TMarkdownViewerModel.TryOpenSectionBeforeNextMatch(const Needle: string;
+  const Options: TMarkdownFindOptions): Boolean;
+begin
+  const Sections = SectionsHolding(Needle, Options);
+  const HasSections = (Length(Sections) > 0);
+  if not HasSections then
+    Exit(False);
+
+  const Matches = FindText(Needle, Options);
+  var Ahead: TMarkdownFoundRange;
+  const HasMatchAhead = TryGetMatchAhead(Matches, Ahead);
+  const From = CaretItemIndex(-1);
+
+  for var Section in Sections do
+  begin
+    const IsBeforeMatch = ((not HasMatchAhead) or (Section < Ahead.ItemIndex));
+    const IsAfterCaret = (Section > From);
+    if IsAfterCaret and IsBeforeMatch then
+    begin
+      OpenSectionAt(Section);
+      Exit(True);
+    end;
+  end;
+
+  const IsBeforeFirstMatch = ((Length(Matches) = 0) or (Sections[0] < Matches[0].ItemIndex));
+  Result := ((not HasMatchAhead) and IsBeforeFirstMatch);
+  if Result then
+    OpenSectionAt(Sections[0]);
+end;
+
+function TMarkdownViewerModel.TryOpenSectionBeforePreviousMatch(const Needle: string;
+  const Options: TMarkdownFindOptions): Boolean;
+begin
+  const Sections = SectionsHolding(Needle, Options);
+  const HasSections = (Length(Sections) > 0);
+  if not HasSections then
+    Exit(False);
+
+  const Matches = FindText(Needle, Options);
+  var Behind: TMarkdownFoundRange;
+  const HasMatchBehind = TryGetMatchBehind(Matches, Behind);
+  const From = CaretItemIndex(MaxInt);
+
+  for var Index := High(Sections) downto 0 do
+  begin
+    const Section = Sections[Index];
+    const IsAfterMatch = ((not HasMatchBehind) or (Section > Behind.ItemIndex));
+    const IsBeforeCaret = (Section < From);
+    if IsBeforeCaret and IsAfterMatch then
+    begin
+      OpenSectionAt(Section);
+      Exit(True);
+    end;
+  end;
+
+  const LastSection = Sections[High(Sections)];
+  const IsAfterLastMatch = ((Length(Matches) = 0) or (LastSection > Matches[High(Matches)].ItemIndex));
+  Result := ((not HasMatchBehind) and IsAfterLastMatch);
+  if Result then
+    OpenSectionAt(LastSection);
+end;
+
+// The display items of the closed sections whose hidden source holds the
+// needle, in document order. The source can hold markup the reader does not
+// see, so a section can open without a match in it; the walk then goes on.
+function TMarkdownViewerModel.SectionsHolding(const Needle: string;
+  const Options: TMarkdownFindOptions): TArray<Integer>;
+begin
+  Result := nil;
+  const IsSearchable = ((Needle <> '') and (FDocument <> nil) and (FDisplayList <> nil));
+  if not IsSearchable then
+    Exit;
+
+  const Sections = TMarkdownDisclosures.ClosedSections(FDocument, FText, Self);
+  for var Section in Sections do
+  begin
+    const Position = TMarkdownTextSearch.IndexOf(Needle, Section.HiddenSource, 1, Options);
+    const HoldsNeedle = (Position > 0);
+    if not HoldsNeedle then
+      Continue;
+
+    const Key = TMarkdownDisclosures.KeyOf(Section.Opener);
+    var ItemIndex: Integer;
+    if TryGetDisclosureItem(Key, ItemIndex) then
+      Result := Result + [ItemIndex];
+  end;
+end;
+
+function TMarkdownViewerModel.TryGetDisclosureItem(const Key: Integer; out ItemIndex: Integer): Boolean;
+begin
+  for var Index := 0 to FDisplayList.ItemCount - 1 do
+  begin
+    var Disclosure: IDisplayDisclosure;
+    const IsSection = (Supports(FDisplayList.Items[Index], IDisplayDisclosure, Disclosure) and
+                       (Disclosure.Key = Key));
+    if IsSection then
+    begin
+      ItemIndex := Index;
+      Exit(True);
+    end;
+  end;
+
+  ItemIndex := -1;
+  Result := False;
+end;
+
+procedure TMarkdownViewerModel.OpenSectionAt(const ItemIndex: Integer);
+begin
+  const Disclosure = FDisplayList.Items[ItemIndex] as IDisplayDisclosure;
+  ToggleDisclosure(Disclosure.Key);
+end;
+
+// The display item the selection starts in, or WithoutCaret when there is
+// no caret.
+function TMarkdownViewerModel.CaretItemIndex(const WithoutCaret: Integer): Integer;
+begin
+  if not HasCaret then
+    Exit(WithoutCaret);
+
+  const Selection = NormalizeSelection;
+  Result := Selection.StartPosition.ItemIndex;
 end;
 
 function TMarkdownViewerModel.HasCaret: Boolean;
@@ -1462,16 +1691,21 @@ end;
 
 procedure TMarkdownViewerModel.ToggleDisclosure(const Key: Integer);
 begin
-  const WasToggled = FToggledDisclosures.Contains(Key);
-  if WasToggled then
-    FToggledDisclosures.Remove(Key)
-  else
-    FToggledDisclosures.Add(Key);
+  FlipDisclosure(Key);
 
   RefreshLayout;
   // Closing a section near the end can leave the view scrolled past the
   // shorter document.
   SetScrollOffset(FScrollOffset);
+end;
+
+procedure TMarkdownViewerModel.FlipDisclosure(const Key: Integer);
+begin
+  const WasToggled = FToggledDisclosures.Contains(Key);
+  if WasToggled then
+    FToggledDisclosures.Remove(Key)
+  else
+    FToggledDisclosures.Add(Key);
 end;
 
 function TMarkdownViewerModel.IsDisclosureOpen(const Key: Integer; const OpenByDefault: Boolean): Boolean;

@@ -396,6 +396,27 @@ type
     procedure TryGetDisclosureAt_PointBelowSummary_ReturnsFalse;
 
     [Test]
+    procedure TrySelectNextMatch_MatchInClosedSection_OpensSectionAndSelectsMatch;
+
+    [Test]
+    procedure TrySelectNextMatch_MatchInViewBeforeClosedSection_LeavesSectionClosed;
+
+    [Test]
+    procedure TrySelectNextMatch_MatchInNestedClosedSections_OpensBoth;
+
+    [Test]
+    procedure TrySelectNextMatch_MatchInClosedWholeSection_OpensIt;
+
+    [Test]
+    procedure TrySelectPreviousMatch_MatchInClosedSection_OpensSectionAndSelectsMatch;
+
+    [Test]
+    procedure RevealAnchor_HeadingInClosedSection_OpensSectionSoTheAnchorIsFound;
+
+    [Test]
+    procedure RevealAnchor_HeadingInView_ReturnsFalse;
+
+    [Test]
     procedure SourceLineToScrollOffset_BlocksRegroupedByProcessor_IsTopOfThatLine;
 
     [Test]
@@ -1769,6 +1790,95 @@ begin
   const Found = FModel.TryGetDisclosureAt(TLayoutPointF.Create(DefaultWidth / 2, ThirdLineY), Key);
 
   Assert.IsFalse(Found);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectNextMatch_MatchInClosedSection_OpensSectionAndSelectsMatch;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := ClosedSectionMarkdown;
+
+  var Match: TMarkdownFoundRange;
+  const Found = FModel.TrySelectNextMatch(SectionContentText, Match);
+
+  Assert.IsTrue(Found);
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+  Assert.AreEqual(SectionContentText, FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectNextMatch_MatchInViewBeforeClosedSection_LeavesSectionClosed;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := SectionContentText + ' in view'#10#10 + ClosedSectionMarkdown;
+
+  var Match: TMarkdownFoundRange;
+  FModel.TrySelectNextMatch(SectionContentText, Match);
+  const CountWithSectionClosed = FModel.MatchCount(SectionContentText);
+  FModel.TrySelectNextMatch(SectionContentText, Match);
+
+  Assert.AreEqual(1, CountWithSectionClosed, 'the first match is in view, so the section stays closed');
+  Assert.AreEqual(2, FModel.MatchCount(SectionContentText), 'the next search opens the section');
+  Assert.AreEqual(1, FModel.MatchIndex(SectionContentText, Default(TMarkdownFindOptions)));
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectNextMatch_MatchInNestedClosedSections_OpensBoth;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '<details>'#10'<summary>Outer</summary>'#10#10 + ClosedSectionMarkdown + #10#10'</details>';
+
+  var Match: TMarkdownFoundRange;
+  const Found = FModel.TrySelectNextMatch(SectionContentText, Match);
+
+  Assert.IsTrue(Found);
+  Assert.AreEqual(SectionContentText, FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectNextMatch_MatchInClosedWholeSection_OpensIt;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '<details><summary>' + SummaryText + '</summary><p>' + SectionContentText + '</p></details>';
+
+  var Match: TMarkdownFoundRange;
+  const Found = FModel.TrySelectNextMatch(SectionContentText, Match);
+
+  Assert.IsTrue(Found);
+  Assert.AreEqual(SectionContentText, FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectPreviousMatch_MatchInClosedSection_OpensSectionAndSelectsMatch;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := ClosedSectionMarkdown + #10#10'After';
+
+  var Match: TMarkdownFoundRange;
+  const Found = FModel.TrySelectPreviousMatch(SectionContentText, Match);
+
+  Assert.IsTrue(Found);
+  Assert.AreEqual(SectionContentText, FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.RevealAnchor_HeadingInClosedSection_OpensSectionSoTheAnchorIsFound;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '<details>'#10'<summary>' + SummaryText + '</summary>'#10#10'## Target'#10#10'</details>';
+  var Offset: Single;
+  const FoundWhileClosed = FModel.TryGetAnchorOffset('#target', Offset);
+
+  const Revealed = FModel.RevealAnchor('#target');
+
+  Assert.IsFalse(FoundWhileClosed, 'a heading in a closed section is not laid out');
+  Assert.IsTrue(Revealed);
+  Assert.IsTrue(FModel.TryGetAnchorOffset('#target', Offset));
+end;
+
+procedure TMarkdownViewerModelTests.RevealAnchor_HeadingInView_ReturnsFalse;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '## Target'#10#10 + ClosedSectionMarkdown;
+
+  const Revealed = FModel.RevealAnchor('#target');
+
+  Assert.IsFalse(Revealed);
+  Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
 end;
 
 procedure TMarkdownViewerModelTests.ToggleFirstDisclosure;
