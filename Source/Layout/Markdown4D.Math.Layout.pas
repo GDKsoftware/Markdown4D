@@ -112,7 +112,7 @@ type
     // Gives every glyph inside that has no place in the formula's source yet
     // this one, so a delimiter drawn for \left or a glyph of \ce belongs to
     // the command that drew it.
-    procedure AttachSource(const Start, Length: Integer);
+    procedure AttachSource(const SourceStart, SourceLength: Integer);
     property Width: Single read FWidth write FWidth;
     property Ascent: Single read FAscent write FAscent;
     property Descent: Single read FDescent write FDescent;
@@ -134,6 +134,30 @@ type
 
   TMathGlyphMapper = class
   private
+    const
+      LatinFirst = $1D400;
+      LatinLast = $1D6A3;
+      LatinPerStyle = 52;
+      GreekFirst = $1D6A8;
+      GreekLast = $1D7C9;
+      GreekPerStyle = 58;
+      DigitFirst = $1D7CE;
+      DigitLast = $1D7FF;
+      DigitsPerStyle = 10;
+      LettersInAlphabet = 26;
+      GreekLetters =
+        #$0391#$0392#$0393#$0394#$0395#$0396#$0397#$0398#$0399#$039A#$039B#$039C#$039D#$039E +
+        #$039F#$03A0#$03A1#$03F4#$03A3#$03A4#$03A5#$03A6#$03A7#$03A8#$03A9#$2207#$03B1#$03B2 +
+        #$03B3#$03B4#$03B5#$03B6#$03B7#$03B8#$03B9#$03BA#$03BB#$03BC#$03BD#$03BE#$03BF#$03C0 +
+        #$03C1#$03C2#$03C3#$03C4#$03C5#$03C6#$03C7#$03C8#$03C9#$2202#$03F5#$03D1#$03F0#$03D5 +
+        #$03F1#$03D6;
+      LetterlikeFrom =
+        #$210E#$212C#$2130#$2131#$210B#$2110#$2112#$2133#$211B#$212F#$210A#$2134#$212D#$210C +
+        #$2111#$211C#$2128#$2102#$210D#$2115#$2119#$211A#$211D#$2124;
+      LetterlikeTo = 'hBEFHILMRegoCHIRZCHNPQRZ';
+    class function PlainLetterlike(const Value: Char): Char; static;
+    class function PlainAlphanumeric(const CodePoint: Integer): string; static;
+    class function PlainLatin(const CodePoint: Integer): Char; static;
     class function MapLetter(const Letter: Char; const UpperBase, LowerBase: Integer): Integer; static;
     class function MapDigit(const Digit: Char; const DigitBase: Integer): Integer; static;
     class function DoubleStruck(const Value: Char): Integer; static;
@@ -409,22 +433,23 @@ end;
 
 // A box once attached has given its glyphs their places, so the boxes around
 // it need not look into it again.
-procedure TMathBox.AttachSource(const Start, Length: Integer);
+procedure TMathBox.AttachSource(const SourceStart, SourceLength: Integer);
 begin
   if FIsAttached then
     Exit;
+
   FIsAttached := True;
 
   const IsUnplacedGlyph = ((FKind = TMathBoxKind.Glyph) and (FSourceStart < 0));
   if IsUnplacedGlyph then
   begin
-    FSourceStart := Start;
-    FSourceLength := Length;
+    FSourceStart := SourceStart;
+    FSourceLength := SourceLength;
   end;
 
   for var Placement in FChildren do
   begin
-    Placement.Box.AttachSource(Start, Length);
+    Placement.Box.AttachSource(SourceStart, SourceLength);
   end;
 end;
 
@@ -1853,27 +1878,6 @@ end;
 // alphabet in thirteen styles, the Greek one in five and the digits in five;
 // the letterlike symbols fill the gaps in them, such as the double-struck R.
 class function TMathGlyphMapper.PlainText(const Text: string): string;
-const
-  LatinFirst = $1D400;
-  LatinLast = $1D6A3;
-  LatinPerStyle = 52;
-  GreekFirst = $1D6A8;
-  GreekLast = $1D7C9;
-  GreekPerStyle = 58;
-  DigitFirst = $1D7CE;
-  DigitLast = $1D7FF;
-  DigitsPerStyle = 10;
-  LettersInAlphabet = 26;
-  GreekLetters =
-    #$0391#$0392#$0393#$0394#$0395#$0396#$0397#$0398#$0399#$039A#$039B#$039C#$039D#$039E +
-    #$039F#$03A0#$03A1#$03F4#$03A3#$03A4#$03A5#$03A6#$03A7#$03A8#$03A9#$2207#$03B1#$03B2 +
-    #$03B3#$03B4#$03B5#$03B6#$03B7#$03B8#$03B9#$03BA#$03BB#$03BC#$03BD#$03BE#$03BF#$03C0 +
-    #$03C1#$03C2#$03C3#$03C4#$03C5#$03C6#$03C7#$03C8#$03C9#$2202#$03F5#$03D1#$03F0#$03D5 +
-    #$03F1#$03D6;
-  LetterlikeFrom =
-    #$210E#$212C#$2130#$2131#$210B#$2110#$2112#$2133#$211B#$212F#$210A#$2134#$212D#$210C +
-    #$2111#$211C#$2128#$2102#$210D#$2115#$2119#$211A#$211D#$2124;
-  LetterlikeTo = 'hBEFHILMRegoCHIRZCHNPQRZ';
 begin
   Result := '';
 
@@ -1881,46 +1885,54 @@ begin
   while Index <= Length(Text) do
   begin
     const IsPair = ((Index < Length(Text)) and Text[Index].IsHighSurrogate);
-    if not IsPair then
+    if IsPair then
     begin
-      const Letterlike = Pos(Text[Index], LetterlikeFrom);
-      const IsLetterlike = (Letterlike > 0);
-      if IsLetterlike then
-        Result := Result + LetterlikeTo[Letterlike]
-      else
-        Result := Result + Text[Index];
-      Inc(Index);
-      Continue;
-    end;
-
-    const CodePoint = Char.ConvertToUtf32(Text[Index], Text[Index + 1]);
-    const IsLatin = ((CodePoint >= LatinFirst) and (CodePoint <= LatinLast));
-    const IsGreek = ((CodePoint >= GreekFirst) and (CodePoint <= GreekLast));
-    const IsDigit = ((CodePoint >= DigitFirst) and (CodePoint <= DigitLast));
-    if IsLatin then
-    begin
-      const Letter = (CodePoint - LatinFirst) mod LatinPerStyle;
-      const IsUpper = (Letter < LettersInAlphabet);
-      if IsUpper then
-        Result := Result + Chr(Ord('A') + Letter)
-      else
-        Result := Result + Chr(Ord('a') + Letter - LettersInAlphabet);
-    end
-    else if IsGreek then
-    begin
-      Result := Result + GreekLetters[(CodePoint - GreekFirst) mod GreekPerStyle + 1];
-    end
-    else if IsDigit then
-    begin
-      Result := Result + Chr(Ord('0') + (CodePoint - DigitFirst) mod DigitsPerStyle);
+      const CodePoint = Char.ConvertToUtf32(Text[Index], Text[Index + 1]);
+      Result := Result + PlainAlphanumeric(CodePoint);
+      Inc(Index, 2);
     end
     else
     begin
-      Result := Result + Text[Index] + Text[Index + 1];
+      Result := Result + PlainLetterlike(Text[Index]);
+      Inc(Index);
     end;
-
-    Inc(Index, 2);
   end;
+end;
+
+class function TMathGlyphMapper.PlainLetterlike(const Value: Char): Char;
+begin
+  const Letterlike = Pos(Value, LetterlikeFrom);
+  const IsLetterlike = (Letterlike > 0);
+  if IsLetterlike then
+    Result := LetterlikeTo[Letterlike]
+  else
+    Result := Value;
+end;
+
+// A code point outside the three runs, such as an emoji, stays as it is.
+class function TMathGlyphMapper.PlainAlphanumeric(const CodePoint: Integer): string;
+begin
+  const IsLatin = ((CodePoint >= LatinFirst) and (CodePoint <= LatinLast));
+  const IsGreek = ((CodePoint >= GreekFirst) and (CodePoint <= GreekLast));
+  const IsDigit = ((CodePoint >= DigitFirst) and (CodePoint <= DigitLast));
+  if IsLatin then
+    Result := PlainLatin(CodePoint)
+  else if IsGreek then
+    Result := GreekLetters[(CodePoint - GreekFirst) mod GreekPerStyle + 1]
+  else if IsDigit then
+    Result := Chr(Ord('0') + (CodePoint - DigitFirst) mod DigitsPerStyle)
+  else
+    Result := Char.ConvertFromUtf32(CodePoint);
+end;
+
+class function TMathGlyphMapper.PlainLatin(const CodePoint: Integer): Char;
+begin
+  const Letter = (CodePoint - LatinFirst) mod LatinPerStyle;
+  const IsUpper = (Letter < LettersInAlphabet);
+  if IsUpper then
+    Result := Chr(Ord('A') + Letter)
+  else
+    Result := Chr(Ord('a') + Letter - LettersInAlphabet);
 end;
 
 end.

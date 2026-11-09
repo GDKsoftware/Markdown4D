@@ -160,9 +160,11 @@ type
     class function RunCharacterClass(const Run: IDisplayTextRun; const Index: Integer): TCharacterClass; static;
     class function IsGlyphOf(const Run: IDisplayTextRun; const Formula: IMarkdownNode): Boolean; static;
     procedure FindFormulaGlyphs(const Index: Integer; out FirstGlyph, LastGlyph: Integer; out Left, Right: Single);
-    procedure SnapToFormulaEdge(const Point: TLayoutPointF; var Position: TTextPosition);
+    function FormulaEdgeNear(const Point: TLayoutPointF; const Position: TTextPosition): TTextPosition;
     function TryGetWholeFormula(const Glyph: Integer; const Range: TTextRange; out SourceIndex: Integer): Boolean;
     function SelectedPieces(const Range: TTextRange): TArray<TSelectedPiece>;
+    function TryTakePiece(const Index: Integer; const Range: TTextRange; out Piece: TSelectedPiece;
+                          out NextIndex: Integer): Boolean;
     class function SeparatorBetween(const Previous, Piece: TSelectedPiece; const StartsBlock: Boolean;
       const PreviousTop: Single): string; static;
     class function TableBreakBetween(const Before, After: IDisplayTextRun): string; static;
@@ -855,8 +857,10 @@ end;
 // Beside a formula the pointer means its edge: past its right side the end of
 // its last glyph, before its left side the start of its first, even where the
 // glyph nearest to the pointer is a numerator or a power.
-procedure TMarkdownViewerModel.SnapToFormulaEdge(const Point: TLayoutPointF; var Position: TTextPosition);
+function TMarkdownViewerModel.FormulaEdgeNear(const Point: TLayoutPointF; const Position: TTextPosition): TTextPosition;
 begin
+  Result := Position;
+
   var FirstGlyph, LastGlyph: Integer;
   var Left, Right: Single;
   FindFormulaGlyphs(Position.ItemIndex, FirstGlyph, LastGlyph, Left, Right);
@@ -867,13 +871,13 @@ begin
   begin
     var Last: IDisplayTextRun;
     TrySelectableRun(LastGlyph, Last);
-    Position.ItemIndex := LastGlyph;
-    Position.CharacterIndex := Length(Last.Text);
+    Result.ItemIndex := LastGlyph;
+    Result.CharacterIndex := Length(Last.Text);
   end
   else if IsBeforeLeft then
   begin
-    Position.ItemIndex := FirstGlyph;
-    Position.CharacterIndex := 0;
+    Result.ItemIndex := FirstGlyph;
+    Result.CharacterIndex := 0;
   end;
 end;
 
@@ -920,41 +924,53 @@ begin
   var Index := Range.StartPosition.ItemIndex;
   while Index <= Range.EndPosition.ItemIndex do
   begin
-    var NextIndex := Index + 1;
-    var Piece := Default(TSelectedPiece);
-    Piece.ItemIndex := Index;
-    const IsSelected = (TrySelectableRun(Index, Piece.Run) and
-                        SelectedCharacterRange(Piece.Run, Index, Range.StartPosition, Range.EndPosition,
-                                               Piece.CharFrom, Piece.CharTo));
-    if IsSelected then
-    begin
-      Piece.JoinRun := Piece.Run;
-
-      var SourceIndex: Integer;
-      const IsGlyph = (Piece.Run.Role = TDisplayTextRunRole.Formula);
-      const IsSource = (Piece.Run.Role = TDisplayTextRunRole.Source);
-      if IsGlyph and TryGetWholeFormula(Index, Range, SourceIndex) then
-      begin
-        TrySelectableRun(SourceIndex, Piece.Run);
-        Piece.ItemIndex := SourceIndex;
-        Piece.CharFrom := 0;
-        Piece.CharTo := Length(Piece.Run.Text);
-        NextIndex := SourceIndex + 1;
-        Result := Result + [Piece];
-      end
-      else if IsSource then
-      begin
-        const StartsHere = ((Index = Range.StartPosition.ItemIndex) and (Piece.CharFrom = 0));
-        if StartsHere then
-          Result := Result + [Piece];
-      end
-      else
-      begin
-        Result := Result + [Piece];
-      end;
-    end;
+    var Piece: TSelectedPiece;
+    var NextIndex: Integer;
+    const IsTaken = TryTakePiece(Index, Range, Piece, NextIndex);
+    if IsTaken then
+      Result := Result + [Piece];
 
     Index := NextIndex;
+  end;
+end;
+
+// The piece of the run at Index, or of the source run that stands for its
+// formula, and the run to look at after it.
+function TMarkdownViewerModel.TryTakePiece(const Index: Integer; const Range: TTextRange; out Piece: TSelectedPiece;
+                                           out NextIndex: Integer): Boolean;
+begin
+  NextIndex := Index + 1;
+  Piece := Default(TSelectedPiece);
+  Piece.ItemIndex := Index;
+
+  Result := (TrySelectableRun(Index, Piece.Run) and
+             SelectedCharacterRange(Piece.Run, Index, Range.StartPosition, Range.EndPosition, Piece.CharFrom,
+                                    Piece.CharTo));
+  if not Result then
+    Exit;
+
+  Piece.JoinRun := Piece.Run;
+
+  const IsSource = (Piece.Run.Role = TDisplayTextRunRole.Source);
+  if IsSource then
+  begin
+    Result := ((Index = Range.StartPosition.ItemIndex) and (Piece.CharFrom = 0));
+    Exit;
+  end;
+
+  const IsGlyph = (Piece.Run.Role = TDisplayTextRunRole.Formula);
+  if not IsGlyph then
+    Exit;
+
+  var SourceIndex: Integer;
+  const HoldsWholeFormula = TryGetWholeFormula(Index, Range, SourceIndex);
+  if HoldsWholeFormula then
+  begin
+    TrySelectableRun(SourceIndex, Piece.Run);
+    Piece.ItemIndex := SourceIndex;
+    Piece.CharFrom := 0;
+    Piece.CharTo := Length(Piece.Run.Text);
+    NextIndex := SourceIndex + 1;
   end;
 end;
 
@@ -2360,7 +2376,8 @@ begin
 
   const IsGlyph = (BestRun.Role = TDisplayTextRunRole.Formula);
   if IsGlyph then
-    SnapToFormulaEdge(Point, Position);
+    Position := FormulaEdgeNear(Point, Position);
+
   Result := True;
 end;
 
