@@ -193,6 +193,9 @@ type
     procedure SelectWordAt_LettersOnOneBaseline_SelectsTheName;
 
     [Test]
+    procedure Drag_InScrolledFormula_SelectsTheGlyphsInView;
+
+    [Test]
     procedure WideDisplayFormula_ScrollsInsteadOfOverflowing;
 
     [Test]
@@ -823,6 +826,20 @@ begin
   Assert.IsTrue(FModel.SelectWordAt(CentreOf(Letter)));
 
   Assert.AreEqual('ac', FModel.SelectedText, 'the letters of a name, but not its power');
+end;
+
+procedure TMathViewerTests.Drag_InScrolledFormula_SelectsTheGlyphsInView;
+begin
+  FModel.SetViewport(200, DefaultHeight);
+  FModel.Text := WideFormula;
+  const Before = GlyphRun('f').Bounds.Left;
+  const Band = FindScroller(FModel.DisplayList).Bounds;
+
+  FModel.ScrollSideways(TLayoutPointF.Create(Band.Left + 10, (Band.Top + Band.Bottom) / 2), 30);
+  Drag('f', 'h');
+
+  Assert.AreEqual(Before - 30, GlyphRun('f').Bounds.Left, ScrollTolerance, 'the glyphs moved with the scroll');
+  Assert.AreEqual('f+g+h', FModel.SelectedText);
 end;
 
 procedure TMathViewerTests.WideDisplayFormula_ScrollsInsteadOfOverflowing;
