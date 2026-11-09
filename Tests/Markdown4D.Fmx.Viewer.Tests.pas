@@ -139,6 +139,9 @@ type
     procedure Keyboard_CtrlShiftC_CopiesMarkdownWhenOffered(const CopyAsMarkdown: Boolean; const Expected: string);
 
     [Test]
+    procedure Keyboard_CtrlInsert_CopiesTheSelection;
+
+    [Test]
     procedure CtrlWheel_Up_ZoomsInOneLevel;
 
     [Test]
@@ -438,6 +441,22 @@ begin
     PressKey(vkC, [ssCtrl, ssShift]);
 
     Assert.AreEqual(Expected, Clipboard.Text);
+  finally
+    Clipboard.Restore;
+  end;
+end;
+
+procedure TMarkdownFmxViewerTests.Keyboard_CtrlInsert_CopiesTheSelection;
+begin
+  var Clipboard: TFmxClipboardSwap;
+  Clipboard.Replace;
+  try
+    FViewer.Text := 'A **bold** word';
+    FViewer.FindText('bold');
+
+    PressKey(vkInsert, [ssCtrl]);
+
+    Assert.AreEqual('bold', Clipboard.Text);
   finally
     Clipboard.Restore;
   end;

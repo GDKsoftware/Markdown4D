@@ -1222,6 +1222,12 @@ begin
         SelectAll;
       vkC:
         CopyForShortcut(Shift);
+      vkInsert:
+        begin
+          Result := (Shift * [ssShift, ssCtrl, ssAlt] = [ssCtrl]);
+          if Result then
+            CopySelectionToClipboard;
+        end;
     else
       Result := TryHandleZoomKey(Key);
     end;
