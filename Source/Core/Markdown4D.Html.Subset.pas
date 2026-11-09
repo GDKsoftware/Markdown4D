@@ -13,6 +13,8 @@ unit Markdown4D.Html.Subset;
 // So instead of a second rendering path, the allowed subset is translated to
 // markdown and handed back to the parser. Everything downstream - layout,
 // selection, hit-testing, theming, image loading - then works on it unchanged.
+// The inline tags markdown has no form for, such as <sub> and <mark>, stay as
+// inline HTML, which a paragraph draws the way GitHub does.
 //
 // The list of tags this understands is deliberately short. A tag that is not on
 // it is dropped while its content is kept, which is what a browser would show
@@ -56,6 +58,9 @@ type
     Emphasis,
     CodeSpan,
     Strikethrough,
+    // Markdown has no form for it, but a paragraph draws it as inline HTML,
+    // so the tag stays as it is.
+    InlineHtml,
     Anchor,
     Image,
     UnorderedList,
@@ -214,6 +219,12 @@ begin
     Result.Kind := TTagKind.Strikethrough;
     Result.Opener := '~~';
     Result.Closer := '~~';
+  end
+  else if (Name = 'sub') or (Name = 'sup') or (Name = 'ins') or (Name = 'mark') or (Name = 'small') then
+  begin
+    Result.Kind := TTagKind.InlineHtml;
+    Result.Opener := Format('<%s>', [Name]);
+    Result.Closer := Format('</%s>', [Name]);
   end
   else if Name = 'a' then
     Result.Kind := TTagKind.Anchor
