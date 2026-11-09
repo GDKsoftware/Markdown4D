@@ -563,6 +563,8 @@ same.
 | `SelectedText: string` | The selected text |
 | `IsAutoScrolling: Boolean` | True while middle-click autoscroll runs |
 | `ZoomIn` / `ZoomOut` / `ResetZoom` | Step `Zoom` to the next level up or down, or back to 100, as the keys do |
+| `Relayout` | Lay the document out again with the same text, keeping the scroll position and the selection as a width change does, for an extension whose drawing depends on `ExtensionData` that changed |
+| `ExtensionData: IMarkdownExtensionData` | What extensions keep for this viewer, each under its own name; a block override reads it from its context, so two viewers that show the same text each keep their own (see [EXTENSIONS.md](EXTENSIONS.md)) |
 | `TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean` | The stretch of markdown the selection was rendered from, so an editor can format exactly those characters; `False` when there is no selection or the runs carry no source |
 | `ContentHeight: Integer` | Laid-out document height, for auto-sizing |
 | `ScrollOffset: Single` | Read / set the vertical scroll position |

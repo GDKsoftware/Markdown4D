@@ -20,6 +20,7 @@ uses
   Markdown4D.Layout.DisplayList,
   Markdown4D.Theme,
   Markdown4D.Viewer.Model,
+  Markdown4D.Layout.BlockOverride,
   Markdown4D.Layout.TextSearch,
   Markdown4D.Viewer.Clicks,
   Markdown4D.Layout.ResizePacer,
@@ -155,6 +156,7 @@ type
     procedure ScrollToMatch(const Match: TMarkdownFoundRange);
     procedure ShowChangedSections;
     function GetToggledSections: TArray<Integer>;
+    function GetExtensionData: IMarkdownExtensionData;
     procedure SetToggledSections(const Value: TArray<Integer>);
     procedure UpdateScrollBar;
     function LineScrollAmount: Integer;
@@ -275,11 +277,19 @@ type
     procedure ZoomIn;
     procedure ZoomOut;
     procedure ResetZoom;
+    // Lays the document out again with the same text, keeping the scroll
+    // position and the selection, as a width change does: for an extension
+    // whose drawing depends on ExtensionData that changed.
+    procedure Relayout;
     // Answers the stretch of markdown the selection in the preview was
     // rendered from, so an editor can put its own selection on those same
     // characters before a formatting command runs.
     function TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean;
     property Theme: TMarkdownTheme read FTheme write SetTheme;
+    // What extensions keep for this viewer, each under its own name. A block
+    // override reads it from its context, so two viewers that show the same
+    // text each keep their own.
+    property ExtensionData: IMarkdownExtensionData read GetExtensionData;
     property ContentHeight: Integer read GetContentHeight;
     property ScrollOffset: Single read GetScrollOffset write SetScrollPosition;
     property DisplayList: IMarkdownDisplayList read GetDisplayList;
@@ -1077,6 +1087,11 @@ begin
   Result := FModel.ToggledDisclosures;
 end;
 
+function TMarkdownViewer.GetExtensionData: IMarkdownExtensionData;
+begin
+  Result := FModel.ExtensionData;
+end;
+
 procedure TMarkdownViewer.SetToggledSections(const Value: TArray<Integer>);
 begin
   FModel.ToggledDisclosures := Value;
@@ -1243,6 +1258,14 @@ end;
 procedure TMarkdownViewer.ResetZoom;
 begin
   StepZoom(TMarkdownZoom.DefaultPercent);
+end;
+
+procedure TMarkdownViewer.Relayout;
+begin
+  FModel.RefreshLayout;
+  ResolvePendingImages;
+  UpdateScrollBar;
+  Invalidate;
 end;
 
 // A slow document waits until the wheel rests, so turning it several notches
