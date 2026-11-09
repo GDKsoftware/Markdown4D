@@ -128,7 +128,7 @@ const
   CmdReplaceName = 'Find and replace';
   CmdReplaceShortcut = 'Ctrl+H';
   CmdFindPreviewName = 'Find in preview';
-  CmdFindPreviewShortcut = '';
+  CmdFindPreviewShortcut = 'Ctrl+F';
   CmdUndoName = 'Undo';
   CmdUndoShortcut = 'Ctrl+Z';
   CmdRedoName = 'Redo';
