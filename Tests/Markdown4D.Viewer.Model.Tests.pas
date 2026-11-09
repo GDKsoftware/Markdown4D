@@ -285,6 +285,24 @@ type
     procedure HtmlBlock_SuperscriptAndSubscript_LeaveTheBaseline;
 
     [Test]
+    [TestCase('Paragraph', '<p align="center">Title</p>,Title')]
+    [TestCase('Heading', '<h1 align="center">Title</h1>,Title')]
+    [TestCase('Center tag', '<center>Title</center>,Title')]
+    procedure HtmlBlock_AlignCenter_CentresTheLine(const Html, Shown: string);
+
+    [Test]
+    procedure HtmlBlock_AlignRight_EndsAtTheRightEdge;
+
+    [Test]
+    procedure HtmlBlock_AlignCenter_CentresAnImage;
+
+    [Test]
+    procedure HtmlBlock_WithoutAlign_StaysAtTheLeft;
+
+    [Test]
+    procedure AlignedElement_WithBlankLines_CentresTheMarkdownInside;
+
+    [Test]
     procedure InlineHtml_Code_UsesTheCodeFont;
 
     [Test]
@@ -1339,6 +1357,64 @@ begin
   Assert.IsTrue(Raised.Font.Size < Base.Font.Size, 'smaller');
   Assert.IsTrue(Raised.Bounds.Top < Base.Bounds.Top, 'raised');
   Assert.IsTrue(Lowered.Bounds.Bottom > Base.Bounds.Bottom, 'lowered');
+end;
+
+procedure TMarkdownViewerModelTests.HtmlBlock_AlignCenter_CentresTheLine(const Html, Shown: string);
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := Html;
+
+  const Bounds = RunShowing(Shown).Bounds;
+  Assert.AreEqual(DefaultWidth / 2, (Bounds.Left + Bounds.Right) / 2, 0.5);
+end;
+
+procedure TMarkdownViewerModelTests.HtmlBlock_AlignRight_EndsAtTheRightEdge;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := '<p align="right">Signed</p>';
+
+  Assert.AreEqual(DefaultWidth, RunShowing('Signed').Bounds.Right, 0.5);
+end;
+
+procedure TMarkdownViewerModelTests.HtmlBlock_AlignCenter_CentresAnImage;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := '<p align="center"><img src="logo.png" alt="Logo"></p>';
+
+  var Logo: IDisplayImage;
+  for var Index := 0 to FModel.DisplayList.ItemCount - 1 do
+  begin
+    if Supports(FModel.DisplayList.Items[Index], IDisplayImage, Logo) then
+      Break;
+  end;
+
+  Assert.IsNotNull(Logo, 'the image is laid out');
+  Assert.AreEqual(DefaultWidth / 2, (Logo.Bounds.Left + Logo.Bounds.Right) / 2, 0.5);
+end;
+
+procedure TMarkdownViewerModelTests.HtmlBlock_WithoutAlign_StaysAtTheLeft;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := '<p>Plain text</p>';
+
+  Assert.AreEqual(0.0, RunShowing('Plain text').Bounds.Left, 0.01);
+end;
+
+// As README files write it: blank lines around the markdown, so the opening
+// and the closing tag are blocks of their own.
+procedure TMarkdownViewerModelTests.AlignedElement_WithBlankLines_CentresTheMarkdownInside;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := '<div align="center">'#10#10'Inside'#10#10'</div>'#10#10'Outside';
+
+  const Inside = RunShowing('Inside').Bounds;
+  Assert.AreEqual(DefaultWidth / 2, (Inside.Left + Inside.Right) / 2, 0.5);
+  Assert.AreEqual(0.0, RunShowing('Outside').Bounds.Left, 0.01, 'after the closing tag');
 end;
 
 procedure TMarkdownViewerModelTests.InlineHtml_Code_UsesTheCodeFont;

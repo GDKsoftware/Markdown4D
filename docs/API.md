@@ -604,12 +604,19 @@ translates an allowed subset to markdown and lays that out through the
 ordinary path, so it gets selection, hit-testing and theming for free. The
 subset covers `p`, `div`, `center`, `section`, `article`, `h1`-`h6`, `hr`,
 `br`, `strong`/`b`, `em`/`i`, `code`/`kbd`/`samp`/`tt`, `del`/`s`/`strike`,
-`a`, `img`, `ul`/`ol`/`li`, `blockquote`, `details`/`summary` and `pre`.
-`script`, `style`, `head`, `iframe` and `object` are dropped along with their
-content; any other tag disappears while its content stays, the way a browser
-would show it with the styling removed. The translation is implemented in
-`Markdown4D.Html.Subset` and cached on the AST node, since layout runs again
-on every resize and every streamed chunk.
+`a`, `img`, `ul`/`ol`/`li`, `blockquote`, `details`/`summary` and `pre`;
+`sub`, `sup`, `ins`, `mark` and `small` stay as inline HTML, which a paragraph
+draws as GitHub does. `script`, `style`, `head`, `iframe` and `object` are
+dropped along with their content; any other tag disappears while its content
+stays, the way a browser would show it with the styling removed. The
+translation is implemented in `Markdown4D.Html.Subset` and cached on the AST
+node, since layout runs again on every resize and every streamed chunk.
+
+`align="center"` or `align="right"` on the outer element of an HTML block,
+and a `center` tag, line up every line of the block, as GitHub does for a
+centred logo, title or row of badges. Written the way README files often do,
+with blank lines around the markdown between `<div align="center">` and
+`</div>`, the alignment holds for every block in between.
 
 A `details` section folds as it does on GitHub when it is written the way
 GitHub needs it: the opening tag and its `summary`, a blank line, the markdown
