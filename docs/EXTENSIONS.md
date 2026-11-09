@@ -409,7 +409,9 @@ type
 processor tagged. `LayoutBlock` receives the node, the `Top` at which it must lay
 out, and a context exposing the available `Width`, the active `Theme`, a text
 `Measurer`, and the `Canvas`. It draws onto the canvas and returns the block's
-height.
+height. For blocks that hold markdown of their own or depend on what the reader
+did, the context also gives the viewer's image sizes, its extension data and a
+nested layout; see [Viewer state and nested markdown](#viewer-state-and-nested-markdown).
 
 **The `Theme`** is a `TMarkdownTheme` (unit `Markdown4D.Theme`), the same record
 the viewer paints the rest of the document with. Add `Markdown4D.Theme` to your
@@ -498,6 +500,33 @@ How smoothly a curve is drawn follows how large it is, so a shape asks for no
 segment count of its own. On a canvas without anti-aliasing of its own the
 painter fills and strokes through this project's rasterizer, which is why a
 diamond has no staircase on its diagonals.
+
+### Viewer state and nested markdown
+
+A block override is registered once, but several viewers can show the same text.
+What the reader did in one viewer, such as the tab picked in a tabbed block or
+the series switched off in a chart, belongs to that viewer. The context gives
+three things for this:
+
+| Member | What it is |
+|--------|------------|
+| `ExtensionData: IMarkdownExtensionData` | The data extensions keep for the viewer that lays out, each under its own name: `TryGetValue(Name, out Value: IInterface)` and `SetValue(Name, Value)`. Use your extension's name as the key, so two extensions never meet. `nil` outside a viewer |
+| `ImageSizes: IMarkdownImageSizeProvider` | The sizes of the images the viewer has loaded. `nil` outside a viewer |
+| `LayoutNested(Document, Width): IMarkdownDisplayList` | Lays out a document of the block's own, such as the content of a box or a column, with the theme, image sizes and extension data of the layout around it. The result starts at 0, 0, the theme's padding included |
+| `AppendNested(DisplayList, Left, Top)` | Adds what `LayoutNested` laid out to the block, moved by `Left` and `Top` |
+
+The application, or the extension itself when the reader clicks, writes the
+data through the viewer's `ExtensionData` and then calls `Relayout`, which lays
+the same text out again and keeps the scroll position and the selection:
+
+```pascal
+Viewer.ExtensionData.SetValue(TTabsExtension.ExtensionName, TTabsState.Create(SelectedTab));
+Viewer.Relayout;
+```
+
+An image in a nested document gets its size only once the viewer has loaded it,
+and the viewer loads the images of its own document. An image that appears only
+inside the block's markdown keeps the size of an image that has not arrived.
 
 ### Registration
 

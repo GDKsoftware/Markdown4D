@@ -13,6 +13,7 @@ uses
   Markdown4D.Layout.SourceLineMap,
   Markdown4D.Layout.TextAnchor,
   Markdown4D.Layout.TextSearch,
+  Markdown4D.Layout.BlockOverride,
   Markdown4D.Theme;
 
 type
@@ -122,6 +123,7 @@ type
       FSourceLinesLayoutCount: Integer;
       FLaidOutText: string;
       FTextChanged: Boolean;
+      FExtensionData: IMarkdownExtensionData;
     procedure Relayout;
     function LayoutFor(const Document: IMarkdownDocument): IMarkdownDisplayList;
     procedure RefreshSourceLines;
@@ -355,6 +357,9 @@ type
     // In percent. Every font, length and image of the theme grows with it;
     // the line at the top of the view stays there.
     property Zoom: Integer read FZoom write SetZoom;
+    // What extensions keep for this viewer; the block overrides read it from
+    // their context.
+    property ExtensionData: IMarkdownExtensionData read FExtensionData;
     property OnExtensionError: TMarkdownExtensionErrorEvent read FOnExtensionError write FOnExtensionError;
   end;
 
@@ -367,7 +372,7 @@ uses
   System.NetEncoding,
   Markdown4D,
   Markdown4D.Defines,
-  Markdown4D.Layout.BlockOverride,
+  Markdown4D.Layout.ExtensionData,
   Markdown4D.Layout.ChangedBlocks,
   Markdown4D.Layout.Disclosure,
   Markdown4D.Layout.Engine,
@@ -405,6 +410,7 @@ begin
   FImageSlotOrder := TList<string>.Create;
   FToggledDisclosures := TList<Integer>.Create;
   FScrollerOffsets := TDictionary<Integer, Single>.Create;
+  FExtensionData := TMarkdownExtensionData.Create;
   FDraggedScroller := -1;
   FSourceLines := TMarkdownSourceLineMap.Create;
   FSourceLinesLayoutCount := -1;
@@ -2240,9 +2246,11 @@ begin
   const CanReuse = (FTextChanged and HasPreviousLayout and
                     TMarkdownChangedBlocks.TryReuse(FDocument, FLaidOutText, Document, FText, Self, Range));
   if CanReuse then
-    Result := TMarkdownLayoutEngine.UpdateLayout(FDisplayList, Document, Range, LayoutTheme, FMeasurer, Self, Self, Self)
+    Result := TMarkdownLayoutEngine.UpdateLayout(FDisplayList, Document, Range, LayoutTheme, FMeasurer, Self, Self, Self,
+      FExtensionData)
   else
-    Result := TMarkdownLayoutEngine.LayoutDocument(Document, FViewportWidth, LayoutTheme, FMeasurer, Self, Self, Self);
+    Result := TMarkdownLayoutEngine.LayoutDocument(Document, FViewportWidth, LayoutTheme, FMeasurer, Self, Self, Self,
+      FExtensionData);
 end;
 
 function TMarkdownViewerModel.TryCaptureSelection(out Selection: TSelectionAnchors): Boolean;

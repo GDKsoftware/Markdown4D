@@ -8,6 +8,7 @@ uses
   Markdown4D.Ast.Interfaces,
   Markdown4D.Extensions.Interfaces,
   Markdown4D.Layout.Interfaces,
+  Markdown4D.Layout.DisplayList,
   Markdown4D.Theme;
 
 type
@@ -63,16 +64,39 @@ type
       const Color: TLayoutColor; const SourceStart, SourceLength: Integer; const Ascent, Descent: Single);
   end;
 
+  // What extensions keep for one viewer, each under its own name, so two
+  // viewers that show the same text each keep their own: a section the reader
+  // opened, a series switched off, a tab picked. The viewer and the
+  // application read and write it as the block overrides do.
+  IMarkdownExtensionData = interface
+    ['{5EB6AEEC-16E5-43F0-8F5D-E581FBDC42F1}']
+    function TryGetValue(const Name: string; out Value: IInterface): Boolean;
+    procedure SetValue(const Name: string; const Value: IInterface);
+  end;
+
   ILayoutBlockContext = interface
     ['{5E1A7C34-9B62-4D08-A5F1-72C0E4B36D91}']
     function GetMeasurer: ITextMeasurer;
     function GetTheme: TMarkdownTheme;
     function GetWidth: Single;
     function GetCanvas: IExtensionCanvas;
+    function GetImageSizes: IMarkdownImageSizeProvider;
+    function GetExtensionData: IMarkdownExtensionData;
+    // Lays out a document of the extension's own, such as the content of a
+    // box or a column, with the theme, the image sizes and the extension data
+    // of the layout around it. The result starts at 0, 0, the theme's padding
+    // included.
+    function LayoutNested(const Document: IMarkdownDocument; const Width: Single): IMarkdownDisplayList;
+    // Adds what LayoutNested laid out to this block, moved by Left and Top.
+    procedure AppendNested(const DisplayList: IMarkdownDisplayList; const Left, Top: Single);
     property Measurer: ITextMeasurer read GetMeasurer;
     property Theme: TMarkdownTheme read GetTheme;
     property Width: Single read GetWidth;
     property Canvas: IExtensionCanvas read GetCanvas;
+    // The sizes of the images the viewer has loaded; nil outside a viewer.
+    property ImageSizes: IMarkdownImageSizeProvider read GetImageSizes;
+    // The data extensions keep for the viewer that lays out; nil outside a viewer.
+    property ExtensionData: IMarkdownExtensionData read GetExtensionData;
   end;
 
   ILayoutBlockOverride = interface

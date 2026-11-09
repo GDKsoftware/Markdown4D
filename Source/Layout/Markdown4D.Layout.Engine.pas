@@ -32,14 +32,16 @@ type
       const Theme: TMarkdownTheme; const Measurer: ITextMeasurer;
       const ImageSizes: IMarkdownImageSizeProvider = nil;
       const ExtensionErrors: IMarkdownExtensionErrorSink = nil;
-      const Disclosures: IMarkdownDisclosureState = nil): IMarkdownDisplayList;
+      const Disclosures: IMarkdownDisclosureState = nil;
+      const ExtensionData: IMarkdownExtensionData = nil): IMarkdownDisplayList;
     // A block outside ChangedRange is reused as the previous layout left it,
     // so a section opened or closed since then needs its blocks in the range.
     class function UpdateLayout(const Previous: IMarkdownDisplayList; const Document: IMarkdownDocument;
       const ChangedRange: TLayoutBlockRange; const Theme: TMarkdownTheme; const Measurer: ITextMeasurer;
       const ImageSizes: IMarkdownImageSizeProvider = nil;
       const ExtensionErrors: IMarkdownExtensionErrorSink = nil;
-      const Disclosures: IMarkdownDisclosureState = nil): IMarkdownDisplayList;
+      const Disclosures: IMarkdownDisclosureState = nil;
+      const ExtensionData: IMarkdownExtensionData = nil): IMarkdownDisplayList;
     class procedure RegisterBlockOverride(const Handler: ILayoutBlockOverride; const Priority: Integer);
     class procedure ClearBlockOverrides;
   end;
@@ -209,14 +211,21 @@ type
     FItems: TList<IDisplayItem>;
     FNode: IMarkdownNode;
     FCanvas: IExtensionCanvas;
+    FImageSizes: IMarkdownImageSizeProvider;
+    FExtensionData: IMarkdownExtensionData;
     function GetMeasurer: ITextMeasurer;
     function GetTheme: TMarkdownTheme;
     function GetWidth: Single;
     function GetCanvas: IExtensionCanvas;
+    function GetImageSizes: IMarkdownImageSizeProvider;
+    function GetExtensionData: IMarkdownExtensionData;
 
   public
     constructor Create(const Measurer: ITextMeasurer; const Theme: TMarkdownTheme; const Width: Single;
-      const Items: TList<IDisplayItem>; const Node: IMarkdownNode);
+      const Items: TList<IDisplayItem>; const Node: IMarkdownNode; const ImageSizes: IMarkdownImageSizeProvider;
+      const ExtensionData: IMarkdownExtensionData);
+    function LayoutNested(const Document: IMarkdownDocument; const Width: Single): IMarkdownDisplayList;
+    procedure AppendNested(const DisplayList: IMarkdownDisplayList; const Left, Top: Single);
   end;
 
   TLayoutCommandKind = (Block, Gap, QuoteBar, ListItem, AlertTitle, Disclosure);
@@ -352,6 +361,7 @@ type
       FImageSizes: IMarkdownImageSizeProvider;
       FExtensionErrors: IMarkdownExtensionErrorSink;
       FDisclosures: IMarkdownDisclosureState;
+      FExtensionData: IMarkdownExtensionData;
       FCommands: TList<TLayoutCommand>;
       FCollector: TInlineAtomCollector;
       FCurrentY: Single;
@@ -423,7 +433,8 @@ type
   public
     constructor Create(const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Width: Single;
       const Items: TList<IDisplayItem>; const ImageSizes: IMarkdownImageSizeProvider;
-      const ExtensionErrors: IMarkdownExtensionErrorSink; const Disclosures: IMarkdownDisclosureState);
+      const ExtensionErrors: IMarkdownExtensionErrorSink; const Disclosures: IMarkdownDisclosureState;
+      const ExtensionData: IMarkdownExtensionData);
     destructor Destroy; override;
     function RecomputeBlock(const Node: IMarkdownNode; const Index: Integer; var Y: Single;
       const PreviousBelow: Single): TLayoutBlockInfo;
@@ -448,14 +459,15 @@ class function TMarkdownLayoutEngine.LayoutDocument(const Document: IMarkdownDoc
   const Theme: TMarkdownTheme; const Measurer: ITextMeasurer;
   const ImageSizes: IMarkdownImageSizeProvider;
   const ExtensionErrors: IMarkdownExtensionErrorSink;
-  const Disclosures: IMarkdownDisclosureState): IMarkdownDisplayList;
+  const Disclosures: IMarkdownDisclosureState;
+  const ExtensionData: IMarkdownExtensionData): IMarkdownDisplayList;
 begin
   ValidateLayoutArguments(Document, AvailableWidth, Theme, Measurer);
 
   const Items = TList<IDisplayItem>.Create;
   try
     const Worker = TLayoutWorker.Create(Theme, Measurer, AvailableWidth, Items, ImageSizes, ExtensionErrors,
-      Disclosures);
+      Disclosures, ExtensionData);
     try
       const BlockCount = Document.ChildCount;
       var Blocks: TArray<TLayoutBlockInfo>;
@@ -500,7 +512,8 @@ class function TMarkdownLayoutEngine.UpdateLayout(const Previous: IMarkdownDispl
   const Document: IMarkdownDocument; const ChangedRange: TLayoutBlockRange; const Theme: TMarkdownTheme;
   const Measurer: ITextMeasurer; const ImageSizes: IMarkdownImageSizeProvider;
   const ExtensionErrors: IMarkdownExtensionErrorSink;
-  const Disclosures: IMarkdownDisclosureState): IMarkdownDisplayList;
+  const Disclosures: IMarkdownDisclosureState;
+  const ExtensionData: IMarkdownExtensionData): IMarkdownDisplayList;
 begin
   if Previous = nil then
     raise EMarkdownError.Create('Previous display list is required for incremental layout');
@@ -518,7 +531,7 @@ begin
   const Items = TList<IDisplayItem>.Create;
   try
     const Worker = TLayoutWorker.Create(Theme, Measurer, Previous.Width, Items, ImageSizes, ExtensionErrors,
-      Disclosures);
+      Disclosures, ExtensionData);
     try
       var Blocks: TArray<TLayoutBlockInfo>;
       SetLength(Blocks, TotalBlockCount);
@@ -608,7 +621,8 @@ end;
 
 constructor TLayoutWorker.Create(const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Width: Single;
   const Items: TList<IDisplayItem>; const ImageSizes: IMarkdownImageSizeProvider;
-  const ExtensionErrors: IMarkdownExtensionErrorSink; const Disclosures: IMarkdownDisclosureState);
+  const ExtensionErrors: IMarkdownExtensionErrorSink; const Disclosures: IMarkdownDisclosureState;
+  const ExtensionData: IMarkdownExtensionData);
 begin
   inherited Create;
 
@@ -619,6 +633,7 @@ begin
   FImageSizes := ImageSizes;
   FExtensionErrors := ExtensionErrors;
   FDisclosures := Disclosures;
+  FExtensionData := ExtensionData;
   FCommands := TList<TLayoutCommand>.Create;
   FCollector := TInlineAtomCollector.Create(FMeasurer, FTheme, FImageSizes, ContentRight);
 end;
@@ -902,7 +917,7 @@ begin
   const FirstItemIndex = FItems.Count;
   const AvailableWidth = ContentRight - Command.X;
   const Context: ILayoutBlockContext = TLayoutBlockContext.Create(FMeasurer, FTheme, AvailableWidth, FItems,
-    Command.Node);
+    Command.Node, FImageSizes, FExtensionData);
 
   try
     const Height = Handler.LayoutBlock(Command.Node, FCurrentY, Context);
@@ -2410,7 +2425,8 @@ begin
 end;
 
 constructor TLayoutBlockContext.Create(const Measurer: ITextMeasurer; const Theme: TMarkdownTheme; const Width: Single;
-  const Items: TList<IDisplayItem>; const Node: IMarkdownNode);
+  const Items: TList<IDisplayItem>; const Node: IMarkdownNode; const ImageSizes: IMarkdownImageSizeProvider;
+  const ExtensionData: IMarkdownExtensionData);
 begin
   inherited Create;
 
@@ -2419,6 +2435,25 @@ begin
   FWidth := Width;
   FItems := Items;
   FNode := Node;
+  FImageSizes := ImageSizes;
+  FExtensionData := ExtensionData;
+end;
+
+// An override that fails inside the nested document fails the block around it,
+// which then falls back as any failed override does.
+function TLayoutBlockContext.LayoutNested(const Document: IMarkdownDocument; const Width: Single): IMarkdownDisplayList;
+begin
+  Result := TMarkdownLayoutEngine.LayoutDocument(Document, Width, FTheme, FMeasurer, FImageSizes, nil, nil,
+    FExtensionData);
+end;
+
+procedure TLayoutBlockContext.AppendNested(const DisplayList: IMarkdownDisplayList; const Left, Top: Single);
+begin
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    const Item = DisplayList.Items[Index];
+    FItems.Add(TLayoutWorker.ShiftedItem(Item, Left, Top));
+  end;
 end;
 
 function TLayoutBlockContext.GetMeasurer: ITextMeasurer;
@@ -2434,6 +2469,16 @@ end;
 function TLayoutBlockContext.GetWidth: Single;
 begin
   Result := FWidth;
+end;
+
+function TLayoutBlockContext.GetImageSizes: IMarkdownImageSizeProvider;
+begin
+  Result := FImageSizes;
+end;
+
+function TLayoutBlockContext.GetExtensionData: IMarkdownExtensionData;
+begin
+  Result := FExtensionData;
 end;
 
 function TLayoutBlockContext.GetCanvas: IExtensionCanvas;

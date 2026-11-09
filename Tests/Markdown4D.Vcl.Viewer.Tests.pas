@@ -85,6 +85,9 @@ type
     procedure Keyboard_CtrlA_SelectsWholeDocument;
 
     [Test]
+    procedure Relayout_AfterExtensionDataChanged_LaysOutAgain;
+
+    [Test]
     [TestCase('On', 'True,**bold**')]
     [TestCase('Off', 'False,bold')]
     procedure Keyboard_CtrlShiftC_CopiesMarkdownWhenOffered(const CopyAsMarkdown: Boolean; const Expected: string);
@@ -196,7 +199,8 @@ uses
   Markdown4D.Tests.Pipeline.Helpers,
   Markdown4D.Tests.FailingExtensions,
   Markdown4D.Tests.VclClipboard,
-  Markdown4D.Tests.DisplayList.Helpers;
+  Markdown4D.Tests.DisplayList.Helpers,
+  Markdown4D.Tests.BoxOverride;
 
 function TTestableVclViewer.SimulateWheel(const WheelDelta: Integer; const Shift: TShiftState): Boolean;
 begin
@@ -354,6 +358,27 @@ begin
   Viewer.Zoom := 150;
 
   Assert.AreEqual(1, FZoomChangeCount);
+end;
+
+// An extension that keeps what the reader did in the viewer's extension data
+// asks for a new layout once it changes.
+procedure TMarkdownVclViewerTests.Relayout_AfterExtensionDataChanged_LaysOutAgain;
+begin
+  TMarkdownLayoutEngine.RegisterBlockOverride(TBoxBlockOverride.Create, TBoxBlockOverride.Priority);
+  try
+    const Viewer = NewHostedViewer;
+    Viewer.Text := '```box'#10'```'#10#10'after';
+    const LayoutsBefore = Viewer.LayoutCount;
+    const HeightBefore = Viewer.ContentHeight;
+
+    Viewer.ExtensionData.SetValue(TBoxBlockOverride.OverrideName, TBoxHeight.Create(60));
+    Viewer.Relayout;
+
+    Assert.IsTrue(Viewer.LayoutCount > LayoutsBefore, 'laid out again');
+    Assert.IsTrue(Viewer.ContentHeight > HeightBefore, 'the taller box pushes the text down');
+  finally
+    TMarkdownLayoutEngine.ClearBlockOverrides;
+  end;
 end;
 
 procedure TMarkdownVclViewerTests.Keyboard_CtrlA_SelectsWholeDocument;
