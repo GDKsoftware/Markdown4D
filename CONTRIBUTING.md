@@ -26,17 +26,17 @@ regenerates the conformance table in the README. The script looks for the newest
 Delphi; set `MARKDOWN4D_STUDIO` to a version number such as `23.0` to force a
 different one.
 
-Delphi Community Edition users can use `build.bat` by using one of the following options:
+The Community Edition has no command-line compiler. Set `DELPHI_CE`, or create a
+file or folder named `DELPHI.CE` in the repository root, and the script builds
+`Markdown4D.groupproj` with `bds -b` and runs the Win32 suites:
 
-- Set the environment variable `DELPHI_CE` in the builds terminal session prior to running `build.bat`
+```bat
+set DELPHI_CE=1
+build.bat
+```
 
-  For instance:
-  ```bash
-  set DELPHI_CE=1
-  build.bat
-  ```
-
-- Have a file or directory named `DELPHI.CE` in the Markdown4D project directory using: `md DELPHI.CE` or `touch DELPHI.CE`
+When that build fails, the IDE stays open with the errors; close it and the
+script stops, with the full log in `Markdown4D.err`.
 
 ## Tests
 

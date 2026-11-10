@@ -48,7 +48,6 @@ packages/dcp/
 # Local secrets (DPM API key); never committed.
 .env
 
-# bds -b support and output files
-DELPHI.CE/
+# Community Edition build switch and the error log of bds -b.
 DELPHI.CE
 Markdown4D.err
