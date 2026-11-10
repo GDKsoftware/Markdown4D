@@ -14,8 +14,8 @@ type
   // and MathML Presentation as well. Every other program takes the text.
   // Neither viewer's clipboard offers that on its own, FMX's empties the
   // clipboard for every format it writes, so on Windows the clipboard is
-  // written here directly. Elsewhere TryPutTextWithMath is False and the
-  // viewer puts the text alone.
+  // written here directly, opened for a window of its own as Windows asks.
+  // Elsewhere TryPutTextWithMath is False and the viewer puts the text alone.
   TMarkdownMathClipboard = record
   private
     const
@@ -26,7 +26,9 @@ type
                    'StartFragment:%.10d'#13#10'EndFragment:%.10d'#13#10;
       HtmlBeforeFragment = '<html><body><!--StartFragment-->';
       HtmlAfterFragment = '<!--EndFragment--></body></html>';
+      OwnerWindowClass = 'STATIC';
 {$IFDEF MSWINDOWS}
+    class function TryPutFormats(const Text, Html, MathML: string): Boolean; static;
     class function TryPutData(const ClipboardFormat: Cardinal; const Data: TBytes): Boolean; static;
     class function TryPutNamedData(const FormatName: string; const Data: TBytes): Boolean; static;
     class function TryPutMathML(const MathML: string): Boolean; static;
@@ -53,33 +55,50 @@ uses
 {$ENDIF}
 
 {$IFDEF MSWINDOWS}
+// SetClipboardData fails after OpenClipboard without a window, so the clipboard
+// is opened for a message-only window that lives as long as the copy, as the
+// VCL's TClipboard does with a window it allocates.
 class function TMarkdownMathClipboard.TryPutTextWithMath(const Text, Html, MathML: string): Boolean;
 begin
   Result := False;
 
-  const IsOpened = OpenClipboard(0);
-  if not IsOpened then
+  const OwnerWindow = CreateWindowEx(0, OwnerWindowClass, nil, 0, 0, 0, 0, 0, HWND_MESSAGE, 0, HInstance, nil);
+  const IsCreated = (OwnerWindow <> 0);
+  if not IsCreated then
     Exit;
 
   try
-    EmptyClipboard;
+    const IsOpened = OpenClipboard(OwnerWindow);
+    if not IsOpened then
+      Exit;
 
-    const Data = TextData(Text);
-    Result := TryPutData(CF_UNICODETEXT, Data);
-
-    const HasHtml = (Html <> '');
-    if Result and HasHtml then
-    begin
-      const Document = HtmlData(Html);
-      Result := TryPutNamedData(HtmlFormat, Document);
+    try
+      Result := TryPutFormats(Text, Html, MathML);
+    finally
+      CloseClipboard;
     end;
-
-    const HasMathML = (MathML <> '');
-    if Result and HasMathML then
-      Result := TryPutMathML(MathML);
   finally
-    CloseClipboard;
+    DestroyWindow(OwnerWindow);
   end;
+end;
+
+class function TMarkdownMathClipboard.TryPutFormats(const Text, Html, MathML: string): Boolean;
+begin
+  EmptyClipboard;
+
+  const Data = TextData(Text);
+  Result := TryPutData(CF_UNICODETEXT, Data);
+
+  const HasHtml = (Html <> '');
+  if Result and HasHtml then
+  begin
+    const Document = HtmlData(Html);
+    Result := TryPutNamedData(HtmlFormat, Document);
+  end;
+
+  const HasMathML = (MathML <> '');
+  if Result and HasMathML then
+    Result := TryPutMathML(MathML);
 end;
 
 // Word reads the one format, LibreOffice the other.
