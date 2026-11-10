@@ -18,36 +18,36 @@ set FMX_RESULTS_XML_X64=%RESULTS_DIR%\dunitx-fmx-results-win64x.xml
 
 rem Check for environment variable named DELPHI_CE or the existence of a file or directory named DELPHI.CE.
 if not defined DELPHI_CE (
-    if exist DELPHI.CE set DELPHI_CE=1
+    if exist %ROOT%DELPHI.CE set DELPHI_CE=1
 )
 
 rem The install root carries brackets, so every expansion of it stays quoted.
-if not defined STUDIO_ROOT set "STUDIO_ROOT=C:\Program Files (x86)\Embarcadero\Studio"
+if not defined MARKDOWN4D_STUDIO set "MARKDOWN4D_STUDIO=C:\Program Files (x86)\Embarcadero\Studio"
 
 rem Newest supported Delphi first: 37.0 is Delphi 13 Florence, 23.0 is Delphi 12 Athens.
 rem Set STUDIO_VERSION to a version number to force one of them.
 if defined STUDIO_VERSION (
-    if defined DELPHI_CE set "STUDIO_BDS=%STUDIO_ROOT%\%STUDIO_VERSION%\bin\bds.exe"
-    set "RSVARS=%STUDIO_ROOT%\%STUDIO_VERSION%\bin\rsvars.bat"
+    if defined DELPHI_CE set "STUDIO_BDS=%MARKDOWN4D_STUDIO%\%STUDIO_VERSION%\bin\bds.exe"
+    set "RSVARS=%MARKDOWN4D_STUDIO%\%STUDIO_VERSION%\bin\rsvars.bat"
 ) else (
     for %%V in (37.0 23.0) do (
-        if defined DELPHI_CE if not defined STUDIO_BDS if exist "%STUDIO_ROOT%\%%V\bin\bds.exe" set "STUDIO_BDS=%STUDIO_ROOT%\%%V\bin\bds.exe"
-        if not defined RSVARS if exist "%STUDIO_ROOT%\%%V\bin\rsvars.bat" set "RSVARS=%STUDIO_ROOT%\%%V\bin\rsvars.bat"
+        if defined DELPHI_CE if not defined STUDIO_BDS if exist "%MARKDOWN4D_STUDIO%\%%V\bin\bds.exe" set "STUDIO_BDS=%MARKDOWN4D_STUDIO%\%%V\bin\bds.exe"
+        if not defined RSVARS if exist "%MARKDOWN4D_STUDIO%\%%V\bin\rsvars.bat" set "RSVARS=%MARKDOWN4D_STUDIO%\%%V\bin\rsvars.bat"
     )
 )
 
 if defined DELPHI_CE if defined STUDIO_BDS (
 
     if not exist "%STUDIO_BDS%" (
-        echo [build] bsd.exe not found.
+        echo [build] bds.exe not found.
         exit /b 1
     )
     "%STUDIO_BDS%" "%ROOT%Markdown4D.groupproj" -b
     if errorlevel 1 (
-        echo [build] bsd -b failed.
+        echo [build] bds -b failed.
         exit /b 1
     )
-    echo [build] bsd -b succeeded.
+    echo [build] bds -b succeeded.
 
 )
 
@@ -55,9 +55,9 @@ rem If not Delphi Community Edition, call rsvars.bat and build using msbuild.
 if not defined DELPHI_CE (
 
     if not defined RSVARS (
-        echo [build] No supported Delphi found under "%STUDIO_ROOT%".
+        echo [build] No supported Delphi found under "%MARKDOWN4D_STUDIO%".
         echo [build] Looked for 37.0 ^(Delphi 13 Florence^) and 23.0 ^(Delphi 12 Athens^).
-        echo [build] Set STUDIO_VERSION to a version number, or STUDIO_ROOT to another install root.
+        echo [build] Set STUDIO_VERSION to a version number, or MARKDOWN4D_STUDIO to another install root.
         exit /b 1
     )
 

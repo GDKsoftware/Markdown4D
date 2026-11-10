@@ -5,7 +5,7 @@ the tests and get a change merged.
 
 ## What you need
 
-- **RAD Studio / Delphi 12 Athens (23.0) or Delphi 13 (37.0)**, Win32 and
+- **RAD Studio / Delphi 12 Athens (23.0) or Delphi 13 Florence (37.0)**, Win32 and
   Win64x. The library itself is plain Object Pascal and uses only the RTL,
   the VCL and FMX.
 - Nothing else to install. Everything the sources need is in the repository.
@@ -25,6 +25,18 @@ examples and all five packages (Win32, plus the VCL packages on Win64x), and
 regenerates the conformance table in the README. The script looks for the newest installed
 Delphi; set `MARKDOWN4D_STUDIO` to a version number such as `23.0` to force a
 different one.
+
+Delphi Community Edition users can use `build.bat` by using one of the following options:
+
+- Set the environment variable `DELPHI_CE` in the builds terminal session prior to running `build.bat`
+
+  For instance:
+  ```bash
+  set DELPHI_CE=1
+  build.bat
+  ```
+
+- Have a file or directory named `DELPHI.CE` in the Markdown4D project directory using: `md DELPHI.CE` or `touch DELPHI.CE`
 
 ## Tests
 

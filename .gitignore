@@ -47,3 +47,8 @@ packages/dcp/
 
 # Local secrets (DPM API key); never committed.
 .env
+
+# bds -b support and output files
+DELPHI.CE/
+DELPHI.CE
+Markdown4D.err
