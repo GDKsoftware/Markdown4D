@@ -5,7 +5,7 @@ the tests and get a change merged.
 
 ## What you need
 
-- **RAD Studio / Delphi 12 Athens (23.0) or Delphi 13 (37.0)**, Win32 and
+- **RAD Studio / Delphi 12 Athens (23.0) or Delphi 13 Florence (37.0)**, Win32 and
   Win64x. The library itself is plain Object Pascal and uses only the RTL,
   the VCL and FMX.
 - Nothing else to install. Everything the sources need is in the repository.
@@ -25,6 +25,18 @@ examples and all five packages (Win32, plus the VCL packages on Win64x), and
 regenerates the conformance table in the README. The script looks for the newest installed
 Delphi; set `MARKDOWN4D_STUDIO` to a version number such as `23.0` to force a
 different one.
+
+The Community Edition has no command-line compiler. Set `DELPHI_CE`, or create a
+file or folder named `DELPHI.CE` in the repository root, and the script builds
+`Markdown4D.groupproj` with `bds -b` and runs the Win32 suites:
+
+```bat
+set DELPHI_CE=1
+build.bat
+```
+
+When that build fails, the IDE stays open with the errors; close it and the
+script stops, with the full log in `Markdown4D.err`.
 
 ## Tests
 

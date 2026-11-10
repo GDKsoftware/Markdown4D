@@ -2,16 +2,17 @@
 setlocal
 
 set ROOT=%~dp0
+if not defined DELPHI_CE if exist "%ROOT%DELPHI.CE" set DELPHI_CE=1
 rem The install root carries brackets, so every expansion of it stays quoted.
 if not defined STUDIO_ROOT set "STUDIO_ROOT=C:\Program Files (x86)\Embarcadero\Studio"
 
 rem Newest supported Delphi first: 37.0 is Delphi 13, 23.0 is Delphi 12 Athens.
 rem Set MARKDOWN4D_STUDIO to a version number to force one of them.
 if defined MARKDOWN4D_STUDIO (
-    set "RSVARS=%STUDIO_ROOT%\%MARKDOWN4D_STUDIO%\bin\rsvars.bat"
+    set "STUDIO_BIN=%STUDIO_ROOT%\%MARKDOWN4D_STUDIO%\bin"
 ) else (
     for %%V in (37.0 23.0) do (
-        if not defined RSVARS if exist "%STUDIO_ROOT%\%%V\bin\rsvars.bat" set "RSVARS=%STUDIO_ROOT%\%%V\bin\rsvars.bat"
+        if not defined STUDIO_BIN if exist "%STUDIO_ROOT%\%%V\bin\bds.exe" set "STUDIO_BIN=%STUDIO_ROOT%\%%V\bin"
     )
 )
 
@@ -27,13 +28,16 @@ set FMX_RESULTS_XML=%RESULTS_DIR%\dunitx-fmx-results.xml
 set RESULTS_XML_X64=%RESULTS_DIR%\dunitx-results-win64x.xml
 set FMX_RESULTS_XML_X64=%RESULTS_DIR%\dunitx-fmx-results-win64x.xml
 
-if not defined RSVARS (
+if not defined STUDIO_BIN (
     echo [build] No supported Delphi found under "%STUDIO_ROOT%".
     echo [build] Looked for 37.0 ^(Delphi 13^) and 23.0 ^(Delphi 12 Athens^).
     echo [build] Set MARKDOWN4D_STUDIO to a version number, or STUDIO_ROOT to another install root.
     exit /b 1
 )
 
+if defined DELPHI_CE goto build_with_bds
+
+set "RSVARS=%STUDIO_BIN%\rsvars.bat"
 if not exist "%RSVARS%" (
     echo [build] rsvars.bat not found at "%RSVARS%".
     exit /b 1
@@ -55,7 +59,29 @@ for %%A in (Win32 Win64x) do (
         )
     )
 )
+goto run_tests
 
+rem The Community Edition has no command-line compiler, so the IDE builds the
+rem project group instead, with the platforms and configurations set in it. A
+rem failed build keeps the IDE open and ends its log with a line "Failed".
+:build_with_bds
+if not exist "%STUDIO_BIN%\bds.exe" (
+    echo [build] bds.exe not found at "%STUDIO_BIN%".
+    exit /b 1
+)
+
+echo.
+echo === Building Markdown4D.groupproj with bds -b ===
+if exist "%ROOT%Markdown4D.err" del "%ROOT%Markdown4D.err"
+"%STUDIO_BIN%\bds.exe" -ns -b "%ROOT%Markdown4D.groupproj"
+findstr /b /c:"Failed" "%ROOT%Markdown4D.err" >nul
+if not errorlevel 1 (
+    echo.
+    echo === BUILD FAILED: see Markdown4D.err ===
+    exit /b 1
+)
+
+:run_tests
 if not exist "%RESULTS_DIR%" mkdir "%RESULTS_DIR%"
 
 echo.
@@ -68,6 +94,8 @@ echo === Running FMX test suite ^(Win32^) ===
 "%FMX_TEST_EXE%" -xml:"%FMX_RESULTS_XML%" -exit:continue
 set FMX_EXIT=%ERRORLEVEL%
 
+if defined DELPHI_CE goto report_results
+
 echo.
 echo === Running main test suite ^(Win64x^) ===
 "%TEST_EXE_X64%" -xml:"%RESULTS_XML_X64%" -exit:continue
@@ -78,6 +106,7 @@ echo === Running FMX test suite ^(Win64x^) ===
 "%FMX_TEST_EXE_X64%" -xml:"%FMX_RESULTS_XML_X64%" -exit:continue
 set FMX_EXIT_X64=%ERRORLEVEL%
 
+:report_results
 echo.
 if "%MAIN_EXIT%"=="0" (
     echo === Main suite ^(Win32^): all tests passed ===
@@ -89,6 +118,8 @@ if "%FMX_EXIT%"=="0" (
 ) else (
     echo === FMX suite ^(Win32^): failures reported, exit code %FMX_EXIT% ===
 )
+if defined DELPHI_CE goto update_dashboard
+
 if "%MAIN_EXIT_X64%"=="0" (
     echo === Main suite ^(Win64x^): all tests passed ===
 ) else (
@@ -164,6 +195,7 @@ for %%K in (
     )
 )
 
+:update_dashboard
 echo.
 echo === Updating conformance dashboard ===
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\Update-ConformanceDashboard.ps1"
