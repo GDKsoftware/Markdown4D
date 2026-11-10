@@ -22,6 +22,8 @@ type
     procedure SetEditorScrollOffset(const Value: Single);
     function GetPreviewScrollOffset: Single;
     procedure SetPreviewScrollOffset(const Value: Single);
+    function GetToggledSections: TArray<Integer>;
+    procedure SetToggledSections(const Value: TArray<Integer>);
     function GetDiskTimestampUtc: TDateTime;
     procedure SetDiskTimestampUtc(const Value: TDateTime);
     function GetDiskConflict: Boolean;
@@ -42,6 +44,8 @@ type
     property CaretPosition: Integer read GetCaretPosition write SetCaretPosition;
     property EditorScrollOffset: Single read GetEditorScrollOffset write SetEditorScrollOffset;
     property PreviewScrollOffset: Single read GetPreviewScrollOffset write SetPreviewScrollOffset;
+    // The <details> sections opened or closed in the preview of this document.
+    property ToggledSections: TArray<Integer> read GetToggledSections write SetToggledSections;
     property DiskTimestampUtc: TDateTime read GetDiskTimestampUtc write SetDiskTimestampUtc;
     // Set when the file changed on disk while this buffer held unsaved edits.
     // Saving then asks the user before it overwrites the newer disk content.

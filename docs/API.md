@@ -406,9 +406,15 @@ with the clearance rules, limits above and below large operators in display
 style, radicals with an optional index, delimiters that grow into drawn shapes
 when a glyph is too short, accents, and matrix environments. An inline formula
 sits on the text baseline and pushes the lines apart when it is tall; a display
-formula is centred in the column. A formula selects as one unit and copies as
-its markdown, `$...$` or a `$$` block, so a paste lands back in a document as
-the same formula; find searches the LaTeX source, not the drawn glyphs.
+formula is centred in the column. A formula selects glyph by glyph, as a
+browser selects the MathML it renders. A selection that holds the whole formula
+copies its markdown, `$...$` or a `$$` block, so a paste lands back in a
+document as the same formula. Part of a formula copies as the text a reader
+would type: the glyphs shown, letters of the mathematical alphabets as plain
+letters, and the cells of an array or a tabular apart by tabs and its rows by
+line breaks. Copy as Markdown takes a formula the selection cuts whole. Find
+searches the LaTeX source, not the drawn glyphs, and a match selects the whole
+formula.
 
 A display formula wider than the column scrolls sideways in its band, the way
 browsers show a long KaTeX or MathJax formula: a thin track below it shows
@@ -529,7 +535,7 @@ same.
 
 | Property | Type | Notes |
 |----------|------|-------|
-| `Text` | `string` | The whole markdown document as one value |
+| `Text` | `string` | The whole markdown document as one value. Setting it on every keystroke is fine: only the blocks that changed are laid out again |
 | `ThemePreset` | `TMarkdownThemePreset` | `Light` / `Dark`, editable in the Object Inspector |
 | `Images` | `TMarkdownViewerImageSettings` | How image destinations are resolved and fetched (see below) |
 | `Zoom` | `Integer` | In percent (default `100`, from `25` to `500`). Every font, spacing and image grows with it; the theme the application assigned stays as it is. Ctrl+wheel and Ctrl+Plus/Minus step through the levels browsers use (25, 33, 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400, 500), Ctrl+0 resets it. The line at the top of the view stays there, and a document that lays out slowly waits until the wheel rests |
@@ -544,23 +550,25 @@ same.
 | `Theme: TMarkdownTheme` | Assign a fully customised theme at run time; the caller keeps ownership and frees it after the control |
 | `AppendMarkdown(const Markdown: string)` | Append text and repaint; thread-safe, debounced |
 | `LoadFromFile(const FileName)` / `LoadFromStream(const Stream)` | Load a document |
-| `FindText(const Needle[; const Options]): Boolean` | Select the next match and scroll it to the middle of the view when it is out of sight; a repeated search moves on to the following match and wraps to the first after the last. `TMarkdownFindOptions` (unit `Markdown4D.Layout.TextSearch`) adds `MatchCase` and `WholeWord`, as in the editor |
+| `FindText(const Needle[; const Options]): Boolean` | Select the next match and scroll it to the middle of the view when it is out of sight; a repeated search moves on to the following match and wraps to the first after the last; a match inside a closed `details` section opens the section. `TMarkdownFindOptions` (unit `Markdown4D.Layout.TextSearch`) adds `MatchCase` and `WholeWord`, as in the editor |
 | `FindPrevious(const Needle[; const Options]): Boolean` | The same walk backwards; wraps to the last match before the first |
 | `FindMatchCount(const Needle[; const Options]): Integer` | How many matches a walk with `FindText` visits; a formula counts once |
 | `FindMatchIndex(const Needle; const Options): Integer` | Which of those matches the selection is, counted from 0, for a "3 of 12"; -1 when the selection is not a match |
 | `HighlightMatches(const Needle[; const Options])` / `ClearHighlights` | Mark every match, independently of the selection; the marks follow the document as it changes, an empty needle clears them, and a formula is marked once |
 | `HighlightCount: Integer` | How many matches are marked |
 | `CopySelectionToClipboard` | Copy the current selection |
-| `CopySelectionAsMarkdown` / `SelectedMarkdown: string` | Copy, or read, the markdown behind the selection. Within one line that is the selected source with the markup directly around it (selecting *bold* in `**bold**` gives `**bold**`); over several lines whole source lines, so list markers, quote markers and indentation come along; a table always whole; a display formula with the `$$` line that closes it; and a selection of everything the whole source. Line ends are the platform's |
+| `CopySelectionAsMarkdown` / `SelectedMarkdown: string` | Copy, or read, the markdown behind the selection. Within one line that is the selected source with the markup directly around it (selecting *bold* in `**bold**` gives `**bold**`), and an emphasis, code span or link the selection starts or ends in comes along whole; over several lines whole source lines, so list markers, quote markers and indentation come along; a table always whole; a display formula with the `$$` line that closes it; and a selection of everything the whole source. Line ends are the platform's |
 | `SelectAll` | Select the whole document |
 | `ClearSelection` | Drop the selection |
 | `SelectedText: string` | The selected text |
 | `IsAutoScrolling: Boolean` | True while middle-click autoscroll runs |
 | `ZoomIn` / `ZoomOut` / `ResetZoom` | Step `Zoom` to the next level up or down, or back to 100, as the keys do |
+| `Relayout` | Lay the document out again with the same text, keeping the scroll position and the selection as a width change does, for an extension whose drawing depends on `ExtensionData` that changed |
+| `ExtensionData: IMarkdownExtensionData` | What extensions keep for this viewer, each under its own name; a block override reads it from its context, so two viewers that show the same text each keep their own (see [EXTENSIONS.md](EXTENSIONS.md)) |
 | `TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean` | The stretch of markdown the selection was rendered from, so an editor can format exactly those characters; `False` when there is no selection or the runs carry no source |
 | `ContentHeight: Integer` | Laid-out document height, for auto-sizing |
 | `ScrollOffset: Single` | Read / set the vertical scroll position |
-| `ScrollToAnchor(const Anchor: string): Boolean` | Scroll the heading a link such as `#getting-started` points at to the top of the view. Anchors follow GitHub: lower case, punctuation dropped, accented letters kept, every space a dash, and a repeated heading gets `-1`, `-2`. A percent-encoded anchor is decoded first. `False` when the document has no such heading |
+| `ScrollToAnchor(const Anchor: string): Boolean` | Scroll the heading a link such as `#getting-started` points at to the top of the view. Anchors follow GitHub: lower case, punctuation dropped, accented letters kept, every space a dash, and a repeated heading gets `-1`, `-2`. A percent-encoded anchor is decoded first, and closed `details` sections around the heading open. `False` when the document has no such heading |
 | `SourceLineToScrollOffset(const SourceLine: Integer): Single` / `ScrollOffsetToSourceLine(const Offset: Single): Integer` | Where a line of `Text` shows, as the `ScrollOffset` that brings it to the top, and which line shows at an offset, so a host with its own editor can keep it in step with the viewer. Lines count from 0. Every rendered line knows the source line it came from, inside long lists, tables and code blocks too; between them the answer is interpolated |
 | `LayoutCount: Integer` | Advances on every relayout (first width, resize, arriving images), so a host can notice layout-derived state going stale |
 | `DisplayList: IMarkdownDisplayList` | The rendered primitives, for advanced hosts |
@@ -596,20 +604,38 @@ translates an allowed subset to markdown and lays that out through the
 ordinary path, so it gets selection, hit-testing and theming for free. The
 subset covers `p`, `div`, `center`, `section`, `article`, `h1`-`h6`, `hr`,
 `br`, `strong`/`b`, `em`/`i`, `code`/`kbd`/`samp`/`tt`, `del`/`s`/`strike`,
-`a`, `img`, `ul`/`ol`/`li`, `blockquote`, `details`/`summary` and `pre`.
-`script`, `style`, `head`, `iframe` and `object` are dropped along with their
-content; any other tag disappears while its content stays, the way a browser
-would show it with the styling removed. The translation is implemented in
-`Markdown4D.Html.Subset` and cached on the AST node, since layout runs again
-on every resize and every streamed chunk.
+`a`, `img`, `ul`/`ol`/`li`, `blockquote`, `details`/`summary` and `pre`;
+`sub`, `sup`, `ins`, `mark` and `small` stay as inline HTML, which a paragraph
+draws as GitHub does. `script`, `style`, `head`, `iframe` and `object` are
+dropped along with their content; any other tag disappears while its content
+stays, the way a browser would show it with the styling removed. The
+translation is implemented in `Markdown4D.Html.Subset` and cached on the AST
+node, since layout runs again on every resize and every streamed chunk.
+
+`align="center"` or `align="right"` on the outer element of an HTML block,
+and a `center` tag, line up every line of the block, as GitHub does for a
+centred logo, title or row of badges. Written the way README files often do,
+with blank lines around the markdown between `<div align="center">` and
+`</div>`, the alignment holds for every block in between.
 
 A `details` section folds as it does on GitHub when it is written the way
 GitHub needs it: the opening tag and its `summary`, a blank line, the markdown
 of the section, a blank line and `</details>`. It starts closed, or open when
 the tag carries `open`, and a click on the summary line opens or closes it.
-Setting `Text` shows every section as its tag asks again. Sections nest, and
+The viewer knows a section by its summary, so a section the reader opened
+stays open while `Text` changes, as it does with an editor beside it, until
+its summary changes; `LoadFromFile` and `LoadFromStream` show every section as
+its tag asks again. `ToggledSections` holds the reader's choices, for a host
+that shows several documents in one viewer to keep per document. Sections nest, and
 fold inside block quotes and list items too. A section written as one HTML
-block, closing tag included, shows all of its content. Without the viewer,
+block, closing tag included, folds as well; its content is HTML then, as on
+GitHub, and a `details` section inside it does not fold. A section without a
+`summary` shows `DefaultDetailsSummary` ("Details") on its summary line, and a
+`summary` that is one `h1` to `h6` shows as that heading. As in a browser,
+`FindText` and `FindPrevious` open a closed section when the next match lies
+inside it, and `ScrollToAnchor` and a click on a link to a heading open the
+sections around that heading; `FindMatchCount` and `HighlightMatches` count
+and mark the matches in view. Without the viewer,
 `TMarkdownLayoutEngine.LayoutDocument` and `UpdateLayout` take an
 `IMarkdownDisclosureState` that says which sections are open; without one,
 each section shows as its tag asks.

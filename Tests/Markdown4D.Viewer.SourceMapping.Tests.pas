@@ -105,6 +105,14 @@ type
 
     [Test]
     procedure SelectionSource_InsideTable_ReturnsFalse;
+
+    [Test]
+    [TestCase('Whole table', 'False')]
+    [TestCase('Table between paragraphs', 'True')]
+    procedure SelectedMarkdown_InsideTable_IsTheWholeTable(const HasTextAround: Boolean);
+
+    [Test]
+    procedure SelectedMarkdown_FromParagraphIntoTable_TakesTheTableWhole;
   end;
 
   // Replays what a reader does in preview only mode: select words in the
@@ -508,6 +516,40 @@ end;
 
 // A cell is cut out of its row before its inlines are parsed, so nothing in a
 // table points back at the source yet and the caller is told so.
+// Copy as Markdown takes a table whole, wherever in it the selection starts
+// or ends.
+procedure TMarkdownPreviewSelectionTests.SelectedMarkdown_InsideTable_IsTheWholeTable(const HasTextAround: Boolean);
+begin
+  const Table: TArray<string> = ['| A | B |', '|---|---|', '| a1 | b1 |'];
+  const TableText = string.Join(LineFeed, Table);
+  var Text := TableText;
+  if HasTextAround then
+    Text := 'Before' + LineFeed + LineFeed + TableText + LineFeed + LineFeed + 'After';
+  FModel.Text := Text;
+
+  const FirstCell = FModel.DisplayList.Items[RunIndexOf('A')].Bounds;
+  const LastCell = FModel.DisplayList.Items[RunIndexOf('b1')].Bounds;
+  FModel.SetSelectionAnchor(TLayoutPointF.Create(FirstCell.Left + InwardNudge, FirstCell.Top + InwardNudge));
+  FModel.SetSelectionExtent(TLayoutPointF.Create(LastCell.Right - InwardNudge, LastCell.Top + InwardNudge));
+
+  Assert.AreEqual(TableText.Replace(LineFeed, sLineBreak), FModel.SelectedMarkdown);
+end;
+
+procedure TMarkdownPreviewSelectionTests.SelectedMarkdown_FromParagraphIntoTable_TakesTheTableWhole;
+begin
+  const Table: TArray<string> = ['| A | B |', '|---|---|', '| a1 | b1 |'];
+  const TableText = string.Join(LineFeed, Table);
+  FModel.Text := 'Before' + LineFeed + LineFeed + TableText + LineFeed + LineFeed + 'After';
+
+  const Paragraph = FModel.DisplayList.Items[RunIndexOf('Before')].Bounds;
+  const Cell = FModel.DisplayList.Items[RunIndexOf('a1')].Bounds;
+  FModel.SetSelectionAnchor(TLayoutPointF.Create(Paragraph.Left + InwardNudge, Paragraph.Top + InwardNudge));
+  FModel.SetSelectionExtent(TLayoutPointF.Create(Cell.Left + InwardNudge, Cell.Top + InwardNudge));
+
+  const Expected = ('Before' + LineFeed + LineFeed + TableText).Replace(LineFeed, sLineBreak);
+  Assert.AreEqual(Expected, FModel.SelectedMarkdown);
+end;
+
 procedure TMarkdownPreviewSelectionTests.SelectionSource_InsideTable_ReturnsFalse;
 begin
   const Lines: TArray<string> = ['| head |', '| ---- |', '| cell |'];
@@ -666,6 +708,12 @@ begin
                                       Visible.CharacterIndexes[Position - 2] + 1, -InwardNudge));
 
     Assert.AreEqual(Word, FModel.SelectedText, Format('Selecting "%s"', [Word]));
+
+    // The markdown behind part of a formula is the whole formula, as for any
+    // inline element the selection cuts.
+    const IsGlyph = (Run.Role = TDisplayTextRunRole.Formula);
+    if IsGlyph then
+      Continue;
 
     var Segment: TMarkdownSegment;
     Assert.IsTrue(FModel.TryGetSelectionSourceSegment(Segment), Format('No source range for "%s"', [Word]));

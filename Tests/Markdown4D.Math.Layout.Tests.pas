@@ -6,6 +6,7 @@ interface
 
 uses
   DUnitX.TestFramework,
+  Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Layout.DisplayList,
   Markdown4D.Math.Layout,
@@ -36,6 +37,8 @@ type
     class function RunWithText(const Items: TArray<IDisplayItem>; const Text: string): IDisplayTextRun;
     class function CountOfKind(const Items: TArray<IDisplayItem>; const Kind: TDisplayItemKind): Integer;
     class function BaselineOf(const Run: IDisplayTextRun): Single;
+    function PlacedItems(const Source: string; const Formula: IMarkdownNode): TArray<IDisplayItem>;
+    function PlacesOf(const Source: string): string;
 
   public
     [SetupFixture]
@@ -136,6 +139,35 @@ type
 
     [Test]
     procedure Layout_ChemistryBetweenDeepMatrices_DoesNotOverflowStack;
+
+    [Test]
+    [TestCase('Letters and commands', 'x+\alpha,x|+|\alpha')]
+    [TestCase('Fraction', '\frac{a}{b},a|b')]
+    [TestCase('Script', 'x^{2},x|2')]
+    [TestCase('Text', 'x \text{if so},x|if so')]
+    [TestCase('Delimiters of their command', '\left( a \right),\left( a \right)|a|\left( a \right)')]
+    [TestCase('Chemistry as its command', '\ce{H2O},\ce{H2O}|\ce{H2O}|\ce{H2O}')]
+    procedure Draw_Glyphs_ArePlacedInTheSource(const Source, Expected: string);
+
+    [Test]
+    procedure Draw_GlyphInLink_KeepsTheFormulaAsSource;
+
+    [Test]
+    procedure Draw_PlacedGlyph_SpansItsInkOnTheSameBaseline;
+
+    [Test]
+    procedure Draw_PlacedFraction_GlyphsDoNotOverlap;
+
+    [Test]
+    procedure Draw_CanvasWithoutFormula_DrawsPlainText;
+
+    [Test]
+    [TestCase('Double-struck from the letterlike symbols', #$211D + ',R')]
+    [TestCase('Script from the letterlike symbols', #$2112 + ',L')]
+    [TestCase('Fraktur', #$D835#$DD24 + ',g')]
+    [TestCase('Sans-serif digit', #$D835#$DFE4 + ',2')]
+    [TestCase('Plain stays', 'x+1,x+1')]
+    procedure PlainText_MathematicalAlphabets_FoldToPlainOnes(const Glyphs, Expected: string);
   end;
 
 implementation
@@ -145,7 +177,7 @@ uses
   System.StrUtils,
   System.Generics.Collections,
   System.Math,
-  Markdown4D.Ast.Interfaces,
+  Markdown4D.Ast,
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Layout.ExtensionCanvas,
   Markdown4D.Layout.FakeMeasurer;
@@ -208,6 +240,39 @@ end;
 class function TMathLayoutTests.BaselineOf(const Run: IDisplayTextRun): Single;
 begin
   Result := Run.Bounds.Top + Run.Baseline;
+end;
+
+// Draws the formula on a canvas that places its glyphs in the source of
+// Formula, as the viewer does.
+function TMathLayoutTests.PlacedItems(const Source: string; const Formula: IMarkdownNode): TArray<IDisplayItem>;
+begin
+  const Collected = TList<IDisplayItem>.Create;
+  try
+    const Canvas: IExtensionCanvas = TDisplayListExtensionCanvas.Create(FMeasurer, Collected, Formula,
+      TDisplayTextRunRole.Drawing, Formula);
+    Layout(Source, False).Draw(Canvas, 0, 0);
+
+    Result := Collected.ToArray;
+  finally
+    Collected.Free;
+  end;
+end;
+
+// The source every glyph was set from, in the order they are drawn.
+function TMathLayoutTests.PlacesOf(const Source: string): string;
+begin
+  const Formula: IMarkdownNode = TMarkdownMathNode.Create(Source, False);
+  const Drawn = PlacedItems(Source, Formula);
+
+  var Places: TArray<string> := [];
+  for var Item in Drawn do
+  begin
+    var Run: IDisplayTextRun;
+    if Supports(Item, IDisplayTextRun, Run) then
+      Places := Places + [Copy(Source, Run.StartOffset + 1, Run.SourceLength)];
+  end;
+
+  Result := string.Join('|', Places);
 end;
 
 procedure TMathLayoutTests.Layout_Letters_AreItalicGlyphsAtBaseSize;
@@ -524,6 +589,63 @@ begin
   const Formula = Layout(Source, True);
 
   Assert.IsNotNull(Formula);
+end;
+
+procedure TMathLayoutTests.Draw_Glyphs_ArePlacedInTheSource(const Source, Expected: string);
+begin
+  Assert.AreEqual(Expected, PlacesOf(Source));
+end;
+
+// The glyph is attributed to the link, so a click follows it, but its place
+// is still in the formula.
+procedure TMathLayoutTests.Draw_GlyphInLink_KeepsTheFormulaAsSource;
+begin
+  const Source = '\href{https://example.com}{y}';
+  const Formula: IMarkdownNode = TMarkdownMathNode.Create(Source, False);
+
+  const Run = RunWithText(PlacedItems(Source, Formula), 'y');
+
+  Assert.AreEqual<TMarkdownNodeKind>(TMarkdownNodeKind.Link, Run.Node.Kind);
+  Assert.IsTrue(Run.SourceNode = Formula, 'its place is in the formula');
+  Assert.AreEqual('y', Copy(Source, Run.StartOffset + 1, Run.SourceLength));
+end;
+
+// The ink is tighter than the font's line, but the glyph is painted where it
+// was before.
+procedure TMathLayoutTests.Draw_PlacedGlyph_SpansItsInkOnTheSameBaseline;
+begin
+  const Source = 'x';
+  const Plain = RunWithText(Items(Source, False), 'x');
+  const Formula: IMarkdownNode = TMarkdownMathNode.Create(Source, False);
+  const Placed = RunWithText(PlacedItems(Source, Formula), 'x');
+
+  Assert.AreEqual(BaselineOf(Plain), BaselineOf(Placed), Tolerance);
+  Assert.IsTrue(Placed.Bounds.Height < Plain.Bounds.Height, 'the ink is lower than the line');
+end;
+
+procedure TMathLayoutTests.Draw_PlacedFraction_GlyphsDoNotOverlap;
+begin
+  const Source = '\frac{a}{b}';
+  const Formula: IMarkdownNode = TMarkdownMathNode.Create(Source, False);
+  const Drawn = PlacedItems(Source, Formula);
+
+  const Numerator = RunWithText(Drawn, 'a');
+  const Denominator = RunWithText(Drawn, 'b');
+  Assert.IsTrue(Numerator.Bounds.Bottom <= Denominator.Bounds.Top, 'the numerator ends above the denominator');
+end;
+
+procedure TMathLayoutTests.PlainText_MathematicalAlphabets_FoldToPlainOnes(const Glyphs, Expected: string);
+begin
+  Assert.AreEqual(Expected, TMathLayouter.PlainText(Glyphs));
+end;
+
+procedure TMathLayoutTests.Draw_CanvasWithoutFormula_DrawsPlainText;
+begin
+  const Run = RunWithText(Items('\alpha', False), #$03B1);
+
+  Assert.AreEqual<TDisplayTextRunRole>(TDisplayTextRunRole.Text, Run.Role);
+  Assert.AreEqual(0, Run.StartOffset);
+  Assert.AreEqual(Integer(Length(Run.Text)), Run.SourceLength);
 end;
 
 end.

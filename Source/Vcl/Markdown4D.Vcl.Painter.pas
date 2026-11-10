@@ -61,6 +61,7 @@ type
     procedure SetTextRendering(const Value: TMarkdownTextRendering);
     procedure FlushText;
     function TextWidth(const Text: string; const Font: TMarkdownFontStyle): Single;
+    function GdiCharacterEdges(const Text: string; const Font: TMarkdownFontStyle): TArray<Single>;
     procedure DrawGdiText(const Left, BaselineY: Single; const Text: string; const Font: TMarkdownFontStyle;
                           const Color: TLayoutColor);
     function DirectWriteText: TMarkdownDirectWriteText;
@@ -101,6 +102,11 @@ type
                        const DirectWriteText: TMarkdownDirectWriteText = nil);
     destructor Destroy; override;
     function MeasureText(const Text: string; const Font: TMarkdownFontStyle): TLayoutSizeF;
+    /// <summary>
+    /// The right edge of every character of <c>Text</c>, measured from its start, in
+    /// one call. Cheaper than measuring each prefix when a whole line has to be wrapped.
+    /// </summary>
+    function CharacterEdges(const Text: string; const Font: TMarkdownFontStyle): TArray<Single>;
     function LineHeight(const Font: TMarkdownFontStyle): Single;
     function Baseline(const Font: TMarkdownFontStyle): Single;
     procedure DrawTextRun(const TopLeft: TLayoutPointF; const Text: string; const Font: TMarkdownFontStyle;
@@ -173,6 +179,39 @@ begin
   const Metrics = TextMetricsOf(Font);
   Result := TLayoutSizeF.Create(Width, Metrics.tmHeight + Metrics.tmExternalLeading);
   MeasureCache.Add(Text, Font, FPixelsPerInch, Result);
+end;
+
+function TMarkdownVclPainter.CharacterEdges(const Text: string; const Font: TMarkdownFontStyle): TArray<Single>;
+begin
+  case FTextRendering of
+    TMarkdownTextRendering.Gdi:
+      Result := GdiCharacterEdges(Text, Font);
+    TMarkdownTextRendering.DirectWrite:
+    begin
+      const DirectWriteFont = DirectWriteFontOf(Font);
+      Result := DirectWriteText.CharacterEdges(Text, DirectWriteFont);
+    end;
+  else
+    raise ENotSupportedException.CreateFmt(UnsupportedTextRenderingMessage, [Ord(FTextRendering)]);
+  end;
+end;
+
+function TMarkdownVclPainter.GdiCharacterEdges(const Text: string; const Font: TMarkdownFontStyle): TArray<Single>;
+begin
+  SetLength(Result, Length(Text));
+  if Text.IsEmpty then
+    Exit;
+
+  ApplyFont(Font);
+  var Extents: TArray<Integer>;
+  SetLength(Extents, Length(Text));
+  var Size: TSize;
+  Winapi.Windows.GetTextExtentExPoint(FCanvas.Handle, PChar(Text), Length(Text), 0, nil, @Extents[0], Size);
+
+  for var CharIndex := 0 to High(Extents) do
+  begin
+    Result[CharIndex] := Extents[CharIndex];
+  end;
 end;
 
 function TMarkdownVclPainter.TextWidth(const Text: string; const Font: TMarkdownFontStyle): Single;

@@ -13,6 +13,7 @@ uses
   Markdown4D.Layout.SourceLineMap,
   Markdown4D.Layout.TextAnchor,
   Markdown4D.Layout.TextSearch,
+  Markdown4D.Layout.BlockOverride,
   Markdown4D.Theme;
 
 type
@@ -59,6 +60,15 @@ type
       // whole words after a double click, whole lines after a triple click.
       TSelectionUnit = (Character, Word, Line);
       TCharacterClass = (WordCharacter, Space, Other);
+      // One stretch of a selection: the characters CharFrom to CharTo of the
+      // run at ItemIndex, set apart from the stretch before it as JoinRun is.
+      TSelectedPiece = record
+        ItemIndex: Integer;
+        Run: IDisplayTextRun;
+        JoinRun: IDisplayTextRun;
+        CharFrom: Integer;
+        CharTo: Integer;
+      end;
     const
       DefaultFlushIntervalMilliseconds = 100;
       BottomEpsilon = 0.5;
@@ -67,6 +77,10 @@ type
       CopiedSpace = ' ';
       CopiedTab = #9;
       AnchorMark = '#';
+      MathAlphanumericFirst = $1D400;
+      MathAlphanumericLast = $1D7FF;
+      FormulaCellEnd = '&';
+      FormulaRowEnd = '\\';
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
@@ -107,7 +121,11 @@ type
       // The layout the source line map was built for; it is built again on
       // first use after the next layout.
       FSourceLinesLayoutCount: Integer;
+      FLaidOutText: string;
+      FTextChanged: Boolean;
+      FExtensionData: IMarkdownExtensionData;
     procedure Relayout;
+    function LayoutFor(const Document: IMarkdownDocument): IMarkdownDisplayList;
     procedure RefreshSourceLines;
     function ZoomFactor: Single;
     function LayoutTheme: TMarkdownTheme;
@@ -140,6 +158,18 @@ type
     class function ContinuesWord(const Run, Before: IDisplayTextRun): Boolean; static;
     class function ContinuesLine(const Run, Before: IDisplayTextRun): Boolean; static;
     class function CharacterClassOf(const Character: Char): TCharacterClass; static;
+    class function IsAtomicRun(const Run: IDisplayTextRun): Boolean; static;
+    class function RunCharacterClass(const Run: IDisplayTextRun; const Index: Integer): TCharacterClass; static;
+    class function IsGlyphOf(const Run: IDisplayTextRun; const Formula: IMarkdownNode): Boolean; static;
+    procedure FindFormulaGlyphs(const Index: Integer; out FirstGlyph, LastGlyph: Integer; out Left, Right: Single);
+    function FormulaEdgeNear(const Point: TLayoutPointF; const Position: TTextPosition): TTextPosition;
+    function TryGetWholeFormula(const Glyph: Integer; const Range: TTextRange; out SourceIndex: Integer): Boolean;
+    function SelectedPieces(const Range: TTextRange): TArray<TSelectedPiece>;
+    function TryTakePiece(const Index: Integer; const Range: TTextRange; out Piece: TSelectedPiece;
+                          out NextIndex: Integer): Boolean;
+    class function SeparatorBetween(const Previous, Piece: TSelectedPiece; const StartsBlock: Boolean;
+      const PreviousTop: Single): string; static;
+    class function TableBreakBetween(const Before, After: IDisplayTextRun): string; static;
     function TryFindScrollerAt(const Point: TLayoutPointF; out Index: Integer): Boolean;
     function TryFindScrollerOf(const ItemIndex: Integer; out Index: Integer): Boolean;
     function IsOverScrollerTrack(const Point: TLayoutPointF): Boolean;
@@ -149,6 +179,18 @@ type
     function ClipToScroller(const ItemIndex: Integer; const Rect: TLayoutRectF): TLayoutRectF;
     function NextMatchAfterSelection(const Matches: TArray<TMarkdownFoundRange>): TMarkdownFoundRange;
     function PreviousMatchBeforeSelection(const Matches: TArray<TMarkdownFoundRange>): TMarkdownFoundRange;
+    function TryGetMatchAhead(const Matches: TArray<TMarkdownFoundRange>; out Match: TMarkdownFoundRange): Boolean;
+    function TryGetMatchBehind(const Matches: TArray<TMarkdownFoundRange>; out Match: TMarkdownFoundRange): Boolean;
+    procedure OpenSectionsBeforeNextMatch(const Needle: string; const Options: TMarkdownFindOptions);
+    procedure OpenSectionsBeforePreviousMatch(const Needle: string; const Options: TMarkdownFindOptions);
+    function TryOpenSectionBeforeNextMatch(const Needle: string; const Options: TMarkdownFindOptions): Boolean;
+    function TryOpenSectionBeforePreviousMatch(const Needle: string; const Options: TMarkdownFindOptions): Boolean;
+    function SectionsHolding(const Needle: string; const Options: TMarkdownFindOptions): TArray<Integer>;
+    function TryGetDisclosureItem(const Key: Integer; out ItemIndex: Integer): Boolean;
+    procedure OpenSectionAt(const ItemIndex: Integer);
+    function CaretItemIndex(const WithoutCaret: Integer): Integer;
+    function TryFindAnchorHeading(const Anchor: string; out Heading: IMarkdownHeading): Boolean;
+    procedure FlipDisclosure(const Key: Integer);
     function HasCaret: Boolean;
     procedure SelectMatch(const Match: TMarkdownFoundRange);
     function RangeOfMatch(const Match: TMarkdownFoundRange): TTextRange;
@@ -168,12 +210,16 @@ type
       const PreviousTop: Single): string; static;
     class function FallbackSeparator(const Run: IDisplayTextRun; const StartsBlock: Boolean;
       const PreviousTop: Single): string; static;
+    function TryGetSelectionSegment(const WidensToBlocks: Boolean; out Segment: TMarkdownSegment): Boolean;
+    function TryGetBlockEdge(const ItemIndex: Integer; const AtStart: Boolean; out Offset: Integer): Boolean;
     function TryFindSelectionEdges(out FirstRun, LastRun: IDisplayTextRun;
                                    out FirstCharacter, LastCharacter: Integer): Boolean;
     function PrefixWidth(const Run: IDisplayTextRun; const CharacterCount: Integer): Single;
     class function CodeTextOf(const Code: IMarkdownCodeBlock): string; static;
     function GetText: string;
     procedure SetText(const Value: string);
+    function GetToggledDisclosures: TArray<Integer>;
+    procedure SetToggledDisclosures(const Value: TArray<Integer>);
     function GetPendingText: string;
     function GetFullText: string;
     function GetDisplayList: IMarkdownDisplayList;
@@ -220,6 +266,10 @@ type
     // The scroll offset that brings the heading a link like #getting-started
     // points at to the top of the view. The anchor may be percent-encoded.
     function TryGetAnchorOffset(const Anchor: string; out Offset: Single): Boolean;
+    // Opens the closed <details> sections around the heading an anchor points
+    // at, as a browser does when it follows a link there, and lays out again.
+    // True when a section opened.
+    function RevealAnchor(const Anchor: string): Boolean;
     // Where a line of Text shows, as the scroll offset that brings it to the
     // top of the view, and which line shows at an offset. Lines count from 0.
     // A line that renders nothing of its own, such as a blank line, falls
@@ -244,8 +294,10 @@ type
     // Select the first match after the start of the current selection, or
     // from the caret when nothing is selected, or else the first match in the
     // document, so a repeated search walks through every match. A match in a
-    // formula selects the whole formula. False when the needle does not
-    // occur; the selection is then left as is.
+    // formula selects the whole formula. When the next match lies in a closed
+    // <details> section, the section opens first, as find in a browser does;
+    // LayoutCount then changes. False when the needle does not occur; the
+    // selection is then left as is.
     function TrySelectNextMatch(const Needle: string; out Match: TMarkdownFoundRange): Boolean; overload;
     function TrySelectNextMatch(const Needle: string; const Options: TMarkdownFindOptions;
                                 out Match: TMarkdownFoundRange): Boolean; overload;
@@ -283,11 +335,17 @@ type
     // The <details> section whose summary line is under the point. Key
     // identifies the section to ToggleDisclosure.
     function TryGetDisclosureAt(const Point: TLayoutPointF; out Key: Integer): Boolean;
-    // Opens a closed section or closes an open one, and lays out again. Setting
-    // Text shows every section as its tag asks once more.
+    // Opens a closed section or closes an open one, and lays out again. The
+    // choice outlives a new Text, as long as the section keeps its summary.
     procedure ToggleDisclosure(const Key: Integer);
     function IsDisclosureOpen(const Key: Integer; const OpenByDefault: Boolean): Boolean;
+    // Forgets which sections the reader opened or closed, so the next Text
+    // shows every section as its tag asks, as a newly loaded document should.
+    procedure ResetDisclosures;
     property Text: string read GetText write SetText;
+    // The keys of the sections the reader opened or closed, to hand back later
+    // and show a document as the reader left it. Setting it lays out again.
+    property ToggledDisclosures: TArray<Integer> read GetToggledDisclosures write SetToggledDisclosures;
     property PendingText: string read GetPendingText;
     property FullText: string read GetFullText;
     property DisplayList: IMarkdownDisplayList read GetDisplayList;
@@ -301,6 +359,9 @@ type
     // In percent. Every font, length and image of the theme grows with it;
     // the line at the top of the view stays there.
     property Zoom: Integer read FZoom write SetZoom;
+    // What extensions keep for this viewer; the block overrides read it from
+    // their context.
+    property ExtensionData: IMarkdownExtensionData read FExtensionData;
     property OnExtensionError: TMarkdownExtensionErrorEvent read FOnExtensionError write FOnExtensionError;
   end;
 
@@ -313,11 +374,14 @@ uses
   System.NetEncoding,
   Markdown4D,
   Markdown4D.Defines,
-  Markdown4D.Layout.BlockOverride,
+  Markdown4D.Layout.ExtensionData,
+  Markdown4D.Layout.ChangedBlocks,
+  Markdown4D.Layout.Disclosure,
   Markdown4D.Layout.Engine,
   Markdown4D.Layout.HitTest,
   Markdown4D.Layout.SourceMapping,
   Markdown4D.Layout.SelectedMarkdown,
+  Markdown4D.Math.Layout,
   Markdown4D.Toc,
   Markdown4D.Layout.Zoom;
 
@@ -348,6 +412,7 @@ begin
   FImageSlotOrder := TList<string>.Create;
   FToggledDisclosures := TList<Integer>.Create;
   FScrollerOffsets := TDictionary<Integer, Single>.Create;
+  FExtensionData := TMarkdownExtensionData.Create;
   FDraggedScroller := -1;
   FSourceLines := TMarkdownSourceLineMap.Create;
   FSourceLinesLayoutCount := -1;
@@ -431,6 +496,7 @@ begin
   FText := FText + FPendingMarkdown;
   FPendingMarkdown := '';
   FDirty := False;
+  FTextChanged := True;
   Relayout;
 
   Result := True;
@@ -525,18 +591,24 @@ begin
   Result.StartPosition := Position;
   Result.EndPosition := Position;
 
-  const IsAtomic = (Run.Role = TDisplayTextRunRole.Source);
-  if IsAtomic then
+  const IsSource = (Run.Role = TDisplayTextRunRole.Source);
+  if IsSource then
   begin
     Result.StartPosition.CharacterIndex := 0;
     Result.EndPosition.CharacterIndex := Length(Run.Text);
     Exit;
   end;
 
-  const CharacterClass = CharacterClassOf(Run.Text[Position.CharacterIndex + 1]);
+  const CharacterClass = RunCharacterClass(Run, Position.CharacterIndex);
   if CharacterClass = TCharacterClass.Other then
   begin
     Result.EndPosition.CharacterIndex := Position.CharacterIndex + 1;
+    const IsAtomic = IsAtomicRun(Run);
+    if IsAtomic then
+    begin
+      Result.StartPosition.CharacterIndex := 0;
+      Result.EndPosition.CharacterIndex := Length(Run.Text);
+    end;
     Exit;
   end;
 
@@ -548,12 +620,12 @@ function TMarkdownViewerModel.WordStartFrom(const Position: TTextPosition): TTex
 begin
   var Run: IDisplayTextRun;
   TrySelectableRun(Position.ItemIndex, Run);
-  const CharacterClass = CharacterClassOf(Run.Text[Position.CharacterIndex + 1]);
+  const CharacterClass = RunCharacterClass(Run, Position.CharacterIndex);
 
   Result := Position;
   while True do
   begin
-    while (Result.CharacterIndex > 0) and (CharacterClassOf(Run.Text[Result.CharacterIndex]) = CharacterClass) do
+    while (Result.CharacterIndex > 0) and (RunCharacterClass(Run, Result.CharacterIndex - 1) = CharacterClass) do
       Result.CharacterIndex := Result.CharacterIndex - 1;
 
     const ReachedRunStart = (Result.CharacterIndex = 0);
@@ -574,13 +646,13 @@ function TMarkdownViewerModel.WordEndFrom(const Position: TTextPosition): TTextP
 begin
   var Run: IDisplayTextRun;
   TrySelectableRun(Position.ItemIndex, Run);
-  const CharacterClass = CharacterClassOf(Run.Text[Position.CharacterIndex + 1]);
+  const CharacterClass = RunCharacterClass(Run, Position.CharacterIndex);
 
   Result := Position;
   while True do
   begin
     while (Result.CharacterIndex < Length(Run.Text)) and
-          (CharacterClassOf(Run.Text[Result.CharacterIndex + 1]) = CharacterClass) do
+          (RunCharacterClass(Run, Result.CharacterIndex) = CharacterClass) do
       Result.CharacterIndex := Result.CharacterIndex + 1;
 
     const ReachedRunEnd = (Result.CharacterIndex = Length(Run.Text));
@@ -681,18 +753,24 @@ begin
 end;
 
 // Two runs make one word when the second follows the first directly on the
-// same line, as a change of formatting in the middle of a word does.
+// same line, as a change of formatting in the middle of a word does. In a
+// formula the glyphs on one baseline make a word, so a double click takes the
+// letters of a name like ac or the digits and letter of 2a, but not a power.
 class function TMarkdownViewerModel.ContinuesWord(const Run, Before: IDisplayTextRun): Boolean;
 begin
   const IsDirectlyAfter = ((Run.Join = TDisplayTextJoin.Adjacent) or
                            ((Run.Join = TDisplayTextJoin.None) and
                             SameValue(Run.Bounds.Top, Before.Bounds.Top, LineTopEpsilon)));
   const BothAreText = ((Run.Role = TDisplayTextRunRole.Text) and (Before.Role = TDisplayTextRunRole.Text));
+  const AreOneFormulaLine = (IsGlyphOf(Run, Before.SourceNode) and IsGlyphOf(Before, Run.SourceNode) and
+                             SameValue(Run.Bounds.Top + Run.Baseline, Before.Bounds.Top + Before.Baseline,
+                                       LineTopEpsilon) and
+                             SameValue(Run.Font.Size, Before.Font.Size, LineTopEpsilon));
   const MeetAtWordCharacters = ((Run.Text <> '') and (Before.Text <> '') and
-                                (CharacterClassOf(Run.Text[1]) = TCharacterClass.WordCharacter) and
-                                (CharacterClassOf(Before.Text[Length(Before.Text)]) = TCharacterClass.WordCharacter));
+                                (RunCharacterClass(Run, 0) = TCharacterClass.WordCharacter) and
+                                (RunCharacterClass(Before, Length(Before.Text) - 1) = TCharacterClass.WordCharacter));
 
-  Result := IsDirectlyAfter and BothAreText and MeetAtWordCharacters;
+  Result := IsDirectlyAfter and (BothAreText or AreOneFormulaLine) and MeetAtWordCharacters;
 end;
 
 class function TMarkdownViewerModel.ContinuesLine(const Run, Before: IDisplayTextRun): Boolean;
@@ -713,6 +791,195 @@ begin
     Result := TCharacterClass.Space
   else
     Result := TCharacterClass.Other;
+end;
+
+// A source run is selected whole. So is a glyph of a formula that is one
+// character beyond the basic plane, a letter of the mathematical alphabets,
+// which a selection must not split; any other glyph selects character by
+// character like text.
+class function TMarkdownViewerModel.IsAtomicRun(const Run: IDisplayTextRun): Boolean;
+begin
+  const IsSource = (Run.Role = TDisplayTextRunRole.Source);
+  const IsSurrogatePair = ((Length(Run.Text) = 2) and Run.Text[1].IsHighSurrogate);
+  const IsWholeGlyph = ((Run.Role = TDisplayTextRunRole.Formula) and IsSurrogatePair);
+
+  Result := IsSource or IsWholeGlyph;
+end;
+
+// The class of the character at Index of a run, counted from 0. A letter of
+// the mathematical alphabets takes two characters and is a letter all the same.
+class function TMarkdownViewerModel.RunCharacterClass(const Run: IDisplayTextRun;
+  const Index: Integer): TCharacterClass;
+begin
+  const IsWholeGlyph = ((Run.Role = TDisplayTextRunRole.Formula) and IsAtomicRun(Run));
+  if not IsWholeGlyph then
+  begin
+    Result := CharacterClassOf(Run.Text[Index + 1]);
+    Exit;
+  end;
+
+  const CodePoint = Char.ConvertToUtf32(Run.Text[1], Run.Text[2]);
+  const IsMathAlphanumeric = ((CodePoint >= MathAlphanumericFirst) and (CodePoint <= MathAlphanumericLast));
+  if IsMathAlphanumeric then
+    Result := TCharacterClass.WordCharacter
+  else
+    Result := TCharacterClass.Other;
+end;
+
+class function TMarkdownViewerModel.IsGlyphOf(const Run: IDisplayTextRun; const Formula: IMarkdownNode): Boolean;
+begin
+  Result := ((Run.Role = TDisplayTextRunRole.Formula) and (Run.SourceNode = Formula));
+end;
+
+// The glyphs of a formula follow one another among the selectable runs, with
+// its bars and drawn delimiters between them and its source run after them.
+// Left and Right are the edges of the ink of all of them.
+procedure TMarkdownViewerModel.FindFormulaGlyphs(const Index: Integer; out FirstGlyph, LastGlyph: Integer;
+  out Left, Right: Single);
+begin
+  var Glyph: IDisplayTextRun;
+  TrySelectableRun(Index, Glyph);
+  const Formula = Glyph.SourceNode;
+
+  FirstGlyph := Index;
+  Left := Glyph.Bounds.Left;
+  var Before: IDisplayTextRun;
+  var BeforeIndex: Integer;
+  while TryAdjacentRun(FirstGlyph, -1, BeforeIndex, Before) and IsGlyphOf(Before, Formula) do
+  begin
+    FirstGlyph := BeforeIndex;
+    Left := Min(Left, Before.Bounds.Left);
+  end;
+
+  LastGlyph := Index;
+  Right := Glyph.Bounds.Right;
+  var Next: IDisplayTextRun;
+  var NextIndex: Integer;
+  while TryAdjacentRun(LastGlyph, 1, NextIndex, Next) and IsGlyphOf(Next, Formula) do
+  begin
+    LastGlyph := NextIndex;
+    Right := Max(Right, Next.Bounds.Right);
+  end;
+end;
+
+// Beside a formula the pointer means its edge: past its right side the end of
+// its last glyph, before its left side the start of its first, even where the
+// glyph nearest to the pointer is a numerator or a power.
+function TMarkdownViewerModel.FormulaEdgeNear(const Point: TLayoutPointF; const Position: TTextPosition): TTextPosition;
+begin
+  Result := Position;
+
+  var FirstGlyph, LastGlyph: Integer;
+  var Left, Right: Single;
+  FindFormulaGlyphs(Position.ItemIndex, FirstGlyph, LastGlyph, Left, Right);
+
+  const IsPastRight = (Point.X >= Right);
+  const IsBeforeLeft = (Point.X <= Left);
+  if IsPastRight then
+  begin
+    var Last: IDisplayTextRun;
+    TrySelectableRun(LastGlyph, Last);
+    Result.ItemIndex := LastGlyph;
+    Result.CharacterIndex := Length(Last.Text);
+  end
+  else if IsBeforeLeft then
+  begin
+    Result.ItemIndex := FirstGlyph;
+    Result.CharacterIndex := 0;
+  end;
+end;
+
+// The selection holds the whole formula when it reaches from before its first
+// glyph to after its last; the formula then copies as its source run.
+function TMarkdownViewerModel.TryGetWholeFormula(const Glyph: Integer; const Range: TTextRange;
+  out SourceIndex: Integer): Boolean;
+begin
+  var FirstGlyph, LastGlyph: Integer;
+  var Left, Right: Single;
+  FindFormulaGlyphs(Glyph, FirstGlyph, LastGlyph, Left, Right);
+
+  var First, Last: IDisplayTextRun;
+  TrySelectableRun(FirstGlyph, First);
+  TrySelectableRun(LastGlyph, Last);
+
+  var FormulaStart: TTextPosition;
+  FormulaStart.ItemIndex := FirstGlyph;
+  FormulaStart.CharacterIndex := 0;
+  var FormulaEnd: TTextPosition;
+  FormulaEnd.ItemIndex := LastGlyph;
+  FormulaEnd.CharacterIndex := Length(Last.Text);
+
+  const HoldsFormula = ((ComparePositions(Range.StartPosition, FormulaStart) <= 0) and
+                        (ComparePositions(Range.EndPosition, FormulaEnd) >= 0));
+
+  var Source: IDisplayTextRun;
+  const HasSource = (TryAdjacentRun(LastGlyph, 1, SourceIndex, Source) and
+                     (Source.Role = TDisplayTextRunRole.Source) and (Source.SourceNode = First.SourceNode));
+
+  Result := HoldsFormula and HasSource;
+end;
+
+// What a selection holds, piece by piece. A formula is in the display list
+// twice: as the glyphs it shows, then as its source run, its markdown. A
+// selection that holds the whole formula reads the source run, so the formula
+// copies as markdown and pastes back as the same formula; one that holds part
+// of it reads the glyphs. The source run counts on its own only where the
+// selection starts at it, as after find selected the formula.
+function TMarkdownViewerModel.SelectedPieces(const Range: TTextRange): TArray<TSelectedPiece>;
+begin
+  Result := [];
+
+  var Index := Range.StartPosition.ItemIndex;
+  while Index <= Range.EndPosition.ItemIndex do
+  begin
+    var Piece: TSelectedPiece;
+    var NextIndex: Integer;
+    const IsTaken = TryTakePiece(Index, Range, Piece, NextIndex);
+    if IsTaken then
+      Result := Result + [Piece];
+
+    Index := NextIndex;
+  end;
+end;
+
+// The piece of the run at Index, or of the source run that stands for its
+// formula, and the run to look at after it.
+function TMarkdownViewerModel.TryTakePiece(const Index: Integer; const Range: TTextRange; out Piece: TSelectedPiece;
+                                           out NextIndex: Integer): Boolean;
+begin
+  NextIndex := Index + 1;
+  Piece := Default(TSelectedPiece);
+  Piece.ItemIndex := Index;
+
+  Result := (TrySelectableRun(Index, Piece.Run) and
+             SelectedCharacterRange(Piece.Run, Index, Range.StartPosition, Range.EndPosition, Piece.CharFrom,
+                                    Piece.CharTo));
+  if not Result then
+    Exit;
+
+  Piece.JoinRun := Piece.Run;
+
+  const IsSource = (Piece.Run.Role = TDisplayTextRunRole.Source);
+  if IsSource then
+  begin
+    Result := ((Index = Range.StartPosition.ItemIndex) and (Piece.CharFrom = 0));
+    Exit;
+  end;
+
+  const IsGlyph = (Piece.Run.Role = TDisplayTextRunRole.Formula);
+  if not IsGlyph then
+    Exit;
+
+  var SourceIndex: Integer;
+  const HoldsWholeFormula = TryGetWholeFormula(Index, Range, SourceIndex);
+  if HoldsWholeFormula then
+  begin
+    TrySelectableRun(SourceIndex, Piece.Run);
+    Piece.ItemIndex := SourceIndex;
+    Piece.CharFrom := 0;
+    Piece.CharTo := Length(Piece.Run.Text);
+    NextIndex := SourceIndex + 1;
+  end;
 end;
 
 procedure TMarkdownViewerModel.ClearSelection;
@@ -801,20 +1068,11 @@ begin
   if not HasSelection then
     Exit;
 
-  const Range = NormalizeSelection;
-
-  for var Index := Range.StartPosition.ItemIndex to Range.EndPosition.ItemIndex do
+  for var Piece in SelectedPieces(NormalizeSelection) do
   begin
-    var Run: IDisplayTextRun;
-    if not TrySelectableRun(Index, Run) then
-      Continue;
-
-    var CharFrom, CharTo: Integer;
-    if not SelectedCharacterRange(Run, Index, Range.StartPosition, Range.EndPosition, CharFrom, CharTo) then
-      Continue;
-
-    const RunRect = ClipToScroller(Index, TLayoutRectF.Create(Run.Bounds.Left + PrefixWidth(Run, CharFrom),
-      Run.Bounds.Top, Run.Bounds.Left + PrefixWidth(Run, CharTo), Run.Bounds.Bottom));
+    const Run = Piece.Run;
+    const RunRect = ClipToScroller(Piece.ItemIndex, TLayoutRectF.Create(Run.Bounds.Left + PrefixWidth(Run,
+      Piece.CharFrom), Run.Bounds.Top, Run.Bounds.Left + PrefixWidth(Run, Piece.CharTo), Run.Bounds.Bottom));
     if RunRect.Right <= RunRect.Left then
       Continue;
 
@@ -837,34 +1095,67 @@ begin
   if not HasSelection then
     Exit;
 
-  const Range = NormalizeSelection;
-
   var HasPrevious := False;
   var PreviousTop := 0.0;
   var PreviousBlock := 0;
 
-  for var Index := Range.StartPosition.ItemIndex to Range.EndPosition.ItemIndex do
+  var Previous := Default(TSelectedPiece);
+
+  for var Piece in SelectedPieces(NormalizeSelection) do
   begin
-    var Run: IDisplayTextRun;
-    if not TrySelectableRun(Index, Run) then
-      Continue;
+    var Segment := Copy(Piece.Run.Text, Piece.CharFrom + 1, Piece.CharTo - Piece.CharFrom);
 
-    var CharFrom, CharTo: Integer;
-    if not SelectedCharacterRange(Run, Index, Range.StartPosition, Range.EndPosition, CharFrom, CharTo) then
-      Continue;
+    // Part of a formula copies as the characters it shows, a letter of the
+    // mathematical alphabets as the plain letter a reader would type.
+    const IsGlyph = (Piece.Run.Role = TDisplayTextRunRole.Formula);
+    if IsGlyph then
+      Segment := TMathLayouter.PlainText(Segment);
 
-    const Segment = Copy(Run.Text, CharFrom + 1, CharTo - CharFrom);
-    const BlockIndex = BlockIndexOfItem(Index);
-
+    const BlockIndex = BlockIndexOfItem(Piece.ItemIndex);
     if HasPrevious then
-      Result := Result + SeparatorBefore(Run, BlockIndex <> PreviousBlock, PreviousTop);
+      Result := Result + SeparatorBetween(Previous, Piece, BlockIndex <> PreviousBlock, PreviousTop);
 
     Result := Result + Segment;
 
     HasPrevious := True;
-    PreviousTop := Run.Bounds.Top;
+    Previous := Piece;
+    PreviousTop := Piece.Run.Bounds.Top;
     PreviousBlock := BlockIndex;
   end;
+end;
+
+// Two glyphs of one formula follow on directly, except where a cell or a row
+// of a table ends between them; anything else is set apart as its run says.
+class function TMarkdownViewerModel.SeparatorBetween(const Previous, Piece: TSelectedPiece;
+  const StartsBlock: Boolean; const PreviousTop: Single): string;
+begin
+  const AreGlyphsOfOneFormula = (IsGlyphOf(Previous.Run, Piece.Run.SourceNode) and
+                                 IsGlyphOf(Piece.Run, Previous.Run.SourceNode));
+  if AreGlyphsOfOneFormula then
+    Result := TableBreakBetween(Previous.Run, Piece.Run)
+  else
+    Result := SeparatorBefore(Piece.JoinRun, StartsBlock, PreviousTop);
+end;
+
+// The TeX between two glyphs tells where a cell of an array, a matrix or a
+// tabular ends, at an &, and where a row ends, at a \\. The glyphs then copy
+// as a table copies from a browser: cells apart by tabs, rows by line breaks.
+class function TMarkdownViewerModel.TableBreakBetween(const Before, After: IDisplayTextRun): string;
+begin
+  Result := '';
+
+  var Math: IMarkdownMath;
+  if not Supports(After.SourceNode, IMarkdownMath, Math) then
+    Exit;
+
+  const GapStart = Before.StartOffset + Before.SourceLength;
+  const Gap = Copy(Math.Literal, GapStart + 1, After.StartOffset - GapStart);
+  const EndsRow = Gap.Contains(FormulaRowEnd);
+  const EndsCell = Gap.Contains(FormulaCellEnd);
+  if EndsRow then
+    Result := sLineBreak
+  else if EndsCell then
+    Result := CopiedTab;
 end;
 
 // A run the layout gave a join copies with that join. One without, drawn by an
@@ -927,12 +1218,11 @@ function TMarkdownViewerModel.TryGetAnchorOffset(const Anchor: string; out Offse
 begin
   Offset := 0;
   Result := False;
-  if (FDocument = nil) or (FDisplayList = nil) then
+  if FDisplayList = nil then
     Exit;
 
-  const Name = TNetEncoding.URL.Decode(Anchor.TrimLeft([AnchorMark]));
   var Heading: IMarkdownHeading;
-  if not TMarkdownToc.TryFindHeading(FDocument, Name, Heading) then
+  if not TryFindAnchorHeading(Anchor, Heading) then
     Exit;
 
   const Segment = Heading.Segment;
@@ -953,6 +1243,41 @@ begin
   end;
 end;
 
+function TMarkdownViewerModel.RevealAnchor(const Anchor: string): Boolean;
+begin
+  Result := False;
+
+  var Heading: IMarkdownHeading;
+  if not TryFindAnchorHeading(Anchor, Heading) then
+    Exit;
+
+  const Openers = TMarkdownDisclosures.SectionsAround(FDocument, Heading);
+  for var Opener in Openers do
+  begin
+    var OpenByDefault: Boolean;
+    TMarkdownDisclosures.IsOpener(Opener, OpenByDefault);
+    if TMarkdownDisclosures.IsOpen(Self, Opener, OpenByDefault) then
+      Continue;
+
+    const Key = TMarkdownDisclosures.KeyOf(Opener);
+    FlipDisclosure(Key);
+    Result := True;
+  end;
+
+  if Result then
+    RefreshLayout;
+end;
+
+function TMarkdownViewerModel.TryFindAnchorHeading(const Anchor: string; out Heading: IMarkdownHeading): Boolean;
+begin
+  Heading := nil;
+  if FDocument = nil then
+    Exit(False);
+
+  const Name = TNetEncoding.URL.Decode(Anchor.TrimLeft([AnchorMark]));
+  Result := TMarkdownToc.TryFindHeading(FDocument, Name, Heading);
+end;
+
 function TMarkdownViewerModel.SelectedMarkdown: string;
 begin
   Result := '';
@@ -966,7 +1291,7 @@ begin
   end;
 
   var Segment: TMarkdownSegment;
-  if TryGetSelectionSourceSegment(Segment) then
+  if TryGetSelectionSegment(True, Segment) then
     Result := TMarkdownSelectedSource.Extract(FText, FDocument, Segment);
 end;
 
@@ -984,6 +1309,15 @@ end;
 
 function TMarkdownViewerModel.TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean;
 begin
+  Result := TryGetSelectionSegment(False, Segment);
+end;
+
+// The text in a table cell has no place in the source of its own. Copy as
+// Markdown takes the table whole anyway, so with WidensToBlocks an edge of the
+// selection in such text stands at the edge of the block around it.
+function TMarkdownViewerModel.TryGetSelectionSegment(const WidensToBlocks: Boolean;
+                                                     out Segment: TMarkdownSegment): Boolean;
+begin
   Segment := Default(TMarkdownSegment);
   Result := False;
 
@@ -992,11 +1326,17 @@ begin
   if not TryFindSelectionEdges(FirstRun, LastRun, FirstCharacter, LastCharacter) then
     Exit;
 
+  const Range = NormalizeSelection;
   var StartOffset, EndOffset: Integer;
-  const IsStartMapped = TMarkdownSourceMapper.TryMapLiteralOffset(FText, FirstRun.SourceNode,
+  var IsStartMapped := TMarkdownSourceMapper.TryMapLiteralOffset(FText, FirstRun.SourceNode,
     FirstRun.StartOffset + FirstCharacter, TMarkdownSourceEdge.Leading, StartOffset);
-  const IsEndMapped = TMarkdownSourceMapper.TryMapLiteralOffset(FText, LastRun.SourceNode,
+  if WidensToBlocks and not IsStartMapped then
+    IsStartMapped := TryGetBlockEdge(Range.StartPosition.ItemIndex, True, StartOffset);
+
+  var IsEndMapped := TMarkdownSourceMapper.TryMapLiteralOffset(FText, LastRun.SourceNode,
     LastRun.StartOffset + LastCharacter, TMarkdownSourceEdge.Trailing, EndOffset);
+  if WidensToBlocks and not IsEndMapped then
+    IsEndMapped := TryGetBlockEdge(Range.EndPosition.ItemIndex, False, EndOffset);
 
   const CoversCharacters = IsStartMapped and IsEndMapped and (EndOffset > StartOffset);
   if not CoversCharacters then
@@ -1004,6 +1344,28 @@ begin
 
   Segment := TMarkdownSegment.Create(StartOffset, EndOffset);
   Result := True;
+end;
+
+function TMarkdownViewerModel.TryGetBlockEdge(const ItemIndex: Integer; const AtStart: Boolean;
+                                              out Offset: Integer): Boolean;
+begin
+  Offset := 0;
+
+  const BlockIndex = BlockIndexOfItem(ItemIndex);
+  Result := ((BlockIndex >= 0) and (BlockIndex < FDocument.ChildCount));
+  if not Result then
+    Exit;
+
+  const Block = FDocument.Children[BlockIndex];
+  const Segment = Block.Segment;
+  Result := (Segment.EndOffset > Segment.StartOffset);
+  if not Result then
+    Exit;
+
+  if AtStart then
+    Offset := Segment.StartOffset
+  else
+    Offset := Segment.EndOffset;
 end;
 
 // The runs between the two ends of the selection follow one another in the
@@ -1136,6 +1498,12 @@ begin
     if not TrySelectableRun(Index, Run) then
       Continue;
 
+    // A formula is found in its TeX, which its source run holds, not in the
+    // glyphs it shows.
+    const IsGlyph = (Run.Role = TDisplayTextRunRole.Formula);
+    if IsGlyph then
+      Continue;
+
     const RunText = Run.Text;
     var Offset := 1;
     var Found := TMarkdownTextSearch.IndexOf(Needle, RunText, Offset, Options);
@@ -1158,6 +1526,7 @@ function TMarkdownViewerModel.TrySelectNextMatch(const Needle: string; const Opt
   out Match: TMarkdownFoundRange): Boolean;
 begin
   Match := Default(TMarkdownFoundRange);
+  OpenSectionsBeforeNextMatch(Needle, Options);
 
   const Matches = FindText(Needle, Options);
   Result := (Length(Matches) > 0);
@@ -1177,6 +1546,7 @@ function TMarkdownViewerModel.TrySelectPreviousMatch(const Needle: string; const
   out Match: TMarkdownFoundRange): Boolean;
 begin
   Match := Default(TMarkdownFoundRange);
+  OpenSectionsBeforePreviousMatch(Needle, Options);
 
   const Matches = FindText(Needle, Options);
   Result := (Length(Matches) > 0);
@@ -1187,11 +1557,31 @@ begin
   SelectMatch(Match);
 end;
 
-// A bare caret sits between two characters, so a match that starts right at
-// it is still ahead; a selection is past its own start.
 function TMarkdownViewerModel.NextMatchAfterSelection(const Matches: TArray<TMarkdownFoundRange>): TMarkdownFoundRange;
 begin
-  Result := Matches[0];
+  if not TryGetMatchAhead(Matches, Result) then
+    Result := Matches[0];
+end;
+
+function TMarkdownViewerModel.PreviousMatchBeforeSelection(
+  const Matches: TArray<TMarkdownFoundRange>): TMarkdownFoundRange;
+begin
+  if not TryGetMatchBehind(Matches, Result) then
+    Result := Matches[High(Matches)];
+end;
+
+// A bare caret sits between two characters, so a match that starts right at
+// it is still ahead; a selection is past its own start. Without a caret the
+// first match is ahead.
+function TMarkdownViewerModel.TryGetMatchAhead(const Matches: TArray<TMarkdownFoundRange>;
+  out Match: TMarkdownFoundRange): Boolean;
+begin
+  Match := Default(TMarkdownFoundRange);
+  Result := (Length(Matches) > 0);
+  if not Result then
+    Exit;
+
+  Match := Matches[0];
   if not HasCaret then
     Exit;
 
@@ -1205,20 +1595,29 @@ begin
     const IsAhead = ((Order > 0) or (IsBareCaret and (Order = 0)));
     if IsAhead then
     begin
-      Result := Candidate;
+      Match := Candidate;
       Exit;
     end;
   end;
+
+  Result := False;
 end;
 
-function TMarkdownViewerModel.PreviousMatchBeforeSelection(
-  const Matches: TArray<TMarkdownFoundRange>): TMarkdownFoundRange;
+// Without a caret the last match is behind.
+function TMarkdownViewerModel.TryGetMatchBehind(const Matches: TArray<TMarkdownFoundRange>;
+  out Match: TMarkdownFoundRange): Boolean;
 begin
-  Result := Matches[High(Matches)];
+  Match := Default(TMarkdownFoundRange);
+  Result := (Length(Matches) > 0);
+  if not Result then
+    Exit;
+
+  Match := Matches[High(Matches)];
   if not HasCaret then
     Exit;
 
   const Selection = NormalizeSelection;
+  Result := False;
 
   for var Candidate in Matches do
   begin
@@ -1227,8 +1626,153 @@ begin
     if not IsBeforeSelectionStart then
       Break;
 
-    Result := Candidate;
+    Match := Candidate;
+    Result := True;
   end;
+end;
+
+// Each pass opens at most one section, and a section inside it may hold the
+// match, so this repeats until the next match is in view.
+procedure TMarkdownViewerModel.OpenSectionsBeforeNextMatch(const Needle: string;
+  const Options: TMarkdownFindOptions);
+begin
+  var Opened := TryOpenSectionBeforeNextMatch(Needle, Options);
+  while Opened do
+    Opened := TryOpenSectionBeforeNextMatch(Needle, Options);
+end;
+
+procedure TMarkdownViewerModel.OpenSectionsBeforePreviousMatch(const Needle: string;
+  const Options: TMarkdownFindOptions);
+begin
+  var Opened := TryOpenSectionBeforePreviousMatch(Needle, Options);
+  while Opened do
+    Opened := TryOpenSectionBeforePreviousMatch(Needle, Options);
+end;
+
+// A closed section holding the needle that comes after the caret and before
+// the next match in view; when the walk wraps to the start of the document,
+// the first such section before the first match.
+function TMarkdownViewerModel.TryOpenSectionBeforeNextMatch(const Needle: string;
+  const Options: TMarkdownFindOptions): Boolean;
+begin
+  const Sections = SectionsHolding(Needle, Options);
+  const HasSections = (Length(Sections) > 0);
+  if not HasSections then
+    Exit(False);
+
+  const Matches = FindText(Needle, Options);
+  var Ahead: TMarkdownFoundRange;
+  const HasMatchAhead = TryGetMatchAhead(Matches, Ahead);
+  const From = CaretItemIndex(-1);
+
+  for var Section in Sections do
+  begin
+    const IsBeforeMatch = ((not HasMatchAhead) or (Section < Ahead.ItemIndex));
+    const IsAfterCaret = (Section > From);
+    if IsAfterCaret and IsBeforeMatch then
+    begin
+      OpenSectionAt(Section);
+      Exit(True);
+    end;
+  end;
+
+  const IsBeforeFirstMatch = ((Length(Matches) = 0) or (Sections[0] < Matches[0].ItemIndex));
+  Result := ((not HasMatchAhead) and IsBeforeFirstMatch);
+  if Result then
+    OpenSectionAt(Sections[0]);
+end;
+
+function TMarkdownViewerModel.TryOpenSectionBeforePreviousMatch(const Needle: string;
+  const Options: TMarkdownFindOptions): Boolean;
+begin
+  const Sections = SectionsHolding(Needle, Options);
+  const HasSections = (Length(Sections) > 0);
+  if not HasSections then
+    Exit(False);
+
+  const Matches = FindText(Needle, Options);
+  var Behind: TMarkdownFoundRange;
+  const HasMatchBehind = TryGetMatchBehind(Matches, Behind);
+  const From = CaretItemIndex(MaxInt);
+
+  for var Index := High(Sections) downto 0 do
+  begin
+    const Section = Sections[Index];
+    const IsAfterMatch = ((not HasMatchBehind) or (Section > Behind.ItemIndex));
+    const IsBeforeCaret = (Section < From);
+    if IsBeforeCaret and IsAfterMatch then
+    begin
+      OpenSectionAt(Section);
+      Exit(True);
+    end;
+  end;
+
+  const LastSection = Sections[High(Sections)];
+  const IsAfterLastMatch = ((Length(Matches) = 0) or (LastSection > Matches[High(Matches)].ItemIndex));
+  Result := ((not HasMatchBehind) and IsAfterLastMatch);
+  if Result then
+    OpenSectionAt(LastSection);
+end;
+
+// The display items of the closed sections whose hidden source holds the
+// needle, in document order. The source can hold markup the reader does not
+// see, so a section can open without a match in it; the walk then goes on.
+function TMarkdownViewerModel.SectionsHolding(const Needle: string;
+  const Options: TMarkdownFindOptions): TArray<Integer>;
+begin
+  Result := nil;
+  const IsSearchable = ((Needle <> '') and (FDocument <> nil) and (FDisplayList <> nil));
+  if not IsSearchable then
+    Exit;
+
+  const Sections = TMarkdownDisclosures.ClosedSections(FDocument, FText, Self);
+  for var Section in Sections do
+  begin
+    const Position = TMarkdownTextSearch.IndexOf(Needle, Section.HiddenSource, 1, Options);
+    const HoldsNeedle = (Position > 0);
+    if not HoldsNeedle then
+      Continue;
+
+    const Key = TMarkdownDisclosures.KeyOf(Section.Opener);
+    var ItemIndex: Integer;
+    if TryGetDisclosureItem(Key, ItemIndex) then
+      Result := Result + [ItemIndex];
+  end;
+end;
+
+function TMarkdownViewerModel.TryGetDisclosureItem(const Key: Integer; out ItemIndex: Integer): Boolean;
+begin
+  for var Index := 0 to FDisplayList.ItemCount - 1 do
+  begin
+    var Disclosure: IDisplayDisclosure;
+    const IsSection = (Supports(FDisplayList.Items[Index], IDisplayDisclosure, Disclosure) and
+                       (Disclosure.Key = Key));
+    if IsSection then
+    begin
+      ItemIndex := Index;
+      Exit(True);
+    end;
+  end;
+
+  ItemIndex := -1;
+  Result := False;
+end;
+
+procedure TMarkdownViewerModel.OpenSectionAt(const ItemIndex: Integer);
+begin
+  const Disclosure = FDisplayList.Items[ItemIndex] as IDisplayDisclosure;
+  ToggleDisclosure(Disclosure.Key);
+end;
+
+// The display item the selection starts in, or WithoutCaret when there is
+// no caret.
+function TMarkdownViewerModel.CaretItemIndex(const WithoutCaret: Integer): Integer;
+begin
+  if not HasCaret then
+    Exit(WithoutCaret);
+
+  const Selection = NormalizeSelection;
+  Result := Selection.StartPosition.ItemIndex;
 end;
 
 function TMarkdownViewerModel.HasCaret: Boolean;
@@ -1462,15 +2006,39 @@ end;
 
 procedure TMarkdownViewerModel.ToggleDisclosure(const Key: Integer);
 begin
+  FlipDisclosure(Key);
+
+  RefreshLayout;
+  // Closing a section near the end can leave the view scrolled past the
+  // shorter document.
+  SetScrollOffset(FScrollOffset);
+end;
+
+procedure TMarkdownViewerModel.FlipDisclosure(const Key: Integer);
+begin
   const WasToggled = FToggledDisclosures.Contains(Key);
   if WasToggled then
     FToggledDisclosures.Remove(Key)
   else
     FToggledDisclosures.Add(Key);
+end;
+
+procedure TMarkdownViewerModel.ResetDisclosures;
+begin
+  FToggledDisclosures.Clear;
+end;
+
+function TMarkdownViewerModel.GetToggledDisclosures: TArray<Integer>;
+begin
+  Result := FToggledDisclosures.ToArray;
+end;
+
+procedure TMarkdownViewerModel.SetToggledDisclosures(const Value: TArray<Integer>);
+begin
+  FToggledDisclosures.Clear;
+  FToggledDisclosures.AddRange(Value);
 
   RefreshLayout;
-  // Closing a section near the end can leave the view scrolled past the
-  // shorter document.
   SetScrollOffset(FScrollOffset);
 end;
 
@@ -1686,11 +2254,12 @@ begin
   const Watch = TStopwatch.StartNew;
   const Document = TMarkdown.Parse(FText, TMarkdownDialect.Gfm);
   TLayoutDocumentProcessorRegistry.Process(Document, Self);
-  FDocument := Document;
   RefreshZoomedTheme;
 
-  FDisplayList := TMarkdownLayoutEngine.LayoutDocument(Document, FViewportWidth, LayoutTheme, FMeasurer, Self,
-                                                       Self, Self);
+  FDisplayList := LayoutFor(Document);
+  FDocument := Document;
+  FLaidOutText := FText;
+  FTextChanged := False;
   FLastLayoutMilliseconds := Watch.ElapsedMilliseconds;
   Inc(FLayoutCount);
   FDraggedScroller := -1;
@@ -1704,6 +2273,23 @@ begin
 
   RegisterImageSlots;
   RefreshHighlights;
+end;
+
+// After an edit only the blocks that changed are laid out again, as long as
+// the rest of the previous layout still fits: same width, and nothing else
+// that triggered this layout, such as a theme, a zoom or an image.
+function TMarkdownViewerModel.LayoutFor(const Document: IMarkdownDocument): IMarkdownDisplayList;
+begin
+  const HasPreviousLayout = ((FDisplayList <> nil) and SameValue(FDisplayList.Width, FViewportWidth));
+  var Range: TLayoutBlockRange;
+  const CanReuse = (FTextChanged and HasPreviousLayout and
+                    TMarkdownChangedBlocks.TryReuse(FDocument, FLaidOutText, Document, FText, Self, Range));
+  if CanReuse then
+    Result := TMarkdownLayoutEngine.UpdateLayout(FDisplayList, Document, Range, LayoutTheme, FMeasurer, Self, Self, Self,
+      FExtensionData)
+  else
+    Result := TMarkdownLayoutEngine.LayoutDocument(Document, FViewportWidth, LayoutTheme, FMeasurer, Self, Self, Self,
+      FExtensionData);
 end;
 
 function TMarkdownViewerModel.TryCaptureSelection(out Selection: TSelectionAnchors): Boolean;
@@ -1779,6 +2365,8 @@ begin
   end;
 end;
 
+// The pointer lands on the glyphs of a formula, never on its source run, which
+// stands for the whole formula only where find selects it.
 function TMarkdownViewerModel.TryResolvePosition(const Point: TLayoutPointF; out Position: TTextPosition): Boolean;
 begin
   Position := Default(TTextPosition);
@@ -1796,7 +2384,8 @@ begin
   for var Index := 0 to FDisplayList.ItemCount - 1 do
   begin
     var Run: IDisplayTextRun;
-    if not TrySelectableRun(Index, Run) then
+    const IsPointable = (TrySelectableRun(Index, Run) and (Run.Role <> TDisplayTextRunRole.Source));
+    if not IsPointable then
       Continue;
 
     const Bounds = Run.Bounds;
@@ -1831,6 +2420,11 @@ begin
 
   Position.ItemIndex := BestIndex;
   Position.CharacterIndex := NearestCharacterBoundary(BestRun, Point.X);
+
+  const IsGlyph = (BestRun.Role = TDisplayTextRunRole.Formula);
+  if IsGlyph then
+    Position := FormulaEdgeNear(Point, Position);
+
   Result := True;
 end;
 
@@ -1869,13 +2463,14 @@ begin
   Result := TMarkdownTextAnchors.TrySelectableRun(FDisplayList, Index, Run);
 end;
 
-// A source run is selected whole or not at all: the pointer picks the edge
-// nearest to it, never a character inside the formula.
+// A source run, and a letter of the mathematical alphabets, is selected whole
+// or not at all: the pointer picks the edge nearest to it, never a character
+// inside.
 function TMarkdownViewerModel.NearestCharacterBoundary(const Run: IDisplayTextRun; const X: Single): Integer;
 begin
   const LocalX = X - Run.Bounds.Left;
 
-  const IsAtomic = (Run.Role = TDisplayTextRunRole.Source);
+  const IsAtomic = IsAtomicRun(Run);
   if IsAtomic then
   begin
     const PastMiddle = (LocalX > Run.Bounds.Width / 2);
@@ -1961,8 +2556,9 @@ begin
     Exit;
   end;
 
-  // The source of a drawing is as wide as the drawing, whatever its text measures.
-  const IsAtomic = (Run.Role = TDisplayTextRunRole.Source);
+  // The source of a drawing is as wide as the drawing, whatever its text
+  // measures, and a letter of the mathematical alphabets as wide as its glyph.
+  const IsAtomic = IsAtomicRun(Run);
   if IsAtomic then
   begin
     Result := Run.Bounds.Width;
@@ -1980,9 +2576,9 @@ end;
 procedure TMarkdownViewerModel.SetText(const Value: string);
 begin
   FText := Value;
+  FTextChanged := True;
   FPendingMarkdown := '';
   FDirty := False;
-  FToggledDisclosures.Clear;
   ClearSelection;
   Relayout;
 end;

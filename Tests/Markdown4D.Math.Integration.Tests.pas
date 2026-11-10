@@ -78,7 +78,7 @@ type
     procedure InlineMath_AloneInTableCell_SharesBaselineWithNeighbour;
 
     [Test]
-    procedure FormulaGlyphs_AreDrawingsWithOneSourceRun;
+    procedure FormulaGlyphs_AreGlyphsWithOneSourceRun;
 
     [Test]
     procedure TextWithDescender_KeepsFractionBarClear;
@@ -127,6 +127,9 @@ type
     class function FindScroller(const DisplayList: IMarkdownDisplayList): IDisplayScroller;
     class function GlyphBounds(const DisplayList: IMarkdownDisplayList; const Glyph: string): TLayoutRectF;
     class function CentreOf(const Bounds: TLayoutRectF): TLayoutPointF;
+    class function GlyphPlaces(const DisplayList: IMarkdownDisplayList): string;
+    function GlyphRun(const Text: string): IDisplayTextRun;
+    procedure Drag(const FromText, ToText: string);
 
   public
     [Setup]
@@ -158,6 +161,48 @@ type
 
     [Test]
     procedure SelectAll_DisplayBlock_CopiesDollarFences;
+
+    [Test]
+    procedure Glyphs_ArePlacedInTheirFormula;
+
+    [Test]
+    procedure Drag_PartOfFormula_CopiesTheGlyphsShown;
+
+    [Test]
+    procedure Drag_OverWholeFormula_CopiesItsMarkdown;
+
+    [Test]
+    procedure Drag_FromTextIntoFormula_CopiesBoth;
+
+    [Test]
+    procedure Drag_InsideDenominator_SelectsItAlone;
+
+    [Test]
+    procedure Drag_InsideTextCommand_SelectsCharacters;
+
+    [Test]
+    procedure Drag_PastTheEndOfFormula_SelectsAllOfIt;
+
+    [Test]
+    procedure Drag_OverDisplayFormulaBetweenText_CopiesItsFences;
+
+    [Test]
+    procedure SelectionRects_PartOfFormula_MarkOnlyItsGlyphs;
+
+    [Test]
+    procedure SelectWordAt_LettersOnOneBaseline_SelectsTheName;
+
+    [Test]
+    procedure Drag_InScrolledFormula_SelectsTheGlyphsInView;
+
+    [Test]
+    procedure Drag_OverMathematicalAlphabets_CopiesPlainLetters;
+
+    [Test]
+    procedure Drag_OverTableCells_CopiesTabsAndLineBreaks;
+
+    [Test]
+    procedure Drag_OverMatrix_CopiesItsRowsAndCells;
 
     [Test]
     procedure WideDisplayFormula_ScrollsInsteadOfOverflowing;
@@ -487,13 +532,13 @@ begin
   Assert.IsTrue(MatrixSize < AlignedSize, 'matrix cells in text style');
 end;
 
-procedure TMathLayoutIntegrationTests.FormulaGlyphs_AreDrawingsWithOneSourceRun;
+procedure TMathLayoutIntegrationTests.FormulaGlyphs_AreGlyphsWithOneSourceRun;
 begin
   const DisplayList = Layout('alpha $x^2$');
 
   Assert.AreEqual<TDisplayTextRunRole>(TDisplayTextRunRole.Text, RunStartingWith(DisplayList, 'alpha').Role);
-  Assert.AreEqual<TDisplayTextRunRole>(TDisplayTextRunRole.Drawing, RunWithText(DisplayList, 'x').Role);
-  Assert.AreEqual<TDisplayTextRunRole>(TDisplayTextRunRole.Drawing, RunWithText(DisplayList, '2').Role);
+  Assert.AreEqual<TDisplayTextRunRole>(TDisplayTextRunRole.Formula, RunWithText(DisplayList, 'x').Role);
+  Assert.AreEqual<TDisplayTextRunRole>(TDisplayTextRunRole.Formula, RunWithText(DisplayList, '2').Role);
 
   const Source = RunWithText(DisplayList, '$x^2$');
   Assert.AreEqual<TDisplayTextRunRole>(TDisplayTextRunRole.Source, Source.Role);
@@ -509,7 +554,7 @@ begin
   const ContentWidth = DefaultWidth - 2 * FTheme.ContentPadding;
   const Expected = ContentLeft + (ContentWidth - Formula.Bounds.Width) / 2;
   Assert.AreEqual(Expected, Formula.Bounds.Left, SingleTolerance);
-  Assert.AreEqual<TDisplayTextRunRole>(TDisplayTextRunRole.Drawing, Formula.Role);
+  Assert.AreEqual<TDisplayTextRunRole>(TDisplayTextRunRole.Formula, Formula.Role);
   Assert.AreEqual<TDisplayTextRunRole>(TDisplayTextRunRole.Source, RunWithText(DisplayList, '$$'#10'x'#10'$$').Role);
 end;
 
@@ -668,6 +713,178 @@ begin
     FModel.SelectedText);
 end;
 
+// Inside a link a glyph is attributed to the link, so a click follows it,
+// while its place stays in the formula.
+procedure TMathViewerTests.Glyphs_ArePlacedInTheirFormula;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '[so $a+\alpha$](#target)'#10#10'$$'#10'\frac{b}{c}'#10'$$';
+
+  Assert.AreEqual('a|+|\alpha|b|c', GlyphPlaces(FModel.DisplayList));
+end;
+
+// Copy as Markdown takes a formula the selection cuts whole, as it takes any
+// other inline element.
+procedure TMathViewerTests.Drag_PartOfFormula_CopiesTheGlyphsShown;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'area $\pi r^2$ done';
+
+  Drag('r', '2');
+
+  Assert.AreEqual('r2', FModel.SelectedText);
+  Assert.AreEqual('$\pi r^2$', FModel.SelectedMarkdown);
+end;
+
+procedure TMathViewerTests.Drag_OverWholeFormula_CopiesItsMarkdown;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'so $\frac{a}{b}$ holds';
+
+  Drag('a', 'b');
+
+  Assert.AreEqual('$\frac{a}{b}$', FModel.SelectedText, 'a whole formula copies as its markdown');
+  Assert.AreEqual('$\frac{a}{b}$', FModel.SelectedMarkdown);
+end;
+
+procedure TMathViewerTests.Drag_FromTextIntoFormula_CopiesBoth;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'area $\pi r^2$ done';
+
+  Drag('area ', 'r');
+
+  Assert.AreEqual('area ' + #$03C0 + 'r', FModel.SelectedText);
+  Assert.AreEqual('area $\pi r^2$', FModel.SelectedMarkdown);
+end;
+
+procedure TMathViewerTests.Drag_InsideDenominator_SelectsItAlone;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '$$'#10'x = \frac{-b+c}{2a}'#10'$$';
+
+  Drag('2', 'a');
+
+  Assert.AreEqual('2a', FModel.SelectedText);
+end;
+
+procedure TMathViewerTests.Drag_InsideTextCommand_SelectsCharacters;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'so $x \text{hello} y$ done';
+
+  const Words = GlyphRun('hello').Bounds;
+  const Middle = (Words.Top + Words.Bottom) / 2;
+  FModel.SetSelectionAnchor(TLayoutPointF.Create(Words.Left + Words.Width * 0.3, Middle));
+  FModel.SetSelectionExtent(TLayoutPointF.Create(Words.Right - 0.01, Middle));
+
+  const Selected = FModel.SelectedText;
+  const IsPartOfWord = ((Selected <> '') and (Selected <> 'hello') and 'hello'.EndsWith(Selected));
+  Assert.IsTrue(IsPartOfWord, 'part of a word in \text is selected as in a paragraph: ' + Selected);
+end;
+
+// Beside the numerator still means the end of the formula.
+procedure TMathViewerTests.Drag_PastTheEndOfFormula_SelectsAllOfIt;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '$$'#10'x = \frac{-b+c}{2a}'#10'$$';
+
+  const Start = GlyphRun('x').Bounds;
+  const Numerator = GlyphRun('c').Bounds;
+  FModel.SetSelectionAnchor(TLayoutPointF.Create(Start.Left + 0.01, (Start.Top + Start.Bottom) / 2));
+  FModel.SetSelectionExtent(TLayoutPointF.Create(Numerator.Right + 20, (Numerator.Top + Numerator.Bottom) / 2));
+
+  Assert.AreEqual('$$'#10'x = \frac{-b+c}{2a}'#10'$$', FModel.SelectedText);
+end;
+
+procedure TMathViewerTests.Drag_OverDisplayFormulaBetweenText_CopiesItsFences;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'before'#10#10'$$'#10'x + y'#10'$$'#10#10'after';
+
+  Drag('x', 'y');
+
+  Assert.AreEqual('$$'#10'x + y'#10'$$', FModel.SelectedText);
+  Assert.AreEqual('$$'#10'x + y'#10'$$', FModel.SelectedMarkdown.Replace(sLineBreak, #10));
+end;
+
+procedure TMathViewerTests.SelectionRects_PartOfFormula_MarkOnlyItsGlyphs;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'area $\pi r^2$ done';
+
+  Drag('r', '2');
+
+  const Left = GlyphRun('r').Bounds.Left;
+  const Right = GlyphRun('2').Bounds.Right;
+  const Rects = FModel.SelectionRects;
+  Assert.IsTrue(Length(Rects) > 0);
+  for var Rect in Rects do
+  begin
+    const IsInside = ((Rect.Left >= Left - ScrollTolerance) and (Rect.Right <= Right + ScrollTolerance));
+    Assert.IsTrue(IsInside, 'the rest of the formula stays unmarked');
+  end;
+end;
+
+procedure TMathViewerTests.SelectWordAt_LettersOnOneBaseline_SelectsTheName;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'so $x = ac^2 + b$ holds';
+
+  const Letter = GlyphRun('a').Bounds;
+  Assert.IsTrue(FModel.SelectWordAt(CentreOf(Letter)));
+
+  Assert.AreEqual('ac', FModel.SelectedText, 'the letters of a name, but not its power');
+end;
+
+procedure TMathViewerTests.Drag_InScrolledFormula_SelectsTheGlyphsInView;
+begin
+  FModel.SetViewport(200, DefaultHeight);
+  FModel.Text := WideFormula;
+  const Before = GlyphRun('f').Bounds.Left;
+  const Band = FindScroller(FModel.DisplayList).Bounds;
+
+  FModel.ScrollSideways(TLayoutPointF.Create(Band.Left + 10, (Band.Top + Band.Bottom) / 2), 30);
+  Drag('f', 'h');
+
+  Assert.AreEqual(Before - 30, GlyphRun('f').Bounds.Left, ScrollTolerance, 'the glyphs moved with the scroll');
+  Assert.AreEqual('f+g+h', FModel.SelectedText);
+end;
+
+procedure TMathViewerTests.Drag_OverMathematicalAlphabets_CopiesPlainLetters;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'so $a + \mathbb{R}\mathfrak{g} + b$ holds';
+
+  Drag(#$211D, #$D835#$DD24);
+
+  Assert.AreEqual('Rg', FModel.SelectedText, 'the letters a reader would type');
+end;
+
+// As a browser copies a table: cells apart by tabs, rows by line breaks.
+procedure TMathViewerTests.Drag_OverTableCells_CopiesTabsAndLineBreaks;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'Table:'#10#10'$$'#10'\begin{tabular}{lr} Ingredient & Amount \\ Sugar & 20 \end{tabular}'#10 +
+    '$$'#10#10'End.';
+
+  Drag('Ingredient', 'Amount');
+  Assert.AreEqual('Ingredient'#9'Amount', FModel.SelectedText, 'cells of a row are split by a tab');
+
+  Drag('Amount', 'Sugar');
+  Assert.AreEqual('Amount' + sLineBreak + 'Sugar', FModel.SelectedText, 'a new row starts a new line');
+end;
+
+procedure TMathViewerTests.Drag_OverMatrix_CopiesItsRowsAndCells;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'so $\begin{pmatrix} a & b \\ c & d \end{pmatrix} = M$ holds';
+
+  Drag('a', 'd');
+
+  Assert.AreEqual('a'#9'b' + sLineBreak + 'c'#9'd', FModel.SelectedText);
+end;
+
 procedure TMathViewerTests.WideDisplayFormula_ScrollsInsteadOfOverflowing;
 begin
   FModel.SetViewport(200, DefaultHeight);
@@ -781,6 +998,55 @@ end;
 class function TMathViewerTests.CentreOf(const Bounds: TLayoutRectF): TLayoutPointF;
 begin
   Result := TLayoutPointF.Create((Bounds.Left + Bounds.Right) / 2, (Bounds.Top + Bounds.Bottom) / 2);
+end;
+
+// The first run that shows Text, a glyph of a formula or a run of text.
+function TMathViewerTests.GlyphRun(const Text: string): IDisplayTextRun;
+begin
+  const DisplayList = FModel.DisplayList;
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    const IsMatch = (Supports(DisplayList.Items[Index], IDisplayTextRun, Run) and (Run.Text = Text));
+    if IsMatch then
+    begin
+      Result := Run;
+      Exit;
+    end;
+  end;
+
+  raise Exception.CreateFmt('No run "%s" in the display list', [Text]);
+end;
+
+// From the left edge of one run to the right edge of another, as a drag with
+// the mouse does.
+procedure TMathViewerTests.Drag(const FromText, ToText: string);
+begin
+  const First = GlyphRun(FromText).Bounds;
+  const Last = GlyphRun(ToText).Bounds;
+
+  FModel.SetSelectionAnchor(TLayoutPointF.Create(First.Left + 0.01, (First.Top + First.Bottom) / 2));
+  FModel.SetSelectionExtent(TLayoutPointF.Create(Last.Right - 0.01, (Last.Top + Last.Bottom) / 2));
+end;
+
+// The source each glyph of a formula was set from, in the order of the
+// display list.
+class function TMathViewerTests.GlyphPlaces(const DisplayList: IMarkdownDisplayList): string;
+begin
+  var Places: TArray<string> := [];
+  for var Index := 0 to DisplayList.ItemCount - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    if not Supports(DisplayList.Items[Index], IDisplayTextRun, Run) then
+      Continue;
+
+    var Math: IMarkdownMath;
+    const IsGlyph = ((Run.Role = TDisplayTextRunRole.Formula) and Supports(Run.SourceNode, IMarkdownMath, Math));
+    if IsGlyph then
+      Places := Places + [Copy(Math.Literal, Run.StartOffset + 1, Run.SourceLength)];
+  end;
+
+  Result := string.Join('|', Places);
 end;
 
 end.

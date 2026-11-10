@@ -231,6 +231,8 @@ type
     procedure SetEditorCaret(const Value: Integer);
     function GetPreviewScrollOffset: Single;
     procedure SetPreviewScrollOffset(const Value: Single);
+    function GetPreviewToggledSections: TArray<Integer>;
+    procedure SetPreviewToggledSections(const Value: TArray<Integer>);
     function FirstVisibleSourceLine: Integer;
     procedure ScrollToSourceLine(const LineIndex: Integer);
     function SaveEditState: IMarkdownEditorState;
@@ -280,6 +282,10 @@ type
     procedure HandleTocSplitterMoved(Sender: TObject);
     procedure EnforceTopBarOrder;
     procedure EnforceLeftPaneOrder;
+    procedure ShowFind;
+    function IsReadingPreview: Boolean;
+    function CanFocusPreviewFind: Boolean;
+    procedure FocusPreviewFind;
     procedure ShowFindBar;
     procedure ShowReplaceBar;
     procedure CloseFindBar;
@@ -655,8 +661,6 @@ begin
       ExecuteFormatCommand(TEditorCommand.Table);
     Ord('E'):
       DoExportHtml;
-    Ord('C'):
-      DoCopyHtml;
     Ord('S'):
       FController.SaveAs;
     VK_TAB:
@@ -686,7 +690,7 @@ begin
     Ord('B'):
       ExecuteFormatCommand(TEditorCommand.Bold);
     Ord('F'):
-      ShowFindBar;
+      ShowFind;
     Ord('H'):
       ShowReplaceBar;
     Ord('I'):
@@ -1299,6 +1303,16 @@ begin
   mdPreview.ScrollOffset := Value;
 end;
 
+function TMarkdown4DStudioVCLForm.GetPreviewToggledSections: TArray<Integer>;
+begin
+  Result := mdPreview.ToggledSections;
+end;
+
+procedure TMarkdown4DStudioVCLForm.SetPreviewToggledSections(const Value: TArray<Integer>);
+begin
+  mdPreview.ToggledSections := Value;
+end;
+
 function TMarkdown4DStudioVCLForm.FirstVisibleSourceLine: Integer;
 begin
   Result := mdEditor.FirstVisibleSourceLine;
@@ -1800,7 +1814,7 @@ begin
   Result.ToggleToc := procedure begin ToggleTocPane; end;
   Result.ShowFind := procedure begin ShowFindBar; end;
   Result.ShowReplace := procedure begin ShowReplaceBar; end;
-  Result.FindInPreview := procedure begin ExecuteFind; end;
+  Result.FindInPreview := procedure begin FocusPreviewFind; end;
   Result.Undo := procedure begin mdEditor.Undo; FocusEditor; end;
   Result.Redo := procedure begin mdEditor.Redo; FocusEditor; end;
   Result.SelectAll := procedure begin mdEditor.SelectAll; FocusEditor; end;
@@ -1960,6 +1974,43 @@ begin
   finally
     EnableAlign;
   end;
+end;
+
+// Ctrl+F searches what the reader is looking at: the rendered text when the
+// preview is all there is or has the focus, the markdown source otherwise.
+// Without the toolbar, as in zen mode, the find bar of the editor is left.
+procedure TMarkdown4DStudioVCLForm.ShowFind;
+begin
+  const CanFindInPreview = (IsReadingPreview and CanFocusPreviewFind);
+  if CanFindInPreview then
+    FocusPreviewFind
+  else
+    ShowFindBar;
+end;
+
+function TMarkdown4DStudioVCLForm.IsReadingPreview: Boolean;
+begin
+  const IsPreviewOnly = (EffectiveViewMode = TPadViewMode.PreviewOnly);
+  Result := (IsPreviewOnly or mdPreview.Focused);
+end;
+
+function TMarkdown4DStudioVCLForm.CanFocusPreviewFind: Boolean;
+begin
+  Result := edtFind.CanFocus;
+end;
+
+procedure TMarkdown4DStudioVCLForm.FocusPreviewFind;
+begin
+  if not CanFocusPreviewFind then
+    Exit;
+
+  const Selection = mdPreview.SelectedText;
+  const IsOneLine = ((Selection <> '') and not Selection.Contains(#10) and not Selection.Contains(#13));
+  if IsOneLine then
+    edtFind.Text := Selection;
+
+  edtFind.SetFocus;
+  edtFind.SelectAll;
 end;
 
 procedure TMarkdown4DStudioVCLForm.ShowFindBar;

@@ -47,6 +47,9 @@ type
       const Measurer: ITextMeasurer): IMathLayout;
     class function LayoutNode(const Node: IMathNode; const Options: TMathLayoutOptions;
       const Measurer: ITextMeasurer): IMathLayout;
+    // The text a reader would type for drawn glyphs: the letters and digits
+    // of the mathematical alphabets the layouter draws fold back to plain ones.
+    class function PlainText(const Glyphs: string): string;
   end;
 
 implementation
@@ -87,6 +90,10 @@ type
     FPoints: TArray<TLayoutPointF>;
     FChildren: TList<TMathPlacement>;
     FUrl: string;
+    FSourceStart: Integer;
+    FSourceLength: Integer;
+    FIsAttached: Boolean;
+    procedure DrawGlyph(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
     procedure DrawGroup(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
     procedure DrawChildren(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
     procedure DrawPolygon(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
@@ -102,6 +109,10 @@ type
     // Grows the group so the placed child fits; the group's extent is never
     // smaller than its parts.
     procedure Enclose(const Child: TMathBox; const DX, DY: Single);
+    // Gives every glyph inside that has no place in the formula's source yet
+    // this one, so a delimiter drawn for \left or a glyph of \ce belongs to
+    // the command that drew it.
+    procedure AttachSource(const SourceStart, SourceLength: Integer);
     property Width: Single read FWidth write FWidth;
     property Ascent: Single read FAscent write FAscent;
     property Descent: Single read FDescent write FDescent;
@@ -123,6 +134,30 @@ type
 
   TMathGlyphMapper = class
   private
+    const
+      LatinFirst = $1D400;
+      LatinLast = $1D6A3;
+      LatinPerStyle = 52;
+      GreekFirst = $1D6A8;
+      GreekLast = $1D7C9;
+      GreekPerStyle = 58;
+      DigitFirst = $1D7CE;
+      DigitLast = $1D7FF;
+      DigitsPerStyle = 10;
+      LettersInAlphabet = 26;
+      GreekLetters =
+        #$0391#$0392#$0393#$0394#$0395#$0396#$0397#$0398#$0399#$039A#$039B#$039C#$039D#$039E +
+        #$039F#$03A0#$03A1#$03F4#$03A3#$03A4#$03A5#$03A6#$03A7#$03A8#$03A9#$2207#$03B1#$03B2 +
+        #$03B3#$03B4#$03B5#$03B6#$03B7#$03B8#$03B9#$03BA#$03BB#$03BC#$03BD#$03BE#$03BF#$03C0 +
+        #$03C1#$03C2#$03C3#$03C4#$03C5#$03C6#$03C7#$03C8#$03C9#$2202#$03F5#$03D1#$03F0#$03D5 +
+        #$03F1#$03D6;
+      LetterlikeFrom =
+        #$210E#$212C#$2130#$2131#$210B#$2110#$2112#$2133#$211B#$212F#$210A#$2134#$212D#$210C +
+        #$2111#$211C#$2128#$2102#$210D#$2115#$2119#$211A#$211D#$2124;
+      LetterlikeTo = 'hBEFHILMRegoCHIRZCHNPQRZ';
+    class function PlainLetterlike(const Value: Char): Char; static;
+    class function PlainAlphanumeric(const CodePoint: Integer): string; static;
+    class function PlainLatin(const CodePoint: Integer): Char; static;
     class function MapLetter(const Letter: Char; const UpperBase, LowerBase: Integer): Integer; static;
     class function MapDigit(const Digit: Char; const DigitBase: Integer): Integer; static;
     class function DoubleStruck(const Value: Char): Integer; static;
@@ -136,6 +171,7 @@ type
     // of the variant; everything else stays. Bold and italic are font
     // attributes, so they pass through untouched.
     class function Apply(const Text: string; const Variant: TMathFontVariant): string;
+    class function PlainText(const Text: string): string;
   end;
 
   TMathBoxBuilder = class
@@ -322,12 +358,18 @@ begin
   end;
 end;
 
+class function TMathLayouter.PlainText(const Glyphs: string): string;
+begin
+  Result := TMathGlyphMapper.PlainText(Glyphs);
+end;
+
 constructor TMathBox.Create(const Kind: TMathBoxKind);
 begin
   inherited Create;
 
   FKind := Kind;
   FChildren := TList<TMathPlacement>.Create;
+  FSourceStart := -1;
 end;
 
 destructor TMathBox.Destroy;
@@ -378,7 +420,7 @@ begin
     TMathBoxKind.Group:
       DrawGroup(Canvas, Left, Baseline);
     TMathBoxKind.Glyph:
-      Canvas.DrawText(TLayoutPointF.Create(Left, Baseline - FFontBaseline), FText, FFont, FColor);
+      DrawGlyph(Canvas, Left, Baseline);
     TMathBoxKind.Rule:
       Canvas.FillRectangle(TLayoutRectF.Create(Left + FRule.Left, Baseline + FRule.Top, Left + FRule.Right,
         Baseline + FRule.Bottom), FColor);
@@ -387,6 +429,42 @@ begin
   else
     raise EMathSyntaxError.CreateFmt('Unhandled math box kind: %d', [Ord(FKind)]);
   end;
+end;
+
+// A box once attached has given its glyphs their places, so the boxes around
+// it need not look into it again.
+procedure TMathBox.AttachSource(const SourceStart, SourceLength: Integer);
+begin
+  if FIsAttached then
+    Exit;
+
+  FIsAttached := True;
+
+  const IsUnplacedGlyph = ((FKind = TMathBoxKind.Glyph) and (FSourceStart < 0));
+  if IsUnplacedGlyph then
+  begin
+    FSourceStart := SourceStart;
+    FSourceLength := SourceLength;
+  end;
+
+  for var Placement in FChildren do
+  begin
+    Placement.Box.AttachSource(SourceStart, SourceLength);
+  end;
+end;
+
+// A glyph with a place in the source is drawn as text placed there when the
+// canvas can take it; any other canvas just draws it.
+procedure TMathBox.DrawGlyph(const Canvas: IExtensionCanvas; const Left, Baseline: Single);
+begin
+  const TopLeft = TLayoutPointF.Create(Left, Baseline - FFontBaseline);
+
+  var SourceCanvas: IExtensionSourceCanvas;
+  const IsPlaced = ((FSourceStart >= 0) and Supports(Canvas, IExtensionSourceCanvas, SourceCanvas));
+  if IsPlaced then
+    SourceCanvas.DrawSourceText(TopLeft, FText, FFont, FColor, FSourceStart, FSourceLength, FAscent, FDescent)
+  else
+    Canvas.DrawText(TopLeft, FText, FFont, FColor);
 end;
 
 // A canvas that cannot attribute drawing to a link still draws the linked
@@ -643,6 +721,10 @@ begin
   else
     raise EMathSyntaxError.CreateFmt('Unhandled math node kind: %d', [Ord(Node.Kind)]);
   end;
+
+  const IsPlaced = (Node.SourceStart >= 0);
+  if IsPlaced then
+    Result.AttachSource(Node.SourceStart, Node.SourceLength);
 end;
 
 // Every box reads the text colour from the options as it is built, so the
@@ -1790,6 +1872,67 @@ begin
   end;
 
   Result := TGlyphExtent.Create(0.68, 0.05);
+end;
+
+// The mathematical alphanumeric symbols (U+1D400 to U+1D7FF) repeat the Latin
+// alphabet in thirteen styles, the Greek one in five and the digits in five;
+// the letterlike symbols fill the gaps in them, such as the double-struck R.
+class function TMathGlyphMapper.PlainText(const Text: string): string;
+begin
+  Result := '';
+
+  var Index := 1;
+  while Index <= Length(Text) do
+  begin
+    const IsPair = ((Index < Length(Text)) and Text[Index].IsHighSurrogate);
+    if IsPair then
+    begin
+      const CodePoint = Char.ConvertToUtf32(Text[Index], Text[Index + 1]);
+      Result := Result + PlainAlphanumeric(CodePoint);
+      Inc(Index, 2);
+    end
+    else
+    begin
+      Result := Result + PlainLetterlike(Text[Index]);
+      Inc(Index);
+    end;
+  end;
+end;
+
+class function TMathGlyphMapper.PlainLetterlike(const Value: Char): Char;
+begin
+  const Letterlike = Pos(Value, LetterlikeFrom);
+  const IsLetterlike = (Letterlike > 0);
+  if IsLetterlike then
+    Result := LetterlikeTo[Letterlike]
+  else
+    Result := Value;
+end;
+
+// A code point outside the three runs, such as an emoji, stays as it is.
+class function TMathGlyphMapper.PlainAlphanumeric(const CodePoint: Integer): string;
+begin
+  const IsLatin = ((CodePoint >= LatinFirst) and (CodePoint <= LatinLast));
+  const IsGreek = ((CodePoint >= GreekFirst) and (CodePoint <= GreekLast));
+  const IsDigit = ((CodePoint >= DigitFirst) and (CodePoint <= DigitLast));
+  if IsLatin then
+    Result := PlainLatin(CodePoint)
+  else if IsGreek then
+    Result := GreekLetters[(CodePoint - GreekFirst) mod GreekPerStyle + 1]
+  else if IsDigit then
+    Result := Chr(Ord('0') + (CodePoint - DigitFirst) mod DigitsPerStyle)
+  else
+    Result := Char.ConvertFromUtf32(CodePoint);
+end;
+
+class function TMathGlyphMapper.PlainLatin(const CodePoint: Integer): Char;
+begin
+  const Letter = (CodePoint - LatinFirst) mod LatinPerStyle;
+  const IsUpper = (Letter < LettersInAlphabet);
+  if IsUpper then
+    Result := Chr(Ord('A') + Letter)
+  else
+    Result := Chr(Ord('a') + Letter - LettersInAlphabet);
 end;
 
 end.

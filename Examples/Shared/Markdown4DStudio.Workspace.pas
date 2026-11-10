@@ -57,6 +57,7 @@ type
     FCaretPosition: Integer;
     FEditorScrollOffset: Single;
     FPreviewScrollOffset: Single;
+    FToggledSections: TArray<Integer>;
     FDiskTimestampUtc: TDateTime;
     FDiskConflict: Boolean;
     FDiskMissing: Boolean;
@@ -75,6 +76,8 @@ type
     procedure SetEditorScrollOffset(const Value: Single);
     function GetPreviewScrollOffset: Single;
     procedure SetPreviewScrollOffset(const Value: Single);
+    function GetToggledSections: TArray<Integer>;
+    procedure SetToggledSections(const Value: TArray<Integer>);
     function GetDiskTimestampUtc: TDateTime;
     procedure SetDiskTimestampUtc(const Value: TDateTime);
     function GetDiskConflict: Boolean;
@@ -339,6 +342,16 @@ end;
 procedure TPadDocument.SetPreviewScrollOffset(const Value: Single);
 begin
   FPreviewScrollOffset := Value;
+end;
+
+function TPadDocument.GetToggledSections: TArray<Integer>;
+begin
+  Result := FToggledSections;
+end;
+
+procedure TPadDocument.SetToggledSections(const Value: TArray<Integer>);
+begin
+  FToggledSections := Value;
 end;
 
 function TPadDocument.GetDiskTimestampUtc: TDateTime;

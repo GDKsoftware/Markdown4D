@@ -5,7 +5,8 @@ unit Markdown4D.Html.Subset.Tests;
 interface
 
 uses
-  DUnitX.TestFramework;
+  DUnitX.TestFramework,
+  Markdown4D.Html.Subset;
 
 type
   [TestFixture]
@@ -41,6 +42,24 @@ type
     procedure Convert_Strikethrough_BecomesTildes;
 
     [Test]
+    [TestCase('Subscript', '<p>H<sub>2</sub>O</p>,H<sub>2</sub>O')]
+    [TestCase('Superscript', '<div>m<sup>2</sup></div>,m<sup>2</sup>')]
+    [TestCase('Inserted', '<p>an <ins>added</ins> word</p>,an <ins>added</ins> word')]
+    [TestCase('Mark', '<p>a <mark>marked</mark> word</p>,a <mark>marked</mark> word')]
+    [TestCase('Small', '<p>a <small>small</small> print</p>,a <small>small</small> print')]
+    procedure Convert_InlineTagWithoutMarkdown_StaysInlineHtml(const Html, Expected: string);
+
+    [Test]
+    [TestCase('Centred paragraph', '<p align="center">Title</p>,Center')]
+    [TestCase('Centred div', '<div align=center><img src="logo.png"></div>,Center')]
+    [TestCase('Right heading', '<h1 ALIGN="Right">Title</h1>,Right')]
+    [TestCase('Left paragraph', '<p align="left">Text</p>,Left')]
+    [TestCase('Center tag', '<center>Title</center>,Center')]
+    [TestCase('No align', '<p>Text</p>,None')]
+    [TestCase('Align on an inner element', '<p>Text <img align="right" src="a.png"></p>,None')]
+    procedure BlockAlignment_OfTheOuterElement(const Html: string; const Expected: TMarkdownHtmlAlignment);
+
+    [Test]
     procedure Convert_Image_BecomesImageLink;
 
     [Test]
@@ -72,6 +91,14 @@ type
 
     [Test]
     procedure Convert_Details_PutsSummaryInBold;
+
+    [Test]
+    [TestCase('Level1', '<h1>Large</h1>,# Large')]
+    [TestCase('Level4WithAttribute', '<h4 id="large">Large</h4>,#### Large')]
+    procedure Convert_SummaryThatIsOneHeading_BecomesThatHeading(const Heading, Expected: string);
+
+    [Test]
+    procedure Convert_SummaryWithMoreThanAHeading_StaysBold;
 
     [Test]
     procedure Convert_Preformatted_BecomesFencedBlock;
@@ -111,8 +138,7 @@ type
 implementation
 
 uses
-  System.SysUtils,
-  Markdown4D.Html.Subset;
+  System.SysUtils;
 
 procedure TMarkdownHtmlSubsetTests.AssertConverts(const Html, Expected: string);
 begin
@@ -165,6 +191,19 @@ end;
 procedure TMarkdownHtmlSubsetTests.Convert_Strikethrough_BecomesTildes;
 begin
   AssertConverts('<del>gone</del>', '~~gone~~');
+end;
+
+procedure TMarkdownHtmlSubsetTests.BlockAlignment_OfTheOuterElement(const Html: string;
+  const Expected: TMarkdownHtmlAlignment);
+begin
+  Assert.AreEqual(Expected, TMarkdownHtmlSubset.BlockAlignment(Html));
+end;
+
+// GitHub renders these tags inside an HTML block as it does in a paragraph,
+// and the paragraph already draws them as inline HTML.
+procedure TMarkdownHtmlSubsetTests.Convert_InlineTagWithoutMarkdown_StaysInlineHtml(const Html, Expected: string);
+begin
+  AssertConverts(Html, Expected);
 end;
 
 procedure TMarkdownHtmlSubsetTests.Convert_Image_BecomesImageLink;
@@ -225,6 +264,18 @@ begin
 
   Assert.IsTrue(Converted.Contains('**Show more**'), Format('summary should survive in bold: %s', [Converted]));
   Assert.IsTrue(Converted.Contains('The hidden part.'), Format('body should survive: %s', [Converted]));
+end;
+
+procedure TMarkdownHtmlSubsetTests.Convert_SummaryThatIsOneHeading_BecomesThatHeading(const Heading, Expected: string);
+begin
+  AssertConverts(Format('<details><summary>%s</summary></details>', [Heading]), Expected);
+end;
+
+procedure TMarkdownHtmlSubsetTests.Convert_SummaryWithMoreThanAHeading_StaysBold;
+begin
+  const Converted = TMarkdownHtmlSubset.ToMarkdown('<details><summary>Large <h3>part</h3></summary></details>');
+
+  Assert.IsTrue(Converted.StartsWith('**Large'), Format('summary should stay bold: %s', [Converted]));
 end;
 
 procedure TMarkdownHtmlSubsetTests.Convert_Preformatted_BecomesFencedBlock;

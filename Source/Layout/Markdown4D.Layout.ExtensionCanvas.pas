@@ -12,21 +12,24 @@ uses
   Markdown4D.Layout.BlockOverride;
 
 type
-  TDisplayListExtensionCanvas = class(TInterfacedObject, IExtensionCanvas, IExtensionLinkCanvas)
+  TDisplayListExtensionCanvas = class(TInterfacedObject, IExtensionCanvas, IExtensionLinkCanvas,
+    IExtensionSourceCanvas)
   private
     FMeasurer: ITextMeasurer;
     FItems: TList<IDisplayItem>;
     FNode: IMarkdownNode;
     FTextRole: TDisplayTextRunRole;
+    FSourceNode: IMarkdownNode;
     FNodesOutsideLinks: TStack<IMarkdownNode>;
     class function BoundingRect(const Points: TArray<TLayoutPointF>): TLayoutRectF; static;
 
   public
     // Text drawn on the canvas is selectable and searchable like paragraph
     // text unless the role says otherwise, which a drawing such as a formula
-    // asks for.
+    // asks for. SourceNode is the formula whose glyphs DrawSourceText draws,
+    // selectable like text; without one that text is drawn as with DrawText.
     constructor Create(const Measurer: ITextMeasurer; const Items: TList<IDisplayItem>; const Node: IMarkdownNode;
-      const TextRole: TDisplayTextRunRole = TDisplayTextRunRole.Text);
+      const TextRole: TDisplayTextRunRole = TDisplayTextRunRole.Text; const SourceNode: IMarkdownNode = nil);
     destructor Destroy; override;
     function MeasureText(const Text: string; const Font: TMarkdownFontStyle): TLayoutSizeF;
     procedure DrawText(const TopLeft: TLayoutPointF; const Text: string; const Font: TMarkdownFontStyle;
@@ -55,6 +58,8 @@ type
     procedure RestoreState;
     procedure BeginLink(const Url: string);
     procedure EndLink;
+    procedure DrawSourceText(const TopLeft: TLayoutPointF; const Text: string; const Font: TMarkdownFontStyle;
+      const Color: TLayoutColor; const SourceStart, SourceLength: Integer; const Ascent, Descent: Single);
   end;
 
 implementation
@@ -65,7 +70,7 @@ uses
   Markdown4D.Layout.Primitives;
 
 constructor TDisplayListExtensionCanvas.Create(const Measurer: ITextMeasurer; const Items: TList<IDisplayItem>;
-  const Node: IMarkdownNode; const TextRole: TDisplayTextRunRole);
+  const Node: IMarkdownNode; const TextRole: TDisplayTextRunRole; const SourceNode: IMarkdownNode);
 begin
   inherited Create;
 
@@ -73,6 +78,7 @@ begin
   FItems := Items;
   FNode := Node;
   FTextRole := TextRole;
+  FSourceNode := SourceNode;
   FNodesOutsideLinks := TStack<IMarkdownNode>.Create;
 end;
 
@@ -113,6 +119,29 @@ begin
   const Bounds = TLayoutRectF.CreateFromOrigin(TopLeft, Size);
 
   FItems.Add(TDisplayTextRun.Create(Bounds, FNode, Text, Font, Color, FMeasurer.Baseline(Font), 0, FTextRole));
+end;
+
+// The run spans the glyph's ink rather than the font's line, so the glyphs of
+// a fraction or a script do not cover one another. Its baseline sits Ascent
+// below its top, so the glyph is painted where DrawText paints it. Node stays
+// what the run is attributed to, which inside \href is the link.
+procedure TDisplayListExtensionCanvas.DrawSourceText(const TopLeft: TLayoutPointF; const Text: string;
+  const Font: TMarkdownFontStyle; const Color: TLayoutColor; const SourceStart, SourceLength: Integer;
+  const Ascent, Descent: Single);
+begin
+  const HasFormula = (FSourceNode <> nil);
+  if not HasFormula then
+  begin
+    DrawText(TopLeft, Text, Font, Color);
+    Exit;
+  end;
+
+  const Width = FMeasurer.MeasureText(Text, Font).Width;
+  const BaselineY = TopLeft.Y + FMeasurer.Baseline(Font);
+  const Bounds = TLayoutRectF.Create(TopLeft.X, BaselineY - Ascent, TopLeft.X + Width, BaselineY + Descent);
+
+  FItems.Add(TDisplayTextRun.CreateGlyph(Bounds, FNode, Text, Font, Color, Ascent, SourceStart, SourceLength,
+    TDisplayTextRunRole.Formula, FSourceNode));
 end;
 
 procedure TDisplayListExtensionCanvas.DrawLine(const StartPoint, EndPoint: TLayoutPointF; const Color: TLayoutColor;

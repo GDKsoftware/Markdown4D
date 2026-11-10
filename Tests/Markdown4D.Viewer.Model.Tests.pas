@@ -282,6 +282,27 @@ type
     procedure InlineHtml_SuperscriptAndSubscript_LeaveTheBaseline;
 
     [Test]
+    procedure HtmlBlock_SuperscriptAndSubscript_LeaveTheBaseline;
+
+    [Test]
+    [TestCase('Paragraph', '<p align="center">Title</p>,Title')]
+    [TestCase('Heading', '<h1 align="center">Title</h1>,Title')]
+    [TestCase('Center tag', '<center>Title</center>,Title')]
+    procedure HtmlBlock_AlignCenter_CentresTheLine(const Html, Shown: string);
+
+    [Test]
+    procedure HtmlBlock_AlignRight_EndsAtTheRightEdge;
+
+    [Test]
+    procedure HtmlBlock_AlignCenter_CentresAnImage;
+
+    [Test]
+    procedure HtmlBlock_WithoutAlign_StaysAtTheLeft;
+
+    [Test]
+    procedure AlignedElement_WithBlankLines_CentresTheMarkdownInside;
+
+    [Test]
     procedure InlineHtml_Code_UsesTheCodeFont;
 
     [Test]
@@ -390,10 +411,58 @@ type
     procedure ToggleDisclosure_ClosingAtEnd_KeepsScrollInsideDocument;
 
     [Test]
-    procedure SetText_AfterToggle_ShowsSectionsAsTheirTagsAsk;
+    procedure SetText_AfterToggle_KeepsSectionOpen;
+
+    [Test]
+    procedure SetText_TextAddedAboveOpenedSection_KeepsItOpen;
+
+    [Test]
+    procedure SetText_SummaryOfOpenedSectionChanged_ShowsItAsItsTagAsks;
+
+    [Test]
+    procedure ToggleDisclosure_SecondSectionWithSameSummary_StaysClosed;
+
+    [Test]
+    procedure ResetDisclosures_ThenSetText_ShowsSectionsAsTheirTagsAsk;
+
+    [Test]
+    procedure ToggledDisclosures_HandedBack_ReopensSection;
 
     [Test]
     procedure TryGetDisclosureAt_PointBelowSummary_ReturnsFalse;
+
+    [Test]
+    procedure Text_EditInOneBlock_LaysOutOnlyThatBlock;
+
+    [Test]
+    procedure Text_EditInOneBlock_MatchesFreshLayout;
+
+    [Test]
+    procedure Text_EditAbove_SelectedMarkdownOfLaterBlockIsItsSource;
+
+    [Test]
+    procedure Text_EditAbove_AnchorOfLaterHeadingMatchesFreshLayout;
+
+    [Test]
+    procedure TrySelectNextMatch_MatchInClosedSection_OpensSectionAndSelectsMatch;
+
+    [Test]
+    procedure TrySelectNextMatch_MatchInViewBeforeClosedSection_LeavesSectionClosed;
+
+    [Test]
+    procedure TrySelectNextMatch_MatchInNestedClosedSections_OpensBoth;
+
+    [Test]
+    procedure TrySelectNextMatch_MatchInClosedWholeSection_OpensIt;
+
+    [Test]
+    procedure TrySelectPreviousMatch_MatchInClosedSection_OpensSectionAndSelectsMatch;
+
+    [Test]
+    procedure RevealAnchor_HeadingInClosedSection_OpensSectionSoTheAnchorIsFound;
+
+    [Test]
+    procedure RevealAnchor_HeadingInView_ReturnsFalse;
 
     [Test]
     procedure SourceLineToScrollOffset_BlocksRegroupedByProcessor_IsTopOfThatLine;
@@ -1276,6 +1345,78 @@ begin
   Assert.IsTrue(Lowered.Bounds.Bottom > Base.Bounds.Bottom, 'lowered');
 end;
 
+procedure TMarkdownViewerModelTests.HtmlBlock_SuperscriptAndSubscript_LeaveTheBaseline;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := '<p>m<sup>2</sup> H<sub>3</sub></p>';
+
+  const Base = RunShowing('m');
+  const Raised = RunShowing('2');
+  const Lowered = RunShowing('3');
+  Assert.IsTrue(Raised.Font.Size < Base.Font.Size, 'smaller');
+  Assert.IsTrue(Raised.Bounds.Top < Base.Bounds.Top, 'raised');
+  Assert.IsTrue(Lowered.Bounds.Bottom > Base.Bounds.Bottom, 'lowered');
+end;
+
+procedure TMarkdownViewerModelTests.HtmlBlock_AlignCenter_CentresTheLine(const Html, Shown: string);
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := Html;
+
+  const Bounds = RunShowing(Shown).Bounds;
+  Assert.AreEqual(DefaultWidth / 2, (Bounds.Left + Bounds.Right) / 2, 0.5);
+end;
+
+procedure TMarkdownViewerModelTests.HtmlBlock_AlignRight_EndsAtTheRightEdge;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := '<p align="right">Signed</p>';
+
+  Assert.AreEqual(DefaultWidth, RunShowing('Signed').Bounds.Right, 0.5);
+end;
+
+procedure TMarkdownViewerModelTests.HtmlBlock_AlignCenter_CentresAnImage;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := '<p align="center"><img src="logo.png" alt="Logo"></p>';
+
+  var Logo: IDisplayImage;
+  for var Index := 0 to FModel.DisplayList.ItemCount - 1 do
+  begin
+    if Supports(FModel.DisplayList.Items[Index], IDisplayImage, Logo) then
+      Break;
+  end;
+
+  Assert.IsNotNull(Logo, 'the image is laid out');
+  Assert.AreEqual(DefaultWidth / 2, (Logo.Bounds.Left + Logo.Bounds.Right) / 2, 0.5);
+end;
+
+procedure TMarkdownViewerModelTests.HtmlBlock_WithoutAlign_StaysAtTheLeft;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := '<p>Plain text</p>';
+
+  Assert.AreEqual(0.0, RunShowing('Plain text').Bounds.Left, 0.01);
+end;
+
+// As README files write it: blank lines around the markdown, so the opening
+// and the closing tag are blocks of their own.
+procedure TMarkdownViewerModelTests.AlignedElement_WithBlankLines_CentresTheMarkdownInside;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := '<div align="center">'#10#10'Inside'#10#10'</div>'#10#10'Outside';
+
+  const Inside = RunShowing('Inside').Bounds;
+  Assert.AreEqual(DefaultWidth / 2, (Inside.Left + Inside.Right) / 2, 0.5);
+  Assert.AreEqual(0.0, RunShowing('Outside').Bounds.Left, 0.01, 'after the closing tag');
+end;
+
 procedure TMarkdownViewerModelTests.InlineHtml_Code_UsesTheCodeFont;
 begin
   FModel.SetViewport(DefaultWidth, DefaultHeight);
@@ -1749,7 +1890,7 @@ begin
   AssertSingle(MaxOffset, FModel.ScrollOffset);
 end;
 
-procedure TMarkdownViewerModelTests.SetText_AfterToggle_ShowsSectionsAsTheirTagsAsk;
+procedure TMarkdownViewerModelTests.SetText_AfterToggle_KeepsSectionOpen;
 begin
   FModel.SetViewport(DefaultWidth, DefaultHeight);
   FModel.Text := ClosedSectionMarkdown;
@@ -1757,7 +1898,67 @@ begin
 
   FModel.Text := ClosedSectionMarkdown;
 
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+end;
+
+procedure TMarkdownViewerModelTests.SetText_TextAddedAboveOpenedSection_KeepsItOpen;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := ClosedSectionMarkdown;
+  ToggleFirstDisclosure;
+
+  FModel.Text := 'A new line above.'#10#10 + ClosedSectionMarkdown;
+
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+end;
+
+procedure TMarkdownViewerModelTests.SetText_SummaryOfOpenedSectionChanged_ShowsItAsItsTagAsks;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := ClosedSectionMarkdown;
+  ToggleFirstDisclosure;
+
+  FModel.Text := ClosedSectionMarkdown.Replace(SummaryText, 'Less');
+
   Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+end;
+
+procedure TMarkdownViewerModelTests.ToggleDisclosure_SecondSectionWithSameSummary_StaysClosed;
+begin
+  const OtherContentText = 'Other';
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := ClosedSectionMarkdown + #10#10 + ClosedSectionMarkdown.Replace(SectionContentText, OtherContentText);
+
+  ToggleFirstDisclosure;
+
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+  Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, OtherContentText));
+end;
+
+procedure TMarkdownViewerModelTests.ResetDisclosures_ThenSetText_ShowsSectionsAsTheirTagsAsk;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := ClosedSectionMarkdown;
+  ToggleFirstDisclosure;
+
+  FModel.ResetDisclosures;
+  FModel.Text := ClosedSectionMarkdown;
+
+  Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+end;
+
+procedure TMarkdownViewerModelTests.ToggledDisclosures_HandedBack_ReopensSection;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := ClosedSectionMarkdown;
+  ToggleFirstDisclosure;
+  const Toggled = FModel.ToggledDisclosures;
+  FModel.ResetDisclosures;
+  FModel.Text := ClosedSectionMarkdown;
+
+  FModel.ToggledDisclosures := Toggled;
+
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
 end;
 
 procedure TMarkdownViewerModelTests.TryGetDisclosureAt_PointBelowSummary_ReturnsFalse;
@@ -1769,6 +1970,168 @@ begin
   const Found = FModel.TryGetDisclosureAt(TLayoutPointF.Create(DefaultWidth / 2, ThirdLineY), Key);
 
   Assert.IsFalse(Found);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectNextMatch_MatchInClosedSection_OpensSectionAndSelectsMatch;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := ClosedSectionMarkdown;
+
+  var Match: TMarkdownFoundRange;
+  const Found = FModel.TrySelectNextMatch(SectionContentText, Match);
+
+  Assert.IsTrue(Found);
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+  Assert.AreEqual(SectionContentText, FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectNextMatch_MatchInViewBeforeClosedSection_LeavesSectionClosed;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := SectionContentText + ' in view'#10#10 + ClosedSectionMarkdown;
+
+  var Match: TMarkdownFoundRange;
+  FModel.TrySelectNextMatch(SectionContentText, Match);
+  const CountWithSectionClosed = FModel.MatchCount(SectionContentText);
+  FModel.TrySelectNextMatch(SectionContentText, Match);
+
+  Assert.AreEqual(1, CountWithSectionClosed, 'the first match is in view, so the section stays closed');
+  Assert.AreEqual(2, FModel.MatchCount(SectionContentText), 'the next search opens the section');
+  Assert.AreEqual(1, FModel.MatchIndex(SectionContentText, Default(TMarkdownFindOptions)));
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectNextMatch_MatchInNestedClosedSections_OpensBoth;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '<details>'#10'<summary>Outer</summary>'#10#10 + ClosedSectionMarkdown + #10#10'</details>';
+
+  var Match: TMarkdownFoundRange;
+  const Found = FModel.TrySelectNextMatch(SectionContentText, Match);
+
+  Assert.IsTrue(Found);
+  Assert.AreEqual(SectionContentText, FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectNextMatch_MatchInClosedWholeSection_OpensIt;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '<details><summary>' + SummaryText + '</summary><p>' + SectionContentText + '</p></details>';
+
+  var Match: TMarkdownFoundRange;
+  const Found = FModel.TrySelectNextMatch(SectionContentText, Match);
+
+  Assert.IsTrue(Found);
+  Assert.AreEqual(SectionContentText, FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.TrySelectPreviousMatch_MatchInClosedSection_OpensSectionAndSelectsMatch;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := ClosedSectionMarkdown + #10#10'After';
+
+  var Match: TMarkdownFoundRange;
+  const Found = FModel.TrySelectPreviousMatch(SectionContentText, Match);
+
+  Assert.IsTrue(Found);
+  Assert.AreEqual(SectionContentText, FModel.SelectedText);
+end;
+
+procedure TMarkdownViewerModelTests.RevealAnchor_HeadingInClosedSection_OpensSectionSoTheAnchorIsFound;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '<details>'#10'<summary>' + SummaryText + '</summary>'#10#10'## Target'#10#10'</details>';
+  var Offset: Single;
+  const FoundWhileClosed = FModel.TryGetAnchorOffset('#target', Offset);
+
+  const Revealed = FModel.RevealAnchor('#target');
+
+  Assert.IsFalse(FoundWhileClosed, 'a heading in a closed section is not laid out');
+  Assert.IsTrue(Revealed);
+  Assert.IsTrue(FModel.TryGetAnchorOffset('#target', Offset));
+end;
+
+procedure TMarkdownViewerModelTests.RevealAnchor_HeadingInView_ReturnsFalse;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '## Target'#10#10 + ClosedSectionMarkdown;
+
+  const Revealed = FModel.RevealAnchor('#target');
+
+  Assert.IsFalse(Revealed);
+  Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+end;
+
+procedure TMarkdownViewerModelTests.Text_EditInOneBlock_LaysOutOnlyThatBlock;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'one'#10#10'two'#10#10'three';
+
+  FModel.Text := 'one'#10#10'two more'#10#10'three';
+
+  const Recomputed = FModel.DisplayList.RecomputedBlockIndexes;
+  Assert.AreEqual(1, Integer(Length(Recomputed)));
+  Assert.AreEqual(1, Recomputed[0]);
+end;
+
+procedure TMarkdownViewerModelTests.Text_EditInOneBlock_MatchesFreshLayout;
+begin
+  const Edited = '# Title'#10#10'one'#10#10'two grown considerably longer so that it wraps'#10#10'- three'#10'- four';
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '# Title'#10#10'one'#10#10'two'#10#10'- three'#10'- four';
+  FModel.Text := Edited;
+
+  const Fresh = TMarkdownViewerModel.Create(FTheme, FMeasurer);
+  try
+    Fresh.SetViewport(DefaultWidth, DefaultHeight);
+    Fresh.Text := Edited;
+
+    Assert.AreEqual(Fresh.DisplayList.ItemCount, FModel.DisplayList.ItemCount, 'item count');
+    for var Index := 0 to Fresh.DisplayList.ItemCount - 1 do
+    begin
+      const Expected = Fresh.DisplayList.Items[Index].Bounds;
+      const Actual = FModel.DisplayList.Items[Index].Bounds;
+      AssertSingle(Expected.Left, Actual.Left);
+      AssertSingle(Expected.Top, Actual.Top);
+      AssertSingle(Expected.Bottom, Actual.Bottom);
+    end;
+    AssertSingle(Fresh.DisplayList.Height, FModel.DisplayList.Height);
+  finally
+    Fresh.Free;
+  end;
+end;
+
+procedure TMarkdownViewerModelTests.Text_EditAbove_SelectedMarkdownOfLaterBlockIsItsSource;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'one'#10#10'two **three**';
+  FModel.Text := 'one more'#10#10'two **three**';
+
+  var Match: TMarkdownFoundRange;
+  FModel.TrySelectNextMatch('three', Match);
+
+  Assert.AreEqual('**three**', FModel.SelectedMarkdown);
+end;
+
+procedure TMarkdownViewerModelTests.Text_EditAbove_AnchorOfLaterHeadingMatchesFreshLayout;
+begin
+  const Edited = 'one more'#10'and more'#10#10'## Target';
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'one'#10#10'## Target';
+  FModel.Text := Edited;
+
+  const Fresh = TMarkdownViewerModel.Create(FTheme, FMeasurer);
+  try
+    Fresh.SetViewport(DefaultWidth, DefaultHeight);
+    Fresh.Text := Edited;
+
+    var Expected: Single;
+    var Actual: Single;
+    Assert.IsTrue(Fresh.TryGetAnchorOffset('#target', Expected));
+    Assert.IsTrue(FModel.TryGetAnchorOffset('#target', Actual));
+    AssertSingle(Expected, Actual);
+  finally
+    Fresh.Free;
+  end;
 end;
 
 procedure TMarkdownViewerModelTests.ToggleFirstDisclosure;

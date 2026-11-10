@@ -51,7 +51,7 @@ type
     class function AverageSampledLuminance(const Bitmap: TBitmap): Double;
     class function DistinctCodeRunColorCount(const DisplayList: IMarkdownDisplayList;
       const CodeFamilyName: string): Integer;
-    class function DrawingRunCount(const DisplayList: IMarkdownDisplayList): Integer;
+    class function FormulaGlyphCount(const DisplayList: IMarkdownDisplayList): Integer;
     class function CreateCropSourceBitmap: TBitmap;
     class function IsRed(const Color: TAlphaColor): Boolean;
 
@@ -151,7 +151,7 @@ begin
     try
       const DisplayList = RenderToBitmap(MathMarkdown, Theme, Bitmap);
 
-      const GlyphRuns = DrawingRunCount(DisplayList);
+      const GlyphRuns = FormulaGlyphCount(DisplayList);
       Assert.IsTrue(GlyphRuns >= MinimumFormulaGlyphRuns,
         Format('Expected at least %d formula glyph runs but found %d', [MinimumFormulaGlyphRuns, GlyphRuns]));
       const DistinctColors = DistinctSampledColorCount(Bitmap);
@@ -165,14 +165,14 @@ begin
   end;
 end;
 
-class function TMarkdownFmxRenderTests.DrawingRunCount(const DisplayList: IMarkdownDisplayList): Integer;
+class function TMarkdownFmxRenderTests.FormulaGlyphCount(const DisplayList: IMarkdownDisplayList): Integer;
 begin
   Result := 0;
   for var Index := 0 to DisplayList.ItemCount - 1 do
   begin
     var Run: IDisplayTextRun;
     const IsFormulaGlyph = (Supports(DisplayList.Items[Index], IDisplayTextRun, Run) and
-      (Run.Role = TDisplayTextRunRole.Drawing));
+      (Run.Role = TDisplayTextRunRole.Formula));
     if IsFormulaGlyph then
       Inc(Result);
   end;

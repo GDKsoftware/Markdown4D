@@ -134,9 +134,15 @@ type
     procedure Keyboard_CtrlA_SelectsWholeDocument;
 
     [Test]
+    procedure Relayout_AfterExtensionDataChanged_LaysOutAgain;
+
+    [Test]
     [TestCase('On', 'True,**bold**')]
     [TestCase('Off', 'False,bold')]
     procedure Keyboard_CtrlShiftC_CopiesMarkdownWhenOffered(const CopyAsMarkdown: Boolean; const Expected: string);
+
+    [Test]
+    procedure Keyboard_CtrlInsert_CopiesTheSelection;
 
     [Test]
     procedure CtrlWheel_Up_ZoomsInOneLevel;
@@ -209,10 +215,12 @@ implementation
 uses
   Markdown4D.Layout.DisplayList,
   Markdown4D.Layout.BlockOverride,
+  Markdown4D.Layout.Engine,
   Markdown4D.Tests.Pipeline.Helpers,
   Markdown4D.Tests.FailingExtensions,
   Markdown4D.Tests.FmxClipboard,
-  Markdown4D.Tests.DisplayList.Helpers;
+  Markdown4D.Tests.DisplayList.Helpers,
+  Markdown4D.Tests.BoxOverride;
 
 type
   // Widens MouseDown/MouseMove/MouseUp from protected to accessible-in-unit, so a
@@ -443,6 +451,22 @@ begin
   end;
 end;
 
+procedure TMarkdownFmxViewerTests.Keyboard_CtrlInsert_CopiesTheSelection;
+begin
+  var Clipboard: TFmxClipboardSwap;
+  Clipboard.Replace;
+  try
+    FViewer.Text := 'A **bold** word';
+    FViewer.FindText('bold');
+
+    PressKey(vkInsert, [ssCtrl]);
+
+    Assert.AreEqual('bold', Clipboard.Text);
+  finally
+    Clipboard.Restore;
+  end;
+end;
+
 procedure TMarkdownFmxViewerTests.CtrlWheel_Up_ZoomsInOneLevel;
 begin
   FViewer.Text := KeyboardMarkdown;
@@ -482,6 +506,27 @@ begin
   FViewer.Zoom := 150;
 
   Assert.AreEqual(1, FZoomChangeCount);
+end;
+
+// An extension that keeps what the reader did in the viewer's extension data
+// asks for a new layout once it changes.
+procedure TMarkdownFmxViewerTests.Relayout_AfterExtensionDataChanged_LaysOutAgain;
+begin
+  TMarkdownLayoutEngine.RegisterBlockOverride(TBoxBlockOverride.Create, TBoxBlockOverride.Priority);
+  try
+    const Viewer = FViewer;
+    Viewer.Text := '```box'#10'```'#10#10'after';
+    const LayoutsBefore = Viewer.LayoutCount;
+    const HeightBefore = Viewer.ContentHeight;
+
+    Viewer.ExtensionData.SetValue(TBoxBlockOverride.OverrideName, TBoxHeight.Create(60));
+    Viewer.Relayout;
+
+    Assert.IsTrue(Viewer.LayoutCount > LayoutsBefore, 'laid out again');
+    Assert.IsTrue(Viewer.ContentHeight > HeightBefore, 'the taller box pushes the text down');
+  finally
+    TMarkdownLayoutEngine.ClearBlockOverrides;
+  end;
 end;
 
 procedure TMarkdownFmxViewerTests.Keyboard_CtrlA_SelectsWholeDocument;

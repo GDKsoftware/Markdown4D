@@ -13,6 +13,8 @@ unit Markdown4D.Html.Subset;
 // So instead of a second rendering path, the allowed subset is translated to
 // markdown and handed back to the parser. Everything downstream - layout,
 // selection, hit-testing, theming, image loading - then works on it unchanged.
+// The inline tags markdown has no form for, such as <sub> and <mark>, stay as
+// inline HTML, which a paragraph draws the way GitHub does.
 //
 // The list of tags this understands is deliberately short. A tag that is not on
 // it is dropped while its content is kept, which is what a browser would show
@@ -22,13 +24,26 @@ unit Markdown4D.Html.Subset;
 interface
 
 type
+  TMarkdownHtmlAlignment = (None, Left, Center, Right);
+
   TMarkdownHtmlSubset = class
+  private
+    const
+      OpeningTagPattern = '^\s*<([A-Za-z][A-Za-z0-9]*)\b([^>]*)>';
+      AlignPattern = '\balign\s*=\s*["'']?\s*(left|center|right)\b';
+      CenterTag = 'center';
+    class function AlignmentNamed(const Name: string): TMarkdownHtmlAlignment; static;
+
   public
     // Converts an HTML fragment to markdown. Returns an empty string when
     // nothing survives the translation.
     class function ToMarkdown(const Html: string): string; static;
     // True when the fragment holds nothing a reader would see.
     class function IsEmpty(const Html: string): Boolean; static;
+    // How the outermost element of the fragment lines its content up: its
+    // align attribute, as GitHub honours on <p>, <div> and headings, or a
+    // <center> tag. None when it says nothing.
+    class function BlockAlignment(const Html: string): TMarkdownHtmlAlignment; static;
   end;
 
 implementation
@@ -39,6 +54,7 @@ uses
   System.StrUtils,
   System.Classes,
   System.Generics.Collections,
+  System.RegularExpressions,
   Markdown4D.Html.Entities;
 
 type
@@ -55,6 +71,9 @@ type
     Emphasis,
     CodeSpan,
     Strikethrough,
+    // Markdown has no form for it, but a paragraph draws it as inline HTML,
+    // so the tag stays as it is.
+    InlineHtml,
     Anchor,
     Image,
     UnorderedList,
@@ -125,6 +144,7 @@ type
     procedure HandleCloseTag(const Name: string);
     procedure HandleImage(const Tag: TParsedTag);
     procedure HandleListItem;
+    function IsHeadingSummary: Boolean;
   public
     constructor Create(const Html: string);
     destructor Destroy; override;
@@ -212,6 +232,12 @@ begin
     Result.Kind := TTagKind.Strikethrough;
     Result.Opener := '~~';
     Result.Closer := '~~';
+  end
+  else if (Name = 'sub') or (Name = 'sup') or (Name = 'ins') or (Name = 'mark') or (Name = 'small') then
+  begin
+    Result.Kind := TTagKind.InlineHtml;
+    Result.Opener := Format('<%s>', [Name]);
+    Result.Closer := Format('</%s>', [Name]);
   end
   else if Name = 'a' then
     Result.Kind := TTagKind.Anchor
@@ -635,6 +661,22 @@ begin
     Write(Marker);
 end;
 
+// A summary that is exactly one heading shows as that heading, as GitHub sets
+// it next to the triangle, instead of as bold text around a heading block.
+function TSubsetConverter.IsHeadingSummary: Boolean;
+begin
+  var SummaryEnd := PosEx('</summary', FLowered, FPosition);
+  const IsClosed = (SummaryEnd > 0);
+  if not IsClosed then
+    SummaryEnd := Length(FLowered) + 1;
+
+  const Content = Copy(FLowered, FPosition, SummaryEnd - FPosition);
+  const Inner = Content.Trim;
+  const IsOneHeading = TRegEx.IsMatch(Inner, '^<h([1-6])[\s>].*</h\1\s*>$', [roSingleLine]);
+  const HeadingTags = TRegEx.Matches(Inner, '<h[1-6][\s>]');
+  Result := (IsOneHeading and (HeadingTags.Count = 1));
+end;
+
 procedure TSubsetConverter.HandleOpenTag(const Tag: TParsedTag);
 begin
   const Info = TagInfoOf(Tag.Name);
@@ -696,6 +738,16 @@ begin
         Exit;
       end;
 
+    TTagKind.Summary:
+      begin
+        if IsHeadingSummary then
+        begin
+          StartBlock;
+          FOpen.Add(TOpenTag.Create(Tag.Name, Info.Kind, ''));
+          Exit;
+        end;
+      end;
+
     TTagKind.Preformatted:
       begin
         StartBlock;
@@ -717,8 +769,8 @@ begin
       end;
   else
     // Every other kind (Transparent, Paragraph, headings, inline styles,
-    // anchors, Details/Summary, ...) shares the generic block/opener/closer
-    // handling below instead of a dedicated branch here.
+    // anchors, Details, ...) and a summary with more than a heading share the
+    // generic block/opener/closer handling below.
   end;
 
   if Info.IsBlock then
@@ -870,6 +922,36 @@ end;
 class function TMarkdownHtmlSubset.IsEmpty(const Html: string): Boolean;
 begin
   Result := ToMarkdown(Html) = '';
+end;
+
+class function TMarkdownHtmlSubset.BlockAlignment(const Html: string): TMarkdownHtmlAlignment;
+begin
+  Result := TMarkdownHtmlAlignment.None;
+
+  const Opening = TRegEx.Match(Html, OpeningTagPattern);
+  if not Opening.Success then
+    Exit;
+
+  const TagName = Opening.Groups[1].Value;
+  const IsCenterTag = SameText(TagName, CenterTag);
+  if IsCenterTag then
+    Exit(TMarkdownHtmlAlignment.Center);
+
+  const Attributes = Opening.Groups[2].Value;
+  const Align = TRegEx.Match(Attributes, AlignPattern, [roIgnoreCase]);
+  if Align.Success then
+    Result := AlignmentNamed(Align.Groups[1].Value);
+end;
+
+class function TMarkdownHtmlSubset.AlignmentNamed(const Name: string): TMarkdownHtmlAlignment;
+begin
+  const Lowered = Name.ToLower;
+  if Lowered = 'center' then
+    Result := TMarkdownHtmlAlignment.Center
+  else if Lowered = 'right' then
+    Result := TMarkdownHtmlAlignment.Right
+  else
+    Result := TMarkdownHtmlAlignment.Left;
 end;
 
 end.

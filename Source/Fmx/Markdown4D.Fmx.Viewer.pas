@@ -19,6 +19,7 @@ uses
   Markdown4D.Layout.DisplayList,
   Markdown4D.Theme,
   Markdown4D.Viewer.Model,
+  Markdown4D.Layout.BlockOverride,
   Markdown4D.Layout.TextSearch,
   Markdown4D.Viewer.Clicks,
   Markdown4D.Layout.ResizePacer,
@@ -137,6 +138,10 @@ type
     procedure ScrollToBottom;
     procedure SetScrollPosition(const Value: Single);
     procedure ScrollToMatch(const Match: TMarkdownFoundRange);
+    procedure ShowChangedSections;
+    function GetToggledSections: TArray<Integer>;
+    function GetExtensionData: IMarkdownExtensionData;
+    procedure SetToggledSections(const Value: TArray<Integer>);
     function ScrollBarVisible: Boolean;
     function TryBeginScrollBarDrag(const X, Y: Single): Boolean;
     procedure DragScrollBarTo(const Y: Single);
@@ -219,6 +224,7 @@ type
     procedure AppendMarkdown(const Markdown: string);
     // Select the next match and scroll it into view; a repeated search moves
     // on and wraps to the first match after the last. FindPrevious walks back.
+    // A closed <details> section opens when the match lies inside it.
     function FindText(const Needle: string): Boolean; overload;
     function FindText(const Needle: string; const Options: TMarkdownFindOptions): Boolean; overload;
     function FindPrevious(const Needle: string): Boolean; overload;
@@ -236,10 +242,17 @@ type
     function HighlightCount: Integer;
     procedure CopySelectionToClipboard;
     procedure CopySelectionAsMarkdown;
-    // Scrolls the heading a link like #getting-started points at to the top.
+    // Scrolls the heading a link like #getting-started points at to the top,
+    // opening the closed <details> sections around it.
     // A click on such a link does this itself; OnLinkClick is raised only for
     // an anchor the document does not have.
     function ScrollToAnchor(const Anchor: string): Boolean;
+    // The <details> sections the reader opened or closed. They stay so while
+    // Text changes, as an editor beside the viewer changes it, and a section
+    // keeps its state as long as its summary stays the same. LoadFromFile and
+    // LoadFromStream start over. A host that shows several documents in one
+    // viewer reads this before it switches and hands it back on return.
+    property ToggledSections: TArray<Integer> read GetToggledSections write SetToggledSections;
     // Where a line of Text shows, as the ScrollOffset that brings it to the
     // top, and which line shows at an offset, so an editor beside the viewer
     // can keep both in step. Lines count from 0.
@@ -253,11 +266,19 @@ type
     procedure ZoomIn;
     procedure ZoomOut;
     procedure ResetZoom;
+    // Lays the document out again with the same text, keeping the scroll
+    // position and the selection, as a width change does: for an extension
+    // whose drawing depends on ExtensionData that changed.
+    procedure Relayout;
     // Answers the stretch of markdown the selection in the preview was
     // rendered from, so an editor can put its own selection on those same
     // characters before a formatting command runs.
     function TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean;
     property Theme: TMarkdownTheme read FTheme write SetTheme;
+    // What extensions keep for this viewer, each under its own name. A block
+    // override reads it from its context, so two viewers that show the same
+    // text each keep their own.
+    property ExtensionData: IMarkdownExtensionData read GetExtensionData;
     property ContentHeight: Integer read GetContentHeight;
     property ScrollOffset: Single read GetScrollOffset write SetScrollPosition;
     property DisplayList: IMarkdownDisplayList read GetDisplayList;
@@ -465,6 +486,7 @@ begin
 
   const Reader = TStreamReader.Create(FileName, True);
   try
+    FModel.ResetDisclosures;
     Text := Reader.ReadToEnd;
   finally
     Reader.Free;
@@ -475,6 +497,7 @@ procedure TMarkdownViewer.LoadFromStream(const Stream: TStream);
 begin
   const Reader = TStreamReader.Create(Stream, True);
   try
+    FModel.ResetDisclosures;
     Text := Reader.ReadToEnd;
   finally
     Reader.Free;
@@ -540,8 +563,14 @@ end;
 
 function TMarkdownViewer.FindText(const Needle: string; const Options: TMarkdownFindOptions): Boolean;
 begin
+  const LayoutsBefore = FModel.LayoutCount;
   var Match: TMarkdownFoundRange;
   Result := FModel.TrySelectNextMatch(Needle, Options, Match);
+
+  const OpenedSections = (FModel.LayoutCount <> LayoutsBefore);
+  if OpenedSections then
+    ShowChangedSections;
+
   if Result then
     ScrollToMatch(Match);
 end;
@@ -553,8 +582,14 @@ end;
 
 function TMarkdownViewer.FindPrevious(const Needle: string; const Options: TMarkdownFindOptions): Boolean;
 begin
+  const LayoutsBefore = FModel.LayoutCount;
   var Match: TMarkdownFoundRange;
   Result := FModel.TrySelectPreviousMatch(Needle, Options, Match);
+
+  const OpenedSections = (FModel.LayoutCount <> LayoutsBefore);
+  if OpenedSections then
+    ShowChangedSections;
+
   if Result then
     ScrollToMatch(Match);
 end;
@@ -1029,6 +1064,27 @@ begin
     Exit;
 
   FModel.ToggleDisclosure(FPressedDisclosureKey);
+  ShowChangedSections;
+end;
+
+function TMarkdownViewer.GetToggledSections: TArray<Integer>;
+begin
+  Result := FModel.ToggledDisclosures;
+end;
+
+function TMarkdownViewer.GetExtensionData: IMarkdownExtensionData;
+begin
+  Result := FModel.ExtensionData;
+end;
+
+procedure TMarkdownViewer.SetToggledSections(const Value: TArray<Integer>);
+begin
+  FModel.ToggledDisclosures := Value;
+  ShowChangedSections;
+end;
+
+procedure TMarkdownViewer.ShowChangedSections;
+begin
   ResolvePendingImages;
   RefreshCodeHover;
   RedrawContent;
@@ -1046,6 +1102,9 @@ end;
 
 function TMarkdownViewer.ScrollToAnchor(const Anchor: string): Boolean;
 begin
+  if FModel.RevealAnchor(Anchor) then
+    ShowChangedSections;
+
   var Offset: Single;
   Result := FModel.TryGetAnchorOffset(Anchor, Offset);
   if Result then
@@ -1178,6 +1237,12 @@ begin
         SelectAll;
       vkC:
         CopyForShortcut(Shift);
+      vkInsert:
+        begin
+          Result := (Shift * [ssShift, ssCtrl, ssAlt] = [ssCtrl]);
+          if Result then
+            CopySelectionToClipboard;
+        end;
     else
       Result := TryHandleZoomKey(Key);
     end;
@@ -1247,6 +1312,13 @@ end;
 procedure TMarkdownViewer.ResetZoom;
 begin
   StepZoom(TMarkdownZoom.DefaultPercent);
+end;
+
+procedure TMarkdownViewer.Relayout;
+begin
+  FModel.RefreshLayout;
+  ResolvePendingImages;
+  RedrawContent;
 end;
 
 // A slow document waits until the wheel rests, so turning it several notches
