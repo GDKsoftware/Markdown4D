@@ -61,6 +61,7 @@ type
     class function ColumnCount(const Node: IMathNode): Integer; static;
     class function ListAttribute(const Name: string; const Values: TArray<string>): string; static;
     class function Element(const Name, Content: string; const Attributes: string = ''): string; static;
+    class function Attribute(const Name, Value: string): string; static;
     class function VariantName(const Variant: TMathFontVariant): string; static;
     class function ColorOf(const Color: Cardinal): string; static;
     class function IsNumber(const Text: string): Boolean; static;
@@ -82,12 +83,12 @@ begin
   const Formula = TMathParser.Parse(Source);
   const Body = Write(Formula, TMathFontVariant.Italic);
   const Row = Element('mrow', Body);
-  const Annotation = Element('annotation', Escaped(Source), 'encoding="' + TeXEncoding + '"');
+  const Annotation = Element('annotation', Escaped(Source), Attribute('encoding', TeXEncoding));
   const Semantics = Element('semantics', Row + Annotation);
 
-  var Attributes := 'xmlns="' + Namespace + '"';
+  var Attributes := Attribute('xmlns', Namespace);
   if IsDisplay then
-    Attributes := Attributes + ' display="block"';
+    Attributes := Attributes + Attribute('display', 'block');
 
   Result := Element('math', Semantics, Attributes);
 end;
@@ -173,7 +174,7 @@ end;
 class function TMathMLFormat.WriteSpace(const Node: IMathNode): string;
 begin
   const Width = FormatFloat('0.###', Node.SpaceWidth, TFormatSettings.Invariant);
-  Result := '<mspace width="' + Width + 'em"/>';
+  Result := Format('<mspace%s/>', [Attribute('width', Format('%sem', [Width]))]);
 end;
 
 // \atop and \choose set a fraction without its rule.
@@ -184,7 +185,7 @@ begin
 
   var Attributes := '';
   if not Node.HasRule then
-    Attributes := 'linethickness="0"';
+    Attributes := Attribute('linethickness', '0');
 
   Result := Element('mfrac', Numerator + Denominator, Attributes);
 end;
@@ -208,7 +209,7 @@ begin
 
   const Body = WriteChild(Node, 0, Variant);
   const Accent = Element('mo', Escaped(Glyph));
-  Result := Element('mover', Body + Accent, 'accent="true"');
+  Result := Element('mover', Body + Accent, Attribute('accent', 'true'));
 end;
 
 // A number is <mn>, a letter or a word such as sin is <mi>, anything else an
@@ -251,7 +252,7 @@ begin
   const IsUpright = (Effective = TMathFontVariant.Upright);
   const NeedsVariant = (not IsItalic and (IsSingleLetter or not IsUpright));
   if NeedsVariant then
-    Result := 'mathvariant="' + VariantName(Effective) + '"';
+    Result := Attribute('mathvariant', VariantName(Effective));
 end;
 
 // An operator that takes limits sets them above and below.
@@ -300,13 +301,13 @@ end;
 class function TMathMLFormat.WriteColored(const Node: IMathNode; const Variant: TMathFontVariant): string;
 begin
   const Body = Write(Node.Children[0], Variant);
-  Result := Element('mstyle', Body, 'mathcolor="' + ColorOf(Node.Color) + '"');
+  Result := Element('mstyle', Body, Attribute('mathcolor', ColorOf(Node.Color)));
 end;
 
 class function TMathMLFormat.WriteLinked(const Node: IMathNode; const Variant: TMathFontVariant): string;
 begin
   const Body = Write(Node.Children[0], Variant);
-  Result := Element('mrow', Body, 'href="' + Escaped(Node.Text) + '"');
+  Result := Element('mrow', Body, Attribute('href', Escaped(Node.Text)));
 end;
 
 class function TMathMLFormat.WriteMatrix(const Node: IMathNode; const Variant: TMathFontVariant): string;
@@ -360,13 +361,13 @@ begin
   const Sides = RuledSides(Node, HasRuleLeft, HasRuleRight);
   const IsFramed = (Length(Sides) = 4);
   if IsFramed then
-    Attributes := Attributes + ' frame="solid"';
+    Attributes := Attributes + Attribute('frame', SolidLine);
 
   Result := Element('mtable', Rows, Attributes);
 
   const IsEnclosed = ((Length(Sides) > 0) and not IsFramed);
   if IsEnclosed then
-    Result := Element('menclose', Result, 'notation="' + string.Join(' ', Sides) + '"');
+    Result := Element('menclose', Result, Attribute('notation', string.Join(Space, Sides)));
 end;
 
 // A preamble such as |l|c r| as the alignment of each column and the rules
@@ -452,7 +453,7 @@ class function TMathMLFormat.AlignmentAttributes(const Node: IMathNode): string;
 begin
   case Node.Alignment of
     TMathColumnAlignment.Centre    : Result := '';
-    TMathColumnAlignment.Left      : Result := 'columnalign="left"';
+    TMathColumnAlignment.Left      : Result := Attribute('columnalign', 'left');
     TMathColumnAlignment.Alternate : Result := AlternateAttributes(ColumnCount(Node));
   else
     raise EMathSyntaxError.CreateFmt('Unhandled column alignment: %d', [Ord(Node.Alignment)]);
@@ -482,7 +483,7 @@ begin
     end;
   end;
 
-  Result := (ListAttribute('columnalign', Aligns) + ListAttribute('columnspacing', Spacings)).TrimLeft;
+  Result := ListAttribute('columnalign', Aligns) + ListAttribute('columnspacing', Spacings);
 end;
 
 class function TMathMLFormat.ColumnCount(const Node: IMathNode): Integer;
@@ -505,7 +506,7 @@ begin
 
   const HasValues = (Length(Values) > 0);
   if HasValues then
-    Result := ' ' + Name + '="' + string.Join(' ', Values) + '"';
+    Result := Attribute(Name, string.Join(Space, Values));
 end;
 
 // \left. draws no delimiter and writes none.
@@ -515,17 +516,18 @@ begin
   if DrawsNone then
     Result := ''
   else
-    Result := Element('mo', Escaped(Delimiter), 'fence="true"');
+    Result := Element('mo', Escaped(Delimiter), Attribute('fence', 'true'));
 end;
 
+// Attributes comes from Attribute and ListAttribute, each with its leading space.
 class function TMathMLFormat.Element(const Name, Content, Attributes: string): string;
 begin
-  var Opening := Name;
-  const HasAttributes = (Attributes <> '');
-  if HasAttributes then
-    Opening := Opening + ' ' + Attributes.TrimLeft;
+  Result := Format('<%s%s>%s</%s>', [Name, Attributes, Content, Name]);
+end;
 
-  Result := '<' + Opening + '>' + Content + '</' + Name + '>';
+class function TMathMLFormat.Attribute(const Name, Value: string): string;
+begin
+  Result := Format(' %s="%s"', [Name, Value]);
 end;
 
 class function TMathMLFormat.VariantName(const Variant: TMathFontVariant): string;
@@ -547,7 +549,7 @@ end;
 
 class function TMathMLFormat.ColorOf(const Color: Cardinal): string;
 begin
-  Result := '#' + IntToHex(Color and $FFFFFF, 6);
+  Result := Format('#%.6X', [Color and $FFFFFF]);
 end;
 
 class function TMathMLFormat.IsNumber(const Text: string): Boolean;
