@@ -81,6 +81,7 @@
         <DCCReference Include="Markdown4D.Extensions.Alerts.Tests.pas"/>
         <DCCReference Include="Markdown4D.Extensions.Toc.Tests.pas"/>
         <DCCReference Include="Markdown4D.Math.Layout.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Math.MathML.Tests.pas"/>
         <DCCReference Include="Markdown4D.Math.Integration.Tests.pas"/>
         <DCCReference Include="Markdown4D.Writer.RoundTrip.Tests.pas"/>
         <DCCReference Include="Markdown4D.Writer.Canonical.Tests.pas"/>
@@ -122,6 +123,7 @@
         <DCCReference Include="..\Source\Layout\Markdown4D.Viewer.ContextMenu.pas"/>
         <DCCReference Include="Markdown4D.Viewer.ContextMenu.Tests.pas"/>
         <DCCReference Include="Markdown4D.Viewer.ScrollBar.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Viewer.Clipboard.Tests.pas"/>
         <DCCReference Include="..\Examples\Shared\Markdown4DStudio.SingleInstance.pas"/>
         <DCCReference Include="Markdown4DStudio.SingleInstance.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Render.Tests.pas"/>

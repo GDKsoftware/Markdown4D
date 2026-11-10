@@ -163,6 +163,27 @@ type
     procedure SelectAll_DisplayBlock_CopiesDollarFences;
 
     [Test]
+    procedure SelectedHtml_TextWithFormula_HoldsMathML;
+
+    [Test]
+    procedure SelectedHtml_EscapesText;
+
+    [Test]
+    procedure SelectedHtml_WithoutFormula_IsEmpty;
+
+    [Test]
+    procedure SelectedHtml_PartOfFormula_IsEmpty;
+
+    [Test]
+    procedure SelectedMathML_OneFormula_IsItsMathML;
+
+    [Test]
+    procedure SelectedMathML_DisplayFormula_SetsBlock;
+
+    [Test]
+    procedure SelectedMathML_TextAroundFormula_IsEmpty;
+
+    [Test]
     procedure Glyphs_ArePlacedInTheirFormula;
 
     [Test]
@@ -711,6 +732,83 @@ begin
 
   Assert.AreEqual('before' + sLineBreak + sLineBreak + '$$'#10'\frac{a}{b}'#10'$$' + sLineBreak + sLineBreak + 'after',
     FModel.SelectedText);
+end;
+
+procedure TMathViewerTests.SelectedHtml_TextWithFormula_HoldsMathML;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'area $\pi r^2$ done'#10#10'next';
+
+  Assert.IsTrue(FModel.SelectAll);
+
+  const Html = FModel.SelectedHtml;
+  Assert.StartsWith('<p>area <math', Html);
+  Assert.Contains(Html, '</math> done</p><p>next</p>');
+end;
+
+procedure TMathViewerTests.SelectedHtml_EscapesText;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'a & b < c $x$';
+
+  Assert.IsTrue(FModel.SelectAll);
+
+  Assert.StartsWith('<p>a &amp; b &lt; c <math', FModel.SelectedHtml);
+end;
+
+procedure TMathViewerTests.SelectedHtml_WithoutFormula_IsEmpty;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'area and done';
+
+  Assert.IsTrue(FModel.SelectAll);
+
+  Assert.AreEqual('', FModel.SelectedHtml, 'text alone goes on the clipboard as text');
+end;
+
+procedure TMathViewerTests.SelectedHtml_PartOfFormula_IsEmpty;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'area $\pi r^2$ done';
+
+  Drag('r', '2');
+
+  Assert.AreEqual('', FModel.SelectedHtml, 'part of a formula has no MathML of its own');
+end;
+
+procedure TMathViewerTests.SelectedMathML_OneFormula_IsItsMathML;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'area $\pi r^2$ done';
+
+  var Match: TMarkdownFoundRange;
+  Assert.IsTrue(FModel.TrySelectNextMatch('r^2', Match));
+
+  const MathML = FModel.SelectedMathML;
+  Assert.StartsWith('<math xmlns="http://www.w3.org/1998/Math/MathML">', MathML);
+  Assert.Contains(MathML, '<annotation encoding="application/x-tex">\pi r^2</annotation>');
+end;
+
+procedure TMathViewerTests.SelectedMathML_DisplayFormula_SetsBlock;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '$$'#10'\frac{a}{b}'#10'$$';
+
+  Assert.IsTrue(FModel.SelectAll);
+
+  Assert.StartsWith('<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">', FModel.SelectedMathML);
+end;
+
+// Word reads the formats MathML and MathML Presentation as one equation, so
+// text around a formula leaves them out.
+procedure TMathViewerTests.SelectedMathML_TextAroundFormula_IsEmpty;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'area $\pi r^2$ done';
+
+  Assert.IsTrue(FModel.SelectAll);
+
+  Assert.AreEqual('', FModel.SelectedMathML);
 end;
 
 // Inside a link a glyph is attributed to the link, so a click follows it,

@@ -416,6 +416,18 @@ line breaks. Copy as Markdown takes a formula the selection cuts whole. Find
 searches the LaTeX source, not the drawn glyphs, and a match selects the whole
 formula.
 
+On Windows the VCL and the FMX viewer also put the formulas `Ctrl+C` copies on
+the clipboard as presentation MathML, so a paste into Word or LibreOffice makes
+editable equations while every other program takes the text. A selection with
+formulas in it adds HTML with a MathML element for each formula, and a
+selection of exactly one formula also the formats `MathML` and
+`MathML Presentation`. The MathML carries the TeX as an annotation, as KaTeX
+and MathJax write it. `TMathMLFormat.FromSource` in `Markdown4D.Math.MathML`
+writes it, `SelectedHtml` and `SelectedMathML` on the viewer model return it
+for the selection, and `TMarkdownMathClipboard` in
+`Markdown4D.Viewer.Clipboard` puts text, HTML and MathML on the clipboard at
+once; on other platforms the viewers copy the text only.
+
 A display formula wider than the column scrolls sideways in its band, the way
 browsers show a long KaTeX or MathJax formula: a thin track below it shows
 which part is in view, and `Shift` with the mouse wheel, a sideways swipe on a
