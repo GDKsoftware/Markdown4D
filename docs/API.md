@@ -416,6 +416,21 @@ line breaks. Copy as Markdown takes a formula the selection cuts whole. Find
 searches the LaTeX source, not the drawn glyphs, and a match selects the whole
 formula.
 
+`FormulaCopyText` on the viewers says how a whole formula copies as text.
+`TeX`, the default, is its markdown as above. `Readable` is text a reader takes
+in without knowing TeX: UnicodeMath, the linear format Word writes when an
+equation is copied as text, so `x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}` copies
+as `x=(-b±√(b^2-4ac))/2a`. A formula that is a table and nothing else, an
+`array`, a `tabular` or a `matrix` without delimiters, copies as its cells
+apart by tabs and its rows by line breaks, as part of one does, and as text
+alone, so it pastes as cells into a spreadsheet or a document as well; any
+other formula keeps its MathML beside the text. The marks UnicodeMath has for a
+program rather than a reader are left out: the function application after
+`sin`, the operand mark after a sum, the quotes around text and the mark of a
+delimiter that is not drawn. `TUnicodeMathFormat.FromSource` in
+`Markdown4D.Math.UnicodeMath` writes the text. Copy as Markdown copies the
+source either way.
+
 On Windows the VCL and the FMX viewer also put the formulas `Ctrl+C` copies on
 the clipboard as presentation MathML, so a paste into Word or LibreOffice makes
 editable equations while every other program takes the text. A selection with
@@ -552,6 +567,7 @@ same.
 | `Images` | `TMarkdownViewerImageSettings` | How image destinations are resolved and fetched (see below) |
 | `Zoom` | `Integer` | In percent (default `100`, from `25` to `500`). Every font, spacing and image grows with it; the theme the application assigned stays as it is. Ctrl+wheel and Ctrl+Plus/Minus step through the levels browsers use (25, 33, 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400, 500), Ctrl+0 resets it. The line at the top of the view stays there, and a document that lays out slowly waits until the wheel rests |
 | `CopyAsMarkdown` | `Boolean` | Offers `Copy as Markdown` on the context menu and `Ctrl+Shift+C` (default `True`). Off, the menu leaves the entry out and `Ctrl+Shift+C` copies plain text, for an application that keeps the source to itself |
+| `FormulaCopyText` | `TMarkdownFormulaCopyText` | How a whole formula copies as text. `TeX` (default) is its source between dollar signs, which pastes back as the same formula; `Readable` is UnicodeMath, as Word copies an equation, and for a formula that is a table its cells apart by tabs and its rows by line breaks (see [In the viewers](#in-the-viewers)) |
 | `TextRendering` | `TMarkdownTextRendering` | VCL only. `DirectWrite` (default) draws emoji in colour; `Gdi` draws them in one colour. Line heights are the same in both, and widths match except where DirectWrite kerns a pair of letters such as `AV` |
 | `AutoScroll` | `Boolean` | Middle-click autoscroll: the content scrolls faster the further the pointer is from where it was pressed, until the next click, key or wheel turn (default `True`). The key that ends it reaches no shortcut, menu or form handler; only an Alt+letter accelerator in FMX goes to the form first |
 

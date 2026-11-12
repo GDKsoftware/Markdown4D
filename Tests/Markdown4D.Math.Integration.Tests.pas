@@ -120,6 +120,9 @@ type
         ' + v + w + z'#10'$$';
       WideLinkedFormula = '$$'#10'\href{#target}{a} + b + c + d + e + f + g + h + i + j + k + l + m + n + o' +
         ' + p + q + r + s + t + u + v + w + z'#10'$$';
+      TableFormula = '$$'#10'\begin{array}{|l|r|}\hline \text{Item} & \text{Amount} \\ \hline' +
+        ' \text{Flour} & 500 \\ \hline\end{array}'#10'$$';
+      TableCells = 'Item'#9'Amount' + sLineBreak + 'Flour'#9'500';
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
@@ -182,6 +185,24 @@ type
 
     [Test]
     procedure SelectedMathML_TextAroundFormula_IsEmpty;
+
+    [Test]
+    procedure SelectedText_Readable_CopiesFormulaAsUnicodeMath;
+
+    [Test]
+    procedure SelectedText_Readable_CopiesTableAsItsCells;
+
+    [Test]
+    procedure SelectedMathML_ReadableFormula_IsItsMathML;
+
+    [Test]
+    procedure SelectedMathML_ReadableTable_IsEmpty;
+
+    [Test]
+    procedure SelectedHtml_ReadableTableBesideFormula_BreaksItsRows;
+
+    [Test]
+    procedure SelectedMarkdown_Readable_IsTheSource;
 
     [Test]
     procedure Glyphs_ArePlacedInTheirFormula;
@@ -809,6 +830,78 @@ begin
   Assert.IsTrue(FModel.SelectAll);
 
   Assert.AreEqual('', FModel.SelectedMathML);
+end;
+
+procedure TMathViewerTests.SelectedText_Readable_CopiesFormulaAsUnicodeMath;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'ratio $\frac{a+b}{c}$ done';
+  FModel.FormulaCopyText := TMarkdownFormulaCopyText.Readable;
+
+  Assert.IsTrue(FModel.SelectAll);
+
+  Assert.AreEqual('ratio (a+b)/c done', FModel.SelectedText);
+end;
+
+procedure TMathViewerTests.SelectedText_Readable_CopiesTableAsItsCells;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := TableFormula;
+  FModel.FormulaCopyText := TMarkdownFormulaCopyText.Readable;
+
+  Assert.IsTrue(FModel.SelectAll);
+
+  Assert.AreEqual(TableCells, FModel.SelectedText);
+end;
+
+// The text is for a reader; Word and LibreOffice still take the equation.
+procedure TMathViewerTests.SelectedMathML_ReadableFormula_IsItsMathML;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'area $\pi r^2$ done';
+  FModel.FormulaCopyText := TMarkdownFormulaCopyText.Readable;
+
+  var Match: TMarkdownFoundRange;
+  Assert.IsTrue(FModel.TrySelectNextMatch('r^2', Match));
+
+  Assert.AreEqual(#$03C0'r^2', FModel.SelectedText);
+  Assert.StartsWith('<math xmlns="http://www.w3.org/1998/Math/MathML">', FModel.SelectedMathML);
+end;
+
+// A table copies as its cells and as nothing else, so that it pastes as cells
+// into a spreadsheet or a document as well.
+procedure TMathViewerTests.SelectedMathML_ReadableTable_IsEmpty;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := TableFormula;
+  FModel.FormulaCopyText := TMarkdownFormulaCopyText.Readable;
+
+  Assert.IsTrue(FModel.SelectAll);
+
+  Assert.AreEqual('', FModel.SelectedMathML);
+  Assert.AreEqual('', FModel.SelectedHtml);
+end;
+
+procedure TMathViewerTests.SelectedHtml_ReadableTableBesideFormula_BreaksItsRows;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := TableFormula + #10#10'and $x$';
+  FModel.FormulaCopyText := TMarkdownFormulaCopyText.Readable;
+
+  Assert.IsTrue(FModel.SelectAll);
+
+  Assert.StartsWith('<p>Item'#9'Amount<br>Flour'#9'500</p><p>and <math', FModel.SelectedHtml);
+end;
+
+procedure TMathViewerTests.SelectedMarkdown_Readable_IsTheSource;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'area $\pi r^2$ done';
+  FModel.FormulaCopyText := TMarkdownFormulaCopyText.Readable;
+
+  Assert.IsTrue(FModel.SelectAll);
+
+  Assert.AreEqual('area $\pi r^2$ done', FModel.SelectedMarkdown);
 end;
 
 // Inside a link a glyph is attributed to the link, so a click follows it,

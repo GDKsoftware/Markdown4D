@@ -38,6 +38,8 @@ type
       WheelNotchUp = 120;
       KeyboardMarkdown = 'alpha beta';
       ClickMarkdown = 'alpha';
+      FormulaMarkdown = 'ratio $\frac{a}{b}$ done';
+      FormulaAsText = 'ratio a/b done';
       LinkMarkdown = '[alpha](https://example.com)';
       DragDistance = 40.0;
       SectionContentText = 'Body';
@@ -132,6 +134,12 @@ type
 
     [Test]
     procedure Keyboard_CtrlA_SelectsWholeDocument;
+
+    [Test]
+    procedure FormulaCopyText_ByDefault_CopiesFormulaAsTeX;
+
+    [Test]
+    procedure FormulaCopyText_Readable_CopiesFormulaAsText;
 
     [Test]
     procedure Relayout_AfterExtensionDataChanged_LaysOutAgain;
@@ -536,6 +544,25 @@ begin
   PressKey(vkA, [ssCtrl]);
 
   Assert.AreEqual(KeyboardMarkdown, FViewer.SelectedText);
+end;
+
+procedure TMarkdownFmxViewerTests.FormulaCopyText_ByDefault_CopiesFormulaAsTeX;
+begin
+  FViewer.Text := FormulaMarkdown;
+
+  FViewer.SelectAll;
+
+  Assert.AreEqual(FormulaMarkdown, FViewer.SelectedText);
+end;
+
+procedure TMarkdownFmxViewerTests.FormulaCopyText_Readable_CopiesFormulaAsText;
+begin
+  FViewer.Text := FormulaMarkdown;
+  FViewer.FormulaCopyText := TMarkdownFormulaCopyText.Readable;
+
+  FViewer.SelectAll;
+
+  Assert.AreEqual(FormulaAsText, FViewer.SelectedText);
 end;
 
 procedure TMarkdownFmxViewerTests.Keyboard_ArrowDown_ScrollsOverflowingContent;

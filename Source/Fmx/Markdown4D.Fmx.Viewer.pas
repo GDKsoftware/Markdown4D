@@ -49,6 +49,8 @@ type
 
   TMarkdownExtensionErrorEvent = Markdown4D.Viewer.Model.TMarkdownExtensionErrorEvent;
 
+  TMarkdownFormulaCopyText = Markdown4D.Viewer.Model.TMarkdownFormulaCopyText;
+
   // Vetoes or permits one remote image, starting from Images.AllowRemote. Use it
   // to decide per address, for instance to allow only hosts the application
   // knows.
@@ -163,6 +165,8 @@ type
     function GetAutoScroll: Boolean;
     function GetIsAutoScrolling: Boolean;
     function GetSelectedMarkdown: string;
+    function GetFormulaCopyText: TMarkdownFormulaCopyText;
+    procedure SetFormulaCopyText(const Value: TMarkdownFormulaCopyText);
     procedure PutOnClipboard(const Text: string; const Html: string = ''; const MathML: string = '');
     procedure CopyForShortcut(const Shift: TShiftState);
     function GetZoom: Integer;
@@ -332,6 +336,12 @@ type
     // menu leaves the entry out and Ctrl+Shift+C copies plain text, for an
     // application that keeps the source to itself.
     property CopyAsMarkdown: Boolean read FCopyAsMarkdown write FCopyAsMarkdown default True;
+    // How a whole formula copies as text: as its TeX between dollar signs, or
+    // Readable, as text a reader takes in without knowing TeX: UnicodeMath,
+    // as Word copies an equation, and a formula that is a table as its cells.
+    // Copy as Markdown copies the source either way.
+    property FormulaCopyText: TMarkdownFormulaCopyText read GetFormulaCopyText write SetFormulaCopyText
+      default TMarkdownFormulaCopyText.TeX;
     property OnExtensionError: TMarkdownExtensionErrorEvent read FOnExtensionError write FOnExtensionError;
   end;
 
@@ -654,6 +664,16 @@ end;
 function TMarkdownViewer.GetSelectedMarkdown: string;
 begin
   Result := FModel.SelectedMarkdown;
+end;
+
+function TMarkdownViewer.GetFormulaCopyText: TMarkdownFormulaCopyText;
+begin
+  Result := FModel.FormulaCopyText;
+end;
+
+procedure TMarkdownViewer.SetFormulaCopyText(const Value: TMarkdownFormulaCopyText);
+begin
+  FModel.FormulaCopyText := Value;
 end;
 
 // Ctrl+Shift+C copies the markdown, unless the application keeps the source
