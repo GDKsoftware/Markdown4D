@@ -42,6 +42,13 @@ type
   public
     // Html and MathML may be empty; the formats for them are then left out.
     class function TryPutTextWithMath(const Text, Html, MathML: string): Boolean; static;
+    // How often the clipboard has changed, to hand to HasChangedSince.
+    class function ChangeCount: Cardinal; static;
+    // True when the clipboard has changed since Count was read, or when the
+    // platform keeps no count. A caller tells by it whether a write got there
+    // when the write itself does not say, as the one of the FMX clipboard
+    // service on Windows.
+    class function HasChangedSince(const Count: Cardinal): Boolean; static;
     // Text ends in a null character, as CF_UNICODETEXT requires.
     class function TextData(const Text: string): TBytes; static;
     // The HTML Format: a header with the byte offsets of the document and the
@@ -107,6 +114,16 @@ begin
   Result := False;
 end;
 
+class function TMarkdownMathClipboard.ChangeCount: Cardinal;
+begin
+  Result := GetClipboardSequenceNumber;
+end;
+
+class function TMarkdownMathClipboard.HasChangedSince(const Count: Cardinal): Boolean;
+begin
+  Result := (GetClipboardSequenceNumber <> Count);
+end;
+
 class function TMarkdownMathClipboard.TryPutFormats(const Text, Html, MathML: string): Boolean;
 begin
   EmptyClipboard;
@@ -142,6 +159,16 @@ end;
 class function TMarkdownMathClipboard.TryPutTextWithMath(const Text, Html, MathML: string): Boolean;
 begin
   Result := False;
+end;
+
+class function TMarkdownMathClipboard.ChangeCount: Cardinal;
+begin
+  Result := 0;
+end;
+
+class function TMarkdownMathClipboard.HasChangedSince(const Count: Cardinal): Boolean;
+begin
+  Result := True;
 end;
 {$ENDIF}
 

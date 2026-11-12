@@ -30,6 +30,9 @@ type
 
     [Test]
     procedure TryPutTextWithMath_IsFalseWhileTheClipboardStaysHeld;
+
+    [Test]
+    procedure HasChangedSince_IsTrueAfterTheClipboardChanged;
   end;
 
 implementation
@@ -109,6 +112,18 @@ begin
   finally
     Hold.Free;
   end;
+end;
+
+procedure TMarkdownMathClipboardTests.HasChangedSince_IsTrueAfterTheClipboardChanged;
+begin
+  if not TVclTestClipboard.IsAccessible then
+    Assert.Pass('The clipboard is held by another process');
+
+  const Before = TMarkdownMathClipboard.ChangeCount;
+  Assert.IsTrue(TVclTestClipboard.TrySetText('changed'));
+
+  const HasChanged = TMarkdownMathClipboard.HasChangedSince(Before);
+  Assert.IsTrue(HasChanged);
 end;
 
 class function TMarkdownMathClipboardTests.HeaderValue(const Document, Name: string): Integer;
