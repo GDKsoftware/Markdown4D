@@ -14,7 +14,7 @@ type
   // than one word stands in brackets. A formula that is a table and nothing
   // else, an array, a tabular or a matrix without delimiters, is its cells
   // apart by tabs and its rows by line breaks, as a table copies from a
-  // browser.
+  // browser. Equations under each other, aligned or gathered, are no table.
   // The marks UnicodeMath has for a program rather than a reader are left
   // out: the function application after sin, the operand mark after a sum,
   // the quotes around text and the mark of a delimiter that is not drawn.
@@ -71,6 +71,7 @@ type
     class function IsWord(const Node: IMathNode): Boolean; static;
     class function IsLetterOrDigit(const Node: IMathNode): Boolean; static;
     class function IsBareMatrix(const Node: IMathNode): Boolean; static;
+    class function HasSeveralColumns(const Matrix: IMathNode): Boolean; static;
 
   public
     class function FromSource(const Source: string): string; static;
@@ -441,11 +442,35 @@ begin
   Result := (IsOrdinarySymbol and (Inner.Text <> '') and Inner.Text[1].IsLetterOrDigit);
 end;
 
+// Equations under each other are a matrix to the parser as well: an aligned
+// environment, a gathered one and the lines a \\ makes. They are no table and
+// stay an equation: an aligned environment by its alignment, the others by
+// their one column.
 class function TUnicodeMathFormat.IsBareMatrix(const Node: IMathNode): Boolean;
 begin
   const IsMatrix = (Node.Kind = TMathNodeKind.Matrix);
   const HasDelimiters = ((Node.LeftDelimiter <> '') or (Node.RightDelimiter <> ''));
-  Result := (IsMatrix and not HasDelimiters);
+  const IsBare = (IsMatrix and not HasDelimiters);
+  if not IsBare then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  const AlignsEquations = (Node.Alignment = TMathColumnAlignment.Alternate);
+  const HasPreamble = (Node.ColumnSpec <> '');
+  Result := (not AlignsEquations and (HasPreamble or HasSeveralColumns(Node)));
+end;
+
+class function TUnicodeMathFormat.HasSeveralColumns(const Matrix: IMathNode): Boolean;
+begin
+  Result := False;
+  for var RowIndex := 0 to Matrix.ChildCount - 1 do
+  begin
+    const HasSeveralCells = (Matrix.Children[RowIndex].ChildCount > 1);
+    if HasSeveralCells then
+      Result := True;
+  end;
 end;
 
 end.

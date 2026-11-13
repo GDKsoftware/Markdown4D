@@ -424,12 +424,15 @@ as `x=(-b±√(b^2-4ac))/2a`. A formula that is a table and nothing else, an
 `array`, a `tabular` or a `matrix` without delimiters, copies as its cells
 apart by tabs and its rows by line breaks, as part of one does, and as text
 alone, so it pastes as cells into a spreadsheet or a document as well; any
-other formula keeps its MathML beside the text. The marks UnicodeMath has for a
-program rather than a reader are left out: the function application after
-`sin`, the operand mark after a sum, the quotes around text and the mark of a
-delimiter that is not drawn. `TUnicodeMathFormat.FromSource` in
-`Markdown4D.Math.UnicodeMath` writes the text. Copy as Markdown copies the
-source either way.
+other formula keeps its MathML beside the text. Equations under each other, in
+an `aligned` or a `gathered` environment or apart by `\\`, are no table and
+stay an equation, and so does a `matrix` of one column. The marks UnicodeMath
+has for a program rather than a reader are left out: the function application
+after `sin`, the operand mark after a sum, the quotes around text and the mark
+of a delimiter that is not drawn. `TUnicodeMathFormat.FromSource` in
+`Markdown4D.Math.UnicodeMath` writes the text. `SelectedText` gives the text a
+copy would put on the clipboard, so it follows the property as well. Copy as
+Markdown copies the source either way.
 
 On Windows the VCL and the FMX viewer also put the formulas `Ctrl+C` copies on
 the clipboard as presentation MathML, so a paste into Word or LibreOffice makes

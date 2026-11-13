@@ -199,6 +199,9 @@ type
     procedure SelectedMathML_ReadableTable_IsEmpty;
 
     [Test]
+    procedure SelectedMathML_ReadableAlignedEquations_IsTheirMathML;
+
+    [Test]
     procedure SelectedHtml_ReadableTableBesideFormula_BreaksItsRows;
 
     [Test]
@@ -880,6 +883,19 @@ begin
 
   Assert.AreEqual('', FModel.SelectedMathML);
   Assert.AreEqual('', FModel.SelectedHtml);
+end;
+
+// Equations under each other are no table: Word and LibreOffice still take
+// the equation.
+procedure TMathViewerTests.SelectedMathML_ReadableAlignedEquations_IsTheirMathML;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '$$'#10'\begin{aligned}x&=1\\y&=2\end{aligned}'#10'$$';
+  FModel.FormulaCopyText := TMarkdownFormulaCopyText.Readable;
+
+  Assert.IsTrue(FModel.SelectAll);
+
+  Assert.StartsWith('<math xmlns="http://www.w3.org/1998/Math/MathML"', FModel.SelectedMathML);
 end;
 
 procedure TMathViewerTests.SelectedHtml_ReadableTableBesideFormula_BreaksItsRows;
