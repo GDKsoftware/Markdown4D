@@ -89,6 +89,9 @@ type
     procedure FromSource_Cases_IsAnEquationArray;
 
     [Test]
+    procedure FromSource_AlignedEquations_AreAnEquationArray;
+
+    [Test]
     procedure FromSource_DelimiterNotDrawn_WritesNone;
 
     [Test]
@@ -103,6 +106,11 @@ type
     [TestCase('Matrix', '\begin{matrix}a&b\\c&d\end{matrix},True')]
     [TestCase('Matrix in brackets', '\begin{pmatrix}a&b\\c&d\end{pmatrix},False')]
     [TestCase('Matrix in a formula', 'A=\begin{matrix}a&b\\c&d\end{matrix},False')]
+    [TestCase('Array of one column', '\begin{array}{l}a\\b\end{array},True')]
+    [TestCase('Matrix of one column', '\begin{matrix}a\\b\end{matrix},False')]
+    [TestCase('Aligned equations', '\begin{aligned}x&=1\\y&=2\end{aligned},False')]
+    [TestCase('Gathered equations', '\begin{gathered}x=1\\y=2\end{gathered},False')]
+    [TestCase('Lines', 'x=1\\y=2,False')]
     [TestCase('No matrix', 'x^2,False')]
     procedure IsTable_OnlyForATableAlone(const Source: string; const Expected: Boolean);
   end;
@@ -199,6 +207,13 @@ begin
   const Text = TUnicodeMathFormat.FromSource('\begin{cases}1&x>0\\0&\text{otherwise}\end{cases}');
 
   Assert.AreEqual('{' + EquationArrayMark + '(1&x>0@0&otherwise)', Text);
+end;
+
+procedure TUnicodeMathFormatTests.FromSource_AlignedEquations_AreAnEquationArray;
+begin
+  const Text = TUnicodeMathFormat.FromSource('\begin{aligned}x&=1\\y&=2\end{aligned}');
+
+  Assert.AreEqual(EquationArrayMark + '(x&=1@y&=2)', Text);
 end;
 
 procedure TUnicodeMathFormatTests.FromSource_DelimiterNotDrawn_WritesNone;
