@@ -60,6 +60,7 @@ uses
   Markdown4D.Viewer.ContextMenu.Tests in 'Markdown4D.Viewer.ContextMenu.Tests.pas',
   Markdown4D.Viewer.ScrollBar.Tests in 'Markdown4D.Viewer.ScrollBar.Tests.pas',
   Markdown4D.Viewer.Clipboard.Tests in 'Markdown4D.Viewer.Clipboard.Tests.pas',
+  Markdown4D.Clipboard.Retry.Tests in 'Markdown4D.Clipboard.Retry.Tests.pas',
   Markdown4DStudio.SingleInstance in '..\Examples\Shared\Markdown4DStudio.SingleInstance.pas',
   Markdown4DStudio.SingleInstance.Tests in 'Markdown4DStudio.SingleInstance.Tests.pas',
   Markdown4D.Vcl.Render.Tests in 'Markdown4D.Vcl.Render.Tests.pas',

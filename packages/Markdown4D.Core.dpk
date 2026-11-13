@@ -142,6 +142,7 @@ contains
   Markdown4D.AutoScroll.Icon in '..\Source\Layout\Markdown4D.AutoScroll.Icon.pas',
   Markdown4D.AutoScroll.Cursors in '..\Source\Layout\Markdown4D.AutoScroll.Cursors.pas',
   Markdown4D.Viewer.ScrollBar in '..\Source\Layout\Markdown4D.Viewer.ScrollBar.pas',
+  Markdown4D.Clipboard.Retry in '..\Source\Layout\Markdown4D.Clipboard.Retry.pas',
   Markdown4D.Viewer.Clipboard in '..\Source\Layout\Markdown4D.Viewer.Clipboard.pas',
   Markdown4D.Viewer.Shared in '..\Source\Layout\Markdown4D.Viewer.Shared.pas';
 end.

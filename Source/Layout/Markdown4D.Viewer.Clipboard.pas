@@ -27,10 +27,6 @@ type
       HtmlBeforeFragment = '<html><body><!--StartFragment-->';
       HtmlAfterFragment = '<!--EndFragment--></body></html>';
       OwnerWindowClass = 'STATIC';
-      // How long a copy waits for another process to let go of the clipboard.
-      // It waits on the UI thread, so the wait stays short.
-      OpenAttempts = 5;
-      OpenPauseMilliseconds = 20;
 {$IFDEF MSWINDOWS}
     class function TryOpen(const OwnerWindow: NativeUInt): Boolean; static;
     class function TryPutFormats(const Text, Html, MathML: string): Boolean; static;
@@ -63,7 +59,8 @@ implementation
 
 {$IFDEF MSWINDOWS}
 uses
-  Winapi.Windows;
+  Winapi.Windows,
+  Markdown4D.Clipboard.Retry;
 {$ENDIF}
 
 {$IFDEF MSWINDOWS}
@@ -94,24 +91,15 @@ begin
   end;
 end;
 
-// Another program may hold the clipboard open for a moment: a clipboard
-// manager or a password manager reads it right after every change. Opening it
-// is tried again then, or the formulas of a copy made in that moment are lost.
+// Opening is tried again while another program holds the clipboard, or the
+// formulas of a copy made in that moment are lost.
 class function TMarkdownMathClipboard.TryOpen(const OwnerWindow: NativeUInt): Boolean;
 begin
-  for var Attempt := 1 to OpenAttempts do
-  begin
-    const IsOpened = OpenClipboard(OwnerWindow);
-    if IsOpened then
+  Result := TMarkdownClipboardRetry.TryRepeatedly(
+    function: Boolean
     begin
-      Result := True;
-      Exit;
-    end;
-
-    Sleep(OpenPauseMilliseconds);
-  end;
-
-  Result := False;
+      Result := OpenClipboard(OwnerWindow);
+    end);
 end;
 
 class function TMarkdownMathClipboard.ChangeCount: Cardinal;

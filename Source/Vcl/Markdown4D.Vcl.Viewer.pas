@@ -72,10 +72,6 @@ type
       CopyButtonStrokeWidth = 1.0;
       CopyFeedbackMilliseconds = 1200;
       MenuSeparatorCaption = '-';
-      // How long the viewer waits for another process to let go of the
-      // clipboard. It waits on the UI thread, so the wait stays short.
-      ClipboardAttempts = 5;
-      ClipboardPauseMilliseconds = 20;
     var
       FLifetime: IMarkdownViewerLifetime;
       FImages: TMarkdownViewerImageSettings;
@@ -174,7 +170,6 @@ type
     function PointOnCopyButton(const Point: TLayoutPointF): Boolean;
     procedure ClearCodeHover;
     procedure CopyCodeToClipboard(const Text: string);
-    class function TryWriteClipboard(const Value: string): Boolean; static;
     procedure SelectForPress(const Point: TLayoutPointF; const X, Y: Integer; const IsDoubleClick: Boolean);
     procedure FinishLinkClick(const X, Y: Integer);
     procedure FinishDisclosureClick(const X, Y: Integer);
@@ -358,7 +353,6 @@ uses
   System.Math,
   System.UITypes,
   System.IOUtils,
-  Vcl.Clipbrd,
   Vcl.Forms,
   Vcl.Imaging.pngimage,
   Vcl.Imaging.jpeg,
@@ -371,6 +365,7 @@ uses
   Markdown4D.Layout.Renderer,
   Markdown4D.Viewer.Clipboard,
   Markdown4D.Viewer.Shared,
+  Markdown4D.Vcl.Clipboard,
   Markdown4D.Vcl.ScrollBarTheme;
 
 
@@ -667,7 +662,7 @@ begin
   if IsPutWithMath then
     Exit;
 
-  TryWriteClipboard(Text);
+  TMarkdownVclClipboard.TryWriteText(Text);
 end;
 
 procedure TMarkdownViewer.SelectAll;
@@ -1611,28 +1606,7 @@ begin
   if Text = '' then
     Exit;
 
-  TryWriteClipboard(Text);
-end;
-
-// Another program may hold the clipboard open for a moment: a clipboard
-// manager or a password manager reads it right after every change. A copy made
-// in that moment is tried again, and one that still fails is a copy that did
-// not happen and nothing more.
-class function TMarkdownViewer.TryWriteClipboard(const Value: string): Boolean;
-begin
-  for var Attempt := 1 to ClipboardAttempts do
-  begin
-    try
-      Clipboard.AsText := Value;
-      Result := True;
-      Exit;
-    except
-      on EClipboardException do
-        Sleep(ClipboardPauseMilliseconds);
-    end;
-  end;
-
-  Result := False;
+  TMarkdownVclClipboard.TryWriteText(Text);
 end;
 
 procedure TMarkdownViewer.HandleCopyFeedbackTimer(Sender: TObject);

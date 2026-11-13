@@ -45,10 +45,6 @@ type
   TMarkdownEditor = class(TCustomControl, IMarkdownAutoScrollTarget)
   private
     const
-      // How long an editor waits for another process to let go of the
-      // clipboard before treating the request as one that did not happen.
-      ClipboardAttempts = 20;
-      ClipboardPauseMilliseconds = 25;
       DefaultControlWidth = 400;
       DefaultControlHeight = 300;
       SelectionFillColor = TLayoutColor($402F81F7);
@@ -160,8 +156,6 @@ type
     procedure ShowContextMenu(const X, Y: Integer);
     procedure HandleContextItemClick(Sender: TObject);
     function ClipboardHasText: Boolean;
-    class function TryReadClipboard(out Value: string): Boolean; static;
-    class function TryWriteClipboard(const Value: string): Boolean; static;
     function TokenColor(const Kind: TMarkdownSourceTokenKind): TLayoutColor;
     function GutterWidthPx(const Painter: IPainter; const PixelsPerInch: Integer): Integer;
     function FoldGutterWidthPx(const PixelsPerInch: Integer): Integer;
@@ -357,6 +351,7 @@ uses
   Vcl.Themes,
   Markdown4D.Editor.PreviewScroll,
   Markdown4D.Layout.Defaults,
+  Markdown4D.Vcl.Clipboard,
   Markdown4D.Vcl.ScrollBarTheme;
 
 class constructor TMarkdownEditor.Create;
@@ -1341,52 +1336,6 @@ begin
   end;
 end;
 
-// The clipboard belongs to the whole machine and any process may hold it for a
-// moment. An editor that raised over that would put a dialog in front of a
-// reader who only pressed a key, so a busy clipboard is a copy that did not
-// happen and nothing more.
-class function TMarkdownEditor.TryReadClipboard(out Value: string): Boolean;
-begin
-  Value := '';
-
-  for var Attempt := 1 to ClipboardAttempts do
-  begin
-    try
-      if not Clipboard.HasFormat(CF_UNICODETEXT) then
-      begin
-        Result := False;
-        Exit;
-      end;
-
-      Value := Clipboard.AsText;
-      Result := True;
-      Exit;
-    except
-      on EClipboardException do
-        Sleep(ClipboardPauseMilliseconds);
-    end;
-  end;
-
-  Result := False;
-end;
-
-class function TMarkdownEditor.TryWriteClipboard(const Value: string): Boolean;
-begin
-  for var Attempt := 1 to ClipboardAttempts do
-  begin
-    try
-      Clipboard.AsText := Value;
-      Result := True;
-      Exit;
-    except
-      on EClipboardException do
-        Sleep(ClipboardPauseMilliseconds);
-    end;
-  end;
-
-  Result := False;
-end;
-
 function TMarkdownEditor.HandleFoldClick(const X, Y: Integer): Boolean;
 begin
   Result := False;
@@ -1737,7 +1686,7 @@ begin
   if Selected = '' then
     Exit;
 
-  TryWriteClipboard(Selected);
+  TMarkdownVclClipboard.TryWriteText(Selected);
 end;
 
 procedure TMarkdownEditor.CutToClipboard;
@@ -1746,7 +1695,7 @@ begin
     Exit;
 
   // Only cut what was safely copied, so a busy clipboard cannot swallow text.
-  if not TryWriteClipboard(FModel.SelectedText) then
+  if not TMarkdownVclClipboard.TryWriteText(FModel.SelectedText) then
     Exit;
 
   FModel.DeleteBackward;
@@ -1755,7 +1704,7 @@ end;
 procedure TMarkdownEditor.PasteFromClipboard;
 begin
   var Pasted: string;
-  if not TryReadClipboard(Pasted) then
+  if not TMarkdownVclClipboard.TryReadText(Pasted) then
     Exit;
 
   if Pasted = '' then
