@@ -40,6 +40,8 @@ type
       GrowthNumerator = 3;
       GrowthDenominator = 2;
       ClickMarkdown = 'alpha';
+      FormulaMarkdown = 'ratio $\frac{a}{b}$ done';
+      FormulaAsText = 'ratio a/b done';
       LinkMarkdown = '[alpha](https://example.com)';
       DragDistance = 40;
       SectionContentText = 'Body';
@@ -86,6 +88,12 @@ type
 
     [Test]
     procedure Keyboard_CtrlA_SelectsWholeDocument;
+
+    [Test]
+    procedure FormulaCopyText_ByDefault_CopiesFormulaAsTeX;
+
+    [Test]
+    procedure FormulaCopyText_Readable_CopiesFormulaAsText;
 
     [Test]
     procedure Relayout_AfterExtensionDataChanged_LaysOutAgain;
@@ -436,6 +444,27 @@ begin
   Viewer.SimulateKeyDown(Ord('A'), [ssCtrl]);
 
   Assert.AreEqual(ShortMarkdown, Viewer.SelectedText);
+end;
+
+procedure TMarkdownVclViewerTests.FormulaCopyText_ByDefault_CopiesFormulaAsTeX;
+begin
+  const Viewer = NewHostedViewer;
+  Viewer.Text := FormulaMarkdown;
+
+  Viewer.SelectAll;
+
+  Assert.AreEqual(FormulaMarkdown, Viewer.SelectedText);
+end;
+
+procedure TMarkdownVclViewerTests.FormulaCopyText_Readable_CopiesFormulaAsText;
+begin
+  const Viewer = NewHostedViewer;
+  Viewer.Text := FormulaMarkdown;
+  Viewer.FormulaCopyText := TMarkdownFormulaCopyText.Readable;
+
+  Viewer.SelectAll;
+
+  Assert.AreEqual(FormulaAsText, Viewer.SelectedText);
 end;
 
 procedure TMarkdownVclViewerTests.Keyboard_ArrowDown_ScrollsOverflowingContent;

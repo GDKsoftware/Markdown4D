@@ -14,6 +14,7 @@ uses
   Markdown4D.Extensions.Toc.Tests in 'Markdown4D.Extensions.Toc.Tests.pas',
   Markdown4D.Math.Layout.Tests in 'Markdown4D.Math.Layout.Tests.pas',
   Markdown4D.Math.MathML.Tests in 'Markdown4D.Math.MathML.Tests.pas',
+  Markdown4D.Math.UnicodeMath.Tests in 'Markdown4D.Math.UnicodeMath.Tests.pas',
   Markdown4D.Math.Integration.Tests in 'Markdown4D.Math.Integration.Tests.pas',
   Markdown4D.Writer.RoundTrip.Tests in 'Markdown4D.Writer.RoundTrip.Tests.pas',
   Markdown4D.Writer.Canonical.Tests in 'Markdown4D.Writer.Canonical.Tests.pas',

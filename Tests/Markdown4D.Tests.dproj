@@ -82,6 +82,7 @@
         <DCCReference Include="Markdown4D.Extensions.Toc.Tests.pas"/>
         <DCCReference Include="Markdown4D.Math.Layout.Tests.pas"/>
         <DCCReference Include="Markdown4D.Math.MathML.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Math.UnicodeMath.Tests.pas"/>
         <DCCReference Include="Markdown4D.Math.Integration.Tests.pas"/>
         <DCCReference Include="Markdown4D.Writer.RoundTrip.Tests.pas"/>
         <DCCReference Include="Markdown4D.Writer.Canonical.Tests.pas"/>

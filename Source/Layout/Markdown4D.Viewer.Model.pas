@@ -32,6 +32,13 @@ type
     class function Create(const Rect: TLayoutRectF; const Text: string): TMarkdownCodeBlockRegion; static;
   end;
 
+  // How a whole formula copies as text. TeX is its source between dollar
+  // signs, which pastes back as the same formula. Readable is text a reader
+  // takes in without knowing TeX: UnicodeMath, as Word copies an equation, and
+  // for a formula that is a table its cells apart by tabs and its rows by
+  // line breaks.
+  TMarkdownFormulaCopyText = (TeX, Readable);
+
   // Raised when a block override or a document processor fails. The document
   // shows without what that extension would have drawn or added.
   TMarkdownExtensionErrorEvent = procedure(const Sender: TObject; const Extension: string;
@@ -118,6 +125,7 @@ type
       FImageSlots: TDictionary<string, TImageSlot>;
       FImageSlotOrder: TList<string>;
       FOnExtensionError: TMarkdownExtensionErrorEvent;
+      FFormulaCopyText: TMarkdownFormulaCopyText;
       FZoom: Integer;
       FZoomedTheme: TMarkdownTheme;
       // The <details> sections the reader opened or closed, by the source
@@ -217,10 +225,11 @@ type
       const StartPosition, EndPosition: TTextPosition; out CharFrom, CharTo: Integer): Boolean;
     function BlockIndexOfItem(const ItemIndex: Integer): Integer;
     function CopiedPieces: TArray<TCopiedPiece>;
-    class function CopiedPiece(const Selected: TSelectedPiece): TCopiedPiece; static;
+    function CopiedPiece(const Selected: TSelectedPiece): TCopiedPiece;
+    class function ReadablePiece(const Piece: TCopiedPiece): TCopiedPiece; static;
     class function HoldsFormula(const Pieces: TArray<TCopiedPiece>): Boolean; static;
     class function FormulaMathML(const Formula: IMarkdownMath): string; static;
-    class function HtmlSeparator(const Separator: string): string; static;
+    class function HtmlBreaks(const Text: string): string; static;
     class function SeparatorBefore(const Run: IDisplayTextRun; const StartsBlock: Boolean;
       const PreviousTop: Single): string; static;
     class function FallbackSeparator(const Run: IDisplayTextRun; const StartsBlock: Boolean;
@@ -382,6 +391,8 @@ type
     // In percent. Every font, length and image of the theme grows with it;
     // the line at the top of the view stays there.
     property Zoom: Integer read FZoom write SetZoom;
+    // How a whole formula copies as text: as its TeX unless set otherwise.
+    property FormulaCopyText: TMarkdownFormulaCopyText read FFormulaCopyText write FFormulaCopyText;
     // What extensions keep for this viewer; the block overrides read it from
     // their context.
     property ExtensionData: IMarkdownExtensionData read FExtensionData;
@@ -406,6 +417,7 @@ uses
   Markdown4D.Layout.SelectedMarkdown,
   Markdown4D.Math.Layout,
   Markdown4D.Math.MathML,
+  Markdown4D.Math.UnicodeMath,
   Markdown4D.Toc,
   Markdown4D.Layout.Zoom;
 
@@ -1132,13 +1144,18 @@ begin
 
   for var Piece in Pieces do
   begin
-    Result := Result + HtmlSeparator(Piece.Separator);
+    Result := Result + HtmlBreaks(Piece.Separator);
 
     const IsFormula = (Piece.Formula <> nil);
     if IsFormula then
-      Result := Result + FormulaMathML(Piece.Formula)
+    begin
+      Result := Result + FormulaMathML(Piece.Formula);
+    end
     else
-      Result := Result + TNetEncoding.HTML.Encode(Piece.Text);
+    begin
+      const Encoded = TNetEncoding.HTML.Encode(Piece.Text);
+      Result := Result + HtmlBreaks(Encoded);
+    end;
   end;
 
   Result := HtmlParagraphStart + Result + HtmlParagraphEnd;
@@ -1204,8 +1221,9 @@ end;
 
 // Part of a formula copies as the characters it shows, a letter of the
 // mathematical alphabets as the plain letter a reader would type; a whole
-// formula copies as its source and keeps the formula for the MathML.
-class function TMarkdownViewerModel.CopiedPiece(const Selected: TSelectedPiece): TCopiedPiece;
+// formula copies as its source, or as FormulaCopyText asks, and keeps the
+// formula for the MathML.
+function TMarkdownViewerModel.CopiedPiece(const Selected: TSelectedPiece): TCopiedPiece;
 begin
   Result := Default(TCopiedPiece);
   Result.Text := Copy(Selected.Run.Text, Selected.CharFrom + 1, Selected.CharTo - Selected.CharFrom);
@@ -1217,8 +1235,29 @@ begin
   var Formula: IMarkdownMath;
   const IsSource = (Selected.Run.Role = TDisplayTextRunRole.Source);
   const IsFormula = (IsSource and Supports(Selected.Run.SourceNode, IMarkdownMath, Formula));
-  if IsFormula then
-    Result.Formula := Formula;
+  if not IsFormula then
+    Exit;
+
+  Result.Formula := Formula;
+
+  const IsReadable = (FFormulaCopyText = TMarkdownFormulaCopyText.Readable);
+  if IsReadable then
+    Result := ReadablePiece(Result);
+end;
+
+// A table copies as its cells and as nothing else, the way part of one does,
+// so it pastes as cells everywhere; any other formula keeps its MathML beside
+// the text.
+class function TMarkdownViewerModel.ReadablePiece(const Piece: TCopiedPiece): TCopiedPiece;
+begin
+  const Source = Piece.Formula.Literal;
+
+  Result := Piece;
+  Result.Text := TUnicodeMathFormat.FromSource(Source);
+
+  const IsTable = TUnicodeMathFormat.IsTable(Source);
+  if IsTable then
+    Result.Formula := nil;
 end;
 
 // Two glyphs of one formula follow on directly, except where a cell or a row
@@ -1256,13 +1295,14 @@ begin
 end;
 
 // A blank line between blocks starts a new paragraph, a line break within one
-// breaks the line; spaces and tabs stay as they are.
-class function TMarkdownViewerModel.HtmlSeparator(const Separator: string): string;
+// or between the rows of a table copied as its cells breaks the line; spaces
+// and tabs stay as they are.
+class function TMarkdownViewerModel.HtmlBreaks(const Text: string): string;
 begin
   const BlankLine: string = sLineBreak + sLineBreak;
   const ParagraphBreak = HtmlParagraphEnd + HtmlParagraphStart;
 
-  Result := Separator.Replace(BlankLine, ParagraphBreak);
+  Result := Text.Replace(BlankLine, ParagraphBreak);
   Result := Result.Replace(sLineBreak, HtmlLineBreak);
 end;
 
