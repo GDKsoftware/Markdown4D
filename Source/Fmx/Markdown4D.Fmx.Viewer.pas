@@ -69,10 +69,6 @@ type
       CopyButtonFontSize = 12;
       CopyButtonStrokeWidth = 1.0;
       CopyFeedbackMilliseconds = 1200;
-      // How long the viewer waits for another process to let go of the
-      // clipboard. It waits on the UI thread, so the wait stays short.
-      ClipboardAttempts = 5;
-      ClipboardPauseMilliseconds = 20;
     var
       FLifetime: IMarkdownViewerLifetime;
       FImages: TMarkdownViewerImageSettings;
@@ -351,6 +347,7 @@ uses
   System.IOUtils,
   System.Math.Vectors,
   FMX.Platform,
+  Markdown4D.Clipboard.Retry,
   Markdown4D.Image.Svg.Native,
   Markdown4D.Fmx.Glyphs,
   Markdown4D.Fmx.ImageDecoder,
@@ -1582,22 +1579,19 @@ begin
     Exit;
 
   try
-    for var Attempt := 1 to ClipboardAttempts do
-    begin
-      const Before = TMarkdownMathClipboard.ChangeCount;
-      Clipboard.SetClipboard(Value);
+    TMarkdownClipboardRetry.TryRepeatedly(
+      function: Boolean
+      begin
+        const Before = TMarkdownMathClipboard.ChangeCount;
+        Clipboard.SetClipboard(Value);
 
-      const HasChanged = TMarkdownMathClipboard.HasChangedSince(Before);
-      if HasChanged then
-        Exit;
+        Result := TMarkdownMathClipboard.HasChangedSince(Before);
+        if Result then
+          Exit;
 
-      const Held = Clipboard.GetClipboard;
-      const IsHeld = (Held.ToString = Value);
-      if IsHeld then
-        Exit;
-
-      Sleep(ClipboardPauseMilliseconds);
-    end;
+        const Held = Clipboard.GetClipboard;
+        Result := (Held.ToString = Value);
+      end);
   except
     // IFMXClipboardService has a separate implementation per platform, and none
     // of them documents a shared specific exception for a failed write, so the

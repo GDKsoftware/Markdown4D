@@ -124,6 +124,7 @@
         <DCCReference Include="Markdown4D.Viewer.ContextMenu.Tests.pas"/>
         <DCCReference Include="Markdown4D.Viewer.ScrollBar.Tests.pas"/>
         <DCCReference Include="Markdown4D.Viewer.Clipboard.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Clipboard.Retry.Tests.pas"/>
         <DCCReference Include="..\Examples\Shared\Markdown4DStudio.SingleInstance.pas"/>
         <DCCReference Include="Markdown4DStudio.SingleInstance.Tests.pas"/>
         <DCCReference Include="Markdown4D.Vcl.Render.Tests.pas"/>
