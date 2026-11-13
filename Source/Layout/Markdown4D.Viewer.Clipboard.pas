@@ -27,7 +27,12 @@ type
       HtmlBeforeFragment = '<html><body><!--StartFragment-->';
       HtmlAfterFragment = '<!--EndFragment--></body></html>';
       OwnerWindowClass = 'STATIC';
+      // How long a copy waits for another process to let go of the clipboard.
+      // It waits on the UI thread, so the wait stays short.
+      OpenAttempts = 5;
+      OpenPauseMilliseconds = 20;
 {$IFDEF MSWINDOWS}
+    class function TryOpen(const OwnerWindow: NativeUInt): Boolean; static;
     class function TryPutFormats(const Text, Html, MathML: string): Boolean; static;
     class function TryPutData(const ClipboardFormat: Cardinal; const Data: TBytes): Boolean; static;
     class function TryPutNamedData(const FormatName: string; const Data: TBytes): Boolean; static;
@@ -37,6 +42,13 @@ type
   public
     // Html and MathML may be empty; the formats for them are then left out.
     class function TryPutTextWithMath(const Text, Html, MathML: string): Boolean; static;
+    // How often the clipboard has changed, to hand to HasChangedSince.
+    class function ChangeCount: Cardinal; static;
+    // True when the clipboard has changed since Count was read, or when the
+    // platform keeps no count. A caller tells by it whether a write got there
+    // when the write itself does not say, as the one of the FMX clipboard
+    // service on Windows.
+    class function HasChangedSince(const Count: Cardinal): Boolean; static;
     // Text ends in a null character, as CF_UNICODETEXT requires.
     class function TextData(const Text: string): TBytes; static;
     // The HTML Format: a header with the byte offsets of the document and the
@@ -68,7 +80,7 @@ begin
     Exit;
 
   try
-    const IsOpened = OpenClipboard(OwnerWindow);
+    const IsOpened = TryOpen(OwnerWindow);
     if not IsOpened then
       Exit;
 
@@ -80,6 +92,36 @@ begin
   finally
     DestroyWindow(OwnerWindow);
   end;
+end;
+
+// Another program may hold the clipboard open for a moment: a clipboard
+// manager or a password manager reads it right after every change. Opening it
+// is tried again then, or the formulas of a copy made in that moment are lost.
+class function TMarkdownMathClipboard.TryOpen(const OwnerWindow: NativeUInt): Boolean;
+begin
+  for var Attempt := 1 to OpenAttempts do
+  begin
+    const IsOpened = OpenClipboard(OwnerWindow);
+    if IsOpened then
+    begin
+      Result := True;
+      Exit;
+    end;
+
+    Sleep(OpenPauseMilliseconds);
+  end;
+
+  Result := False;
+end;
+
+class function TMarkdownMathClipboard.ChangeCount: Cardinal;
+begin
+  Result := GetClipboardSequenceNumber;
+end;
+
+class function TMarkdownMathClipboard.HasChangedSince(const Count: Cardinal): Boolean;
+begin
+  Result := (GetClipboardSequenceNumber <> Count);
 end;
 
 class function TMarkdownMathClipboard.TryPutFormats(const Text, Html, MathML: string): Boolean;
@@ -117,6 +159,16 @@ end;
 class function TMarkdownMathClipboard.TryPutTextWithMath(const Text, Html, MathML: string): Boolean;
 begin
   Result := False;
+end;
+
+class function TMarkdownMathClipboard.ChangeCount: Cardinal;
+begin
+  Result := 0;
+end;
+
+class function TMarkdownMathClipboard.HasChangedSince(const Count: Cardinal): Boolean;
+begin
+  Result := True;
 end;
 {$ENDIF}
 

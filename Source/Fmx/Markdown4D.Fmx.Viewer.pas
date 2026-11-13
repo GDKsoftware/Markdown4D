@@ -69,6 +69,10 @@ type
       CopyButtonFontSize = 12;
       CopyButtonStrokeWidth = 1.0;
       CopyFeedbackMilliseconds = 1200;
+      // How long the viewer waits for another process to let go of the
+      // clipboard. It waits on the UI thread, so the wait stays short.
+      ClipboardAttempts = 5;
+      ClipboardPauseMilliseconds = 20;
     var
       FLifetime: IMarkdownViewerLifetime;
       FImages: TMarkdownViewerImageSettings;
@@ -156,6 +160,7 @@ type
     function PointOnCopyButton(const Point: TLayoutPointF): Boolean;
     procedure ClearCodeHover;
     procedure CopyCodeToClipboard(const Text: string);
+    class procedure WriteClipboard(const Value: string); static;
     procedure SelectForPress(const Point: TLayoutPointF; const X, Y: Single; const IsDoubleClick: Boolean);
     procedure FinishLinkClick(const X, Y: Single);
     procedure FinishDisclosureClick(const X, Y: Single);
@@ -680,19 +685,7 @@ begin
   if IsPutWithMath then
     Exit;
 
-  var Clipboard: IFMXClipboardService;
-  if not TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Clipboard) then
-    Exit;
-
-  try
-    Clipboard.SetClipboard(Text);
-  except
-    // IFMXClipboardService has a separate implementation per platform, and none
-    // of them documents a shared specific exception for a failed write, so the
-    // catch stays broad: a clipboard failure must not take the viewer down.
-    on Exception do
-      Exit;
-  end;
+  WriteClipboard(Text);
 end;
 
 procedure TMarkdownViewer.SelectAll;
@@ -1571,15 +1564,44 @@ begin
   if Text = '' then
     Exit;
 
-  var Clip: IFMXClipboardService;
-  if not TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Clip) then
+  WriteClipboard(Text);
+end;
+
+// Another program may hold the clipboard open for a moment: a clipboard
+// manager or a password manager reads it right after every change. The
+// clipboard service FMX has for Windows does not say when the text did not
+// get there for that, but Windows counts the changes of the clipboard, and the
+// count stands still then: the copy is tried again. The count stands still as
+// well under a service the application put in place of FMX's, which holds the
+// text all the same, and other platforms keep no count; either is written
+// once.
+class procedure TMarkdownViewer.WriteClipboard(const Value: string);
+begin
+  var Clipboard: IFMXClipboardService;
+  if not TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Clipboard) then
     Exit;
 
   try
-    Clip.SetClipboard(Text);
+    for var Attempt := 1 to ClipboardAttempts do
+    begin
+      const Before = TMarkdownMathClipboard.ChangeCount;
+      Clipboard.SetClipboard(Value);
+
+      const HasChanged = TMarkdownMathClipboard.HasChangedSince(Before);
+      if HasChanged then
+        Exit;
+
+      const Held = Clipboard.GetClipboard;
+      const IsHeld = (Held.ToString = Value);
+      if IsHeld then
+        Exit;
+
+      Sleep(ClipboardPauseMilliseconds);
+    end;
   except
-    // Same reasoning as CopySelectionToClipboard: no shared specific exception
-    // exists across the platform clipboard implementations.
+    // IFMXClipboardService has a separate implementation per platform, and none
+    // of them documents a shared specific exception for a failed write, so the
+    // catch stays broad: a clipboard failure must not take the viewer down.
     on Exception do
       Exit;
   end;

@@ -14,10 +14,12 @@ type
   TFakeClipboardService = class(TInterfacedObject, IFMXClipboardService)
   private
     FValue: TValue;
+    FWriteCount: Integer;
 
   public
     procedure SetClipboard(Value: TValue);
     function GetClipboard: TValue;
+    property WriteCount: Integer read FWriteCount;
   end;
 
   // Puts the fake in place of the platform clipboard for one test and puts the
@@ -31,6 +33,8 @@ type
     procedure Replace;
     procedure Restore;
     function Text: string;
+    // How often the fake was written since it took the platform's place.
+    function WriteCount: Integer;
   end;
 
 implementation
@@ -38,6 +42,7 @@ implementation
 procedure TFakeClipboardService.SetClipboard(Value: TValue);
 begin
   FValue := Value;
+  Inc(FWriteCount);
 end;
 
 function TFakeClipboardService.GetClipboard: TValue;
@@ -77,6 +82,14 @@ begin
   var Service: IFMXClipboardService;
   TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Service);
   Result := Service.GetClipboard.ToString;
+end;
+
+function TFmxClipboardSwap.WriteCount: Integer;
+begin
+  var Service: IFMXClipboardService;
+  TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Service);
+  const Fake = Service as TFakeClipboardService;
+  Result := Fake.WriteCount;
 end;
 
 end.

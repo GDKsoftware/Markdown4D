@@ -145,6 +145,9 @@ type
     procedure Keyboard_CtrlInsert_CopiesTheSelection;
 
     [Test]
+    procedure Keyboard_CtrlInsert_WritesAClipboardOfTheApplicationOnce;
+
+    [Test]
     procedure CtrlWheel_Up_ZoomsInOneLevel;
 
     [Test]
@@ -462,6 +465,24 @@ begin
     PressKey(vkInsert, [ssCtrl]);
 
     Assert.AreEqual('bold', Clipboard.Text);
+  finally
+    Clipboard.Restore;
+  end;
+end;
+
+// The clipboard of Windows does not change under a service the application
+// put in place of FMX's, which is no sign of a copy that has to be tried again.
+procedure TMarkdownFmxViewerTests.Keyboard_CtrlInsert_WritesAClipboardOfTheApplicationOnce;
+begin
+  var Clipboard: TFmxClipboardSwap;
+  Clipboard.Replace;
+  try
+    FViewer.Text := 'A **bold** word';
+    FViewer.FindText('bold');
+
+    PressKey(vkInsert, [ssCtrl]);
+
+    Assert.AreEqual(1, Clipboard.WriteCount);
   finally
     Clipboard.Restore;
   end;

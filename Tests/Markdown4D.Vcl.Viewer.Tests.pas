@@ -58,6 +58,9 @@ type
       FDoubleClickCount: Integer;
       FLinkClickCount: Integer;
     function NewHostedViewer: TTestableVclViewer;
+    // What Ctrl+Insert leaves on a clipboard that held 'earlier' while another
+    // thread keeps it open for HoldMilliseconds.
+    function CopiedOverHeldClipboard(const HoldMilliseconds: Cardinal): string;
     class function ScrollBarToggleMarkdown: string; static;
     function NewViewerOnPreviewingForm: TTestableVclViewer;
     procedure RecordFormKey(Sender: TObject; var Key: Word; Shift: TShiftState);
@@ -94,6 +97,12 @@ type
 
     [Test]
     procedure Keyboard_CtrlInsert_CopiesTheSelection;
+
+    [Test]
+    procedure Keyboard_CtrlInsert_CopiesOnceAHeldClipboardIsFree;
+
+    [Test]
+    procedure Keyboard_CtrlInsert_CopiesNothingWhileTheClipboardStaysHeld;
 
     [Test]
     procedure CtrlWheel_Up_ZoomsInOneLevel;
@@ -314,6 +323,44 @@ begin
   var Copied: string;
   Assert.IsTrue(TVclTestClipboard.TryGetText(Copied));
   Assert.AreEqual('bold', Copied);
+end;
+
+procedure TMarkdownVclViewerTests.Keyboard_CtrlInsert_CopiesOnceAHeldClipboardIsFree;
+begin
+  const Copied = CopiedOverHeldClipboard(TClipboardHold.BriefMilliseconds);
+
+  Assert.AreEqual('bold', Copied);
+end;
+
+// A clipboard that stays busy is a copy that did not happen and nothing more.
+procedure TMarkdownVclViewerTests.Keyboard_CtrlInsert_CopiesNothingWhileTheClipboardStaysHeld;
+begin
+  const Copied = CopiedOverHeldClipboard(TClipboardHold.UntilFreed);
+
+  Assert.AreEqual('earlier', Copied);
+end;
+
+function TMarkdownVclViewerTests.CopiedOverHeldClipboard(const HoldMilliseconds: Cardinal): string;
+begin
+  if not TVclTestClipboard.IsAccessible then
+    Assert.Pass('The clipboard is held by another process');
+
+  const Viewer = NewHostedViewer;
+  Viewer.Text := 'A **bold** word';
+  Viewer.FindText('bold');
+  Assert.IsTrue(TVclTestClipboard.TrySetText('earlier'));
+
+  const Hold = TClipboardHold.Create(HoldMilliseconds);
+  try
+    if not Hold.IsHeld then
+      Assert.Pass('The clipboard is held by another process');
+
+    Viewer.SimulateKeyDown(VK_INSERT, [ssCtrl]);
+  finally
+    Hold.Free;
+  end;
+
+  Assert.IsTrue(TVclTestClipboard.TryGetText(Result));
 end;
 
 procedure TMarkdownVclViewerTests.CtrlWheel_Up_ZoomsInOneLevel;
