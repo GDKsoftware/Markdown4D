@@ -6,6 +6,7 @@ interface
 
 uses
   System.SysUtils,
+  System.Types,
   System.Generics.Collections,
   Markdown4D.Extensions.Interfaces,
   Markdown4D.Pipeline.Configuration,
@@ -64,9 +65,9 @@ type
       RightParenChar = ')';
       ZeroChar = '0';
       NineChar = '9';
-      TrimChars: array[0..1] of Char = (' ', #9);
-      ContentTrimChars: array[0..3] of Char = (' ', #9, #10, #13);
-      InfoSplitChars: array[0..1] of Char = (' ', #9);
+      TrimChars: array[0..1] of Char = (' ', Tabulator);
+      ContentTrimChars: array[0..3] of Char = (' ', Tabulator, LineFeed, CarriageReturn);
+      InfoSplitChars: array[0..1] of Char = (' ', Tabulator);
     var
       FConfiguration: TMarkdownPipelineConfiguration;
       FContext: IMarkdownBlockParserContext;
@@ -1757,7 +1758,7 @@ class function TBlockParser.StripTrailingBlankLines(const Value: string; const K
 begin
   var LastContentIndex := Length(Value);
 
-  while (LastContentIndex >= 1) and CharInSet(Value[LastContentIndex], [' ', #10]) do
+  while (LastContentIndex >= 1) and CharInSet(Value[LastContentIndex], [' ', LineFeed]) do
   begin
     Dec(LastContentIndex);
   end;

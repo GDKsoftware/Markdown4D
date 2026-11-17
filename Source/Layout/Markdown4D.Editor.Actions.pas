@@ -43,6 +43,7 @@ implementation
 
 uses
   System.SysUtils,
+  System.Types,
   System.Math,
   System.Character,
   System.Generics.Collections,
@@ -173,7 +174,7 @@ end;
 class function TMarkdownEditorActions.LeadingWhitespace(const Line: string): string;
 begin
   var Count := 0;
-  while (Count < Length(Line)) and ((Line[Count + 1] = Space) or (Line[Count + 1] = Tab)) do
+  while (Count < Length(Line)) and ((Line[Count + 1] = Space) or (Line[Count + 1] = Tabulator)) do
     Inc(Count);
 
   Result := Copy(Line, 1, Count);
@@ -286,7 +287,7 @@ end;
 
 class function TMarkdownEditorActions.OutdentedLine(const Line: string; const IndentWidth: Integer): string;
 begin
-  if Line.StartsWith(Tab) then
+  if Line.StartsWith(Tabulator) then
   begin
     Result := Copy(Line, 2, Length(Line) - 1);
     Exit;

@@ -6,6 +6,7 @@ interface
 
 uses
   System.SysUtils,
+  System.Types,
   System.Generics.Collections,
   System.RegularExpressions,
   Markdown4D.Extensions.Interfaces,
@@ -57,7 +58,7 @@ type
       TableAlignmentNames: array[TMarkdownTableColumnAlignment] of string = ('', 'left', 'center', 'right');
       DisallowedTagPattern =
         '<(?=/?(?:title|textarea|style|xmp|iframe|noembed|noframes|script|plaintext)[\s/>])';
-      InfoSplitChars: array[0..1] of Char = (' ', #9);
+      InfoSplitChars: array[0..1] of Char = (' ', Tabulator);
       MathSpanOpenTag = '<span class="math">';
       MathSpanCloseTag = '</span>';
       MathDivOpenTag = '<div class="math">';

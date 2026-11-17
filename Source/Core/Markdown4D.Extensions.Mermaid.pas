@@ -200,6 +200,7 @@ implementation
 
 uses
   System.SysUtils,
+  System.Types,
   System.StrUtils,
   System.Generics.Collections;
 
@@ -734,11 +735,11 @@ end;
 
 class function TMermaidParser.SplitLines(const Value: string): TArray<string>;
 begin
-  Result := Value.Split([#10]);
+  Result := Value.Split([LineFeed]);
 
   for var Index := 0 to High(Result) do
   begin
-    if Result[Index].EndsWith(#13) then
+    if Result[Index].EndsWith(CarriageReturn) then
       Result[Index] := Copy(Result[Index], 1, Length(Result[Index]) - 1);
   end;
 end;
@@ -784,7 +785,7 @@ end;
 
 class procedure TMermaidParser.SkipSpaces(const Line: string; var Index: Integer);
 begin
-  while (Index <= Length(Line)) and CharInSet(Line[Index], [' ', #9]) do
+  while (Index <= Length(Line)) and CharInSet(Line[Index], [' ', Tabulator]) do
   begin
     Inc(Index);
   end;

@@ -17,6 +17,7 @@ implementation
 
 uses
   System.SysUtils,
+  System.Types,
   Markdown4D.Highlighter.Interfaces;
 
 type
@@ -34,7 +35,7 @@ type
       NullLiteral = 'null';
       Letters = ['A'..'Z', 'a'..'z'];
       SignCharacters = ['+', '-'];
-      WhitespaceCharacters = [' ', #9];
+      WhitespaceCharacters = [' ', Tabulator];
       MinusSign = '-';
       DecimalPoint = '.';
       ExponentIndicators = ['e', 'E'];

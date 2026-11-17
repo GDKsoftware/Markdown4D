@@ -53,6 +53,7 @@ implementation
 
 uses
   System.SysUtils,
+  System.Types,
   System.Math,
   System.RegularExpressions,
   Markdown4D.Ast,
@@ -304,7 +305,7 @@ begin
   Result := 1;
   for var Character in Text do
   begin
-    const IsLineBreak = (Character = #10);
+    const IsLineBreak = (Character = LineFeed);
     if IsLineBreak then
       Inc(Result);
   end;

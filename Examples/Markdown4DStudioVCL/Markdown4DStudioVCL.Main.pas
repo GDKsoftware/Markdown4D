@@ -996,7 +996,7 @@ end;
 
 procedure TMarkdown4DStudioVCLForm.HandleFindEditKeyPress(Sender: TObject; var Key: Char);
 begin
-  if Key <> #13 then
+  if Key <> CarriageReturn then
     Exit;
 
   Key := #0;
@@ -2005,7 +2005,7 @@ begin
     Exit;
 
   const Selection = mdPreview.SelectedText;
-  const IsOneLine = ((Selection <> '') and not Selection.Contains(#10) and not Selection.Contains(#13));
+  const IsOneLine = ((Selection <> '') and not Selection.Contains(LineFeed) and not Selection.Contains(CarriageReturn));
   if IsOneLine then
     edtFind.Text := Selection;
 

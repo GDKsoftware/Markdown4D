@@ -185,6 +185,7 @@ implementation
 
 uses
   System.SysUtils,
+  System.Types,
   System.Math,
   System.Character,
   Markdown4D.Defines;
@@ -1030,7 +1031,7 @@ begin
   FLineStarts := [0];
   for var Index := 1 to System.Length(FText) do
   begin
-    if FText[Index] = #10 then
+    if FText[Index] = LineFeed then
       FLineStarts := FLineStarts + [Index];
   end;
 end;
@@ -1049,7 +1050,7 @@ begin
 
   for var Index := 1 to System.Length(Replacement) do
   begin
-    if Replacement[Index] = #10 then
+    if Replacement[Index] = LineFeed then
       NewStarts := NewStarts + [Start + Index];
   end;
 

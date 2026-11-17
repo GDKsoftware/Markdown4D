@@ -5,7 +5,8 @@ unit Markdown4D.Viewer.Clipboard;
 interface
 
 uses
-  System.SysUtils;
+  System.SysUtils,
+  System.Types;
 
 type
   // Puts copied text with formulas on the clipboard in the forms Word and
@@ -22,8 +23,12 @@ type
       HtmlFormat = 'HTML Format';
       MathMLFormat = 'MathML';
       MathMLPresentationFormat = 'MathML Presentation';
-      HtmlHeader = 'Version:0.9'#13#10'StartHTML:%.10d'#13#10'EndHTML:%.10d'#13#10 +
-                   'StartFragment:%.10d'#13#10'EndFragment:%.10d'#13#10;
+      ClipboardLineBreak = CarriageReturn + LineFeed;
+      HtmlHeader = 'Version:0.9' + ClipboardLineBreak +
+                   'StartHTML:%.10d' + ClipboardLineBreak +
+                   'EndHTML:%.10d' + ClipboardLineBreak +
+                   'StartFragment:%.10d' + ClipboardLineBreak +
+                   'EndFragment:%.10d' + ClipboardLineBreak;
       HtmlBeforeFragment = '<html><body><!--StartFragment-->';
       HtmlAfterFragment = '<!--EndFragment--></body></html>';
       OwnerWindowClass = 'STATIC';

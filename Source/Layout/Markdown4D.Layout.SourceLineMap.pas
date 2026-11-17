@@ -6,6 +6,7 @@ interface
 
 uses
   System.SysUtils,
+  System.Types,
   System.Generics.Collections,
   Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.DisplayList;
@@ -192,7 +193,7 @@ begin
     Inc(FirstCodeLine);
 
   const Preceding = Copy(Code.Literal, 1, LiteralOffset);
-  const LinesBefore = Preceding.CountChar(#10);
+  const LinesBefore = Preceding.CountChar(LineFeed);
   Result := FirstCodeLine + LinesBefore;
 end;
 
@@ -214,7 +215,7 @@ begin
     LineStarts.Add(0);
     for var Index := 1 to Length(Text) do
     begin
-      if Text[Index] = #10 then
+      if Text[Index] = LineFeed then
         LineStarts.Add(Index);
     end;
 

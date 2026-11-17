@@ -41,6 +41,7 @@ implementation
 
 uses
   System.SysUtils,
+  System.Types,
   System.Character,
   Markdown4D.Defines;
 
@@ -392,7 +393,7 @@ begin
   if FromStart then
     EdgeChar := Literal[1];
 
-  if CharInSet(EdgeChar, [Tab, LineFeed, CarriageReturn]) then
+  if CharInSet(EdgeChar, [Tabulator, LineFeed, CarriageReturn]) then
   begin
     Result := Ampersand;
     Exit;

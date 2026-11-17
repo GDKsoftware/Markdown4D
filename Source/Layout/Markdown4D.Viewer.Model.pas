@@ -6,6 +6,7 @@ interface
 
 uses
   System.SysUtils,
+  System.Types,
   System.Generics.Collections,
   Markdown4D.Ast.Interfaces,
   Markdown4D.Layout.Interfaces,
@@ -88,8 +89,8 @@ type
       BottomEpsilon = 0.5;
       LineTopEpsilon = 0.5;
       CopiedIndentWidth = 2;
-      CopiedSpace = ' ';
-      CopiedTab = #9;
+      CopiedSpace = Space;
+      CopiedTab = Tabulator;
       HtmlParagraphStart = '<p>';
       HtmlParagraphEnd = '</p>';
       HtmlLineBreak = '<br>';

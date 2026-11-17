@@ -6,6 +6,7 @@ interface
 
 uses
   System.SysUtils,
+  System.Types,
   System.Generics.Collections,
   System.RegularExpressions,
   Markdown4D.Defines,
@@ -952,7 +953,7 @@ begin
 
   const HasMarkerShape = (Length(FContent) > TaskMarkerLength) and (FContent[1] = OpenBracket) and
     CharInSet(FContent[2], [Space, 'x', 'X']) and (FContent[3] = CloseBracket) and
-    CharInSet(FContent[TaskMarkerLength + 1], [Space, Tab]);
+    CharInSet(FContent[TaskMarkerLength + 1], [Space, Tabulator]);
   if not HasMarkerShape then
   begin
     Result := False;
@@ -1377,7 +1378,7 @@ begin
     Exit;
   end;
 
-  Result := CharInSet(FContent[FIndex - 1], [Space, Tab, #10, #13, Asterisk, Underscore, Tilde, OpenParen]);
+  Result := CharInSet(FContent[FIndex - 1], [Space, Tabulator, LineFeed, CarriageReturn, Asterisk, Underscore, Tilde, OpenParen]);
 end;
 
 function TInlineParser.TryScanAutolinkDomain(const StartIndex: Integer; out DomainEnd: Integer): Boolean;
@@ -1413,7 +1414,8 @@ function TInlineParser.ScanExtendedAutolinkEnd(const StartIndex: Integer): Integ
 begin
   var Index := StartIndex;
 
-  while (Index <= Length(FContent)) and (not CharInSet(FContent[Index], [Space, Tab, #10, #11, #12, #13])) and
+  while (Index <= Length(FContent)) and
+    (not CharInSet(FContent[Index], [Space, Tabulator, LineFeed, VerticalTab, FormFeed, CarriageReturn])) and
     (FContent[Index] <> LessThan) do
   begin
     Inc(Index);

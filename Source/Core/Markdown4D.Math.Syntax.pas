@@ -112,6 +112,7 @@ type
 implementation
 
 uses
+  System.Types,
   System.Character,
   Markdown4D.Color.Names,
   Markdown4D.Math.Chemistry;
@@ -2365,7 +2366,7 @@ begin
       Result := Result + NoBreakSpace
     else if CharInSet(Current, [OpenBraceChar, CloseBraceChar]) then
       Continue
-    else if CharInSet(Current, [' ', #9, #10, #13]) then
+    else if CharInSet(Current, [' ', Tabulator, LineFeed, CarriageReturn]) then
     begin
       if not Result.EndsWith(' ') then
         Result := Result + ' ';

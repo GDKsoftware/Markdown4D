@@ -24,7 +24,7 @@ type
 implementation
 
 uses
-  Markdown4D.Defines;
+  System.Types;
 
 constructor TLineReader.Create(const Source: string);
 begin

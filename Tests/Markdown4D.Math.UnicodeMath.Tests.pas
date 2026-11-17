@@ -24,7 +24,6 @@ type
       BrokenBar = #$00A6;
       MatrixMark = #$25A0;
       EquationArrayMark = #$2588;
-      Tab = #9;
   public
     [Test]
     [TestCase('Letters and signs', 'a+b=c,a+b=c')]
@@ -119,6 +118,7 @@ implementation
 
 uses
   System.SysUtils,
+  System.Types,
   Markdown4D.Math.UnicodeMath;
 
 procedure TUnicodeMathFormatTests.FromSource_WritesLinearText(const Source, Expected: string);
@@ -231,14 +231,14 @@ begin
 
   const Text = TUnicodeMathFormat.FromSource(Source);
 
-  Assert.AreEqual('Item' + Tab + 'Amount' + sLineBreak + 'Flour' + Tab + '500', Text);
+  Assert.AreEqual('Item' + Tabulator + 'Amount' + sLineBreak + 'Flour' + Tabulator + '500', Text);
 end;
 
 procedure TUnicodeMathFormatTests.FromSource_ArrayCells_AreLinearText;
 begin
   const Text = TUnicodeMathFormat.FromSource('\begin{array}{cc}\frac{1}{2} & x^2\end{array}');
 
-  Assert.AreEqual('1/2' + Tab + 'x^2', Text);
+  Assert.AreEqual('1/2' + Tabulator + 'x^2', Text);
 end;
 
 procedure TUnicodeMathFormatTests.IsTable_OnlyForATableAlone(const Source: string; const Expected: Boolean);

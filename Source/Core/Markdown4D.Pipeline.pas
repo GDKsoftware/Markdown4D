@@ -16,6 +16,7 @@ type
 implementation
 
 uses
+  System.Types,
   System.Generics.Collections,
   Markdown4D.Ast.Interfaces,
   Markdown4D.Pipeline.Configuration,
@@ -70,7 +71,7 @@ type
       ListItemTriggers = '*+-0123456789';
       IndentedCodeTriggers = '';
       BackslashTriggers = '\';
-      LineEndingTriggers = #10;
+      LineEndingTriggers = LineFeed;
       EmphasisTriggers = '*_';
       CodeSpanTriggers = '`';
       AngleBracketTriggers = '<';

@@ -135,6 +135,7 @@ type
 implementation
 
 uses
+  System.Types,
   System.Character,
   System.Math,
   Markdown4D.Defines,
@@ -990,7 +991,7 @@ begin
   try
     for var Current in Value do
     begin
-      if Current = Tab then
+      if Current = Tabulator then
       begin
         Builder.Append(TabEntity);
         Continue;
