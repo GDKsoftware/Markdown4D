@@ -123,6 +123,9 @@ type
     class function EscapeHtml(const Value: string): string;
 
   public
+    // Renders with the options and hooks of TMarkdown.ToHtml: raw HTML omitted,
+    // scripting destinations emptied. Pass TMarkdownRendererOptions.SpecDefaults
+    // to the overload below for output exactly as the specifications prescribe.
     class function RenderDocument(const Document: IMarkdownDocument): string; overload;
     class function RenderDocument(const Document: IMarkdownDocument; const Options: TMarkdownRendererOptions;
                                   const Hooks: TDictionary<string, IMarkdownRendererHook>): string; overload;
@@ -134,6 +137,7 @@ type
 implementation
 
 uses
+  Markdown4D,
   Markdown4D.Defines,
   Markdown4D.Extensions.Alerts,
   Markdown4D.Text.UrlSafety;
@@ -153,7 +157,7 @@ type
 
 class function TMarkdownHtmlRenderer.RenderDocument(const Document: IMarkdownDocument): string;
 begin
-  Result := RenderDocument(Document, TMarkdownRendererOptions.SpecDefaults, nil);
+  Result := TMarkdown.ToHtml(Document);
 end;
 
 class function TMarkdownHtmlRenderer.RenderDocument(const Document: IMarkdownDocument;

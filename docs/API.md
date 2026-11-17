@@ -32,7 +32,8 @@ type
   TMarkdown = class
     class function Version: string;
     class function ToHtml(const Source: string;
-      const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): string;
+      const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): string; overload;
+    class function ToHtml(const Document: IMarkdownDocument): string; overload;
     class function ToUnsafeHtml(const Source: string;
       const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): string;
     class function Parse(const Source: string;
@@ -53,6 +54,13 @@ facade caches one pipeline per dialect and rendering mode.
 link or image destination using `javascript:`, `vbscript:`, `file:` or a
 non-image `data:` scheme is emptied. Use it for any document the application did
 not produce itself.
+
+`ToHtml(Document)` renders a document you parsed or built in code the same safe
+way, with the GFM renderer hooks, so task list checkboxes and strikethrough are
+written as well. `TMarkdownHtmlRenderer.RenderDocument(Document)` (unit
+`Markdown4D.Renderer.Html`) renders the same. Its overload with options and
+hooks takes `TMarkdownRendererOptions.SpecDefaults` when you want the
+specification output for a trusted document.
 
 `ToUnsafeHtml` renders what the CommonMark and GFM specifications prescribe:
 raw HTML and every destination reach the output untouched. It is the right
@@ -241,8 +249,8 @@ written against an earlier version needs that one method to compile again.
 ## Document builder
 
 Unit `Markdown4D.Ast.Builder`. Constructs a valid document in code, then hands
-it to the writer or the layout engine. `TMarkdownDocumentBuilder.Create` returns
-a fluent `IMarkdownDocumentBuilder`.
+it to the writer, `TMarkdown.ToHtml` or the layout engine.
+`TMarkdownDocumentBuilder.Create` returns a fluent `IMarkdownDocumentBuilder`.
 
 Convenience methods (`Heading`, `Paragraph`, `Bold`, `Italic`, `Code`, `Math`,
 `MathBlock`, `Link`, `Image`, `Cell`, …) emit a complete node in one call. `Begin…` / `End…` pairs
@@ -268,6 +276,7 @@ const Doc = TMarkdownDocumentBuilder.Create
   .Build;
 
 const Markdown = TMarkdown.ToMarkdown(Doc);
+const Html = TMarkdown.ToHtml(Doc);
 ```
 
 ## Table of contents
