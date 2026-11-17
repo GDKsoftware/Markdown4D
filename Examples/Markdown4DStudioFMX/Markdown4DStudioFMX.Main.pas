@@ -1167,7 +1167,7 @@ begin
     Exit;
 
   const Selection = mdPreview.SelectedText;
-  const IsOneLine = ((Selection <> '') and not Selection.Contains(#10) and not Selection.Contains(#13));
+  const IsOneLine = ((Selection <> '') and not Selection.Contains(LineFeed) and not Selection.Contains(CarriageReturn));
   if IsOneLine then
     edtFind.Text := Selection;
 

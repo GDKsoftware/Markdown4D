@@ -29,6 +29,7 @@ type
 implementation
 
 uses
+  System.Types,
   Markdown4D.Defines,
   Markdown4D.Html.Entities;
 
@@ -153,7 +154,7 @@ end;
 
 class function TMarkdownUnescape.IsMarkdownWhitespace(const Value: Char): Boolean;
 begin
-  Result := CharInSet(Value, [' ', #9, #10, #11, #12, #13]);
+  Result := CharInSet(Value, [' ', Tabulator, LineFeed, VerticalTab, FormFeed, CarriageReturn]);
 end;
 
 class function TMarkdownUnescape.NormalizeUri(const Value: string): string;

@@ -15,6 +15,7 @@ type
 implementation
 
 uses
+  System.Types,
   System.Math,
   System.Character;
 
@@ -27,7 +28,7 @@ begin
   const Limit = Min(Offset, Length(Text));
   for var Index := 1 to Limit do
   begin
-    if Text[Index] = #10 then
+    if Text[Index] = LineFeed then
     begin
       Inc(Line);
       Column := 1;
@@ -65,7 +66,7 @@ begin
   while Index <= TextLength do
   begin
     const Current = Text[Index];
-    const IsLineBreak = ((Current = #13) or (Current = #10));
+    const IsLineBreak = ((Current = CarriageReturn) or (Current = LineFeed));
     const IsSurrogatePair = ((Index < TextLength) and
                              Current.IsHighSurrogate and
                              Text[Index + 1].IsLowSurrogate);

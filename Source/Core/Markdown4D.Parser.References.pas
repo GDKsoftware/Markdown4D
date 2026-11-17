@@ -55,6 +55,7 @@ type
 implementation
 
 uses
+  System.Types,
   Markdown4D.Text.Unescape;
 
 constructor TLinkReferenceMap.Create;
@@ -164,7 +165,7 @@ begin
 
     for var Current in RawLabel do
     begin
-      const IsWhitespace = CharInSet(Current, [' ', #9, #10, #13]);
+      const IsWhitespace = CharInSet(Current, [' ', Tabulator, LineFeed, CarriageReturn]);
 
       if IsWhitespace then
       begin

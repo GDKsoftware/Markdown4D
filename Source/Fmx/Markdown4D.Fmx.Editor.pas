@@ -1767,8 +1767,8 @@ begin
   if Pasted = '' then
     Exit;
 
-  var Normalized := StringReplace(Pasted, #13#10, #10, [rfReplaceAll]);
-  Normalized := StringReplace(Normalized, #13, #10, [rfReplaceAll]);
+  var Normalized := StringReplace(Pasted, CarriageReturn + LineFeed, LineFeed, [rfReplaceAll]);
+  Normalized := StringReplace(Normalized, CarriageReturn, LineFeed, [rfReplaceAll]);
   FModel.BreakUndoCoalescing;
   FModel.Insert(Normalized);
 end;

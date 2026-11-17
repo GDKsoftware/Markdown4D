@@ -19,6 +19,7 @@ implementation
 
 uses
   System.SysUtils,
+  System.Types,
   System.Classes,
   Markdown4D,
   Markdown4D.Defines;
@@ -52,18 +53,18 @@ end;
 
 class function TMarkdownHtmlExport.BuildClipboardHtml(const Html: string): string;
 const
-  EOL = #13#10;
+  ClipboardLineBreak = CarriageReturn + LineFeed;
   StartMarker = '<!--StartFragment-->';
   EndMarker = '<!--EndFragment-->';
-  BodyOpen = '<html><body>' + EOL;
-  BodyClose = EOL + '</body></html>';
+  BodyOpen = '<html><body>' + ClipboardLineBreak;
+  BodyClose = ClipboardLineBreak + '</body></html>';
   Placeholder = '0000000000';
   HeaderFormat =
-    'Version:0.9' + EOL +
-    'StartHTML:%s' + EOL +
-    'EndHTML:%s' + EOL +
-    'StartFragment:%s' + EOL +
-    'EndFragment:%s' + EOL;
+    'Version:0.9' + ClipboardLineBreak +
+    'StartHTML:%s' + ClipboardLineBreak +
+    'EndHTML:%s' + ClipboardLineBreak +
+    'StartFragment:%s' + ClipboardLineBreak +
+    'EndFragment:%s' + ClipboardLineBreak;
   NumberFormat = '%.10d';
 begin
   var Header := Format(HeaderFormat, [Placeholder, Placeholder, Placeholder, Placeholder]);

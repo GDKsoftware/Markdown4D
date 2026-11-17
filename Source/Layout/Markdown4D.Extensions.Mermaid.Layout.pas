@@ -28,6 +28,7 @@ implementation
 uses
   System.Math,
   System.SysUtils,
+  System.Types,
   System.Generics.Collections,
   System.Generics.Defaults,
   Markdown4D.Defines,
@@ -560,7 +561,7 @@ begin
     Exit;
   end;
 
-  const Words = Trimmed.Split([' ', #9], TStringSplitOptions.ExcludeEmpty);
+  const Words = Trimmed.Split([' ', Tabulator], TStringSplitOptions.ExcludeEmpty);
   if Length(Words) = 0 then
   begin
     Result := [Trimmed];

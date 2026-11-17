@@ -5,14 +5,15 @@ unit Markdown4D.Defines;
 interface
 
 uses
-  System.SysUtils;
+  System.SysUtils,
+  System.Types;
 
 const
   // Line endings and whitespace
-  LineFeed = #10;
-  CarriageReturn = #13;
-  Tab = #9;
-  Space = ' ';
+  LineFeed = System.Types.LineFeed;
+  CarriageReturn = System.Types.CarriageReturn;
+  Tab = System.Types.Tabulator;
+  Space = System.Types.Space;
 
   // Markdown syntax characters
   Backslash = '\';

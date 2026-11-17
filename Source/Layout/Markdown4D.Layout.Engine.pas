@@ -50,6 +50,7 @@ implementation
 
 uses
   System.SysUtils,
+  System.Types,
   System.Math,
   System.Generics.Collections,
   Markdown4D.Defines,
@@ -1424,7 +1425,7 @@ end;
 
 class function TLayoutWorker.CodeLanguageOf(const Code: IMarkdownCodeBlock): string;
 const
-  InfoWhitespace = [' ', #9];
+  InfoWhitespace = [' ', Tabulator];
 begin
   Result := Code.InfoString.Trim;
 
@@ -2479,7 +2480,7 @@ end;
 
 class function TLayoutWorker.SplitCodeLines(const Literal: string): TArray<string>;
 begin
-  Result := Literal.Split([#10]);
+  Result := Literal.Split([LineFeed]);
 
   const HasTrailingEmptyLine = (Length(Result) > 0) and (Result[High(Result)] = '');
   if HasTrailingEmptyLine then

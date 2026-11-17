@@ -50,6 +50,7 @@ implementation
 
 uses
   System.SysUtils,
+  System.Types,
   System.Character,
   System.StrUtils,
   System.Classes,
@@ -481,7 +482,7 @@ begin
   Content := Content.Replace('<code>', '', [rfReplaceAll, rfIgnoreCase]);
   Content := Content.Replace('</code>', '', [rfReplaceAll, rfIgnoreCase]);
 
-  Result := DecodeEntities(Content).Trim([#10, #13, ' ']);
+  Result := DecodeEntities(Content).Trim([LineFeed, CarriageReturn, ' ']);
 end;
 
 function TSubsetConverter.TryReadTag(out Tag: TParsedTag): Boolean;
@@ -756,9 +757,9 @@ begin
         begin
           Write('```');
           StartLine;
-          for var Line in Content.Split([#10]) do
+          for var Line in Content.Split([LineFeed]) do
           begin
-            Write(Line.TrimRight([#13]));
+            Write(Line.TrimRight([CarriageReturn]));
             StartLine;
           end;
           Write('```');

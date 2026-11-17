@@ -5,6 +5,7 @@ unit Markdown4D.Layout.SelectedMarkdown;
 interface
 
 uses
+  System.Types,
   Markdown4D.Ast.Interfaces;
 
 type
@@ -15,11 +16,9 @@ type
   TMarkdownSelectedSource = record
   private
     const
-      LineFeed = #10;
-      CarriageReturn = #13;
       Delimiters = ['*', '_', '~', '`'];
       DisplayMathMarker = '$$';
-      ContainerPrefix = [' ', #9, '>'];
+      ContainerPrefix = [' ', Tabulator, '>'];
       InlineElements = [TMarkdownNodeKind.Emphasis, TMarkdownNodeKind.Strong, TMarkdownNodeKind.CodeSpan,
                         TMarkdownNodeKind.Link, TMarkdownNodeKind.Image, TMarkdownNodeKind.Autolink,
                         TMarkdownNodeKind.CustomInline];

@@ -33,6 +33,7 @@ implementation
 
 uses
   System.SysUtils,
+  System.Types,
   Markdown4D.Defines,
   Markdown4D.Text.Unescape;
 
@@ -106,7 +107,7 @@ end;
 
 procedure TLinkSyntaxScanner.SkipSpacesWithOneNewline;
 begin
-  while CharInSet(PeekChar, [Space, Tab]) do
+  while CharInSet(PeekChar, [Space, Tabulator]) do
   begin
     Inc(FPosition);
   end;
@@ -117,7 +118,7 @@ begin
 
   Inc(FPosition);
 
-  while CharInSet(PeekChar, [Space, Tab]) do
+  while CharInSet(PeekChar, [Space, Tabulator]) do
   begin
     Inc(FPosition);
   end;
@@ -279,7 +280,7 @@ function TLinkSyntaxScanner.ConsumeSpacesToLineEnd: Boolean;
 begin
   var Index := FPosition;
 
-  while (Index <= Length(FContent)) and CharInSet(FContent[Index], [Space, Tab]) do
+  while (Index <= Length(FContent)) and CharInSet(FContent[Index], [Space, Tabulator]) do
   begin
     Inc(Index);
   end;

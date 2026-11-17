@@ -51,6 +51,7 @@ type
 implementation
 
 uses
+  System.Types,
   System.Generics.Collections,
   System.IOUtils,
   Markdown4D;
@@ -210,8 +211,8 @@ end;
 
 class function TSpecCorpus.NormalizeLineEndings(const Value: string): string;
 begin
-  const WithoutCrLf = StringReplace(Value, #13#10, #10, [rfReplaceAll]);
-  Result := StringReplace(WithoutCrLf, #13, #10, [rfReplaceAll]);
+  const WithoutCrLf = StringReplace(Value, CarriageReturn + LineFeed, LineFeed, [rfReplaceAll]);
+  Result := StringReplace(WithoutCrLf, CarriageReturn, LineFeed, [rfReplaceAll]);
 end;
 
 class function TSpecCorpus.BuildFailureHeader(const Example: TSpecExample; const ExpectedHtml: string): string;

@@ -101,6 +101,7 @@ implementation
 
 uses
   System.SysUtils,
+  System.Types,
   System.StrUtils,
   System.Hash,
   Markdown4D.Consts;
@@ -529,7 +530,7 @@ begin
   if NextIndex > Length(Trimmed) then
     Exit;
 
-  Result := CharInSet(Trimmed[NextIndex], ['>', '/', ' ', #9, #10, #13]);
+  Result := CharInSet(Trimmed[NextIndex], ['>', '/', ' ', Tabulator, LineFeed, CarriageReturn]);
 end;
 
 // Where the summary of a whole section ends: after </summary>, or after the
@@ -564,7 +565,7 @@ begin
   const Trimmed = Literal.TrimLeft;
   const TagEnd = Pos('>', Trimmed);
   const AttributeText = Copy(Trimmed, Length(OpenerTag) + 1, TagEnd - Length(OpenerTag) - 1);
-  const Attributes = AttributeText.Split([' ', #9, #10, #13, '/'], TStringSplitOptions.ExcludeEmpty);
+  const Attributes = AttributeText.Split([' ', Tabulator, LineFeed, CarriageReturn, '/'], TStringSplitOptions.ExcludeEmpty);
 
   Result := False;
   for var Attribute in Attributes do

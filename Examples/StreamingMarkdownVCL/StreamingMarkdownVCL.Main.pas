@@ -110,7 +110,7 @@ end;
 
 procedure TStreamingMarkdownVCLForm.HandlePromptKeyPress(Sender: TObject; var Key: Char);
 begin
-  if Key <> #13 then
+  if Key <> CarriageReturn then
     Exit;
 
   Key := #0;

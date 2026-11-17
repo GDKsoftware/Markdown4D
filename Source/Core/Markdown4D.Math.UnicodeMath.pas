@@ -5,6 +5,7 @@ unit Markdown4D.Math.UnicodeMath;
 interface
 
 uses
+  System.Types,
   Markdown4D.Math.Syntax;
 
 type
@@ -21,8 +22,6 @@ type
   TUnicodeMathFormat = record
   private
     const
-      Space = ' ';
-      Tab = #9;
       Minus = #$2212;
       Hyphen = '-';
       Over = '/';
@@ -92,7 +91,7 @@ begin
   const Table = Unwrapped(Formula);
   const IsTableAlone = IsBareMatrix(Table);
   if IsTableAlone then
-    Result := WriteCells(Table, Tab, sLineBreak)
+    Result := WriteCells(Table, Tabulator, sLineBreak)
   else
     Result := Write(Formula).Trim;
 end;

@@ -49,7 +49,7 @@ type
 implementation
 
 uses
-  Markdown4D.Defines;
+  System.Types;
 
 procedure TLineScanner.Reset(const Line: string);
 begin
@@ -114,7 +114,7 @@ begin
   begin
     const Current = FLine[FIndex];
 
-    if Current = Tab then
+    if Current = Tabulator then
     begin
       const CharsToTab = ColumnAfterTab(FColumn) - FColumn;
 
@@ -210,7 +210,7 @@ begin
 
   while (Index <= Length(FLine)) and IsSpaceOrTab(FLine[Index]) do
   begin
-    if FLine[Index] = Tab then
+    if FLine[Index] = Tabulator then
       Column := ColumnAfterTab(Column)
     else
       Inc(Column);
@@ -224,7 +224,7 @@ end;
 
 class function TLineScanner.IsSpaceOrTab(const Value: Char): Boolean;
 begin
-  Result := (Value = Space) or (Value = Tab);
+  Result := (Value = Space) or (Value = Tabulator);
 end;
 
 class function TLineScanner.ColumnAfterTab(const Column: Integer): Integer;
