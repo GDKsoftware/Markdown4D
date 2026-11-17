@@ -31,7 +31,10 @@ type
     // Renders with raw HTML omitted and javascript:, vbscript:, file: and
     // non-image data: destinations emptied. Use this for anything that did not
     // come from the application itself.
-    class function ToHtml(const Source: string; const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): string;
+    class function ToHtml(const Source: string; const Dialect: TMarkdownDialect = TMarkdownDialect.CommonMark): string; overload;
+    // Renders a parsed or built document the same safe way, with the renderer
+    // hooks of GFM, so task list checkboxes and strikethrough come out too.
+    class function ToHtml(const Document: IMarkdownDocument): string; overload;
     // Renders exactly what the CommonMark and GFM specifications prescribe:
     // raw HTML and every destination reach the output untouched. Only safe for
     // documents the application trusts, or when the result passes through an
@@ -47,6 +50,8 @@ implementation
 uses
   Markdown4D.Version,
   Markdown4D.Pipeline,
+  Markdown4D.Pipeline.Configuration,
+  Markdown4D.Renderer.Html,
   Markdown4D.Parser.Incremental,
   Markdown4D.Writer.Markdown;
 
@@ -68,6 +73,15 @@ end;
 class function TMarkdown.ToHtml(const Source: string; const Dialect: TMarkdownDialect): string;
 begin
   Result := PipelineFor(Dialect, TRenderMode.Safe).ToHtml(Source);
+end;
+
+class function TMarkdown.ToHtml(const Document: IMarkdownDocument): string;
+begin
+  const Pipeline = PipelineFor(TMarkdownDialect.Gfm, TRenderMode.Safe);
+  const Provider = Pipeline as IMarkdownPipelineConfigurationProvider;
+  const Configuration = Provider.Configuration;
+
+  Result := TMarkdownHtmlRenderer.RenderDocument(Document, Configuration.RendererOptions, Configuration.RendererHooks);
 end;
 
 class function TMarkdown.ToUnsafeHtml(const Source: string; const Dialect: TMarkdownDialect): string;

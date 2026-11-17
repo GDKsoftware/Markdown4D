@@ -12,6 +12,7 @@ type
     const
       OmittedHtmlComment = '<!-- raw HTML omitted -->';
       HtmlBlockSource = '<div>hidden</div>';
+      RawHtmlAndScriptLinkSource = '<div>hidden</div>'#10#10'a <b>bold</b> [link](javascript:alert(1))';
       FilteredTagNames: array[0..8] of string = (
         'title', 'textarea', 'style', 'xmp', 'iframe', 'noembed', 'noframes', 'script', 'plaintext');
     class function RenderDefault(const Source: string): string;
@@ -142,6 +143,15 @@ type
     [TestCase('Generic type', 'use a TList<T> here|<p>use a TList<!-- raw HTML omitted --> here</p>', '|')]
     [TestCase('Tag and other scheme', 'x <b>y</b> [a](ftp://example.com)|<p>x <!-- raw HTML omitted -->y<!-- raw HTML omitted --> <a href="ftp://example.com">a</a></p>', '|')]
     procedure ToHtml_DefaultOptions_OmitsHtmlAndKeepsOtherSchemes(const Source, Expected: string);
+
+    [Test]
+    procedure RenderDocument_ParsedRawHtmlAndScriptLink_MatchesSafeFacadeOutput;
+
+    [Test]
+    procedure RenderDocument_BuiltTaskListAndStrikethrough_MatchesSafeFacadeOutput;
+
+    [Test]
+    procedure RenderDocument_SpecOptions_MatchesUnsafeFacadeOutput;
   end;
 
 implementation
@@ -149,6 +159,9 @@ implementation
 uses
   System.SysUtils,
   Markdown4D.Pipeline,
+  Markdown4D.Pipeline.Configuration,
+  Markdown4D.Renderer.Html,
+  Markdown4D.Ast.Builder,
   Markdown4D.Defines,
   Markdown4D;
 
@@ -391,6 +404,47 @@ begin
 
   const ExpectedLine = Expected + #10;
   Assert.AreEqual(ExpectedLine, Rendered);
+end;
+
+procedure TRendererOptionsTests.RenderDocument_ParsedRawHtmlAndScriptLink_MatchesSafeFacadeOutput;
+begin
+  const Document = TMarkdown.Parse(RawHtmlAndScriptLinkSource, TMarkdownDialect.Gfm);
+
+  const Actual = TMarkdownHtmlRenderer.RenderDocument(Document);
+
+  Assert.AreEqual(TMarkdown.ToHtml(RawHtmlAndScriptLinkSource, TMarkdownDialect.Gfm), Actual);
+end;
+
+procedure TRendererOptionsTests.RenderDocument_BuiltTaskListAndStrikethrough_MatchesSafeFacadeOutput;
+begin
+  const Document = TMarkdownDocumentBuilder.Create
+    .BeginBulletList
+    .BeginTaskListItem(True)
+    .BeginParagraph
+    .Strikethrough('done')
+    .EndParagraph
+    .EndListItem
+    .BeginTaskListItem(False)
+    .BeginParagraph
+    .Link('open', 'javascript:alert(1)')
+    .EndParagraph
+    .EndListItem
+    .EndList
+    .Build;
+  const Markdown = TMarkdown.ToMarkdown(Document);
+
+  const Actual = TMarkdownHtmlRenderer.RenderDocument(Document);
+
+  Assert.AreEqual(TMarkdown.ToHtml(Markdown, TMarkdownDialect.Gfm), Actual);
+end;
+
+procedure TRendererOptionsTests.RenderDocument_SpecOptions_MatchesUnsafeFacadeOutput;
+begin
+  const Document = TMarkdown.Parse(RawHtmlAndScriptLinkSource);
+
+  const Actual = TMarkdownHtmlRenderer.RenderDocument(Document, TMarkdownRendererOptions.SpecDefaults, nil);
+
+  Assert.AreEqual(TMarkdown.ToUnsafeHtml(RawHtmlAndScriptLinkSource), Actual);
 end;
 
 class function TRendererOptionsTests.RenderDefault(const Source: string): string;
