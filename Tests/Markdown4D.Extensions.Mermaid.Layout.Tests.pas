@@ -40,6 +40,7 @@ type
     class function BoxOfText(const Items: TArray<IDisplayItem>; const Text: string): TLayoutRectF;
     class function Polygons(const Items: TArray<IDisplayItem>; const PointCount: Integer): TArray<IDisplayPolygon>;
     class procedure AssertNoOverlap(const Boxes: TArray<TLayoutRectF>);
+    class procedure AssertWithinWidth(const Items: TArray<IDisplayItem>; const Width: Single);
 
   public
     [SetupFixture]
@@ -167,6 +168,15 @@ type
 
     [Test]
     procedure ClassDiagram_SelfRelation_DrawsLoopBesideBox;
+
+    [Test]
+    procedure ClassDiagram_DisconnectedClasses_WrapIntoRowsWithinWidth;
+
+    [Test]
+    procedure ClassDiagram_SingleWideComponent_ShrinksToWidth;
+
+    [Test]
+    procedure ClassDiagram_DiagramThatFits_KeepsFullSize;
   end;
 
 implementation
@@ -355,6 +365,17 @@ begin
     begin
       Assert.IsFalse(RectanglesOverlap(Boxes[I], Boxes[J]), Format('Class boxes %d and %d must not overlap', [I, J]));
     end;
+  end;
+end;
+
+class procedure TMermaidLayoutTests.AssertWithinWidth(const Items: TArray<IDisplayItem>; const Width: Single);
+begin
+  for var Index := 0 to High(Items) do
+  begin
+    const Bounds = Items[Index].Bounds;
+    const IsInside = (Bounds.Left >= -0.5) and (Bounds.Right <= Width + 0.5);
+    Assert.IsTrue(IsInside, Format('Item %d spans %.1f..%.1f, outside the available width %.1f',
+      [Index, Bounds.Left, Bounds.Right, Width]));
   end;
 end;
 
@@ -1060,6 +1081,62 @@ begin
 
   var Run: IDisplayTextRun;
   Assert.IsTrue(FindText(Items, 'next', Run), 'The loop carries its label');
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_DisconnectedClasses_WrapIntoRowsWithinWidth;
+begin
+  const Lines: TArray<string> = [
+    'classDiagram',
+    '  classA <|-- classB : inheritance',
+    '  classC *-- classD : composition',
+    '  classE o-- classF : aggregation',
+    '  classG --> classH : association',
+    '  classI -- classJ : link',
+    '  classK ..> classL : dependency',
+    '  classM ..|> classN : realization',
+    '  classO .. classP : dashed link'];
+
+  const Items = ItemsForDiagram(string.Join(LineFeed, Lines));
+  const Boxes = ClassBoxes(Items);
+
+  Assert.AreEqual(16, TTestArray.CountOf(Boxes), 'Every class must get a box');
+  AssertNoOverlap(Boxes);
+  AssertWithinWidth(Items, DiagramWidth);
+
+  var Name: IDisplayTextRun;
+  Assert.IsTrue(FindText(Items, 'classA', Name));
+  Assert.AreEqual(13.0, Name.Font.Size, 0.001,
+    'Pairs that fit next to each other wrap into rows instead of being drawn smaller');
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_SingleWideComponent_ShrinksToWidth;
+begin
+  var Lines: TArray<string> := ['classDiagram'];
+  for var Index := 1 to 8 do
+  begin
+    Lines := Lines + [Format('  Vehicle <|-- ElectricCar%d', [Index])];
+  end;
+
+  const Items = ItemsForDiagram(string.Join(LineFeed, Lines));
+  const Boxes = ClassBoxes(Items);
+
+  Assert.AreEqual(9, TTestArray.CountOf(Boxes), 'Every class must get a box');
+  AssertNoOverlap(Boxes);
+  AssertWithinWidth(Items, DiagramWidth);
+
+  var Name: IDisplayTextRun;
+  Assert.IsTrue(FindText(Items, 'Vehicle', Name));
+  Assert.IsTrue(Name.Font.Size < 13.0, 'Eight children side by side only fit when the diagram is drawn smaller');
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_DiagramThatFits_KeepsFullSize;
+begin
+  const Items = ModelItems(ShopClassDiagram);
+
+  var Name: IDisplayTextRun;
+  Assert.IsTrue(FindText(Items, 'Customer', Name));
+  Assert.AreEqual(13.0, Name.Font.Size, 0.001, 'A diagram that fits is drawn at full size');
+  AssertWithinWidth(Items, DiagramWidth);
 end;
 
 end.

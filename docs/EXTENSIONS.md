@@ -752,6 +752,10 @@ code block. Styling (`style`, `classDef`, `cssClass`, `:::name`), interaction
 (`click`, `link`, `callback`) and one-line `accTitle:` / `accDescr:` lines are
 read and ignored.
 
+A class diagram stays within the width of the viewer: groups of classes that no
+relation connects are placed side by side in rows that wrap at that width, and a
+group that is wider on its own is drawn smaller to fit.
+
 The override claims a node **only when a model
 parses**, so anything outside the subset degrades to an ordinary highlighted code
 block instead of raising: an unknown diagram type (`gantt`, `stateDiagram`, …), a

@@ -256,6 +256,13 @@ type
   // parent or a whole goes on the earlier rank, so inheritance always points
   // up in a top-down diagram, the way mermaid draws "Animal <|-- Duck" and
   // "Duck --|> Animal" alike. Every other relation ranks its source first.
+  //
+  // The diagram stays inside the width it is given. Groups of classes that no
+  // relation connects are laid out one by one and placed side by side in rows
+  // that wrap at that width; a group that is wider on its own than the width
+  // is drawn smaller, boxes, text and markers alike. Only a group that needs
+  // less than MinScale of its size, where text could no longer be drawn,
+  // stays at MinScale and runs past the edge.
   TMermaidClassDiagramBuilder = class(TMermaidBuilderBase)
   private
     var
@@ -270,6 +277,8 @@ type
       MinBoxWidth = 80.0;
       RankGap = 50.0;
       SiblingGap = 40.0;
+      ComponentGap = 40.0;
+      RowGap = 40.0;
       DiagramMargin = 10.0;
       BoxBorderWidth = 1.5;
       RelationStrokeWidth = 1.5;
@@ -286,15 +295,24 @@ type
       SelfLoopWidth = 26.0;
       SelfLoopMaxHeight = 30.0;
       SelfLoopLabelGap = 4.0;
+      MinScale = 0.1;
+      FitAttempts = 4;
       AnnotationFormat = '<<%s>>';
       UnhandledRelationEndMessage = 'Unhandled relation end: %d';
     var
       FBounds: TLayoutRectF;
+      FScale: Single;
+      FComponents: TArray<TArray<Integer>>;
+      FComponentOfClass: TArray<Integer>;
+      FRelationEdge: TArray<Integer>;
+      FLayouts: TObjectList<TMermaidLayeredLayout>;
       FBoxSizes: TArray<TLayoutSizeF>;
+      FSlotSizes: TArray<TLayoutSizeF>;
       FCompartments: TArray<TMermaidClassCompartments>;
-      FLayout: TMermaidLayeredLayout;
       FBoxes: TArray<TMermaidNodeBox>;
+      FContentWidth: Single;
       FContentHeight: Single;
+    function Scaled(const Value: Single): Single;
     function LabelFont: TMarkdownFontStyle;
     function NameFont: TMarkdownFontStyle;
     function MemberFont(const Member: IMermaidClassMember): TMarkdownFontStyle;
@@ -305,15 +323,24 @@ type
     function TextColor: TLayoutColor;
     function IsHorizontal: Boolean;
     function IsValidRelation(const Relation: IMermaidClassRelation): Boolean;
+    procedure FindComponents;
+    function CollectComponent(const FirstClass: Integer; const Neighbors: TArray<TList<Integer>>): TArray<Integer>;
+    procedure Arrange;
+    procedure ArrangeAtScale;
     procedure MeasureClasses;
     procedure MeasureClass(const Index: Integer);
     function WidestMember(const MermaidClass: IMermaidClass): Single;
     function CompartmentHeight(const MemberCount: Integer): Single;
-    procedure ArrangeClasses;
-    function BuildLayeredEdges: TArray<TMermaidLayeredEdge>;
+    function SelfLoopExtents: TArray<Single>;
+    procedure LayoutComponents;
+    function BuildComponentEdges(const ComponentIndex: Integer): TArray<TMermaidLayeredEdge>;
     function RelationGap(const Relation: IMermaidClassRelation): Single;
     function EndExtent(const Marker: TMermaidRelationEnd; const Cardinality: string): Single;
     function AlongSize(const Text: string; const Font: TMarkdownFontStyle): Single;
+    procedure PlaceComponentRows;
+    function LastComponentInRow(const FirstComponent: Integer; out RowWidth: Single): Integer;
+    function PlaceRow(const FirstComponent, LastComponent: Integer; const RowWidth, Top: Single): Single;
+    procedure PlaceComponent(const ComponentIndex: Integer; const Left, Top: Single);
     procedure EmitClasses;
     procedure EmitClass(const Index: Integer);
     function EmitClassHeader(const MermaidClass: IMermaidClass; const Box: TMermaidNodeBox): Single;
@@ -329,8 +356,8 @@ type
     procedure EmitOpenArrow(const Tip, Direction: TLayoutPointF);
     procedure EmitCardinality(const Cardinality: string; const Tip, Direction: TLayoutPointF;
       const Marker: TMermaidRelationEnd);
+    function MarkerLength(const Marker: TMermaidRelationEnd): Single;
     class function IsParentEnd(const Marker: TMermaidRelationEnd): Boolean; static;
-    class function MarkerLength(const Marker: TMermaidRelationEnd): Single; static;
     class function Offset(const Point, Direction: TLayoutPointF; const Distance: Single): TLayoutPointF; static;
 
   public
@@ -1511,11 +1538,13 @@ begin
   FModel := Model;
 
   FBounds := Bounds;
+  FScale := 1;
+  FLayouts := TObjectList<TMermaidLayeredLayout>.Create(True);
 end;
 
 destructor TMermaidClassDiagramBuilder.Destroy;
 begin
-  FLayout.Free;
+  FLayouts.Free;
 
   inherited Destroy;
 end;
@@ -1525,8 +1554,8 @@ begin
   if FModel.ClassCount = 0 then
     Exit;
 
-  MeasureClasses;
-  ArrangeClasses;
+  FindComponents;
+  Arrange;
 
   EmitClasses;
   EmitRelations;
@@ -1537,14 +1566,19 @@ begin
   Result := FContentHeight + 2 * DiagramMargin;
 end;
 
+function TMermaidClassDiagramBuilder.Scaled(const Value: Single): Single;
+begin
+  Result := Value * FScale;
+end;
+
 function TMermaidClassDiagramBuilder.LabelFont: TMarkdownFontStyle;
 begin
-  Result := TMarkdownFontStyle.Create(FTheme.BaseFont.FamilyName, LabelFontSize);
+  Result := TMarkdownFontStyle.Create(FTheme.BaseFont.FamilyName, Scaled(LabelFontSize));
 end;
 
 function TMermaidClassDiagramBuilder.NameFont: TMarkdownFontStyle;
 begin
-  Result := TMarkdownFontStyle.Create(FTheme.BaseFont.FamilyName, LabelFontSize, True);
+  Result := TMarkdownFontStyle.Create(FTheme.BaseFont.FamilyName, Scaled(LabelFontSize), True);
 end;
 
 // UML marks a static member by underlining it and an abstract one by setting
@@ -1567,7 +1601,7 @@ end;
 
 function TMermaidClassDiagramBuilder.CardinalityFont: TMarkdownFontStyle;
 begin
-  Result := TMarkdownFontStyle.Create(FTheme.BaseFont.FamilyName, CardinalityFontSize);
+  Result := TMarkdownFontStyle.Create(FTheme.BaseFont.FamilyName, Scaled(CardinalityFontSize));
 end;
 
 function TMermaidClassDiagramBuilder.BoxFillColor: TLayoutColor;
@@ -1601,14 +1635,124 @@ begin
     (Relation.TargetIndex >= 0) and (Relation.TargetIndex < FModel.ClassCount);
 end;
 
+// Classes that relations connect, directly or through other classes, form one
+// component. Components come in the order of their first class, and each lists
+// its classes in declaration order, so the same diagram always splits the
+// same way.
+procedure TMermaidClassDiagramBuilder.FindComponents;
+begin
+  const ClassCount = FModel.ClassCount;
+
+  const NeighborLists = TObjectList<TList<Integer>>.Create(True);
+  try
+    var Neighbors: TArray<TList<Integer>>;
+    SetLength(Neighbors, ClassCount);
+    for var Index := 0 to ClassCount - 1 do
+    begin
+      Neighbors[Index] := TList<Integer>.Create;
+      NeighborLists.Add(Neighbors[Index]);
+    end;
+
+    for var Index := 0 to FModel.RelationCount - 1 do
+    begin
+      const Relation = FModel.Relations[Index];
+      if not IsValidRelation(Relation) then
+        Continue;
+
+      Neighbors[Relation.SourceIndex].Add(Relation.TargetIndex);
+      Neighbors[Relation.TargetIndex].Add(Relation.SourceIndex);
+    end;
+
+    SetLength(FComponentOfClass, ClassCount);
+    for var Index := 0 to ClassCount - 1 do
+    begin
+      FComponentOfClass[Index] := -1;
+    end;
+
+    FComponents := nil;
+    for var Index := 0 to ClassCount - 1 do
+    begin
+      if FComponentOfClass[Index] < 0 then
+        FComponents := FComponents + [CollectComponent(Index, Neighbors)];
+    end;
+  finally
+    NeighborLists.Free;
+  end;
+end;
+
+function TMermaidClassDiagramBuilder.CollectComponent(const FirstClass: Integer;
+  const Neighbors: TArray<TList<Integer>>): TArray<Integer>;
+begin
+  const ComponentIndex = Length(FComponents);
+  const Members = TList<Integer>.Create;
+  try
+    const Pending = TQueue<Integer>.Create;
+    try
+      FComponentOfClass[FirstClass] := ComponentIndex;
+      Pending.Enqueue(FirstClass);
+
+      while Pending.Count > 0 do
+      begin
+        const Current = Pending.Dequeue;
+        Members.Add(Current);
+
+        for var Neighbor in Neighbors[Current] do
+        begin
+          if FComponentOfClass[Neighbor] < 0 then
+          begin
+            FComponentOfClass[Neighbor] := ComponentIndex;
+            Pending.Enqueue(Neighbor);
+          end;
+        end;
+      end;
+    finally
+      Pending.Free;
+    end;
+
+    Members.Sort;
+    Result := Members.ToArray;
+  finally
+    Members.Free;
+  end;
+end;
+
+// Text does not shrink exactly in step with its font size, so a diagram that
+// had to be drawn smaller is measured and placed again until it fits, a few
+// times at most.
+procedure TMermaidClassDiagramBuilder.Arrange;
+begin
+  const AvailableWidth = FBounds.Width;
+
+  ArrangeAtScale;
+  for var Attempt := 1 to FitAttempts do
+  begin
+    const Fits = (FContentWidth <= AvailableWidth) or (FScale <= MinScale) or (AvailableWidth <= 0);
+    if Fits then
+      Exit;
+
+    FScale := Max(MinScale, FScale * AvailableWidth / FContentWidth);
+    ArrangeAtScale;
+  end;
+end;
+
+procedure TMermaidClassDiagramBuilder.ArrangeAtScale;
+begin
+  MeasureClasses;
+  LayoutComponents;
+  PlaceComponentRows;
+end;
+
 procedure TMermaidClassDiagramBuilder.MeasureClasses;
 begin
   SetLength(FBoxSizes, FModel.ClassCount);
+  SetLength(FSlotSizes, FModel.ClassCount);
   SetLength(FCompartments, FModel.ClassCount);
 
+  const LoopExtents = SelfLoopExtents;
   for var Index := 0 to FModel.ClassCount - 1 do
   begin
     MeasureClass(Index);
+    FSlotSizes[Index] := TLayoutSizeF.Create(FBoxSizes[Index].Width + LoopExtents[Index], FBoxSizes[Index].Height);
   end;
 end;
 
@@ -1618,7 +1762,7 @@ begin
   const LineHeight = FMeasurer.LineHeight(LabelFont);
 
   var TextWidth := FMeasurer.MeasureText(MermaidClass.Caption, NameFont).Width;
-  var HeaderHeight := 2 * HeaderPaddingY + FMeasurer.LineHeight(NameFont);
+  var HeaderHeight := 2 * Scaled(HeaderPaddingY) + FMeasurer.LineHeight(NameFont);
 
   if MermaidClass.Annotation <> '' then
   begin
@@ -1633,7 +1777,7 @@ begin
   FCompartments[Index].AttributesHeight := CompartmentHeight(MermaidClass.AttributeCount);
   FCompartments[Index].MethodsHeight := CompartmentHeight(MermaidClass.MethodCount);
 
-  const Width = Max(MinBoxWidth, TextWidth + 2 * BoxPaddingX);
+  const Width = Max(Scaled(MinBoxWidth), TextWidth + 2 * Scaled(BoxPaddingX));
   const Height = FCompartments[Index].HeaderHeight + FCompartments[Index].AttributesHeight +
     FCompartments[Index].MethodsHeight;
   FBoxSizes[Index] := TLayoutSizeF.Create(Width, Height);
@@ -1660,35 +1804,88 @@ function TMermaidClassDiagramBuilder.CompartmentHeight(const MemberCount: Intege
 begin
   if MemberCount = 0 then
   begin
-    Result := EmptyCompartmentHeight;
+    Result := Scaled(EmptyCompartmentHeight);
     Exit;
   end;
 
-  Result := MemberCount * FMeasurer.LineHeight(LabelFont) + 2 * CompartmentPaddingY;
+  Result := MemberCount * FMeasurer.LineHeight(LabelFont) + 2 * Scaled(CompartmentPaddingY);
 end;
 
-procedure TMermaidClassDiagramBuilder.ArrangeClasses;
+// A class related to itself draws a loop and its label to the right of its
+// box; the layout keeps that room free next to the box.
+function TMermaidClassDiagramBuilder.SelfLoopExtents: TArray<Single>;
 begin
-  FLayout := TMermaidLayeredLayout.Create(FBoxSizes, BuildLayeredEdges, FModel.Direction, RankGap, SiblingGap);
-  FLayout.Arrange(FBounds, DiagramMargin);
-
-  FBoxes := FLayout.Boxes;
-  FContentHeight := FLayout.ContentHeight;
-end;
-
-function TMermaidClassDiagramBuilder.BuildLayeredEdges: TArray<TMermaidLayeredEdge>;
-begin
-  SetLength(Result, FModel.RelationCount);
+  SetLength(Result, FModel.ClassCount);
 
   for var Index := 0 to FModel.RelationCount - 1 do
   begin
     const Relation = FModel.Relations[Index];
+    const IsSelfRelation = IsValidRelation(Relation) and (Relation.SourceIndex = Relation.TargetIndex);
+    if not IsSelfRelation then
+      Continue;
+
+    var Extent := Scaled(SelfLoopWidth);
+    if Relation.Caption <> '' then
+      Extent := Extent + Scaled(SelfLoopLabelGap) + FMeasurer.MeasureText(Relation.Caption, LabelFont).Width;
+
+    Result[Relation.SourceIndex] := Max(Result[Relation.SourceIndex], Extent);
+  end;
+end;
+
+procedure TMermaidClassDiagramBuilder.LayoutComponents;
+begin
+  FLayouts.Clear;
+  SetLength(FRelationEdge, FModel.RelationCount);
+
+  for var ComponentIndex := 0 to High(FComponents) do
+  begin
+    const Members = FComponents[ComponentIndex];
+
+    var Sizes: TArray<TLayoutSizeF>;
+    SetLength(Sizes, Length(Members));
+    for var Position := 0 to High(Members) do
+    begin
+      Sizes[Position] := FSlotSizes[Members[Position]];
+    end;
+
+    const Layout = TMermaidLayeredLayout.Create(Sizes, BuildComponentEdges(ComponentIndex), FModel.Direction,
+      Scaled(RankGap), Scaled(SiblingGap));
+    FLayouts.Add(Layout);
+    Layout.Arrange(TLayoutRectF.Create(0, 0, 0, 0), 0);
+  end;
+end;
+
+// Edges are numbered within their component, in the order of the relations
+// they stand for; FRelationEdge keeps that number per relation, so a relation
+// can ask its own layout how far to shift away from a parallel one.
+function TMermaidClassDiagramBuilder.BuildComponentEdges(const ComponentIndex: Integer): TArray<TMermaidLayeredEdge>;
+begin
+  const Members = FComponents[ComponentIndex];
+
+  var Position: TArray<Integer>;
+  SetLength(Position, FModel.ClassCount);
+  for var MemberPosition := 0 to High(Members) do
+  begin
+    Position[Members[MemberPosition]] := MemberPosition;
+  end;
+
+  Result := nil;
+  for var Index := 0 to FModel.RelationCount - 1 do
+  begin
+    const Relation = FModel.Relations[Index];
+    const BelongsHere = IsValidRelation(Relation) and (FComponentOfClass[Relation.SourceIndex] = ComponentIndex);
+    if not BelongsHere then
+      Continue;
+
+    const Source = Position[Relation.SourceIndex];
+    const Target = Position[Relation.TargetIndex];
     const TargetIsParent = IsParentEnd(Relation.TargetEnd) and not IsParentEnd(Relation.SourceEnd);
 
+    FRelationEdge[Index] := Length(Result);
     if TargetIsParent then
-      Result[Index] := TMermaidLayeredEdge.Create(Relation.TargetIndex, Relation.SourceIndex, RelationGap(Relation))
+      Result := Result + [TMermaidLayeredEdge.Create(Target, Source, RelationGap(Relation))]
     else
-      Result[Index] := TMermaidLayeredEdge.Create(Relation.SourceIndex, Relation.TargetIndex, RelationGap(Relation));
+      Result := Result + [TMermaidLayeredEdge.Create(Source, Target, RelationGap(Relation))];
   end;
 end;
 
@@ -1698,18 +1895,18 @@ end;
 function TMermaidClassDiagramBuilder.RelationGap(const Relation: IMermaidClassRelation): Single;
 begin
   Result := EndExtent(Relation.SourceEnd, Relation.SourceCardinality) +
-    EndExtent(Relation.TargetEnd, Relation.TargetCardinality) + 2 * LabelStub;
+    EndExtent(Relation.TargetEnd, Relation.TargetCardinality) + 2 * Scaled(LabelStub);
 
   if Relation.Caption <> '' then
-    Result := Result + AlongSize(Relation.Caption, LabelFont) + 2 * LabelPadding;
+    Result := Result + AlongSize(Relation.Caption, LabelFont) + 2 * Scaled(LabelPadding);
 end;
 
 function TMermaidClassDiagramBuilder.EndExtent(const Marker: TMermaidRelationEnd; const Cardinality: string): Single;
 begin
-  Result := Max(MarkerLength(Marker), ArrowLength);
+  Result := Max(MarkerLength(Marker), Scaled(ArrowLength));
 
   if Cardinality <> '' then
-    Result := Result + CardinalityGap + AlongSize(Cardinality, CardinalityFont);
+    Result := Result + Scaled(CardinalityGap) + AlongSize(Cardinality, CardinalityFont);
 end;
 
 function TMermaidClassDiagramBuilder.AlongSize(const Text: string; const Font: TMarkdownFontStyle): Single;
@@ -1718,6 +1915,78 @@ begin
     Result := FMeasurer.MeasureText(Text, Font).Width
   else
     Result := FMeasurer.LineHeight(Font);
+end;
+
+procedure TMermaidClassDiagramBuilder.PlaceComponentRows;
+begin
+  SetLength(FBoxes, FModel.ClassCount);
+  FContentWidth := 0;
+
+  const ContentTop = FBounds.Top + DiagramMargin;
+  var Top := ContentTop;
+  var FirstComponent := 0;
+
+  while FirstComponent <= High(FComponents) do
+  begin
+    var RowWidth: Single;
+    const LastComponent = LastComponentInRow(FirstComponent, RowWidth);
+    const RowHeight = PlaceRow(FirstComponent, LastComponent, RowWidth, Top);
+
+    FContentWidth := Max(FContentWidth, RowWidth);
+    Top := Top + RowHeight + Scaled(RowGap);
+    FirstComponent := LastComponent + 1;
+  end;
+
+  FContentHeight := Top - Scaled(RowGap) - ContentTop;
+end;
+
+// A row takes components for as long as they fit next to each other; the
+// first component of a row always goes in, also when it is wider on its own.
+function TMermaidClassDiagramBuilder.LastComponentInRow(const FirstComponent: Integer; out RowWidth: Single): Integer;
+begin
+  Result := FirstComponent;
+  RowWidth := FLayouts[FirstComponent].ContentWidth;
+
+  while Result < High(FComponents) do
+  begin
+    const WidthWithNext = RowWidth + Scaled(ComponentGap) + FLayouts[Result + 1].ContentWidth;
+    if WidthWithNext > FBounds.Width then
+      Break;
+
+    RowWidth := WidthWithNext;
+    Inc(Result);
+  end;
+end;
+
+function TMermaidClassDiagramBuilder.PlaceRow(const FirstComponent, LastComponent: Integer;
+  const RowWidth, Top: Single): Single;
+begin
+  Result := 0;
+  var Left := FBounds.Left + Max(0.0, (FBounds.Width - RowWidth) / 2);
+
+  for var ComponentIndex := FirstComponent to LastComponent do
+  begin
+    PlaceComponent(ComponentIndex, Left, Top);
+
+    Left := Left + FLayouts[ComponentIndex].ContentWidth + Scaled(ComponentGap);
+    Result := Max(Result, FLayouts[ComponentIndex].ContentHeight);
+  end;
+end;
+
+procedure TMermaidClassDiagramBuilder.PlaceComponent(const ComponentIndex: Integer; const Left, Top: Single);
+begin
+  const Members = FComponents[ComponentIndex];
+  const Slots = FLayouts[ComponentIndex].Boxes;
+
+  for var Position := 0 to High(Members) do
+  begin
+    const ClassIndex = Members[Position];
+
+    FBoxes[ClassIndex] := Slots[Position];
+    FBoxes[ClassIndex].X := Left + Slots[Position].X;
+    FBoxes[ClassIndex].Y := Top + Slots[Position].Y;
+    FBoxes[ClassIndex].Width := FBoxSizes[ClassIndex].Width;
+  end;
 end;
 
 procedure TMermaidClassDiagramBuilder.EmitClasses;
@@ -1742,14 +2011,14 @@ begin
   EmitSeparator(Box, AttributesTop);
   EmitSeparator(Box, MethodsTop);
 
-  var Top := AttributesTop + CompartmentPaddingY;
+  var Top := AttributesTop + Scaled(CompartmentPaddingY);
   for var Member := 0 to MermaidClass.AttributeCount - 1 do
   begin
     EmitMember(MermaidClass.Attributes[Member], Box, Top);
     Top := Top + LineHeight;
   end;
 
-  Top := MethodsTop + CompartmentPaddingY;
+  Top := MethodsTop + Scaled(CompartmentPaddingY);
   for var Member := 0 to MermaidClass.MethodCount - 1 do
   begin
     EmitMember(MermaidClass.Methods[Member], Box, Top);
@@ -1761,7 +2030,7 @@ function TMermaidClassDiagramBuilder.EmitClassHeader(const MermaidClass: IMermai
   const Box: TMermaidNodeBox): Single;
 begin
   const CenterX = Box.X + Box.Width / 2;
-  var Top := Box.Y + HeaderPaddingY;
+  var Top := Box.Y + Scaled(HeaderPaddingY);
 
   if MermaidClass.Annotation <> '' then
   begin
@@ -1771,7 +2040,7 @@ begin
 
   EmitCenteredText(MermaidClass.Caption, CenterX, Top, NameFont, TextColor);
 
-  Result := Top + FMeasurer.LineHeight(NameFont) + HeaderPaddingY;
+  Result := Top + FMeasurer.LineHeight(NameFont) + Scaled(HeaderPaddingY);
 end;
 
 procedure TMermaidClassDiagramBuilder.EmitSeparator(const Box: TMermaidNodeBox; const Y: Single);
@@ -1783,7 +2052,7 @@ end;
 procedure TMermaidClassDiagramBuilder.EmitMember(const Member: IMermaidClassMember; const Box: TMermaidNodeBox;
   const Top: Single);
 begin
-  EmitText(Member.DisplayText, Box.X + BoxPaddingX, Top, MemberFont(Member), TextColor);
+  EmitText(Member.DisplayText, Box.X + Scaled(BoxPaddingX), Top, MemberFont(Member), TextColor);
 end;
 
 procedure TMermaidClassDiagramBuilder.EmitRelations;
@@ -1811,7 +2080,8 @@ begin
 
   const SourceBox = FBoxes[Relation.SourceIndex];
   const TargetBox = FBoxes[Relation.TargetIndex];
-  const Shift = FLayout.ParallelEdgeShift(Index, ParallelRelationSpacing);
+  const Layout = FLayouts[FComponentOfClass[Relation.SourceIndex]];
+  const Shift = Layout.ParallelEdgeShift(FRelationEdge[Index], Scaled(ParallelRelationSpacing));
   const RawStart = SourceBox.BorderPoint(TargetBox.Center);
   const RawEnd = TargetBox.BorderPoint(SourceBox.Center);
   const StartPoint = TLayoutPointF.Create(RawStart.X + Shift.X, RawStart.Y + Shift.Y);
@@ -1839,7 +2109,7 @@ begin
   if Relation.Caption <> '' then
   begin
     const Midpoint = TLayoutPointF.Create((LineStart.X + LineEnd.X) / 2, (LineStart.Y + LineEnd.Y) / 2);
-    EmitBackedLabel(Relation.Caption, Midpoint, LabelFont, TextColor, LabelPadding);
+    EmitBackedLabel(Relation.Caption, Midpoint, LabelFont, TextColor, Scaled(LabelPadding));
   end;
 end;
 
@@ -1849,15 +2119,15 @@ procedure TMermaidClassDiagramBuilder.EmitSelfRelation(const Relation: IMermaidC
 begin
   const Box = FBoxes[Relation.SourceIndex];
   const Right = Box.X + Box.Width;
-  const LoopHeight = Min(SelfLoopMaxHeight, Box.Height / 2);
+  const LoopHeight = Min(Scaled(SelfLoopMaxHeight), Box.Height / 2);
   const CenterY = Box.Y + Box.Height / 2;
   const IntoBox = TLayoutPointF.Create(-1, 0);
   const OutOfBox = TLayoutPointF.Create(1, 0);
 
   const LoopStart = TLayoutPointF.Create(Right, CenterY - LoopHeight / 2);
   const LoopEnd = TLayoutPointF.Create(Right, CenterY + LoopHeight / 2);
-  const FarTop = TLayoutPointF.Create(Right + SelfLoopWidth, LoopStart.Y);
-  const FarBottom = TLayoutPointF.Create(Right + SelfLoopWidth, LoopEnd.Y);
+  const FarTop = TLayoutPointF.Create(Right + Scaled(SelfLoopWidth), LoopStart.Y);
+  const FarBottom = TLayoutPointF.Create(Right + Scaled(SelfLoopWidth), LoopEnd.Y);
 
   EmitRelationLine(Offset(LoopStart, OutOfBox, MarkerLength(Relation.SourceEnd)), FarTop, Relation.Line);
   EmitRelationLine(FarTop, FarBottom, Relation.Line);
@@ -1869,7 +2139,7 @@ begin
   if Relation.Caption <> '' then
   begin
     const LabelTop = CenterY - FMeasurer.LineHeight(LabelFont) / 2;
-    EmitText(Relation.Caption, FarTop.X + SelfLoopLabelGap, LabelTop, LabelFont, TextColor);
+    EmitText(Relation.Caption, FarTop.X + Scaled(SelfLoopLabelGap), LabelTop, LabelFont, TextColor);
   end;
 end;
 
@@ -1909,42 +2179,44 @@ end;
 
 procedure TMermaidClassDiagramBuilder.EmitTriangle(const Tip, Direction: TLayoutPointF);
 begin
-  const Base = Offset(Tip, Direction, -TriangleLength);
+  const Base = Offset(Tip, Direction, -Scaled(TriangleLength));
   const Perpendicular = TLayoutPointF.Create(-Direction.Y, Direction.X);
+  const HalfWidth = Scaled(TriangleHalfWidth);
 
   var Points: TArray<TLayoutPointF>;
-  Points := [Tip, Offset(Base, Perpendicular, TriangleHalfWidth), Offset(Base, Perpendicular, -TriangleHalfWidth)];
+  Points := [Tip, Offset(Base, Perpendicular, HalfWidth), Offset(Base, Perpendicular, -HalfWidth)];
 
   EmitFilledAndStrokedPolygon(Points, FTheme.BackgroundColor, RelationColor, RelationStrokeWidth);
 end;
 
 procedure TMermaidClassDiagramBuilder.EmitDiamond(const Tip, Direction: TLayoutPointF; const FillColor: TLayoutColor);
 begin
-  const Middle = Offset(Tip, Direction, -DiamondLength / 2);
-  const Back = Offset(Tip, Direction, -DiamondLength);
+  const Middle = Offset(Tip, Direction, -Scaled(DiamondLength) / 2);
+  const Back = Offset(Tip, Direction, -Scaled(DiamondLength));
   const Perpendicular = TLayoutPointF.Create(-Direction.Y, Direction.X);
+  const HalfWidth = Scaled(DiamondHalfWidth);
 
   var Points: TArray<TLayoutPointF>;
-  Points := [Tip, Offset(Middle, Perpendicular, DiamondHalfWidth), Back,
-    Offset(Middle, Perpendicular, -DiamondHalfWidth)];
+  Points := [Tip, Offset(Middle, Perpendicular, HalfWidth), Back, Offset(Middle, Perpendicular, -HalfWidth)];
 
   EmitFilledAndStrokedPolygon(Points, FillColor, RelationColor, RelationStrokeWidth);
 end;
 
 procedure TMermaidClassDiagramBuilder.EmitOpenArrow(const Tip, Direction: TLayoutPointF);
 begin
-  const Base = Offset(Tip, Direction, -ArrowLength);
+  const Base = Offset(Tip, Direction, -Scaled(ArrowLength));
   const Perpendicular = TLayoutPointF.Create(-Direction.Y, Direction.X);
+  const HalfWidth = Scaled(ArrowHalfWidth);
 
-  EmitLine(Tip, Offset(Base, Perpendicular, ArrowHalfWidth), RelationColor, RelationStrokeWidth);
-  EmitLine(Tip, Offset(Base, Perpendicular, -ArrowHalfWidth), RelationColor, RelationStrokeWidth);
+  EmitLine(Tip, Offset(Base, Perpendicular, HalfWidth), RelationColor, RelationStrokeWidth);
+  EmitLine(Tip, Offset(Base, Perpendicular, -HalfWidth), RelationColor, RelationStrokeWidth);
 end;
 
 // A cardinality sits just past the marker, beside the line rather than on
 // it, always on the same side of the direction toward its class. The two
-// ends point in opposite directions, so the two numbers land on
-// opposite sides of the line, the way mermaid writes "1" left of the start
-// and "*" right of the end.
+// ends point in opposite directions, so the two numbers land on opposite
+// sides of the line, the way mermaid writes "1" left of the start and "*"
+// right of the end.
 procedure TMermaidClassDiagramBuilder.EmitCardinality(const Cardinality: string; const Tip, Direction: TLayoutPointF;
   const Marker: TMermaidRelationEnd);
 begin
@@ -1953,34 +2225,35 @@ begin
 
   const Font = CardinalityFont;
   const Size = FMeasurer.MeasureText(Cardinality, Font);
+  const Gap = Scaled(CardinalityGap);
   const HalfAlong = Abs(Direction.X) * Size.Width / 2 + Abs(Direction.Y) * Size.Height / 2;
   const HalfAcross = Abs(Direction.Y) * Size.Width / 2 + Abs(Direction.X) * Size.Height / 2;
   const Beside = TLayoutPointF.Create(Direction.Y, -Direction.X);
 
-  const Along = Offset(Tip, Direction, -(Max(MarkerLength(Marker), ArrowLength) + CardinalityGap + HalfAlong));
-  const Center = Offset(Along, Beside, HalfAcross + CardinalityGap);
+  const Along = Offset(Tip, Direction, -(Max(MarkerLength(Marker), Scaled(ArrowLength)) + Gap + HalfAlong));
+  const Center = Offset(Along, Beside, HalfAcross + Gap);
 
   EmitText(Cardinality, Center.X - Size.Width / 2, Center.Y - Size.Height / 2, Font, TextColor);
+end;
+
+function TMermaidClassDiagramBuilder.MarkerLength(const Marker: TMermaidRelationEnd): Single;
+begin
+  case Marker of
+    TMermaidRelationEnd.None, TMermaidRelationEnd.Arrow:
+      Result := 0;
+    TMermaidRelationEnd.Inheritance:
+      Result := Scaled(TriangleLength);
+    TMermaidRelationEnd.Composition, TMermaidRelationEnd.Aggregation:
+      Result := Scaled(DiamondLength);
+  else
+    raise EMarkdownError.CreateFmt(UnhandledRelationEndMessage, [Ord(Marker)]);
+  end;
 end;
 
 class function TMermaidClassDiagramBuilder.IsParentEnd(const Marker: TMermaidRelationEnd): Boolean;
 begin
   Result := (Marker = TMermaidRelationEnd.Inheritance) or (Marker = TMermaidRelationEnd.Composition) or
     (Marker = TMermaidRelationEnd.Aggregation);
-end;
-
-class function TMermaidClassDiagramBuilder.MarkerLength(const Marker: TMermaidRelationEnd): Single;
-begin
-  case Marker of
-    TMermaidRelationEnd.None, TMermaidRelationEnd.Arrow:
-      Result := 0;
-    TMermaidRelationEnd.Inheritance:
-      Result := TriangleLength;
-    TMermaidRelationEnd.Composition, TMermaidRelationEnd.Aggregation:
-      Result := DiamondLength;
-  else
-    raise EMarkdownError.CreateFmt(UnhandledRelationEndMessage, [Ord(Marker)]);
-  end;
 end;
 
 class function TMermaidClassDiagramBuilder.Offset(const Point, Direction: TLayoutPointF;
