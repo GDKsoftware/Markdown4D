@@ -336,6 +336,20 @@
     "sliceCount": -1
   },
   {
+    "name": "class-diagram-animals",
+    "markdown": "```mermaid\nclassDiagram\n  class Animal {\n    <<abstract>>\n    +String name\n    +int age\n    +makeSound()*\n    +count()$ int\n  }\n  class Duck {\n    +String beakColor\n    +swim()\n    +quack()\n  }\n  class Fish {\n    -int sizeInFeet\n    -canEat()\n  }\n  class Zebra {\n    +bool isWild\n    +run()\n  }\n  Animal <|-- Duck\n  Animal <|-- Fish\n  Animal <|-- Zebra\n```",
+    "detected": true,
+    "diagramKind": "classDiagram",
+    "direction": "TB",
+    "title": "",
+    "nodeCount": -1,
+    "edgeCount": -1,
+    "participantCount": -1,
+    "messageCount": -1,
+    "noteCount": -1,
+    "sliceCount": -1
+  },
+  {
     "name": "class-diagram-shop",
     "markdown": "```mermaid\nclassDiagram\n  class Customer {\n    +String name\n    +String email\n  }\n  class Order {\n    +String id\n    +Date placedAt\n    +total() Money\n  }\n  class LineItem {\n    +int quantity\n  }\n  class Payment {\n    <<interface>>\n    +authorise() bool\n  }\n  Customer \"1\" --> \"*\" Order : places\n  Order \"1\" *-- \"*\" LineItem : contains\n  Order --> Payment : settled by\n```",
     "detected": true,

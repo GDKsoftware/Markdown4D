@@ -26,6 +26,7 @@ type
       FMeasurer: ITextMeasurer;
       FCorpus: TMermaidCorpus;
     function ModelItems(const CaseName: string): TArray<IDisplayItem>;
+    function ModelItemsAtWidth(const CaseName: string; const Width: Single): TArray<IDisplayItem>;
     function ItemsForDiagram(const Diagram: string): TArray<IDisplayItem>;
     class function MermaidPipeline: IMarkdownPipeline;
     class function CountKind(const Items: TArray<IDisplayItem>; const Kind: TDisplayItemKind): Integer;
@@ -177,6 +178,13 @@ type
 
     [Test]
     procedure ClassDiagram_DiagramThatFits_KeepsFullSize;
+
+    [Test]
+    [TestCase('ShopAt208', 'class-diagram-shop,208')]
+    [TestCase('ShopAt240', 'class-diagram-shop,240')]
+    [TestCase('AnimalsAt208', 'class-diagram-animals,208')]
+    [TestCase('AnimalsAt240', 'class-diagram-animals,240')]
+    procedure ClassDiagram_NarrowWidth_StaysWithinWidth(const CaseName: string; const Width: Integer);
   end;
 
 implementation
@@ -395,6 +403,11 @@ end;
 
 function TMermaidLayoutTests.ModelItems(const CaseName: string): TArray<IDisplayItem>;
 begin
+  Result := ModelItemsAtWidth(CaseName, DiagramWidth);
+end;
+
+function TMermaidLayoutTests.ModelItemsAtWidth(const CaseName: string; const Width: Single): TArray<IDisplayItem>;
+begin
   const Item = FCorpus.FindCase(CaseName);
   const Document = MermaidPipeline.Parse(Item.Markdown);
 
@@ -404,7 +417,7 @@ begin
   var Model: IMermaidModel;
   Assert.IsTrue(TMermaidExtension.TryParse(Code, Model), Format('Case "%s" must parse into a mermaid model', [CaseName]));
 
-  const Bounds = TLayoutRectF.Create(0, 0, DiagramWidth, DiagramHeight);
+  const Bounds = TLayoutRectF.Create(0, 0, Width, DiagramHeight);
   Result := TMermaidLayouter.BuildDisplayItems(Model, Bounds, FTheme, FMeasurer, Code);
 end;
 
@@ -1137,6 +1150,14 @@ begin
   Assert.IsTrue(FindText(Items, 'Customer', Name));
   Assert.AreEqual(13.0, Name.Font.Size, 0.001, 'A diagram that fits is drawn at full size');
   AssertWithinWidth(Items, DiagramWidth);
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_NarrowWidth_StaysWithinWidth(const CaseName: string; const Width: Integer);
+begin
+  const Items = ModelItemsAtWidth(CaseName, Width);
+
+  AssertNoOverlap(ClassBoxes(Items));
+  AssertWithinWidth(Items, Width);
 end;
 
 end.

@@ -14,7 +14,7 @@ type
   TMermaidExtensionTests = class
   private
     const
-      ExpectedCaseCount = 30;
+      ExpectedCaseCount = 31;
     var
       FCorpus: TMermaidCorpus;
     class function MermaidPipeline: IMarkdownPipeline;
