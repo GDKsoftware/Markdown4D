@@ -20,6 +20,7 @@ type
       DiagramWidth = 480.0;
       DiagramHeight = 360.0;
       ShapedCaption = 'Stage One Two Three';
+      ShopClassDiagram = 'class-diagram-shop';
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
@@ -34,6 +35,11 @@ type
     class function FindFirstRectangle(const Items: TArray<IDisplayItem>; out Rectangle: IDisplayRectangle): Boolean;
     class function FindFirstWedge(const Items: TArray<IDisplayItem>; out Wedge: IDisplayWedge): Boolean;
     class function FirstNodeShapeWidth(const Items: TArray<IDisplayItem>): Single;
+    class function ClassBoxes(const Items: TArray<IDisplayItem>): TArray<TLayoutRectF>;
+    class function FindText(const Items: TArray<IDisplayItem>; const Text: string; out Run: IDisplayTextRun): Boolean;
+    class function BoxOfText(const Items: TArray<IDisplayItem>; const Text: string): TLayoutRectF;
+    class function Polygons(const Items: TArray<IDisplayItem>; const PointCount: Integer): TArray<IDisplayPolygon>;
+    class procedure AssertNoOverlap(const Boxes: TArray<TLayoutRectF>);
 
   public
     [SetupFixture]
@@ -100,6 +106,67 @@ type
 
     [Test]
     procedure Deterministic_SameInputProducesIdenticalPrimitiveKinds;
+
+    [Test]
+    procedure ClassDiagram_IssueExample_DrawsABoxPerClass;
+
+    [Test]
+    procedure ClassDiagram_IssueExample_BoxesDoNotOverlap;
+
+    [Test]
+    procedure ClassDiagram_ManyClasses_BoxesDoNotOverlap;
+
+    [Test]
+    procedure ClassDiagram_SameInput_ProducesIdenticalLayout;
+
+    [Test]
+    procedure ClassDiagram_Association_SourceSitsAboveTarget;
+
+    [Test]
+    [TestCase('ParentFirst', 'Animal <|-- Duck')]
+    [TestCase('ChildFirst', 'Duck --|> Animal')]
+    [TestCase('RealizationParentFirst', 'Animal <|.. Duck')]
+    [TestCase('RealizationChildFirst', 'Duck ..|> Animal')]
+    procedure ClassDiagram_Inheritance_ParentSitsAboveChild(const Relation: string);
+
+    [Test]
+    procedure ClassDiagram_LeftToRight_ParentSitsLeftOfChild;
+
+    [Test]
+    procedure ClassDiagram_BottomToTop_ParentSitsBelowChild;
+
+    [Test]
+    procedure ClassDiagram_Box_HasThreeCompartments;
+
+    [Test]
+    procedure ClassDiagram_Annotation_SitsAboveBoldName;
+
+    [Test]
+    procedure ClassDiagram_IssueExample_DrawsCardinalitiesAndLabels;
+
+    [Test]
+    procedure ClassDiagram_Composition_DrawsFilledDiamondAtWhole;
+
+    [Test]
+    procedure ClassDiagram_Aggregation_DrawsHollowDiamond;
+
+    [Test]
+    procedure ClassDiagram_Inheritance_DrawsHollowTriangleAtParent;
+
+    [Test]
+    procedure ClassDiagram_Association_DrawsOpenArrowAtTarget;
+
+    [Test]
+    procedure ClassDiagram_DashedRelation_DrawsDashes;
+
+    [Test]
+    procedure ClassDiagram_StaticAndAbstractMembers_UseUnderlineAndItalic;
+
+    [Test]
+    procedure ClassDiagram_PreferredHeight_CoversEveryBox;
+
+    [Test]
+    procedure ClassDiagram_SelfRelation_DrawsLoopBesideBox;
   end;
 
 implementation
@@ -216,6 +283,79 @@ begin
   end;
 
   Result := 0;
+end;
+
+class function TMermaidLayoutTests.ClassBoxes(const Items: TArray<IDisplayItem>): TArray<TLayoutRectF>;
+begin
+  Result := nil;
+
+  for var Item in Items do
+  begin
+    var Rectangle: IDisplayRectangle;
+    const IsBorderedRectangle = Supports(Item, IDisplayRectangle, Rectangle) and (Rectangle.StrokeWidth > 0);
+    if IsBorderedRectangle then
+      Result := Result + [Item.Bounds];
+  end;
+end;
+
+class function TMermaidLayoutTests.FindText(const Items: TArray<IDisplayItem>; const Text: string;
+  out Run: IDisplayTextRun): Boolean;
+begin
+  Run := nil;
+
+  for var Item in Items do
+  begin
+    if Supports(Item, IDisplayTextRun, Run) and (Run.Text = Text) then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
+
+  Run := nil;
+  Result := False;
+end;
+
+class function TMermaidLayoutTests.BoxOfText(const Items: TArray<IDisplayItem>; const Text: string): TLayoutRectF;
+begin
+  var Run: IDisplayTextRun;
+  Assert.IsTrue(FindText(Items, Text, Run), Format('The diagram must draw the text "%s"', [Text]));
+
+  const Center = TLayoutPointF.Create((Run.Bounds.Left + Run.Bounds.Right) / 2, (Run.Bounds.Top + Run.Bounds.Bottom) / 2);
+  for var Box in ClassBoxes(Items) do
+  begin
+    if Box.Contains(Center) then
+    begin
+      Result := Box;
+      Exit;
+    end;
+  end;
+
+  Assert.Fail(Format('The text "%s" must sit inside a class box', [Text]));
+end;
+
+class function TMermaidLayoutTests.Polygons(const Items: TArray<IDisplayItem>;
+  const PointCount: Integer): TArray<IDisplayPolygon>;
+begin
+  Result := nil;
+
+  for var Item in Items do
+  begin
+    var Polygon: IDisplayPolygon;
+    if Supports(Item, IDisplayPolygon, Polygon) and (Polygon.PointCount = PointCount) then
+      Result := Result + [Polygon];
+  end;
+end;
+
+class procedure TMermaidLayoutTests.AssertNoOverlap(const Boxes: TArray<TLayoutRectF>);
+begin
+  for var I := 0 to High(Boxes) do
+  begin
+    for var J := I + 1 to High(Boxes) do
+    begin
+      Assert.IsFalse(RectanglesOverlap(Boxes[I], Boxes[J]), Format('Class boxes %d and %d must not overlap', [I, J]));
+    end;
+  end;
 end;
 
 procedure TMermaidLayoutTests.SetupFixture;
@@ -618,6 +758,308 @@ begin
     Assert.AreEqual(Ord(First[Index].Kind), Ord(Second[Index].Kind),
       Format('Layout item %d kind must be deterministic', [Index]));
   end;
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_IssueExample_DrawsABoxPerClass;
+begin
+  const Items = ModelItems(ShopClassDiagram);
+
+  Assert.AreEqual(4, TTestArray.CountOf(ClassBoxes(Items)), 'A four-class diagram must draw a bordered box per class');
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_IssueExample_BoxesDoNotOverlap;
+begin
+  AssertNoOverlap(ClassBoxes(ModelItems(ShopClassDiagram)));
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_ManyClasses_BoxesDoNotOverlap;
+begin
+  const Lines: TArray<string> = [
+    'classDiagram',
+    '  Animal <|-- Duck',
+    '  Animal <|-- Fish',
+    '  Animal <|-- Zebra',
+    '  Duck : +swim()',
+    '  Duck : +quack()',
+    '  Fish : -int sizeInFeet',
+    '  Zebra : +bool is_wild',
+    '  Zoo "1" o-- "*" Animal : houses',
+    '  Keeper --> Zoo : works at',
+    '  Keeper ..> Animal : feeds',
+    '  Zoo *-- Ticket',
+    '  Ticket --> Visitor',
+    '  Visitor --> Zoo : visits',
+    '  Visitor ..|> Person',
+    '  Keeper ..|> Person'];
+
+  const Boxes = ClassBoxes(ItemsForDiagram(string.Join(LineFeed, Lines)));
+
+  Assert.AreEqual(9, TTestArray.CountOf(Boxes), 'Every class, also one only named in a relation, must get a box');
+  AssertNoOverlap(Boxes);
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_SameInput_ProducesIdenticalLayout;
+begin
+  const First = ModelItems(ShopClassDiagram);
+  const Second = ModelItems(ShopClassDiagram);
+
+  Assert.AreEqual(Length(First), Length(Second), 'Layout must be deterministic in item count');
+
+  for var Index := 0 to High(First) do
+  begin
+    Assert.AreEqual(Ord(First[Index].Kind), Ord(Second[Index].Kind), Format('Item %d kind', [Index]));
+    Assert.AreEqual(First[Index].Bounds.Left, Second[Index].Bounds.Left, 0.001, Format('Item %d left', [Index]));
+    Assert.AreEqual(First[Index].Bounds.Top, Second[Index].Bounds.Top, 0.001, Format('Item %d top', [Index]));
+    Assert.AreEqual(First[Index].Bounds.Right, Second[Index].Bounds.Right, 0.001, Format('Item %d right', [Index]));
+    Assert.AreEqual(First[Index].Bounds.Bottom, Second[Index].Bounds.Bottom, 0.001, Format('Item %d bottom', [Index]));
+  end;
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_Association_SourceSitsAboveTarget;
+begin
+  const Items = ModelItems(ShopClassDiagram);
+
+  const Customer = BoxOfText(Items, 'Customer');
+  const Order = BoxOfText(Items, 'Order');
+  const LineItem = BoxOfText(Items, 'LineItem');
+
+  Assert.IsTrue(Customer.Bottom <= Order.Top, 'Customer places orders, so Customer sits above Order');
+  Assert.IsTrue(Order.Bottom <= LineItem.Top, 'Order is the whole of its line items, so Order sits above LineItem');
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_Inheritance_ParentSitsAboveChild(const Relation: string);
+begin
+  const Items = ItemsForDiagram('classDiagram' + LineFeed + '  ' + Relation);
+
+  const Animal = BoxOfText(Items, 'Animal');
+  const Duck = BoxOfText(Items, 'Duck');
+
+  Assert.IsTrue(Animal.Bottom <= Duck.Top, 'The parent sits above its child whichever way the arrow is written');
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_LeftToRight_ParentSitsLeftOfChild;
+begin
+  const Items = ItemsForDiagram('classDiagram' + LineFeed + '  direction LR' + LineFeed + '  Duck --|> Animal');
+
+  const Animal = BoxOfText(Items, 'Animal');
+  const Duck = BoxOfText(Items, 'Duck');
+
+  Assert.IsTrue(Animal.Right <= Duck.Left, 'Left to right puts the parent on the left');
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_BottomToTop_ParentSitsBelowChild;
+begin
+  const Items = ItemsForDiagram('classDiagram' + LineFeed + '  direction BT' + LineFeed + '  Animal <|-- Duck');
+
+  const Animal = BoxOfText(Items, 'Animal');
+  const Duck = BoxOfText(Items, 'Duck');
+
+  Assert.IsTrue(Animal.Top >= Duck.Bottom, 'Bottom to top puts the parent below its child');
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_Box_HasThreeCompartments;
+begin
+  const Items = ModelItems(ShopClassDiagram);
+  const Customer = BoxOfText(Items, 'Customer');
+
+  var Separators := 0;
+  for var Item in Items do
+  begin
+    var Line: IDisplayLine;
+    if not Supports(Item, IDisplayLine, Line) then
+      Continue;
+
+    const IsLevel = (Abs(Line.StartPoint.Y - Line.EndPoint.Y) < 0.5);
+    const IsInsideBox = (Line.StartPoint.Y > Customer.Top + 0.5) and (Line.StartPoint.Y < Customer.Bottom - 0.5);
+    const SpansBox = (Abs(Min(Line.StartPoint.X, Line.EndPoint.X) - Customer.Left) < 0.5) and
+      (Abs(Max(Line.StartPoint.X, Line.EndPoint.X) - Customer.Right) < 0.5);
+    if IsLevel and IsInsideBox and SpansBox then
+      Inc(Separators);
+  end;
+
+  Assert.AreEqual(2, Separators,
+    'A class box has a name, an attribute and a method compartment, also when it has no methods');
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_Annotation_SitsAboveBoldName;
+begin
+  const Items = ModelItems(ShopClassDiagram);
+
+  var Annotation: IDisplayTextRun;
+  Assert.IsTrue(FindText(Items, '<<interface>>', Annotation), 'The annotation must be drawn');
+
+  var Name: IDisplayTextRun;
+  Assert.IsTrue(FindText(Items, 'Payment', Name), 'The class name must be drawn');
+
+  Assert.IsTrue(Annotation.Bounds.Bottom <= Name.Bounds.Top + 0.5, 'The annotation sits above the class name');
+  Assert.IsTrue(Name.Font.Bold, 'The class name is bold');
+
+  const Payment = BoxOfText(Items, 'Payment');
+  Assert.IsTrue(Payment.Contains(TLayoutPointF.Create(Annotation.Bounds.Left, Annotation.Bounds.Top)),
+    'The annotation sits inside the class box');
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_IssueExample_DrawsCardinalitiesAndLabels;
+begin
+  const Items = ModelItems(ShopClassDiagram);
+
+  var OneCount := 0;
+  var ManyCount := 0;
+  for var Item in Items do
+  begin
+    var Run: IDisplayTextRun;
+    if not Supports(Item, IDisplayTextRun, Run) then
+      Continue;
+
+    if Run.Text = '1' then
+      Inc(OneCount)
+    else if Run.Text = '*' then
+      Inc(ManyCount);
+  end;
+
+  Assert.AreEqual(2, OneCount, 'Both relations with a "1" end must draw it');
+  Assert.AreEqual(2, ManyCount, 'Both relations with a "*" end must draw it');
+
+  var Run: IDisplayTextRun;
+  Assert.IsTrue(FindText(Items, 'places', Run), 'The places label must be drawn');
+  Assert.IsTrue(FindText(Items, 'contains', Run), 'The contains label must be drawn');
+  Assert.IsTrue(FindText(Items, 'settled by', Run), 'The settled by label must be drawn');
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_Composition_DrawsFilledDiamondAtWhole;
+begin
+  const Items = ItemsForDiagram('classDiagram' + LineFeed + '  Order *-- LineItem');
+
+  const Diamonds = Polygons(Items, 4);
+  Assert.AreEqual(1, TTestArray.CountOf(Diamonds), 'A composition draws one diamond');
+  Assert.IsTrue(Diamonds[0].FillColor = FTheme.ChartTextColor, 'A composition diamond is filled');
+
+  const Order = BoxOfText(Items, 'Order');
+  var TouchesWhole := False;
+  for var Index := 0 to Diamonds[0].PointCount - 1 do
+  begin
+    if Abs(Diamonds[0].Points[Index].Y - Order.Bottom) < 1.0 then
+      TouchesWhole := True;
+  end;
+  Assert.IsTrue(TouchesWhole, 'The diamond sits at the whole, the class written next to it');
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_Aggregation_DrawsHollowDiamond;
+begin
+  const Items = ItemsForDiagram('classDiagram' + LineFeed + '  Zoo o-- Animal');
+
+  const Diamonds = Polygons(Items, 4);
+  Assert.AreEqual(1, TTestArray.CountOf(Diamonds), 'An aggregation draws one diamond');
+  Assert.IsTrue(Diamonds[0].FillColor = FTheme.BackgroundColor, 'An aggregation diamond is hollow');
+  Assert.IsTrue(Diamonds[0].StrokeWidth > 0, 'A hollow diamond needs an outline');
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_Inheritance_DrawsHollowTriangleAtParent;
+begin
+  const Items = ItemsForDiagram('classDiagram' + LineFeed + '  Animal <|-- Duck');
+
+  const Triangles = Polygons(Items, 3);
+  Assert.AreEqual(1, TTestArray.CountOf(Triangles), 'An inheritance draws one triangle');
+  Assert.IsTrue(Triangles[0].FillColor = FTheme.BackgroundColor, 'An inheritance triangle is hollow');
+  Assert.IsTrue(Triangles[0].StrokeWidth > 0, 'A hollow triangle needs an outline');
+
+  const Animal = BoxOfText(Items, 'Animal');
+  var TipY := MaxSingle;
+  for var Index := 0 to Triangles[0].PointCount - 1 do
+  begin
+    TipY := Min(TipY, Triangles[0].Points[Index].Y);
+  end;
+  Assert.AreEqual(Animal.Bottom, TipY, 1.0, 'The triangle points at the parent');
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_Association_DrawsOpenArrowAtTarget;
+begin
+  const Items = ItemsForDiagram('classDiagram' + LineFeed + '  Customer --> Order');
+
+  Assert.AreEqual(0, TTestArray.CountOf(Polygons(Items, 3)), 'An association arrow is open, not a filled triangle');
+
+  const Order = BoxOfText(Items, 'Order');
+  const Tip = TLayoutPointF.Create((Order.Left + Order.Right) / 2, Order.Top);
+
+  var LinesAtTip := 0;
+  for var Item in Items do
+  begin
+    var Line: IDisplayLine;
+    if not Supports(Item, IDisplayLine, Line) then
+      Continue;
+
+    const StartsAtTip = (Abs(Line.StartPoint.X - Tip.X) < 1.0) and (Abs(Line.StartPoint.Y - Tip.Y) < 1.0);
+    const EndsAtTip = (Abs(Line.EndPoint.X - Tip.X) < 1.0) and (Abs(Line.EndPoint.Y - Tip.Y) < 1.0);
+    if StartsAtTip or EndsAtTip then
+      Inc(LinesAtTip);
+  end;
+
+  Assert.AreEqual(3, LinesAtTip, 'The relation line and the two strokes of the open arrow meet at the target');
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_DashedRelation_DrawsDashes;
+begin
+  const SolidLines = CountKind(ItemsForDiagram('classDiagram' + LineFeed + '  Client --> Service'),
+    TDisplayItemKind.Line);
+  const DashedLines = CountKind(ItemsForDiagram('classDiagram' + LineFeed + '  Client ..> Service'),
+    TDisplayItemKind.Line);
+
+  Assert.IsTrue(DashedLines > SolidLines + 1, 'A dependency is drawn as a run of dashes, not one line');
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_StaticAndAbstractMembers_UseUnderlineAndItalic;
+begin
+  const Items = ItemsForDiagram('classDiagram' + LineFeed + '  class Shape {' + LineFeed + '    +count()$ int' +
+    LineFeed + '    +draw()*' + LineFeed + '  }');
+
+  var StaticMember: IDisplayTextRun;
+  Assert.IsTrue(FindText(Items, '+count() : int', StaticMember), 'The static method must be drawn');
+  Assert.IsTrue(StaticMember.Font.Underline, 'A static member is underlined');
+
+  var AbstractMember: IDisplayTextRun;
+  Assert.IsTrue(FindText(Items, '+draw()', AbstractMember), 'The abstract method must be drawn');
+  Assert.IsTrue(AbstractMember.Font.Italic, 'An abstract member is italic');
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_PreferredHeight_CoversEveryBox;
+begin
+  const Item = FCorpus.FindCase(ShopClassDiagram);
+  const Document = MermaidPipeline.Parse(Item.Markdown);
+
+  var Code: IMarkdownCodeBlock;
+  Assert.IsTrue(TMarkdownTestPipelineHelpers.FindFirstCodeBlock(Document, Code));
+
+  var Model: IMermaidModel;
+  Assert.IsTrue(TMermaidExtension.TryParse(Code, Model));
+
+  const Height = TMermaidLayouter.PreferredHeight(Model, DiagramWidth, FTheme, FMeasurer);
+  const Bounds = TLayoutRectF.Create(0, 0, DiagramWidth, Height);
+  const Items = TMermaidLayouter.BuildDisplayItems(Model, Bounds, FTheme, FMeasurer, Code);
+
+  for var Box in ClassBoxes(Items) do
+  begin
+    Assert.IsTrue(Box.Bottom <= Height, 'The preferred height must leave room for every class box');
+  end;
+end;
+
+procedure TMermaidLayoutTests.ClassDiagram_SelfRelation_DrawsLoopBesideBox;
+begin
+  const Items = ItemsForDiagram('classDiagram' + LineFeed + '  Node --> Node : next');
+
+  const Node = BoxOfText(Items, 'Node');
+
+  var HasLoop := False;
+  for var Item in Items do
+  begin
+    var Line: IDisplayLine;
+    if Supports(Item, IDisplayLine, Line) and (Min(Line.StartPoint.X, Line.EndPoint.X) > Node.Right - 0.5) then
+      HasLoop := True;
+  end;
+
+  Assert.IsTrue(HasLoop, 'A class related to itself gets a loop beside its box');
+
+  var Run: IDisplayTextRun;
+  Assert.IsTrue(FindText(Items, 'next', Run), 'The loop carries its label');
 end;
 
 end.

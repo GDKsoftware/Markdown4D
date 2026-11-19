@@ -322,8 +322,36 @@
     "sliceCount": -1
   },
   {
-    "name": "fallback-class-diagram",
+    "name": "class-diagram-inheritance",
     "markdown": "```mermaid\nclassDiagram\n    class Animal\n    Animal <|-- Dog\n```",
+    "detected": true,
+    "diagramKind": "classDiagram",
+    "direction": "TB",
+    "title": "",
+    "nodeCount": -1,
+    "edgeCount": -1,
+    "participantCount": -1,
+    "messageCount": -1,
+    "noteCount": -1,
+    "sliceCount": -1
+  },
+  {
+    "name": "class-diagram-shop",
+    "markdown": "```mermaid\nclassDiagram\n  class Customer {\n    +String name\n    +String email\n  }\n  class Order {\n    +String id\n    +Date placedAt\n    +total() Money\n  }\n  class LineItem {\n    +int quantity\n  }\n  class Payment {\n    <<interface>>\n    +authorise() bool\n  }\n  Customer \"1\" --> \"*\" Order : places\n  Order \"1\" *-- \"*\" LineItem : contains\n  Order --> Payment : settled by\n```",
+    "detected": true,
+    "diagramKind": "classDiagram",
+    "direction": "TB",
+    "title": "",
+    "nodeCount": -1,
+    "edgeCount": -1,
+    "participantCount": -1,
+    "messageCount": -1,
+    "noteCount": -1,
+    "sliceCount": -1
+  },
+  {
+    "name": "fallback-class-diagram-note",
+    "markdown": "```mermaid\nclassDiagram\n    class Animal\n    note for Animal \"can fly\"\n```",
     "detected": false,
     "diagramKind": "",
     "direction": "",

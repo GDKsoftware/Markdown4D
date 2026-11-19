@@ -143,6 +143,7 @@
         <DCCReference Include="Markdown4D.Mermaid.Corpus.pas"/>
         <DCCReference Include="Markdown4D.Extensions.Mermaid.Tests.pas"/>
         <DCCReference Include="Markdown4D.Extensions.Mermaid.Layout.Tests.pas"/>
+        <DCCReference Include="Markdown4D.Extensions.Mermaid.ClassDiagram.Tests.pas"/>
         <DCCReference Include="Markdown4D.Extensions.Api.Tests.pas"/>
         <DCCReference Include="Markdown4D.Extensions.V11.Tests.pas"/>
         <DCCReference Include="Markdown4D.Extensions.Admonition.Tests.pas"/>

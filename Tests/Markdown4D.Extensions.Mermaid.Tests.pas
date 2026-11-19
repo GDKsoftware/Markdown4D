@@ -14,7 +14,7 @@ type
   TMermaidExtensionTests = class
   private
     const
-      ExpectedCaseCount = 28;
+      ExpectedCaseCount = 30;
     var
       FCorpus: TMermaidCorpus;
     class function MermaidPipeline: IMarkdownPipeline;
@@ -44,6 +44,9 @@ type
 
     [Test]
     procedure Model_ResolvesPieSlices;
+
+    [Test]
+    procedure Model_ResolvesClassDiagramClassesAndRelations;
 
     [Test]
     procedure Html_FencedCases_RenderPlainCodeBlock;
@@ -177,6 +180,24 @@ begin
   Assert.AreEqual(Ord(TMermaidDiagramKind.Pie), Ord(Model.DiagramKind));
   Assert.AreEqual(3, Model.SliceCount);
   Assert.AreEqual('Pets', Model.Title);
+end;
+
+procedure TMermaidExtensionTests.Model_ResolvesClassDiagramClassesAndRelations;
+begin
+  const Item = FCorpus.FindCase('class-diagram-inheritance');
+  const Document = MermaidPipeline.Parse(Item.Markdown);
+
+  var Code: IMarkdownCodeBlock;
+  Assert.IsTrue(TMarkdownTestPipelineHelpers.FindFirstCodeBlock(Document, Code));
+
+  var Model: IMermaidModel;
+  Assert.IsTrue(TMermaidExtension.TryParse(Code, Model));
+  Assert.AreEqual(Ord(TMermaidDiagramKind.ClassDiagram), Ord(Model.DiagramKind));
+
+  var Diagram: IMermaidClassDiagram;
+  Assert.IsTrue(Supports(Model, IMermaidClassDiagram, Diagram), 'A class diagram model must expose its class view');
+  Assert.AreEqual(2, Diagram.ClassCount);
+  Assert.AreEqual(1, Diagram.RelationCount);
 end;
 
 procedure TMermaidExtensionTests.Html_FencedCases_RenderPlainCodeBlock;
