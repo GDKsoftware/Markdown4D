@@ -157,6 +157,12 @@ type
     procedure Text_ContentThatTogglesTheScrollBar_FinishesWithTheBarShown;
 
     [Test]
+    [TestCase('ShopAt240', 'class-diagram-shop,240')]
+    [TestCase('AnimalsAt240', 'class-diagram-animals,240')]
+    [TestCase('ShopAt300', 'class-diagram-shop,300')]
+    procedure Text_ClassDiagramInNarrowViewer_StaysInsideClientWidth(const CaseName: string; const Width: Integer);
+
+    [Test]
     procedure Text_FailingExtension_ReportsErrorWithViewerAsSender;
 
     [Test]
@@ -213,6 +219,9 @@ uses
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Layout.Engine,
   Markdown4D.Extensions.Chart.BlockOverride,
+  Markdown4D.Extensions.Mermaid,
+  Markdown4D.Extensions.Mermaid.BlockOverride,
+  Markdown4D.Mermaid.Corpus,
   Markdown4D.Tests.Pipeline.Helpers,
   Markdown4D.Tests.FailingExtensions,
   Markdown4D.Tests.VclClipboard,
@@ -625,6 +634,44 @@ begin
     const Style = GetWindowLong(Viewer.Handle, GWL_STYLE);
     const ShowsScrollBar = ((Style and WS_VSCROLL) <> 0);
     Assert.IsTrue(ShowsScrollBar, 'The scroll bar must settle in its shown state');
+  finally
+    TMarkdownLayoutEngine.ClearBlockOverrides;
+  end;
+end;
+
+procedure TMarkdownVclViewerTests.Text_ClassDiagramInNarrowViewer_StaysInsideClientWidth(const CaseName: string;
+  const Width: Integer);
+begin
+  TMarkdownLayoutEngine.RegisterBlockOverride(TMermaidBlockOverride.Create, TMermaidBlockOverride.OverridePriority);
+  TLayoutDocumentProcessorRegistry.Register(TMermaidExtension.ExtensionName, TMermaidExtension.CreateDocumentProcessor);
+  try
+    const Corpus = TMermaidCorpus.Create;
+    try
+      const Viewer = NewHostedViewer;
+      Viewer.SetBounds(0, 0, Width, HostHeight);
+      const CorpusCase = Corpus.FindCase(CaseName);
+      Viewer.Text := CorpusCase.Markdown;
+
+      const DisplayList = Viewer.DisplayList;
+      const ClientWidth = Viewer.ClientWidth;
+      Assert.AreEqual(Single(ClientWidth), DisplayList.Width, 0.5, 'The viewer lays out at its client width');
+
+      var HasMarker := False;
+      for var Index := 0 to DisplayList.ItemCount - 1 do
+      begin
+        const Item = DisplayList.Items[Index];
+        const IsInside = (Item.Bounds.Left >= -0.5) and (Item.Bounds.Right <= ClientWidth + 0.5);
+        Assert.IsTrue(IsInside, Format('Item %d spans %.1f..%.1f, outside the client width %d',
+          [Index, Item.Bounds.Left, Item.Bounds.Right, ClientWidth]));
+
+        if Item.Kind = TDisplayItemKind.Polygon then
+          HasMarker := True;
+      end;
+
+      Assert.IsTrue(HasMarker, 'The fence must be drawn as a class diagram, markers included');
+    finally
+      Corpus.Free;
+    end;
   finally
     TMarkdownLayoutEngine.ClearBlockOverrides;
   end;

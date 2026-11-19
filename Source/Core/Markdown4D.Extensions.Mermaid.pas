@@ -9,9 +9,13 @@ uses
   Markdown4D.Extensions.Interfaces;
 
 type
-  TMermaidDiagramKind = (Flowchart, Sequence, Pie);
+  TMermaidDiagramKind = (Flowchart, Sequence, Pie, ClassDiagram);
 
   TMermaidDirection = (TB, TD, LR, BT, RL);
+
+  TMermaidDirectionHelper = record helper for TMermaidDirection
+    class function TryParse(const Value: string; out Direction: TMermaidDirection): Boolean; static;
+  end;
 
   TMermaidNodeShape = (Rectangle, Rounded, Stadium, Circle, Diamond);
 
@@ -22,6 +26,17 @@ type
   TMermaidMessageHead = (Arrow, Open, Cross);
 
   TMermaidNotePlacement = (LeftOf, RightOf, Over);
+
+  TMermaidClassVisibility = (None, Public, Private, Protected, Package);
+
+  TMermaidClassClassifier = (None, Static, Abstract);
+
+  // What one end of a class relation carries: Inheritance is the hollow
+  // triangle, Composition the filled diamond, Aggregation the hollow diamond
+  // and Arrow the open arrowhead of an association or a dependency.
+  TMermaidRelationEnd = (None, Inheritance, Composition, Aggregation, Arrow);
+
+  TMermaidRelationLine = (Solid, Dashed);
 
   IMermaidNode = interface
     ['{6B1F2C08-9A34-4D57-8E20-71C4B5D0A9E3}']
@@ -95,9 +110,66 @@ type
     property Value: Double read GetValue;
   end;
 
-  // What a diagram of any kind carries. The three views below add what one
-  // kind of diagram needs, so a layout builder sees the part of the model it
-  // draws and nothing else.
+  // A member as written inside a class: Signature is the name with its
+  // parameters, or the type and name of an attribute, without the visibility
+  // marker and the classifier. DisplayText is the line a class box shows.
+  IMermaidClassMember = interface
+    ['{5E2B7C90-4D13-4A6F-8B25-C61E09D7F3A8}']
+    function GetVisibility: TMermaidClassVisibility;
+    function GetSignature: string;
+    function GetReturnType: string;
+    function GetClassifier: TMermaidClassClassifier;
+    function GetDisplayText: string;
+    property Visibility: TMermaidClassVisibility read GetVisibility;
+    property Signature: string read GetSignature;
+    property ReturnType: string read GetReturnType;
+    property Classifier: TMermaidClassClassifier read GetClassifier;
+    property DisplayText: string read GetDisplayText;
+  end;
+
+  IMermaidClass = interface
+    ['{8A4F1D36-2C70-4E95-B13D-7F06E2A9C5B1}']
+    function GetId: string;
+    function GetCaption: string;
+    function GetAnnotation: string;
+    function GetAttributeCount: Integer;
+    function GetAttribute(const Index: Integer): IMermaidClassMember;
+    function GetMethodCount: Integer;
+    function GetMethod(const Index: Integer): IMermaidClassMember;
+    property Id: string read GetId;
+    property Caption: string read GetCaption;
+    property Annotation: string read GetAnnotation;
+    property AttributeCount: Integer read GetAttributeCount;
+    property Attributes[const Index: Integer]: IMermaidClassMember read GetAttribute;
+    property MethodCount: Integer read GetMethodCount;
+    property Methods[const Index: Integer]: IMermaidClassMember read GetMethod;
+  end;
+
+  // Source is the class written left of the arrow, Target the one written
+  // right of it; each end keeps its own marker and cardinality.
+  IMermaidClassRelation = interface
+    ['{C3D95A07-6B21-4F48-9E7C-2A58D1F4B6E0}']
+    function GetSourceIndex: Integer;
+    function GetTargetIndex: Integer;
+    function GetSourceEnd: TMermaidRelationEnd;
+    function GetTargetEnd: TMermaidRelationEnd;
+    function GetLine: TMermaidRelationLine;
+    function GetSourceCardinality: string;
+    function GetTargetCardinality: string;
+    function GetCaption: string;
+    property SourceIndex: Integer read GetSourceIndex;
+    property TargetIndex: Integer read GetTargetIndex;
+    property SourceEnd: TMermaidRelationEnd read GetSourceEnd;
+    property TargetEnd: TMermaidRelationEnd read GetTargetEnd;
+    property Line: TMermaidRelationLine read GetLine;
+    property SourceCardinality: string read GetSourceCardinality;
+    property TargetCardinality: string read GetTargetCardinality;
+    property Caption: string read GetCaption;
+  end;
+
+  // What a diagram of any kind carries. The views below add what one kind of
+  // diagram needs, so a layout builder sees the part of the model it draws and
+  // nothing else.
   IMermaidDiagram = interface
     ['{0A5E7C93-2D46-4F81-9B7A-5C1E8D3F60A4}']
     function GetDiagramKind: TMermaidDiagramKind;
@@ -142,6 +214,20 @@ type
     function GetSlice(const Index: Integer): IMermaidSlice;
     property SliceCount: Integer read GetSliceCount;
     property Slices[const Index: Integer]: IMermaidSlice read GetSlice;
+  end;
+
+  IMermaidClassDiagram = interface(IMermaidDiagram)
+    ['{4E92B0D7-6A18-4C35-9F4E-0B73C1E5D8A2}']
+    function GetDirection: TMermaidDirection;
+    function GetClassCount: Integer;
+    function GetClass(const Index: Integer): IMermaidClass;
+    function GetRelationCount: Integer;
+    function GetRelation(const Index: Integer): IMermaidClassRelation;
+    property Direction: TMermaidDirection read GetDirection;
+    property ClassCount: Integer read GetClassCount;
+    property Classes[const Index: Integer]: IMermaidClass read GetClass;
+    property RelationCount: Integer read GetRelationCount;
+    property Relations[const Index: Integer]: IMermaidClassRelation read GetRelation;
   end;
 
   IMermaidModel = interface
@@ -202,7 +288,8 @@ uses
   System.SysUtils,
   System.Types,
   System.StrUtils,
-  System.Generics.Collections;
+  System.Generics.Collections,
+  Markdown4D.Extensions.Mermaid.ClassDiagram;
 
 type
   TMermaidNode = class(TInterfacedObject, IMermaidNode)
@@ -297,12 +384,15 @@ type
     constructor Create(const Caption: string; const Value: Double);
   end;
 
+  // A class diagram is built in a unit of its own; the model hands that view
+  // out through IMermaidClassDiagram, and only when it holds one.
   TMermaidModel = class(TInterfacedObject, IMermaidModel, IMermaidGraph, IMermaidSequence,
-    IMermaidPie)
+    IMermaidPie, IMermaidClassDiagram)
   private
     FDiagramKind: TMermaidDiagramKind;
     FDirection: TMermaidDirection;
     FTitle: string;
+    FClassDiagram: IMermaidClassDiagram;
     FNodes: TList<IMermaidNode>;
     FNodeIndex: TDictionary<string, Integer>;
     FEdges: TList<IMermaidEdge>;
@@ -326,6 +416,7 @@ type
     function GetNote(const Index: Integer): IMermaidNote;
     function GetSliceCount: Integer;
     function GetSlice(const Index: Integer): IMermaidSlice;
+    property ClassDiagram: IMermaidClassDiagram read FClassDiagram implements IMermaidClassDiagram;
 
   public
     constructor Create;
@@ -351,9 +442,10 @@ type
       NoteRightPlacement = 'right of ';
       NoteOverPlacement = 'over ';
       TitleKeyword = 'title ';
+      ClassDiagramKeyword = 'classDiagram';
+      ClassDiagramVersionTwoKeyword = 'classDiagram-v2';
     class function SplitLines(const Value: string): TArray<string>;
     class function FirstToken(const Value: string; out Rest: string): string;
-    class function TryDirection(const Value: string; out Direction: TMermaidDirection): Boolean;
     class procedure SkipSpaces(const Line: string; var Index: Integer);
     class function MatchToken(const Line: string; var Index: Integer; const Token: string): Boolean;
     class function TryReadIdentifier(const Line: string; var Index: Integer; out Id: string): Boolean;
@@ -378,6 +470,8 @@ type
     class function TryParsePie(const Lines: TArray<string>; const StartLine: Integer; const HeaderRest: string;
       const Model: TMermaidModel): Boolean;
     class function TryParsePieSlice(const Line: string; const Model: TMermaidModel): Boolean;
+    class function TryParseClassDiagram(const Lines: TArray<string>; const StartLine: Integer;
+      const HeaderRest: string; const Model: TMermaidModel): Boolean;
   public
     class function TryBuild(const Literal: string; out Model: IMermaidModel): Boolean;
   end;
@@ -386,6 +480,29 @@ type
   public
     procedure Process(const Document: IMarkdownDocument);
   end;
+
+class function TMermaidDirectionHelper.TryParse(const Value: string; out Direction: TMermaidDirection): Boolean;
+begin
+  const Normalized = UpperCase(Trim(Value));
+
+  if Normalized = 'TB' then
+    Direction := TMermaidDirection.TB
+  else if Normalized = 'TD' then
+    Direction := TMermaidDirection.TD
+  else if Normalized = 'LR' then
+    Direction := TMermaidDirection.LR
+  else if Normalized = 'BT' then
+    Direction := TMermaidDirection.BT
+  else if Normalized = 'RL' then
+    Direction := TMermaidDirection.RL
+  else
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  Result := True;
+end;
 
 constructor TMermaidNode.Create(const Id, Caption: string; const Shape: TMermaidNodeShape);
 begin
@@ -760,29 +877,6 @@ begin
   Rest := Trim(Copy(Trimmed, SpacePos + 1, MaxInt));
 end;
 
-class function TMermaidParser.TryDirection(const Value: string; out Direction: TMermaidDirection): Boolean;
-begin
-  const Normalized = UpperCase(Trim(Value));
-
-  if Normalized = 'TB' then
-    Direction := TMermaidDirection.TB
-  else if Normalized = 'TD' then
-    Direction := TMermaidDirection.TD
-  else if Normalized = 'LR' then
-    Direction := TMermaidDirection.LR
-  else if Normalized = 'BT' then
-    Direction := TMermaidDirection.BT
-  else if Normalized = 'RL' then
-    Direction := TMermaidDirection.RL
-  else
-  begin
-    Result := False;
-    Exit;
-  end;
-
-  Result := True;
-end;
-
 class procedure TMermaidParser.SkipSpaces(const Line: string; var Index: Integer);
 begin
   while (Index <= Length(Line)) and CharInSet(Line[Index], [' ', Tabulator]) do
@@ -1024,7 +1118,7 @@ begin
 
   if Trim(HeaderRest) = '' then
     Model.FDirection := TMermaidDirection.TB
-  else if not TryDirection(HeaderRest, Model.FDirection) then
+  else if not TMermaidDirection.TryParse(HeaderRest, Model.FDirection) then
   begin
     Result := False;
     Exit;
@@ -1391,6 +1485,29 @@ begin
   Result := True;
 end;
 
+class function TMermaidParser.TryParseClassDiagram(const Lines: TArray<string>; const StartLine: Integer;
+  const HeaderRest: string; const Model: TMermaidModel): Boolean;
+begin
+  if Trim(HeaderRest) <> '' then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  var Diagram: IMermaidClassDiagram;
+  if not TMermaidClassDiagramParser.TryParse(Lines, StartLine, Diagram) then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  Model.FDiagramKind := TMermaidDiagramKind.ClassDiagram;
+  Model.FDirection := Diagram.Direction;
+  Model.FClassDiagram := Diagram;
+
+  Result := True;
+end;
+
 class function TMermaidParser.TryBuild(const Literal: string; out Model: IMermaidModel): Boolean;
 begin
   Model := nil;
@@ -1426,6 +1543,8 @@ begin
     Ok := TryParseSequence(Lines, HeaderLine + 1, Instance)
   else if FirstWord = 'pie' then
     Ok := TryParsePie(Lines, HeaderLine + 1, Rest, Instance)
+  else if (FirstWord = ClassDiagramKeyword) or (FirstWord = ClassDiagramVersionTwoKeyword) then
+    Ok := TryParseClassDiagram(Lines, HeaderLine + 1, Rest, Instance)
   else
     Ok := False;
 

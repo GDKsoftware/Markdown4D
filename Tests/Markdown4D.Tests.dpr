@@ -75,6 +75,7 @@ uses
   Markdown4D.Mermaid.Corpus in 'Markdown4D.Mermaid.Corpus.pas',
   Markdown4D.Extensions.Mermaid.Tests in 'Markdown4D.Extensions.Mermaid.Tests.pas',
   Markdown4D.Extensions.Mermaid.Layout.Tests in 'Markdown4D.Extensions.Mermaid.Layout.Tests.pas',
+  Markdown4D.Extensions.Mermaid.ClassDiagram.Tests in 'Markdown4D.Extensions.Mermaid.ClassDiagram.Tests.pas',
   Markdown4D.Extensions.Api.Tests in 'Markdown4D.Extensions.Api.Tests.pas',
   Markdown4D.Extensions.V11.Tests in 'Markdown4D.Extensions.V11.Tests.pas',
   Markdown4D.Extensions.Admonition.Tests in 'Markdown4D.Extensions.Admonition.Tests.pas',

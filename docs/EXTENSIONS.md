@@ -744,11 +744,23 @@ evaluated as code.
 | Flowchart | `flowchart` / `graph` + `TD` `TB` `LR` `BT` `RL` | Node shapes `id[rect]`, `id(rounded)`, `id([stadium])`, `id((circle))`, `id{diamond}`; edges `-->` `---` `-.->` `==>` with `\|labels\|`; ranked layout with arrowheads |
 | Sequence | `sequenceDiagram` | `participant` / `actor` declarations; messages `->>` `-->>` `-x` `->`; `activate` / `deactivate` via `+` / `-`; `Note left of` / `right of` / `over` |
 | Pie | `pie` (+ optional `title`) | `"label" : value` slices as one wedge each, legend and percentage labels |
+| Class diagram | `classDiagram` / `classDiagram-v2`, optional `direction TB` `BT` `LR` `RL` | `class Name { ... }` blocks and `Name : member` lines; visibility `+` `-` `#` `~`, return types, `$` static (underlined) and `*` abstract (italic); `<<annotation>>` inside a block or as `<<annotation>> Name`; generics `Name~T~`; relations `<\|--` `*--` `o--` `-->` `--` `..>` `..\|>` `..` in either direction, with `"cardinality"` at either end and a `: label`; classes named only in a relation are created; parents and wholes rank above their children and parts |
+
+Class diagrams leave out notes, namespaces, lollipop interfaces (`()--`) and
+multi-line `accDescr { ... }` blocks: a body with any of these falls back to a
+code block. Styling (`style`, `classDef`, `cssClass`, `:::name`), interaction
+(`click`, `link`, `callback`) and one-line `accTitle:` / `accDescr:` lines are
+read and ignored.
+
+A class diagram stays within the width of the viewer: groups of classes that no
+relation connects are placed side by side in rows that wrap at that width, and a
+group that is wider on its own is drawn smaller to fit.
 
 The override claims a node **only when a model
 parses**, so anything outside the subset degrades to an ordinary highlighted code
-block instead of raising: an unknown diagram type (`gantt`, `classDiagram`, …), a
-parse error anywhere in the body, or a flowchart above the 500-node ceiling.
+block instead of raising: an unknown diagram type (`gantt`, `stateDiagram`, …), a
+parse error anywhere in the body, or a flowchart or class diagram above the
+500-node ceiling.
 
 Streaming is handled by the document processor, which caches a model **only for a
 closed fence**: while a fence is still streaming the block stays an ordinary code
@@ -778,6 +790,11 @@ begin
         [Model.ParticipantCount, Model.MessageCount]);
     TMermaidDiagramKind.Pie:
       Result := Format('pie: %d slices', [Model.SliceCount]);
+    TMermaidDiagramKind.ClassDiagram:
+      begin
+        const Diagram = Model as IMermaidClassDiagram;
+        Result := Format('class diagram: %d classes, %d relations', [Diagram.ClassCount, Diagram.RelationCount]);
+      end;
   else
     Result := 'unknown';
   end;
