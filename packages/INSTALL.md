@@ -49,7 +49,7 @@ application responds again. The VCL loader registers through
 
 - BPL (Win32) → `$(BDSCOMMONDIR)\Bpl` (e.g. `C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl`), the standard shared package folder, which is always on the IDE's package search path, so design-time packages and their runtime dependencies load without any PATH configuration
 - BPL (Win64, Win64x) → `$(BDSCOMMONDIR)\Bpl\Win64` and `$(BDSCOMMONDIR)\Bpl\Win64x`, kept out of the Win32 folder because the BPL file names are identical across platforms
-- DCP → `packages\dcp\<Platform>\<Config>`
+- DCP (Win32) → `$(BDSCOMMONDIR)\Dcp`, and for Win64 and Win64x → `$(BDSCOMMONDIR)\Dcp\Win64` and `$(BDSCOMMONDIR)\Dcp\Win64x`, the IDE's default DCP folders, which are on the default library path, so projects and other packages that require Markdown4D find the `.dcp`s without any library path changes
 - DCU → `packages\<Platform>\<Config>`
 
 `{$LIBSUFFIX AUTO}` appends the compiler's product version to the runtime BPL
@@ -111,15 +111,11 @@ is **not** performed by the automated build.
    Project Manager and choose **Install**. Repeat for
    `packages\Markdown4D.Fmx.Design.dproj`. The IDE reports that
    `TMarkdownViewer` and `TMarkdownEditor` were registered.
-4. Add the DCP output folder to the library path so projects can find the
-   runtime `.dcp`s: Tools ▸ Options ▸ Language ▸ Delphi ▸ Library ▸ *Library
-   path* (Win32) → add `...\packages\dcp\Win32\Release`, and the same for each
-   64-bit platform you target (`...\packages\dcp\Win64\Release`).
-5. Applications linked without runtime packages (the default) need nothing
+4. Applications linked without runtime packages (the default) need nothing
    extra. Only when an application is built WITH runtime packages and runs
    outside the IDE do the runtime BPLs need to be findable: copy them next to
    the executable or add the shared Bpl folder to the system `PATH`.
-6. Drop `TMarkdownViewer` / `TMarkdownEditor` from the **Markdown4D** palette
+5. Drop `TMarkdownViewer` / `TMarkdownEditor` from the **Markdown4D** palette
    page onto a form. The control renders a live sample document at design time.
 
 To uninstall: Component ▸ Install Packages ▸ select each Markdown4D design
@@ -154,9 +150,6 @@ IDE needs its own build and install:
    **Install**. Repeat for `packages\Markdown4D.Fmx.Design.dproj`. With the IDE
    defaults (Debug, or Windows 64-bit) the build stops with E2225 on
    `designide` or E2202 on the runtime package.
-4. Add `...\packages\dcp\Win64x\Release` to the Win64x library path
-   (Tools ▸ Options ▸ Language ▸ Delphi ▸ Library) so projects can find the
-   runtime `.dcp`s.
 
 The two IDEs keep separate package lists, so install in each IDE you use.
 

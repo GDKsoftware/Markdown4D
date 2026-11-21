@@ -43,7 +43,6 @@ Tests/results/
 
 # Package build output
 packages/bpl/
-packages/dcp/
 
 # Local secrets (DPM API key); never committed.
 .env
