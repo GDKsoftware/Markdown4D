@@ -22,9 +22,10 @@ build.bat
 
 That builds and runs both DUnitX suites on Win32 and Win64x, builds all four
 examples and all five packages (Win32, plus the VCL packages on Win64x), and
-regenerates the conformance table in the README. The script looks for the newest installed
-Delphi; set `MARKDOWN4D_STUDIO` to a version number such as `23.0` to force a
-different one.
+regenerates the conformance table in the README. A failing suite does not stop
+the sweep, but the script then ends with `TESTS FAILED` and exit code 1. The
+script looks for the newest installed Delphi; set `MARKDOWN4D_STUDIO` to a
+version number such as `23.0` to force a different one.
 
 The Community Edition has no command-line compiler. Set `DELPHI_CE`, or create a
 file or folder named `DELPHI.CE` in the repository root, and the script builds
