@@ -4,14 +4,15 @@ unit Markdown4D.Tests.VclClipboard;
 
 interface
 
+uses
+  System.SysUtils;
+
 type
-  // The real clipboard, read and written with a few attempts, because another
-  // process may hold it open for a moment.
+  // The real clipboard, read and written with the patience of the tests,
+  // because another process may hold it open for a moment.
   TVclTestClipboard = record
   private
-    const
-      Attempts = 20;
-      PauseMilliseconds = 25;
+    class function TryRepeatedly(const Action: TProc): Boolean; static;
 
   public
     class function IsAccessible: Boolean; static;
@@ -23,79 +24,63 @@ type
 implementation
 
 uses
-  Winapi.Windows,
-  System.SysUtils,
-  Vcl.Clipbrd;
+  Vcl.Clipbrd,
+  Markdown4D.Tests.ClipboardRetry;
+
+class function TVclTestClipboard.TryRepeatedly(const Action: TProc): Boolean;
+begin
+  Result := TTestClipboardRetry.TryRepeatedly(
+    function: Boolean
+    begin
+      try
+        Action;
+        Result := True;
+      except
+        on EClipboardException do
+          Result := False;
+      end;
+    end);
+end;
 
 class function TVclTestClipboard.IsAccessible: Boolean;
 begin
-  for var Attempt := 1 to Attempts do
-  begin
-    try
+  Result := TryRepeatedly(
+    procedure
+    begin
       Clipboard.Open;
       Clipboard.Close;
-      Result := True;
-      Exit;
-    except
-      on EClipboardException do
-        Sleep(PauseMilliseconds);
-    end;
-  end;
-
-  Result := False;
+    end);
 end;
 
 class function TVclTestClipboard.TryGetText(out Value: string): Boolean;
 begin
-  Value := '';
+  var Text := '';
 
-  for var Attempt := 1 to Attempts do
-  begin
-    try
-      Value := Clipboard.AsText;
-      Result := True;
-      Exit;
-    except
-      on EClipboardException do
-        Sleep(PauseMilliseconds);
-    end;
-  end;
+  Result := TryRepeatedly(
+    procedure
+    begin
+      Text := Clipboard.AsText;
+    end);
 
-  Result := False;
+  Value := Text;
 end;
 
 class function TVclTestClipboard.TrySetText(const Value: string): Boolean;
 begin
-  for var Attempt := 1 to Attempts do
-  begin
-    try
+  Result := TryRepeatedly(
+    procedure
+    begin
       Clipboard.AsText := Value;
-      Result := True;
-      Exit;
-    except
-      on EClipboardException do
-        Sleep(PauseMilliseconds);
-    end;
-  end;
-
-  Result := False;
+    end);
 end;
 
 class function TVclTestClipboard.TryClear: Boolean;
 begin
-  for var Attempt := 1 to Attempts do
-  begin
-    try
+  Result := TryRepeatedly(
+    procedure
+    begin
       Clipboard.Clear;
-      Result := True;
-      Exit;
-    except
-      on EClipboardException do
-        Sleep(PauseMilliseconds);
-    end;
-  end;
-
-  Result := False;
+    end);
 end;
 
 end.

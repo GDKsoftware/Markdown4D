@@ -202,6 +202,8 @@ type
     procedure AutoScrollChanged;
     procedure RevealSelection;
     procedure RefreshAfterEdit;
+    function CutSelection: Boolean;
+    function PasteClipboardText: Boolean;
     procedure RestartCaretBlink;
     procedure MoveVertical(const RowDelta: Integer; const Extend: Boolean);
     procedure SetCaretTo(const Offset: Integer; const Extend: Boolean);
@@ -596,39 +598,19 @@ end;
 
 procedure TMarkdownEditor.CopyToClipboard;
 begin
-  const Selected = FModel.SelectedText;
-  if Selected = '' then
-    Exit;
-
-  TMarkdownFmxClipboard.TryWriteText(Selected);
+  FModel.TryCopy(TMarkdownFmxClipboard.TryWriteText);
 end;
 
 procedure TMarkdownEditor.CutToClipboard;
 begin
-  if not FModel.HasSelection then
-    Exit;
-
-  // Only cut what was safely copied, so a busy clipboard cannot swallow text.
-  if not TMarkdownFmxClipboard.TryWriteText(FModel.SelectedText) then
-    Exit;
-
-  FModel.DeleteBackward;
-  RefreshAfterEdit;
+  if CutSelection then
+    RefreshAfterEdit;
 end;
 
 procedure TMarkdownEditor.PasteFromClipboard;
 begin
-  var Pasted: string;
-  if not TMarkdownFmxClipboard.TryReadText(Pasted) then
-    Exit;
-
-  var Normalized := StringReplace(Pasted, CarriageReturn + LineFeed, LineFeed, [rfReplaceAll]);
-  Normalized := StringReplace(Normalized, CarriageReturn, LineFeed, [rfReplaceAll]);
-  // A paste is an undo step of its own, apart from the typing on either side.
-  FModel.BreakUndoCoalescing;
-  FModel.Insert(Normalized);
-  FModel.BreakUndoCoalescing;
-  RefreshAfterEdit;
+  if PasteClipboardText then
+    RefreshAfterEdit;
 end;
 
 function TMarkdownEditor.CanPaste: Boolean;
@@ -1410,11 +1392,11 @@ begin
 
   case Command of
     TEditorContextCommand.Cut:
-      CutToClipboard;
+      CutSelection;
     TEditorContextCommand.Copy:
       CopyToClipboard;
     TEditorContextCommand.Paste:
-      PasteFromClipboard;
+      PasteClipboardText;
   end;
 
   RefreshAfterEdit;
@@ -1725,6 +1707,20 @@ begin
   ScrollCaretIntoView;
   RestartCaretBlink;
   RedrawContent;
+end;
+
+// Only cuts what got onto the clipboard, so a busy clipboard cannot swallow text.
+function TMarkdownEditor.CutSelection: Boolean;
+begin
+  Result := FModel.TryCut(TMarkdownFmxClipboard.TryWriteText);
+end;
+
+function TMarkdownEditor.PasteClipboardText: Boolean;
+begin
+  var Pasted: string;
+  Result := TMarkdownFmxClipboard.TryReadText(Pasted);
+  if Result then
+    FModel.Paste(Pasted);
 end;
 
 procedure TMarkdownEditor.RestartCaretBlink;
@@ -2228,9 +2224,9 @@ begin
     TEditorKeyAction.Copy:
       CopyToClipboard;
     TEditorKeyAction.Cut:
-      CutToClipboard;
+      CutSelection;
     TEditorKeyAction.Paste:
-      PasteFromClipboard;
+      PasteClipboardText;
     TEditorKeyAction.ZoomIn:
       ZoomIn;
     TEditorKeyAction.ZoomOut:

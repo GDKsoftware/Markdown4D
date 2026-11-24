@@ -4,6 +4,7 @@ unit Markdown4D.Tests.ClipboardHold;
 
 interface
 
+{$IFDEF MSWINDOWS}
 uses
   System.Classes,
   System.SyncObjs;
@@ -12,17 +13,18 @@ type
   // Holds the real clipboard open from a thread of its own, as a clipboard
   // manager or a password manager does for a moment after every change. It
   // opens the clipboard for a window of its own, as another program does:
-  // without one Windows lets the test open the clipboard a second time.
+  // without one Windows lets the test open the clipboard a second time. The
+  // clipboard of Windows only exists there, so the unit is empty elsewhere.
   TClipboardHold = class
   private
     const
-      Attempts = 20;
-      PauseMilliseconds = 25;
       WindowClass = 'STATIC';
+      StartTimeoutMilliseconds = 2000;
     var
       FThread: TThread;
       FStarted: TEvent;
       FReleased: TEvent;
+      FIsOpened: Boolean;
       FIsHeld: Boolean;
     procedure Hold(const Milliseconds: Cardinal);
     function TryOpen(const Window: NativeUInt): Boolean;
@@ -31,18 +33,22 @@ type
     const
       BriefMilliseconds = 30;
       UntilFreed = High(Cardinal);
+      HeldMessage = 'The clipboard is held by another process';
+      UnavailableMessage = 'The clipboard is unavailable in this test session';
     // Lets go of the clipboard after Milliseconds, or when it is freed.
     constructor Create(const Milliseconds: Cardinal);
     destructor Destroy; override;
     // False when another process kept the clipboard to itself.
     property IsHeld: Boolean read FIsHeld;
   end;
+{$ENDIF}
 
 implementation
 
+{$IFDEF MSWINDOWS}
 uses
   Winapi.Windows,
-  System.SysUtils;
+  Markdown4D.Tests.ClipboardRetry;
 
 constructor TClipboardHold.Create(const Milliseconds: Cardinal);
 begin
@@ -57,7 +63,9 @@ begin
     end);
   FThread.FreeOnTerminate := False;
   FThread.Start;
-  FStarted.WaitFor;
+
+  const HasStarted = (FStarted.WaitFor(StartTimeoutMilliseconds) = TWaitResult.wrSignaled);
+  FIsHeld := (HasStarted and FIsOpened);
 end;
 
 destructor TClipboardHold.Destroy;
@@ -74,10 +82,17 @@ end;
 procedure TClipboardHold.Hold(const Milliseconds: Cardinal);
 begin
   const Window = CreateWindowEx(0, WindowClass, nil, 0, 0, 0, 0, 0, HWND_MESSAGE, 0, HInstance, nil);
-  try
-    FIsHeld := TryOpen(Window);
+  const IsCreated = (Window <> 0);
+  if not IsCreated then
+  begin
     FStarted.SetEvent;
-    if not FIsHeld then
+    Exit;
+  end;
+
+  try
+    FIsOpened := TryOpen(Window);
+    FStarted.SetEvent;
+    if not FIsOpened then
       Exit;
 
     FReleased.WaitFor(Milliseconds);
@@ -89,19 +104,12 @@ end;
 
 function TClipboardHold.TryOpen(const Window: NativeUInt): Boolean;
 begin
-  for var Attempt := 1 to Attempts do
-  begin
-    const IsOpened = OpenClipboard(Window);
-    if IsOpened then
+  Result := TTestClipboardRetry.TryRepeatedly(
+    function: Boolean
     begin
-      Result := True;
-      Exit;
-    end;
-
-    Sleep(PauseMilliseconds);
-  end;
-
-  Result := False;
+      Result := OpenClipboard(Window);
+    end);
 end;
+{$ENDIF}
 
 end.

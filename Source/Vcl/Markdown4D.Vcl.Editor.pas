@@ -183,6 +183,8 @@ type
     function CaretPixelPos: TPoint;
     procedure RecreateCaret;
     procedure RefreshAfterEdit;
+    function CutSelection: Boolean;
+    function PasteClipboardText: Boolean;
     procedure MoveVertical(const RowDelta: Integer; const Extend: Boolean);
     procedure SetCaretTo(const Offset: Integer; const Extend: Boolean);
     procedure EnsureBufferSize;
@@ -350,7 +352,6 @@ uses
   System.Math,
   System.Diagnostics,
   System.UITypes,
-  Vcl.Clipbrd,
   Vcl.Forms,
   Vcl.Themes,
   Markdown4D.Editor.PreviewScroll,
@@ -569,52 +570,24 @@ end;
 
 procedure TMarkdownEditor.CopyToClipboard;
 begin
-  const Selected = FModel.SelectedText;
-  if Selected = '' then
-    Exit;
-
-  TMarkdownVclClipboard.TryWriteText(Selected);
+  FModel.TryCopy(TMarkdownVclClipboard.TryWriteText);
 end;
 
 procedure TMarkdownEditor.CutToClipboard;
 begin
-  if not FModel.HasSelection then
-    Exit;
-
-  // Only cut what was safely copied, so a busy clipboard cannot swallow text.
-  if not TMarkdownVclClipboard.TryWriteText(FModel.SelectedText) then
-    Exit;
-
-  FModel.DeleteBackward;
-  RefreshAfterEdit;
+  if CutSelection then
+    RefreshAfterEdit;
 end;
 
 procedure TMarkdownEditor.PasteFromClipboard;
 begin
-  var Pasted: string;
-  if not TMarkdownVclClipboard.TryReadText(Pasted) then
-    Exit;
-
-  if Pasted = '' then
-    Exit;
-
-  var Normalized := StringReplace(Pasted, CarriageReturn + LineFeed, LineFeed, [rfReplaceAll]);
-  Normalized := StringReplace(Normalized, CarriageReturn, LineFeed, [rfReplaceAll]);
-  // A paste is an undo step of its own, apart from the typing on either side.
-  FModel.BreakUndoCoalescing;
-  FModel.Insert(Normalized);
-  FModel.BreakUndoCoalescing;
-  RefreshAfterEdit;
+  if PasteClipboardText then
+    RefreshAfterEdit;
 end;
 
 function TMarkdownEditor.CanPaste: Boolean;
 begin
-  try
-    Result := Clipboard.HasFormat(CF_UNICODETEXT);
-  except
-    on EClipboardException do
-      Result := False;
-  end;
+  Result := TMarkdownVclClipboard.HasText;
 end;
 
 procedure TMarkdownEditor.SetPreview(const Value: TMarkdownViewer);
@@ -1370,11 +1343,11 @@ begin
 
   case Command of
     TEditorContextCommand.Cut:
-      CutToClipboard;
+      CutSelection;
     TEditorContextCommand.Copy:
       CopyToClipboard;
     TEditorContextCommand.Paste:
-      PasteFromClipboard;
+      PasteClipboardText;
   end;
 
   RefreshAfterEdit;
@@ -1697,6 +1670,20 @@ begin
   ScrollCaretIntoView;
   UpdateCaret;
   Invalidate;
+end;
+
+// Only cuts what got onto the clipboard, so a busy clipboard cannot swallow text.
+function TMarkdownEditor.CutSelection: Boolean;
+begin
+  Result := FModel.TryCut(TMarkdownVclClipboard.TryWriteText);
+end;
+
+function TMarkdownEditor.PasteClipboardText: Boolean;
+begin
+  var Pasted: string;
+  Result := TMarkdownVclClipboard.TryReadText(Pasted);
+  if Result then
+    FModel.Paste(Pasted);
 end;
 
 procedure TMarkdownEditor.MoveVertical(const RowDelta: Integer; const Extend: Boolean);
@@ -2108,9 +2095,9 @@ begin
     TEditorKeyAction.Copy:
       CopyToClipboard;
     TEditorKeyAction.Cut:
-      CutToClipboard;
+      CutSelection;
     TEditorKeyAction.Paste:
-      PasteFromClipboard;
+      PasteClipboardText;
     TEditorKeyAction.ZoomIn:
       ZoomIn;
     TEditorKeyAction.ZoomOut:

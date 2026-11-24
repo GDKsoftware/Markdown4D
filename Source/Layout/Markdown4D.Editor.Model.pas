@@ -23,6 +23,9 @@ type
 
   TEditorChangeEvent = procedure(const Sender: TObject; const Range: TEditorReplaceRange) of object;
 
+  // Puts Text on the clipboard of the host; False when it did not get there.
+  TEditorClipboardWrite = reference to function(const Text: string): Boolean;
+
   TMarkdownUndoEntry = record
     Start: Integer;
     RemovedText: string;
@@ -123,6 +126,14 @@ type
     function LineIndexOfOffset(const Offset: Integer): Integer;
     function OffsetOfLineStart(const LineIndex: Integer): Integer;
     procedure Insert(const Value: string);
+    // Copy, cut and paste for both editors, which each bring their own
+    // clipboard. TryCopy and TryCut are False when nothing is selected or the
+    // text did not get onto the clipboard, and a cut keeps the selection then.
+    function TryCopy(const Write: TEditorClipboardWrite): Boolean;
+    function TryCut(const Write: TEditorClipboardWrite): Boolean;
+    // Replaces the selection with Value in the line breaks of the buffer, as
+    // an undo step of its own apart from the typing on either side.
+    procedure Paste(const Value: string);
     procedure DeleteBackward;
     procedure DeleteForward;
     procedure DeleteWordLeft;
@@ -334,6 +345,31 @@ begin
   const Start = SelectionStart;
   const Len = SelectionLength;
   ApplyReplace(Start, Len, Value, Len = 0);
+end;
+
+function TMarkdownEditorModel.TryCopy(const Write: TEditorClipboardWrite): Boolean;
+begin
+  Result := HasSelection and Write(SelectedText);
+end;
+
+function TMarkdownEditorModel.TryCut(const Write: TEditorClipboardWrite): Boolean;
+begin
+  Result := TryCopy(Write);
+  if not Result then
+    Exit;
+
+  DeleteBackward;
+end;
+
+procedure TMarkdownEditorModel.Paste(const Value: string);
+begin
+  const Normalized = NormalizeLineEndings(Value);
+  if Normalized = '' then
+    Exit;
+
+  BreakUndoCoalescing;
+  Insert(Normalized);
+  BreakUndoCoalescing;
 end;
 
 procedure TMarkdownEditorModel.DeleteBackward;
