@@ -6,9 +6,9 @@ interface
 
 uses
   DUnitX.TestFramework,
-  Vcl.Forms,
   Markdown4D.Editor.Model,
-  Markdown4D.Vcl.Editor;
+  Markdown4D.Vcl.Editor,
+  Markdown4D.Tests.HostForm;
 
 type
   [TestFixture]
@@ -25,7 +25,7 @@ type
       ModelBudgetMilliseconds = 60.0;
       EditorBudgetMilliseconds = 250.0;
     var
-      FHostForm: TForm;
+      FHostForm: TTestHostForm;
       FDocument: string;
     class function BuildDocument(const Lines: Integer): string; static;
     function NewHostedEditor: TMarkdownEditor;
@@ -79,7 +79,7 @@ end;
 
 function TEditorTypingPerformanceTests.NewHostedEditor: TMarkdownEditor;
 begin
-  FHostForm := TForm.CreateNew(nil);
+  FHostForm := TTestHostForm.Create(nil);
   FHostForm.ClientWidth := HostWidth;
   FHostForm.ClientHeight := HostHeight;
 

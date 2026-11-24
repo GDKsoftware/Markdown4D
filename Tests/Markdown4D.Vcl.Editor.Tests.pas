@@ -8,7 +8,6 @@ uses
   System.SysUtils,
   System.Classes,
   System.UITypes,
-  Vcl.Forms,
   DUnitX.TestFramework,
   Markdown4D.Editor.Model,
   Markdown4D.Theme,
@@ -17,7 +16,8 @@ uses
   Markdown4D.Tests.VclClipboard,
   Markdown4D.Tests.ClipboardHold,
   Markdown4D.Tests.ClipboardSnapshot,
-  Markdown4D.Tests.ObservedClipboard;
+  Markdown4D.Tests.ObservedClipboard,
+  Markdown4D.Tests.HostForm;
 
 type
   TTestableVclEditor = class(TMarkdownEditor)
@@ -77,7 +77,7 @@ type
       PixelTolerance = 0.5;
     var
       FEditor: TMarkdownEditor;
-      FHostForm: TForm;
+      FHostForm: TTestHostForm;
       FFormKeyCount: Integer;
       FAutoScrollChangeCount: Integer;
       FZoomChangeCount: Integer;
@@ -500,7 +500,7 @@ end;
 
 function TMarkdownVclEditorTests.NewHostedEditor(const ControlHeight: Integer): TTestableVclEditor;
 begin
-  FHostForm := TForm.CreateNew(nil);
+  FHostForm := TTestHostForm.Create(nil);
   FHostForm.ClientWidth := HostWidth;
   FHostForm.ClientHeight := ControlHeight;
 
