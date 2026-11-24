@@ -137,6 +137,27 @@ type
 
     [Test]
     procedure IsEmpty_MarkupWithContent_IsFalse;
+
+    [Test]
+    [TestCase('IdOnEmptyDiv', '<div id="top"></div>|top|1', '|')]
+    [TestCase('IdOnInlineSpan', 'Text <span id="spot">here</span>|spot|6', '|')]
+    [TestCase('NameOnAnchor', '<p>x</p><a name="named"></a>|named|9', '|')]
+    [TestCase('IdOnAnchor', '<a id="deep" href="#x">x</a>|deep|1', '|')]
+    [TestCase('UnquotedId', '<h2 id=intro>Intro</h2>|intro|1', '|')]
+    [TestCase('UpperCaseAttribute', '<P ID="loud">x</P>|loud|1', '|')]
+    [TestCase('EntityInValue', '<div id="a&amp;b"></div>|a&b|1', '|')]
+    [TestCase('SecondTag', '<p id="one">a</p><p id="two">b</p>|two|18', '|')]
+    procedure TryFindTarget_ElementWithTheName_ReturnsItsTag(const Html, Name: string; const Expected: Integer);
+
+    [Test]
+    [TestCase('NameOnSpan', '<span name="named"></span>|named', '|')]
+    [TestCase('OtherId', '<div id="top"></div>|bottom', '|')]
+    [TestCase('IdDiffersInCase', '<div id="Top"></div>|top', '|')]
+    [TestCase('InsideComment', '<!-- <a name="hidden"></a> -->|hidden', '|')]
+    [TestCase('InsideScript', '<script>x = "<a id=s>"</script>|s', '|')]
+    [TestCase('ClosingTag', '</div id="top">|top', '|')]
+    [TestCase('TextOnly', 'id="top"|top', '|')]
+    procedure TryFindTarget_NoElementWithTheName_ReturnsFalse(const Html, Name: string);
   end;
 
 implementation
@@ -341,6 +362,24 @@ end;
 procedure TMarkdownHtmlSubsetTests.IsEmpty_MarkupWithContent_IsFalse;
 begin
   Assert.IsFalse(TMarkdownHtmlSubset.IsEmpty('<div>something</div>'));
+end;
+
+procedure TMarkdownHtmlSubsetTests.TryFindTarget_ElementWithTheName_ReturnsItsTag(const Html, Name: string;
+  const Expected: Integer);
+begin
+  var Position: Integer;
+  const IsFound = TMarkdownHtmlSubset.TryFindTarget(Html, Name, Position);
+
+  Assert.IsTrue(IsFound);
+  Assert.AreEqual(Expected, Position);
+end;
+
+procedure TMarkdownHtmlSubsetTests.TryFindTarget_NoElementWithTheName_ReturnsFalse(const Html, Name: string);
+begin
+  var Position: Integer;
+  const IsFound = TMarkdownHtmlSubset.TryFindTarget(Html, Name, Position);
+
+  Assert.IsFalse(IsFound);
 end;
 
 end.
