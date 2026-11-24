@@ -88,7 +88,10 @@
         <DCCReference Include="..\Source\Fmx\Markdown4D.Fmx.Editor.pas"/>
         <DCCReference Include="Markdown4D.Fmx.Editor.Tests.pas"/>
         <DCCReference Include="Markdown4D.Tests.FmxClipboard.pas"/>
+        <DCCReference Include="Markdown4D.Tests.FmxExtendedClipboard.pas"/>
         <DCCReference Include="Markdown4D.Tests.ClipboardHold.pas"/>
+        <DCCReference Include="Markdown4D.Tests.ClipboardRetry.pas"/>
+        <DCCReference Include="Markdown4D.Tests.ClipboardSnapshot.pas"/>
         <DCCReference Include="Markdown4D.Fmx.Design.Tests.pas"/>
         <DCCReference Include="Markdown4D.Tests.Arrays.pas"/>
         <DCCReference Include="Markdown4D.Tests.Runner.pas"/>

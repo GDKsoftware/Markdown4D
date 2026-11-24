@@ -235,6 +235,7 @@ uses
   Markdown4D.Tests.FailingExtensions,
   Markdown4D.Tests.VclClipboard,
   Markdown4D.Tests.ClipboardHold,
+  Markdown4D.Tests.ClipboardSnapshot,
   Markdown4D.Tests.DisplayList.Helpers,
   Markdown4D.Tests.BoxOverride;
 
@@ -320,36 +321,44 @@ end;
 procedure TMarkdownVclViewerTests.Keyboard_CtrlShiftC_CopiesMarkdownWhenOffered(const CopyAsMarkdown: Boolean;
   const Expected: string);
 begin
-  if not TVclTestClipboard.IsAccessible then
-    Assert.Pass('The clipboard is held by another process');
+  TClipboardSnapshot.RunPreserving(
+    procedure
+    begin
+      if not TVclTestClipboard.IsAccessible then
+        Assert.Pass(TClipboardHold.HeldMessage);
 
-  const Viewer = NewHostedViewer;
-  Viewer.Text := 'A **bold** word';
-  Viewer.CopyAsMarkdown := CopyAsMarkdown;
-  Viewer.FindText('bold');
+      const Viewer = NewHostedViewer;
+      Viewer.Text := 'A **bold** word';
+      Viewer.CopyAsMarkdown := CopyAsMarkdown;
+      Viewer.FindText('bold');
 
-  Viewer.SimulateKeyDown(Ord('C'), [ssCtrl, ssShift]);
+      Viewer.SimulateKeyDown(Ord('C'), [ssCtrl, ssShift]);
 
-  var Copied: string;
-  Assert.IsTrue(TVclTestClipboard.TryGetText(Copied));
-  Assert.AreEqual(Expected, Copied);
+      var Copied: string;
+      Assert.IsTrue(TVclTestClipboard.TryGetText(Copied));
+      Assert.AreEqual(Expected, Copied);
+    end);
 end;
 
 procedure TMarkdownVclViewerTests.Keyboard_CtrlInsert_CopiesTheSelection;
 begin
-  if not TVclTestClipboard.IsAccessible then
-    Assert.Pass('The clipboard is held by another process');
+  TClipboardSnapshot.RunPreserving(
+    procedure
+    begin
+      if not TVclTestClipboard.IsAccessible then
+        Assert.Pass(TClipboardHold.HeldMessage);
 
-  const Viewer = NewHostedViewer;
-  Viewer.Text := 'A **bold** word';
-  Viewer.FindText('bold');
-  Assert.IsTrue(TVclTestClipboard.TrySetText('earlier'));
+      const Viewer = NewHostedViewer;
+      Viewer.Text := 'A **bold** word';
+      Viewer.FindText('bold');
+      Assert.IsTrue(TVclTestClipboard.TrySetText('earlier'));
 
-  Viewer.SimulateKeyDown(VK_INSERT, [ssCtrl]);
+      Viewer.SimulateKeyDown(VK_INSERT, [ssCtrl]);
 
-  var Copied: string;
-  Assert.IsTrue(TVclTestClipboard.TryGetText(Copied));
-  Assert.AreEqual('bold', Copied);
+      var Copied: string;
+      Assert.IsTrue(TVclTestClipboard.TryGetText(Copied));
+      Assert.AreEqual('bold', Copied);
+    end);
 end;
 
 procedure TMarkdownVclViewerTests.Keyboard_CtrlInsert_CopiesOnceAHeldClipboardIsFree;
@@ -369,25 +378,33 @@ end;
 
 function TMarkdownVclViewerTests.CopiedOverHeldClipboard(const HoldMilliseconds: Cardinal): string;
 begin
-  if not TVclTestClipboard.IsAccessible then
-    Assert.Pass('The clipboard is held by another process');
+  var Copied := '';
 
-  const Viewer = NewHostedViewer;
-  Viewer.Text := 'A **bold** word';
-  Viewer.FindText('bold');
-  Assert.IsTrue(TVclTestClipboard.TrySetText('earlier'));
+  TClipboardSnapshot.RunPreserving(
+    procedure
+    begin
+      if not TVclTestClipboard.IsAccessible then
+        Assert.Pass(TClipboardHold.HeldMessage);
 
-  const Hold = TClipboardHold.Create(HoldMilliseconds);
-  try
-    if not Hold.IsHeld then
-      Assert.Pass('The clipboard is held by another process');
+      const Viewer = NewHostedViewer;
+      Viewer.Text := 'A **bold** word';
+      Viewer.FindText('bold');
+      Assert.IsTrue(TVclTestClipboard.TrySetText('earlier'));
 
-    Viewer.SimulateKeyDown(VK_INSERT, [ssCtrl]);
-  finally
-    Hold.Free;
-  end;
+      const Hold = TClipboardHold.Create(HoldMilliseconds);
+      try
+        if not Hold.IsHeld then
+          Assert.Pass(TClipboardHold.HeldMessage);
 
-  Assert.IsTrue(TVclTestClipboard.TryGetText(Result));
+        Viewer.SimulateKeyDown(VK_INSERT, [ssCtrl]);
+      finally
+        Hold.Free;
+      end;
+
+      Assert.IsTrue(TVclTestClipboard.TryGetText(Copied));
+    end);
+
+  Result := Copied;
 end;
 
 procedure TMarkdownVclViewerTests.CtrlWheel_Up_ZoomsInOneLevel;

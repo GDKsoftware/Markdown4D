@@ -41,6 +41,7 @@ uses
   System.SysUtils,
   Markdown4D.Tests.VclClipboard,
   Markdown4D.Tests.ClipboardHold,
+  Markdown4D.Tests.ClipboardSnapshot,
   Markdown4D.Viewer.Clipboard;
 
 // Word pastes the MathML formats as plain text when they end in a null.
@@ -83,21 +84,25 @@ end;
 // it open for that moment.
 procedure TMarkdownMathClipboardTests.TryPutTextWithMath_PutsTheTextOnceAHeldClipboardIsFree;
 begin
-  const Hold = TClipboardHold.Create(TClipboardHold.BriefMilliseconds);
-  try
-    if not Hold.IsHeld then
-      Assert.Pass('The clipboard is held by another process');
+  TClipboardSnapshot.RunPreserving(
+    procedure
+    begin
+      const Hold = TClipboardHold.Create(TClipboardHold.BriefMilliseconds);
+      try
+        if not Hold.IsHeld then
+          Assert.Pass(TClipboardHold.HeldMessage);
 
-    const IsPut = TMarkdownMathClipboard.TryPutTextWithMath('$x$', '', MathML);
+        const IsPut = TMarkdownMathClipboard.TryPutTextWithMath('$x$', '', MathML);
 
-    Assert.IsTrue(IsPut);
-  finally
-    Hold.Free;
-  end;
+        Assert.IsTrue(IsPut);
+      finally
+        Hold.Free;
+      end;
 
-  var Copied: string;
-  Assert.IsTrue(TVclTestClipboard.TryGetText(Copied));
-  Assert.AreEqual('$x$', Copied);
+      var Copied: string;
+      Assert.IsTrue(TVclTestClipboard.TryGetText(Copied));
+      Assert.AreEqual('$x$', Copied);
+    end);
 end;
 
 procedure TMarkdownMathClipboardTests.TryPutTextWithMath_IsFalseWhileTheClipboardStaysHeld;
@@ -105,7 +110,7 @@ begin
   const Hold = TClipboardHold.Create(TClipboardHold.UntilFreed);
   try
     if not Hold.IsHeld then
-      Assert.Pass('The clipboard is held by another process');
+      Assert.Pass(TClipboardHold.HeldMessage);
 
     const IsPut = TMarkdownMathClipboard.TryPutTextWithMath('$x$', '', MathML);
 
@@ -117,14 +122,18 @@ end;
 
 procedure TMarkdownMathClipboardTests.HasChangedSince_IsTrueAfterTheClipboardChanged;
 begin
-  if not TVclTestClipboard.IsAccessible then
-    Assert.Pass('The clipboard is held by another process');
+  TClipboardSnapshot.RunPreserving(
+    procedure
+    begin
+      if not TVclTestClipboard.IsAccessible then
+        Assert.Pass(TClipboardHold.HeldMessage);
 
-  const Before = TMarkdownMathClipboard.ChangeCount;
-  Assert.IsTrue(TVclTestClipboard.TrySetText('changed'));
+      const Before = TMarkdownMathClipboard.ChangeCount;
+      Assert.IsTrue(TVclTestClipboard.TrySetText('changed'));
 
-  const HasChanged = TMarkdownMathClipboard.HasChangedSince(Before);
-  Assert.IsTrue(HasChanged);
+      const HasChanged = TMarkdownMathClipboard.HasChangedSince(Before);
+      Assert.IsTrue(HasChanged);
+    end);
 end;
 
 class function TMarkdownMathClipboardTests.HeaderValue(const Document, Name: string): Integer;

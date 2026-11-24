@@ -28,7 +28,10 @@ type
       FMirror: string;
       FChangeCount: Integer;
       FCaretDuringChange: Integer;
+      FWrittenText: string;
     procedure HandleChange(const Sender: TObject; const Range: TEditorReplaceRange);
+    function AcceptWrite(const Text: string): Boolean;
+    function RefuseWrite(const Text: string): Boolean;
     class function CommandNamed(const Name: string): TEditorCommand;
 
   public
@@ -162,6 +165,30 @@ type
 
     [Test]
     procedure BreakUndoCoalescing_SplitsTypingIntoTwoSteps;
+
+    [Test]
+    procedure Paste_MixedLineBreaks_InsertsLineFeeds;
+
+    [Test]
+    procedure Paste_OverSelection_ReplacesIt;
+
+    [Test]
+    procedure Paste_BetweenTyping_IsAnUndoStepOfItsOwn;
+
+    [Test]
+    procedure Paste_EmptyText_LeavesTextAndUndoAlone;
+
+    [Test]
+    procedure TryCopy_Selection_WritesIt;
+
+    [Test]
+    procedure TryCopy_NoSelection_WritesNothing;
+
+    [Test]
+    procedure TryCut_WriteArrives_RemovesSelection;
+
+    [Test]
+    procedure TryCut_WriteRefused_KeepsSelection;
 
     [Test]
     procedure Redo_ClearedByNewEdit;
@@ -383,6 +410,7 @@ begin
   FMirror := '';
   FChangeCount := 0;
   FCaretDuringChange := -1;
+  FWrittenText := '';
 end;
 
 procedure TMarkdownEditorModelTests.TearDown;
@@ -395,6 +423,17 @@ begin
   Inc(FChangeCount);
   FMirror := Range.Apply(FMirror);
   FCaretDuringChange := FModel.CaretPosition;
+end;
+
+function TMarkdownEditorModelTests.AcceptWrite(const Text: string): Boolean;
+begin
+  FWrittenText := Text;
+  Result := True;
+end;
+
+function TMarkdownEditorModelTests.RefuseWrite(const Text: string): Boolean;
+begin
+  Result := False;
 end;
 
 procedure TMarkdownEditorModelTests.LoadText_NormalizesCrlfToLf;
@@ -763,6 +802,100 @@ begin
   FModel.Insert('cd');
   FModel.Undo;
   Assert.AreEqual('ab', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.Paste_MixedLineBreaks_InsertsLineFeeds;
+begin
+  FModel.LoadText('');
+
+  const Expected = 'one'#10'two'#10'three';
+
+  FModel.Paste('one'#13#10'two'#13'three');
+
+  Assert.AreEqual(Expected, FModel.Text);
+  Assert.AreEqual(Length(Expected), FModel.CaretPosition);
+end;
+
+procedure TMarkdownEditorModelTests.Paste_OverSelection_ReplacesIt;
+begin
+  FModel.LoadText(SampleText);
+  FModel.SetSelection(0, 5);
+
+  FModel.Paste('Goodbye');
+
+  Assert.AreEqual('Goodbye world', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.Paste_BetweenTyping_IsAnUndoStepOfItsOwn;
+begin
+  FModel.LoadText('');
+  FModel.Insert('a');
+  FModel.Paste('b');
+  FModel.Insert('c');
+
+  FModel.Undo;
+  const AfterFirstUndo = FModel.Text;
+  FModel.Undo;
+  const AfterSecondUndo = FModel.Text;
+
+  Assert.AreEqual('ab', AfterFirstUndo);
+  Assert.AreEqual('a', AfterSecondUndo);
+end;
+
+procedure TMarkdownEditorModelTests.Paste_EmptyText_LeavesTextAndUndoAlone;
+begin
+  FModel.LoadText(SampleText);
+
+  FModel.Paste('');
+
+  Assert.AreEqual(SampleText, FModel.Text);
+  Assert.IsFalse(FModel.CanUndo);
+end;
+
+procedure TMarkdownEditorModelTests.TryCopy_Selection_WritesIt;
+begin
+  FModel.LoadText(SampleText);
+  FModel.SetSelection(0, 5);
+
+  const IsCopied = FModel.TryCopy(AcceptWrite);
+
+  Assert.IsTrue(IsCopied);
+  Assert.AreEqual('Hello', FWrittenText);
+  Assert.AreEqual(SampleText, FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.TryCopy_NoSelection_WritesNothing;
+begin
+  FModel.LoadText(SampleText);
+
+  const IsCopied = FModel.TryCopy(AcceptWrite);
+
+  Assert.IsFalse(IsCopied);
+  Assert.AreEqual('', FWrittenText);
+end;
+
+procedure TMarkdownEditorModelTests.TryCut_WriteArrives_RemovesSelection;
+begin
+  FModel.LoadText(SampleText);
+  FModel.SetSelection(0, 5);
+
+  const IsCut = FModel.TryCut(AcceptWrite);
+
+  Assert.IsTrue(IsCut);
+  Assert.AreEqual('Hello', FWrittenText);
+  Assert.AreEqual(' world', FModel.Text);
+end;
+
+procedure TMarkdownEditorModelTests.TryCut_WriteRefused_KeepsSelection;
+begin
+  FModel.LoadText(SampleText);
+  FModel.SetSelection(0, 5);
+
+  const IsCut = FModel.TryCut(RefuseWrite);
+
+  Assert.IsFalse(IsCut);
+  Assert.AreEqual(SampleText, FModel.Text);
+  Assert.AreEqual('Hello', FModel.SelectedText);
 end;
 
 procedure TMarkdownEditorModelTests.Redo_ClearedByNewEdit;

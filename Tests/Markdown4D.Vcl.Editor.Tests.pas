@@ -15,7 +15,9 @@ uses
   Markdown4D.Vcl.Viewer,
   Markdown4D.Vcl.Editor,
   Markdown4D.Tests.VclClipboard,
-  Markdown4D.Tests.ClipboardHold;
+  Markdown4D.Tests.ClipboardHold,
+  Markdown4D.Tests.ClipboardSnapshot,
+  Markdown4D.Tests.ObservedClipboard;
 
 type
   TTestableVclEditor = class(TMarkdownEditor)
@@ -52,10 +54,7 @@ type
       WindowsLineBreakText = 'one'#13#10'two';
       LineFeedText = 'one'#10'two';
       TypedCharacter = 'x';
-      ClipboardHeldMessage = 'Clipboard held by another process throughout this test';
-      ClipboardUnavailableMessage = 'Clipboard service unavailable in this test session';
       AdoptedPrefix = 'new ';
-      FormatKeySelectionLength = 5;
       EditText = ' appended body';
       MouseText = 'Hello world'#10'second';
       WordPairText = 'foo bar';
@@ -69,7 +68,6 @@ type
       ScaleTolerance = 0.05;
       GrowthNumerator = 3;
       GrowthDenominator = 2;
-      ClickText = 'alpha';
       ClickX = 20;
       ClickY = 8;
       DragDistance = 40;
@@ -302,6 +300,18 @@ type
 
     [Test]
     procedure CanPaste_EmptyClipboard_ReturnsFalse;
+
+    [Test]
+    procedure CanPaste_HeldClipboardWithText_ReturnsTrue;
+
+    [Test]
+    procedure CopyToClipboard_FirstOpenRaises_WritesAgain;
+
+    [Test]
+    procedure PasteFromClipboard_FirstOpenRaises_ReadsAgain;
+
+    [Test]
+    procedure PasteFromClipboard_EmptyText_ReadsOnceAndLeavesTextAlone;
 
     [Test]
     procedure MouseWheelDown_ScrollsContentDown;
@@ -627,7 +637,7 @@ procedure TMarkdownVclEditorTests.FormatKey_OnASelection_RunsTheCommandExactlyOn
 begin
   const Editor = NewHostedEditor(ShortHostHeight);
   Editor.Text := SelectableText;
-  Editor.SelectRange(0, FormatKeySelectionLength);
+  Editor.SelectRange(0, FirstWordLength);
 
   Editor.SimulateKeyDown(Ord(KeyChar), [ssCtrl]);
 
@@ -1165,76 +1175,67 @@ end;
 
 procedure TMarkdownVclEditorTests.CtrlC_CopiesSelectionToClipboard;
 begin
-  if not TVclTestClipboard.IsAccessible then
-    Assert.Pass(ClipboardUnavailableMessage);
+  RunOnRealClipboard(
+    procedure
+    begin
+      const Editor = TTestableVclEditor.Create(nil);
+      try
+        Editor.Text := 'copy target';
+        Editor.SimulateKeyDown(Ord('A'), [ssCtrl]);
+        Editor.SimulateKeyDown(Ord('C'), [ssCtrl]);
 
-  var Saved: string;
-  TVclTestClipboard.TryGetText(Saved);
+        var Copied: string;
+        if not TVclTestClipboard.TryGetText(Copied) then
+          Assert.Pass(TClipboardHold.HeldMessage);
 
-  const Editor = TTestableVclEditor.Create(nil);
-  try
-    Editor.Text := 'copy target';
-    Editor.SimulateKeyDown(Ord('A'), [ssCtrl]);
-    Editor.SimulateKeyDown(Ord('C'), [ssCtrl]);
-
-    var Copied: string;
-    if not TVclTestClipboard.TryGetText(Copied) then
-      Assert.Pass(ClipboardHeldMessage);
-
-    Assert.AreEqual('copy target', Copied);
-  finally
-    Editor.Free;
-    TVclTestClipboard.TrySetText(Saved);
-  end;
+        Assert.AreEqual('copy target', Copied);
+      finally
+        Editor.Free;
+      end;
+    end);
 end;
 
 procedure TMarkdownVclEditorTests.CtrlX_CutsSelectionToClipboard;
 begin
-  if not TVclTestClipboard.IsAccessible then
-    Assert.Pass(ClipboardUnavailableMessage);
+  RunOnRealClipboard(
+    procedure
+    begin
+      const Editor = TTestableVclEditor.Create(nil);
+      try
+        Editor.Text := 'cut target';
+        Editor.SimulateKeyDown(Ord('A'), [ssCtrl]);
+        Editor.SimulateKeyDown(Ord('X'), [ssCtrl]);
 
-  var Saved: string;
-  TVclTestClipboard.TryGetText(Saved);
+        var Cut: string;
+        if not TVclTestClipboard.TryGetText(Cut) then
+          Assert.Pass(TClipboardHold.HeldMessage);
 
-  const Editor = TTestableVclEditor.Create(nil);
-  try
-    Editor.Text := 'cut target';
-    Editor.SimulateKeyDown(Ord('A'), [ssCtrl]);
-    Editor.SimulateKeyDown(Ord('X'), [ssCtrl]);
-
-    var Cut: string;
-    if not TVclTestClipboard.TryGetText(Cut) then
-      Assert.Pass(ClipboardHeldMessage);
-
-    Assert.AreEqual('cut target', Cut);
-    Assert.AreEqual('', Editor.Text);
-  finally
-    Editor.Free;
-    TVclTestClipboard.TrySetText(Saved);
-  end;
+        Assert.AreEqual('cut target', Cut);
+        Assert.AreEqual('', Editor.Text);
+      finally
+        Editor.Free;
+      end;
+    end);
 end;
 
 procedure TMarkdownVclEditorTests.CtrlV_PastesClipboardText;
 begin
-  if not TVclTestClipboard.IsAccessible then
-    Assert.Pass(ClipboardUnavailableMessage);
+  RunOnRealClipboard(
+    procedure
+    begin
+      if not TVclTestClipboard.TrySetText('pasted') then
+        Assert.Pass(TClipboardHold.HeldMessage);
 
-  var Saved: string;
-  TVclTestClipboard.TryGetText(Saved);
-
-  const Editor = TTestableVclEditor.Create(nil);
-  try
-    if not TVclTestClipboard.TrySetText('pasted') then
-      Assert.Pass(ClipboardHeldMessage);
-
-    Editor.Text := '';
-    Editor.CaretPosition := 0;
-    Editor.SimulateKeyDown(Ord('V'), [ssCtrl]);
-    Assert.AreEqual('pasted', Editor.Text);
-  finally
-    Editor.Free;
-    TVclTestClipboard.TrySetText(Saved);
-  end;
+      const Editor = TTestableVclEditor.Create(nil);
+      try
+        Editor.Text := '';
+        Editor.CaretPosition := 0;
+        Editor.SimulateKeyDown(Ord('V'), [ssCtrl]);
+        Assert.AreEqual('pasted', Editor.Text);
+      finally
+        Editor.Free;
+      end;
+    end);
 end;
 
 procedure TMarkdownVclEditorTests.CopyToClipboard_Selection_PutsSelectionOnClipboard;
@@ -1249,7 +1250,7 @@ begin
 
       var Copied: string;
       if not TVclTestClipboard.TryGetText(Copied) then
-        Assert.Pass(ClipboardHeldMessage);
+        Assert.Pass(TClipboardHold.HeldMessage);
 
       Assert.AreEqual(FirstWord, Copied);
       Assert.AreEqual(SelectableText, FEditor.Text);
@@ -1268,7 +1269,7 @@ begin
 
       var Cut: string;
       if not TVclTestClipboard.TryGetText(Cut) then
-        Assert.Pass(ClipboardHeldMessage);
+        Assert.Pass(TClipboardHold.HeldMessage);
 
       Assert.AreEqual(FirstWord, Cut);
       Assert.AreEqual(TextAfterFirstWord, FEditor.Text);
@@ -1302,7 +1303,7 @@ begin
       const Hold = TClipboardHold.Create(TClipboardHold.UntilFreed);
       try
         if not Hold.IsHeld then
-          Assert.Pass(ClipboardHeldMessage);
+          Assert.Pass(TClipboardHold.HeldMessage);
 
         FEditor.CutToClipboard;
       finally
@@ -1319,7 +1320,7 @@ begin
     procedure
     begin
       if not TVclTestClipboard.TrySetText(WindowsLineBreakText) then
-        Assert.Pass(ClipboardHeldMessage);
+        Assert.Pass(TClipboardHold.HeldMessage);
 
       FEditor.Text := '';
 
@@ -1336,7 +1337,7 @@ begin
     procedure
     begin
       if not TVclTestClipboard.TrySetText(AdoptedPrefix) then
-        Assert.Pass(ClipboardHeldMessage);
+        Assert.Pass(TClipboardHold.HeldMessage);
 
       FEditor.Text := SelectableText;
       FEditor.CaretPosition := 0;
@@ -1356,7 +1357,7 @@ begin
     procedure
     begin
       if not TVclTestClipboard.TrySetText(FirstWord) then
-        Assert.Pass(ClipboardHeldMessage);
+        Assert.Pass(TClipboardHold.HeldMessage);
 
       const Editor = TTestableVclEditor.Create(nil);
       try
@@ -1381,7 +1382,7 @@ begin
     procedure
     begin
       if not TVclTestClipboard.TrySetText(FirstWord) then
-        Assert.Pass(ClipboardHeldMessage);
+        Assert.Pass(TClipboardHold.HeldMessage);
 
       Assert.IsTrue(FEditor.CanPaste);
     end);
@@ -1393,9 +1394,122 @@ begin
     procedure
     begin
       if not TVclTestClipboard.TryClear then
-        Assert.Pass(ClipboardHeldMessage);
+        Assert.Pass(TClipboardHold.HeldMessage);
 
       Assert.IsFalse(FEditor.CanPaste);
+    end);
+end;
+
+// A clipboard manager holds the clipboard open for a moment after every
+// change, and a menu that opens in that moment still offers the text on it.
+procedure TMarkdownVclEditorTests.CanPaste_HeldClipboardWithText_ReturnsTrue;
+begin
+  RunOnRealClipboard(
+    procedure
+    begin
+      if not TVclTestClipboard.TrySetText(FirstWord) then
+        Assert.Pass(TClipboardHold.HeldMessage);
+
+      const Hold = TClipboardHold.Create(TClipboardHold.UntilFreed);
+      try
+        if not Hold.IsHeld then
+          Assert.Pass(TClipboardHold.HeldMessage);
+
+        Assert.IsTrue(FEditor.CanPaste);
+      finally
+        Hold.Free;
+      end;
+    end);
+end;
+
+// An open that raises is one failed attempt, not the end of the copy.
+procedure TMarkdownVclEditorTests.CopyToClipboard_FirstOpenRaises_WritesAgain;
+begin
+  RunOnRealClipboard(
+    procedure
+    begin
+      if not TVclTestClipboard.TryClear then
+        Assert.Pass(TClipboardHold.HeldMessage);
+
+      FEditor.Text := SelectableText;
+      FEditor.SelectRange(0, FirstWordLength);
+
+      const Observed = TObservedClipboard.Create;
+      const Previous = SetClipboard(Observed);
+      try
+        Observed.FailingOpens := 1;
+
+        FEditor.CopyToClipboard;
+
+        const WasOpenedAfterRefusal = ((Observed.RefusedOpenCount > 0) and
+                                       (Observed.OpenCount > 0));
+        Assert.IsTrue(WasOpenedAfterRefusal);
+      finally
+        SetClipboard(Previous);
+        Observed.Free;
+      end;
+
+      var Copied: string;
+      if not TVclTestClipboard.TryGetText(Copied) then
+        Assert.Pass(TClipboardHold.HeldMessage);
+
+      Assert.AreEqual(FirstWord, Copied);
+    end);
+end;
+
+procedure TMarkdownVclEditorTests.PasteFromClipboard_FirstOpenRaises_ReadsAgain;
+begin
+  RunOnRealClipboard(
+    procedure
+    begin
+      if not TVclTestClipboard.TrySetText(FirstWord) then
+        Assert.Pass(TClipboardHold.HeldMessage);
+
+      FEditor.Text := '';
+
+      const Observed = TObservedClipboard.Create;
+      const Previous = SetClipboard(Observed);
+      try
+        Observed.FailingOpens := 1;
+
+        FEditor.PasteFromClipboard;
+
+        const WasOpenedAfterRefusal = ((Observed.RefusedOpenCount > 0) and
+                                       (Observed.OpenCount > 0));
+        Assert.IsTrue(WasOpenedAfterRefusal);
+      finally
+        SetClipboard(Previous);
+        Observed.Free;
+      end;
+
+      Assert.AreEqual(FirstWord, FEditor.Text);
+    end);
+end;
+
+// The VCL raises while another process holds the clipboard, so an empty text
+// it reads is the answer and not a reason to read again.
+procedure TMarkdownVclEditorTests.PasteFromClipboard_EmptyText_ReadsOnceAndLeavesTextAlone;
+begin
+  RunOnRealClipboard(
+    procedure
+    begin
+      if not TVclTestClipboard.TrySetText('') then
+        Assert.Pass(TClipboardHold.HeldMessage);
+
+      FEditor.Text := SelectableText;
+
+      const Observed = TObservedClipboard.Create;
+      const Previous = SetClipboard(Observed);
+      try
+        FEditor.PasteFromClipboard;
+
+        Assert.AreEqual(1, Observed.OpenCount);
+      finally
+        SetClipboard(Previous);
+        Observed.Free;
+      end;
+
+      Assert.AreEqual(SelectableText, FEditor.Text);
     end);
 end;
 
@@ -1739,15 +1853,9 @@ end;
 procedure TMarkdownVclEditorTests.RunOnRealClipboard(const Action: TProc);
 begin
   if not TVclTestClipboard.IsAccessible then
-    Assert.Pass(ClipboardUnavailableMessage);
+    Assert.Pass(TClipboardHold.UnavailableMessage);
 
-  var Saved: string;
-  TVclTestClipboard.TryGetText(Saved);
-  try
-    Action;
-  finally
-    TVclTestClipboard.TrySetText(Saved);
-  end;
+  TClipboardSnapshot.RunPreserving(Action);
 end;
 
 procedure TMarkdownVclEditorTests.RecordFormKey(Sender: TObject; var Key: Word; Shift: TShiftState);
@@ -1796,7 +1904,7 @@ begin
   Assert.AreEqual(0, DoubleClicksWhilePressed, 'The double click comes on release');
   Assert.AreEqual(1, FDoubleClickCount);
   Assert.AreEqual(1, FClickCount, 'The second press of a double click is no extra click');
-  Assert.AreEqual(ClickText, Editor.SelectedText);
+  Assert.AreEqual(FirstWord, Editor.SelectedText);
 end;
 
 procedure TMarkdownVclEditorTests.Click_EndingAutoScroll_RaisesNoClick;
@@ -1815,7 +1923,7 @@ end;
 function TMarkdownVclEditorTests.NewClickRecordingEditor: TTestableVclEditor;
 begin
   Result := NewHostedEditor(ShortHostHeight);
-  Result.Text := ClickText;
+  Result.Text := FirstWord;
   Result.OnClick := RecordClick;
   Result.OnDblClick := RecordDoubleClick;
 end;
