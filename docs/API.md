@@ -486,7 +486,7 @@ streaming in token by token therefore draws at every flush and only grows.
 | Accents | `\hat`, `\bar`, `\vec`, `\dot`, `\ddot`, `\tilde`, `\check`, `\breve`, `\acute`, `\grave`, `\overline` |
 | Spacing | `\,`, `\:`, `\;`, `\!`, `\ `, `\space`, `~`, `\quad`, `\qquad` |
 | Colour | `\textcolor{colour}{...}` colours its argument; `\color{colour}` is a switch that colours the rest of its group, as in LaTeX, KaTeX and MathJax 3. A colour is a CSS colour name or a hex value in three or six digits, with or without `#` |
-| Links | `\href{url}{...}` makes its argument a link and `\url{url}` shows the URL in a typewriter face as a link, as in KaTeX. The URL is taken as typed, so `#` needs no escaping; an escaped TeX special such as `\#` or `\%` becomes the character itself. A click works as on a markdown link: `#...` scrolls to the heading, anything else raises `OnLinkClick`. MathJax has `\href` but no `\url` |
+| Links | `\href{url}{...}` makes its argument a link and `\url{url}` shows the URL in a typewriter face as a link, as in KaTeX. The URL is taken as typed, so `#` needs no escaping; an escaped TeX special such as `\#` or `\%` becomes the character itself. A click works as on a markdown link: `#...` scrolls to its target in the document, anything else raises `OnLinkClick`. MathJax has `\href` but no `\url` |
 
 Anything else comes out as its name, in the error colour, so the author sees
 what did not resolve.
@@ -608,7 +608,7 @@ same.
 | `TryGetSelectionSourceSegment(out Segment: TMarkdownSegment): Boolean` | The stretch of markdown the selection was rendered from, so an editor can format exactly those characters; `False` when there is no selection or the runs carry no source |
 | `ContentHeight: Integer` | Laid-out document height, for auto-sizing |
 | `ScrollOffset: Single` | Read / set the vertical scroll position |
-| `ScrollToAnchor(const Anchor: string): Boolean` | Scroll the heading a link such as `#getting-started` points at to the top of the view. Anchors follow GitHub: lower case, punctuation dropped, accented letters kept, every space a dash, and a repeated heading gets `-1`, `-2`. A percent-encoded anchor is decoded first, and closed `details` sections around the heading open. `False` when the document has no such heading |
+| `ScrollToAnchor(const Anchor: string): Boolean` | Scroll what a link such as `#getting-started` points at to the top of the view. That is a heading first: heading anchors follow GitHub, lower case, punctuation dropped, accented letters kept, every space a dash, and a repeated heading gets `-1`, `-2`. Otherwise it is the first element in an HTML block or inline HTML whose `id` is the anchor, or an `a` whose `name` is, matched exactly as a browser does, so `<div id="top"></div>` or `<a name="install"></a>` marks a place. A percent-encoded anchor is decoded first, and closed `details` sections around the target open. `False` when the document has no such target |
 | `SourceLineToScrollOffset(const SourceLine: Integer): Single` / `ScrollOffsetToSourceLine(const Offset: Single): Integer` | Where a line of `Text` shows, as the `ScrollOffset` that brings it to the top, and which line shows at an offset, so a host with its own editor can keep it in step with the viewer. Lines count from 0. Every rendered line knows the source line it came from, inside long lists, tables and code blocks too; between them the answer is interpolated |
 | `LayoutCount: Integer` | Advances on every relayout (first width, resize, arriving images), so a host can notice layout-derived state going stale |
 | `DisplayList: IMarkdownDisplayList` | The rendered primitives, for advanced hosts |
@@ -617,7 +617,7 @@ same.
 
 | Event | Signature | Raised when |
 |-------|-----------|-------------|
-| `OnLinkClick` | `(const Sender: TObject; const Url: string)` | A link is clicked. A `#...` link to a heading in the document scrolls there instead and raises nothing |
+| `OnLinkClick` | `(const Sender: TObject; const Url: string)` | A link is clicked. A `#...` link to a heading or another target in the document (see `ScrollToAnchor`) scrolls there instead and raises nothing |
 | `OnLinkHover` | `(const Sender: TObject; const Url: string)` | The hovered link changes (`''` on leave) |
 | `OnResolveImage` | `(const Sender: TObject; const Url: string; const Picture/Bitmap; var Handled: Boolean)` | An image needs resolving; set `Handled` to supply it yourself |
 | `OnRemoteImageRequest` | `(const Sender: TObject; const Url: string; var Allow: Boolean)` | About to fetch a remote image. `Allow` arrives holding `Images.AllowRemote`; clear it to refuse this address |
@@ -673,9 +673,9 @@ GitHub, and a `details` section inside it does not fold. A section without a
 `summary` shows `DefaultDetailsSummary` ("Details") on its summary line, and a
 `summary` that is one `h1` to `h6` shows as that heading. As in a browser,
 `FindText` and `FindPrevious` open a closed section when the next match lies
-inside it, and `ScrollToAnchor` and a click on a link to a heading open the
-sections around that heading; `FindMatchCount` and `HighlightMatches` count
-and mark the matches in view. Without the viewer,
+inside it, and `ScrollToAnchor` and a click on a link to a heading or an HTML
+`id` open the sections around that target; `FindMatchCount` and
+`HighlightMatches` count and mark the matches in view. Without the viewer,
 `TMarkdownLayoutEngine.LayoutDocument` and `UpdateLayout` take an
 `IMarkdownDisclosureState` that says which sections are open; without one,
 each section shows as its tag asks.

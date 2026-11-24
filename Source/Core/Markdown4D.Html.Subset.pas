@@ -45,6 +45,10 @@ type
     // align attribute, as GitHub honours on <p>, <div> and headings, or a
     // <center> tag. None when it says nothing.
     class function BlockAlignment(const Html: string): TMarkdownHtmlAlignment; static;
+    // Where the fragment has an element a link such as #Name points at: one
+    // whose id is Name, or an <a> whose name is Name, as a browser looks them
+    // up. Position is the 1-based index of its opening '<'.
+    class function TryFindTarget(const Html, Name: string; out Position: Integer): Boolean; static;
   end;
 
 implementation
@@ -103,6 +107,51 @@ type
     Attributes: TDictionary<string, string>;
   end;
 
+  // Reads an HTML fragment from the front: a tag with its attributes, the
+  // text up to the next tag, or the raw content of an element such as <pre>.
+  THtmlTagReader = class
+  strict private
+    var
+      FSource: string;
+      FLowered: string;
+      FPosition: Integer;
+
+  public
+    class function DecodeEntities(const Value: string): string; static;
+    constructor Create(const Html: string);
+    function IsAtEnd: Boolean;
+    function IsAtTag: Boolean;
+    procedure Advance;
+    function TryReadTag(out Tag: TParsedTag): Boolean;
+    function ReadText: string;
+    function ReadRawUntil(const ClosingTag: string): string;
+    procedure SkipTo(const ClosingTag: string);
+    function LoweredUntil(const ClosingTag: string): string;
+    property Position: Integer read FPosition;
+  end;
+
+  // Finds the element a link such as #Name points at in an HTML fragment.
+  THtmlTargetFinder = class
+  strict private
+    const
+      AnchorTag = 'a';
+      IdAttribute = 'id';
+      NameAttribute = 'name';
+      // The elements whose content the HTML parser reads as text.
+      RawTextTags: array[0..7] of string = ('script', 'style', 'textarea', 'title', 'iframe', 'xmp', 'noembed',
+        'noframes');
+    var
+      FReader: THtmlTagReader;
+    class function IsTargetNamed(const Tag: TParsedTag; const Name: string): Boolean; static;
+    class function HasAttributeValue(const Tag: TParsedTag; const Attribute, Value: string): Boolean; static;
+    procedure SkipRawText(const Tag: TParsedTag);
+
+  public
+    constructor Create(const Html: string);
+    destructor Destroy; override;
+    function TryFind(const Name: string; out Position: Integer): Boolean;
+  end;
+
   TOpenTag = record
     Name: string;
     Kind: TTagKind;
@@ -116,9 +165,7 @@ type
       MarkdownSpecials = ['\', '`', '*', '_', '[', ']', '<', '>', '#', '|', '~'];
       ListIndent = '  ';
     var
-      FSource: string;
-      FLowered: string;
-      FPosition: Integer;
+      FReader: THtmlTagReader;
       FOutput: TStringBuilder;
       // A stack, but held as a list because closing a tag has to search it from
       // the top down and TStack enumerates the other way round.
@@ -131,7 +178,6 @@ type
       FAfterOpener: Boolean;
     class function TagInfoOf(const Name: string): TTagInfo; static;
     class function EscapeText(const Value: string): string; static;
-    class function DecodeEntities(const Value: string): string; static;
     class function NormalizeWhitespace(const Value: string): string; static;
     class function FormatDestination(const Value: string): string; static;
     function LinePrefix: string;
@@ -139,10 +185,7 @@ type
     procedure WriteOpener(const Value: string);
     procedure StartLine;
     procedure StartBlock;
-    procedure SkipTo(const ClosingTag: string);
     function ReadPreformatted: string;
-    function TryReadTag(out Tag: TParsedTag): Boolean;
-    function ReadText: string;
     procedure HandleOpenTag(const Tag: TParsedTag);
     procedure HandleCloseTag(const Name: string);
     procedure HandleImage(const Tag: TParsedTag);
@@ -163,144 +206,9 @@ begin
   Result.Closer := Closer;
 end;
 
-{ TSubsetConverter }
+{ THtmlTagReader }
 
-constructor TSubsetConverter.Create(const Html: string);
-begin
-  inherited Create;
-
-  FSource := Html;
-  FLowered := Html.ToLower;
-  FPosition := 1;
-  FOutput := TStringBuilder.Create;
-  FOpen := TList<TOpenTag>.Create;
-  FListMarkers := TStack<string>.Create;
-  FAtLineStart := True;
-end;
-
-destructor TSubsetConverter.Destroy;
-begin
-  FListMarkers.Free;
-  FOpen.Free;
-  FOutput.Free;
-
-  inherited;
-end;
-
-class function TSubsetConverter.TagInfoOf(const Name: string): TTagInfo;
-begin
-  Result := Default(TTagInfo);
-  Result.Kind := TTagKind.Transparent;
-
-  if (Name = 'script') or (Name = 'style') or (Name = 'head') or (Name = 'iframe') or (Name = 'object') then
-    Result.Kind := TTagKind.Dropped
-  else if (Name = 'p') or (Name = 'div') or (Name = 'center') or (Name = 'section') or (Name = 'article') then
-  begin
-    Result.Kind := TTagKind.Paragraph;
-    Result.IsBlock := True;
-  end
-  else if Name = 'br' then
-    Result.Kind := TTagKind.LineBreak
-  else if (Length(Name) = 2) and (Name[1] = 'h') and CharInSet(Name[2], ['1'..'6']) then
-  begin
-    Result.Kind := TTagKind.Heading;
-    Result.Opener := StringOfChar('#', StrToInt(Name[2])) + ' ';
-    Result.IsBlock := True;
-  end
-  else if Name = 'hr' then
-  begin
-    Result.Kind := TTagKind.ThematicBreak;
-    Result.IsBlock := True;
-  end
-  else if (Name = 'strong') or (Name = 'b') then
-  begin
-    Result.Kind := TTagKind.Strong;
-    Result.Opener := '**';
-    Result.Closer := '**';
-  end
-  else if (Name = 'em') or (Name = 'i') then
-  begin
-    Result.Kind := TTagKind.Emphasis;
-    Result.Opener := '*';
-    Result.Closer := '*';
-  end
-  else if (Name = 'code') or (Name = 'kbd') or (Name = 'samp') or (Name = 'tt') then
-  begin
-    Result.Kind := TTagKind.CodeSpan;
-    Result.Opener := '`';
-    Result.Closer := '`';
-  end
-  else if (Name = 'del') or (Name = 's') or (Name = 'strike') then
-  begin
-    Result.Kind := TTagKind.Strikethrough;
-    Result.Opener := '~~';
-    Result.Closer := '~~';
-  end
-  else if Name = 'a' then
-    Result.Kind := TTagKind.Anchor
-  else if Name = 'img' then
-    Result.Kind := TTagKind.Image
-  else if Name = 'ul' then
-  begin
-    Result.Kind := TTagKind.UnorderedList;
-    Result.IsBlock := True;
-  end
-  else if Name = 'ol' then
-  begin
-    Result.Kind := TTagKind.OrderedList;
-    Result.IsBlock := True;
-  end
-  else if Name = 'li' then
-    Result.Kind := TTagKind.ListItem
-  else if Name = 'blockquote' then
-  begin
-    Result.Kind := TTagKind.BlockQuote;
-    Result.IsBlock := True;
-  end
-  else if Name = 'details' then
-  begin
-    Result.Kind := TTagKind.Details;
-    Result.IsBlock := True;
-  end
-  else if Name = 'summary' then
-  begin
-    Result.Kind := TTagKind.Summary;
-    Result.Opener := '**';
-    Result.Closer := '**';
-    Result.IsBlock := True;
-  end
-  else if Name = 'pre' then
-  begin
-    Result.Kind := TTagKind.Preformatted;
-    Result.IsBlock := True;
-  end
-  else if TInlineHtmlTag.EffectOf(Name) <> TInlineHtmlEffect.Hidden then
-  begin
-    Result.Kind := TTagKind.InlineHtml;
-    Result.Opener := Format('<%s>', [Name]);
-    Result.Closer := Format('</%s>', [Name]);
-  end;
-end;
-
-class function TSubsetConverter.EscapeText(const Value: string): string;
-begin
-  const Builder = TStringBuilder.Create;
-  try
-    for var Index := 1 to Length(Value) do
-    begin
-      if CharInSet(Value[Index], MarkdownSpecials) then
-        Builder.Append('\');
-
-      Builder.Append(Value[Index]);
-    end;
-
-    Result := Builder.ToString;
-  finally
-    Builder.Free;
-  end;
-end;
-
-class function TSubsetConverter.DecodeEntities(const Value: string): string;
+class function THtmlTagReader.DecodeEntities(const Value: string): string;
 begin
   if not Value.Contains('&') then
   begin
@@ -351,147 +259,35 @@ begin
   end;
 end;
 
-// HTML collapses runs of whitespace, including newlines, into a single space.
-class function TSubsetConverter.NormalizeWhitespace(const Value: string): string;
+constructor THtmlTagReader.Create(const Html: string);
 begin
-  const Builder = TStringBuilder.Create;
-  try
-    var InWhitespace := False;
-    for var Index := 1 to Length(Value) do
-    begin
-      if Value[Index].IsWhiteSpace then
-      begin
-        InWhitespace := True;
-        Continue;
-      end;
+  inherited Create;
 
-      if InWhitespace then
-        Builder.Append(' ');
-
-      InWhitespace := False;
-      Builder.Append(Value[Index]);
-    end;
-
-    if InWhitespace then
-      Builder.Append(' ');
-
-    Result := Builder.ToString;
-  finally
-    Builder.Free;
-  end;
+  FSource := Html;
+  FLowered := Html.ToLower;
+  FPosition := 1;
 end;
 
-class function TSubsetConverter.FormatDestination(const Value: string): string;
+function THtmlTagReader.IsAtEnd: Boolean;
 begin
-  Result := DecodeEntities(Value).Trim;
-  if Result.Contains(' ') then
-    Result := '<' + Result + '>';
+  Result := (FPosition > Length(FSource));
 end;
 
-function TSubsetConverter.LinePrefix: string;
+function THtmlTagReader.IsAtTag: Boolean;
 begin
-  Result := DupeString('> ', FQuoteDepth);
-  if FListMarkers.Count > 0 then
-    Result := Result + DupeString(ListIndent, FListMarkers.Count);
+  Result := ((not IsAtEnd) and (FSource[FPosition] = '<'));
 end;
 
-procedure TSubsetConverter.Write(const Value: string);
+procedure THtmlTagReader.Advance;
 begin
-  if Value = '' then
-    Exit;
-
-  if FPendingBlank and FHasContent then
-  begin
-    FOutput.Append(sLineBreak);
-    if FQuoteDepth > 0 then
-      FOutput.Append('>' + sLineBreak);
-
-    FAtLineStart := True;
-  end;
-
-  FPendingBlank := False;
-
-  if FAtLineStart then
-    FOutput.Append(LinePrefix);
-
-  FOutput.Append(Value);
-  FAtLineStart := False;
-  FHasContent := True;
-  FAfterOpener := False;
+  Inc(FPosition);
 end;
 
-procedure TSubsetConverter.WriteOpener(const Value: string);
-begin
-  Write(Value);
-  FAfterOpener := True;
-end;
-
-procedure TSubsetConverter.StartLine;
-begin
-  if FAtLineStart then
-    Exit;
-
-  FOutput.Append(sLineBreak);
-  FAtLineStart := True;
-end;
-
-procedure TSubsetConverter.StartBlock;
-begin
-  StartLine;
-  if FHasContent then
-    FPendingBlank := True;
-end;
-
-// Steps over everything up to and including the closing tag, for content a
-// reader should never see.
-procedure TSubsetConverter.SkipTo(const ClosingTag: string);
-begin
-  const Closing = '</' + ClosingTag;
-  const Found = PosEx(Closing, FLowered, FPosition);
-  if Found = 0 then
-  begin
-    FPosition := Length(FSource) + 1;
-    Exit;
-  end;
-
-  FPosition := Found + Length(Closing);
-  const Terminator = PosEx('>', FSource, FPosition);
-  if Terminator > 0 then
-    FPosition := Terminator + 1;
-end;
-
-// <pre> keeps its line breaks and its spacing, so it is read raw and emitted as
-// a fenced code block.
-function TSubsetConverter.ReadPreformatted: string;
-begin
-  const Found = PosEx('</pre', FLowered, FPosition);
-  var Content := '';
-  if Found = 0 then
-  begin
-    Content := Copy(FSource, FPosition, MaxInt);
-    FPosition := Length(FSource) + 1;
-  end
-  else
-  begin
-    Content := Copy(FSource, FPosition, Found - FPosition);
-    FPosition := Found + Length('</pre');
-    const Terminator = PosEx('>', FSource, FPosition);
-    if Terminator > 0 then
-      FPosition := Terminator + 1;
-  end;
-
-  // A <code> wrapper inside <pre> is conventional and carries nothing extra.
-  Content := Content.Replace('<code>', '', [rfReplaceAll, rfIgnoreCase]);
-  Content := Content.Replace('</code>', '', [rfReplaceAll, rfIgnoreCase]);
-
-  Result := DecodeEntities(Content).Trim([LineFeed, CarriageReturn, ' ']);
-end;
-
-function TSubsetConverter.TryReadTag(out Tag: TParsedTag): Boolean;
+function THtmlTagReader.TryReadTag(out Tag: TParsedTag): Boolean;
 begin
   Tag := Default(TParsedTag);
 
-  if (FPosition > Length(FSource)) or (FSource[FPosition] <> '<') then
+  if not IsAtTag then
   begin
     Result := False;
     Exit;
@@ -621,13 +417,372 @@ begin
   Result := True;
 end;
 
-function TSubsetConverter.ReadText: string;
+function THtmlTagReader.ReadText: string;
 begin
   const Start = FPosition;
-  while (FPosition <= Length(FSource)) and (FSource[FPosition] <> '<') do
+  while not (IsAtEnd or IsAtTag) do
     Inc(FPosition);
 
   Result := Copy(FSource, Start, FPosition - Start);
+end;
+
+// Everything up to the closing tag, as written, stepping past that tag; to
+// the end when the element is never closed.
+function THtmlTagReader.ReadRawUntil(const ClosingTag: string): string;
+begin
+  const Closing = '</' + ClosingTag;
+  const Found = PosEx(Closing, FLowered, FPosition);
+  if Found = 0 then
+  begin
+    Result := Copy(FSource, FPosition, MaxInt);
+    FPosition := Length(FSource) + 1;
+    Exit;
+  end;
+
+  Result := Copy(FSource, FPosition, Found - FPosition);
+  FPosition := Found + Length(Closing);
+  const Terminator = PosEx('>', FSource, FPosition);
+  if Terminator > 0 then
+    FPosition := Terminator + 1;
+end;
+
+// Steps past the content of the element and its closing tag.
+procedure THtmlTagReader.SkipTo(const ClosingTag: string);
+begin
+  ReadRawUntil(ClosingTag);
+end;
+
+// The lower-cased source from here up to the closing tag, or to the end
+// without one, leaving the position where it is.
+function THtmlTagReader.LoweredUntil(const ClosingTag: string): string;
+begin
+  const Closing = '</' + ClosingTag;
+  var ContentEnd := PosEx(Closing, FLowered, FPosition);
+  const IsClosed = (ContentEnd > 0);
+  if not IsClosed then
+    ContentEnd := Length(FLowered) + 1;
+
+  Result := Copy(FLowered, FPosition, ContentEnd - FPosition);
+end;
+
+{ THtmlTargetFinder }
+
+constructor THtmlTargetFinder.Create(const Html: string);
+begin
+  inherited Create;
+
+  FReader := THtmlTagReader.Create(Html);
+end;
+
+destructor THtmlTargetFinder.Destroy;
+begin
+  FReader.Free;
+
+  inherited;
+end;
+
+function THtmlTargetFinder.TryFind(const Name: string; out Position: Integer): Boolean;
+begin
+  Position := 0;
+
+  while not FReader.IsAtEnd do
+  begin
+    if not FReader.IsAtTag then
+    begin
+      FReader.Advance;
+      Continue;
+    end;
+
+    const TagStart = FReader.Position;
+    var Tag: TParsedTag;
+    if not FReader.TryReadTag(Tag) then
+    begin
+      const IsStuck = (FReader.Position = TagStart);
+      if IsStuck then
+        FReader.Advance;
+      Continue;
+    end;
+
+    try
+      if IsTargetNamed(Tag, Name) then
+      begin
+        Position := TagStart;
+        Result := True;
+        Exit;
+      end;
+
+      SkipRawText(Tag);
+    finally
+      Tag.Attributes.Free;
+    end;
+  end;
+
+  Result := False;
+end;
+
+class function THtmlTargetFinder.IsTargetNamed(const Tag: TParsedTag; const Name: string): Boolean;
+begin
+  const IsAnchor = (Tag.Name = AnchorTag);
+  const HasId = HasAttributeValue(Tag, IdAttribute, Name);
+  const HasAnchorName = (IsAnchor and HasAttributeValue(Tag, NameAttribute, Name));
+  Result := ((not Tag.IsClosing) and (HasId or HasAnchorName));
+end;
+
+class function THtmlTargetFinder.HasAttributeValue(const Tag: TParsedTag; const Attribute, Value: string): Boolean;
+begin
+  var Written: string;
+  const HasAttribute = Tag.Attributes.TryGetValue(Attribute, Written);
+  Result := (HasAttribute and (THtmlTagReader.DecodeEntities(Written) = Value));
+end;
+
+// What <script> and the like hold is text, not markup, so a tag in it is no
+// target.
+procedure THtmlTargetFinder.SkipRawText(const Tag: TParsedTag);
+begin
+  const HoldsContent = ((not Tag.IsClosing) and (not Tag.IsSelfClosing));
+  const IsRawText = MatchText(Tag.Name, RawTextTags);
+  if HoldsContent and IsRawText then
+    FReader.SkipTo(Tag.Name);
+end;
+
+{ TSubsetConverter }
+
+constructor TSubsetConverter.Create(const Html: string);
+begin
+  inherited Create;
+
+  FReader := THtmlTagReader.Create(Html);
+  FOutput := TStringBuilder.Create;
+  FOpen := TList<TOpenTag>.Create;
+  FListMarkers := TStack<string>.Create;
+  FAtLineStart := True;
+end;
+
+destructor TSubsetConverter.Destroy;
+begin
+  FListMarkers.Free;
+  FOpen.Free;
+  FOutput.Free;
+  FReader.Free;
+
+  inherited;
+end;
+
+class function TSubsetConverter.TagInfoOf(const Name: string): TTagInfo;
+begin
+  Result := Default(TTagInfo);
+  Result.Kind := TTagKind.Transparent;
+
+  if (Name = 'script') or (Name = 'style') or (Name = 'head') or (Name = 'iframe') or (Name = 'object') then
+    Result.Kind := TTagKind.Dropped
+  else if (Name = 'p') or (Name = 'div') or (Name = 'center') or (Name = 'section') or (Name = 'article') then
+  begin
+    Result.Kind := TTagKind.Paragraph;
+    Result.IsBlock := True;
+  end
+  else if Name = 'br' then
+    Result.Kind := TTagKind.LineBreak
+  else if (Length(Name) = 2) and (Name[1] = 'h') and CharInSet(Name[2], ['1'..'6']) then
+  begin
+    Result.Kind := TTagKind.Heading;
+    Result.Opener := StringOfChar('#', StrToInt(Name[2])) + ' ';
+    Result.IsBlock := True;
+  end
+  else if Name = 'hr' then
+  begin
+    Result.Kind := TTagKind.ThematicBreak;
+    Result.IsBlock := True;
+  end
+  else if (Name = 'strong') or (Name = 'b') then
+  begin
+    Result.Kind := TTagKind.Strong;
+    Result.Opener := '**';
+    Result.Closer := '**';
+  end
+  else if (Name = 'em') or (Name = 'i') then
+  begin
+    Result.Kind := TTagKind.Emphasis;
+    Result.Opener := '*';
+    Result.Closer := '*';
+  end
+  else if (Name = 'code') or (Name = 'kbd') or (Name = 'samp') or (Name = 'tt') then
+  begin
+    Result.Kind := TTagKind.CodeSpan;
+    Result.Opener := '`';
+    Result.Closer := '`';
+  end
+  else if (Name = 'del') or (Name = 's') or (Name = 'strike') then
+  begin
+    Result.Kind := TTagKind.Strikethrough;
+    Result.Opener := '~~';
+    Result.Closer := '~~';
+  end
+  else if Name = 'a' then
+    Result.Kind := TTagKind.Anchor
+  else if Name = 'img' then
+    Result.Kind := TTagKind.Image
+  else if Name = 'ul' then
+  begin
+    Result.Kind := TTagKind.UnorderedList;
+    Result.IsBlock := True;
+  end
+  else if Name = 'ol' then
+  begin
+    Result.Kind := TTagKind.OrderedList;
+    Result.IsBlock := True;
+  end
+  else if Name = 'li' then
+    Result.Kind := TTagKind.ListItem
+  else if Name = 'blockquote' then
+  begin
+    Result.Kind := TTagKind.BlockQuote;
+    Result.IsBlock := True;
+  end
+  else if Name = 'details' then
+  begin
+    Result.Kind := TTagKind.Details;
+    Result.IsBlock := True;
+  end
+  else if Name = 'summary' then
+  begin
+    Result.Kind := TTagKind.Summary;
+    Result.Opener := '**';
+    Result.Closer := '**';
+    Result.IsBlock := True;
+  end
+  else if Name = 'pre' then
+  begin
+    Result.Kind := TTagKind.Preformatted;
+    Result.IsBlock := True;
+  end
+  else if TInlineHtmlTag.EffectOf(Name) <> TInlineHtmlEffect.Hidden then
+  begin
+    Result.Kind := TTagKind.InlineHtml;
+    Result.Opener := Format('<%s>', [Name]);
+    Result.Closer := Format('</%s>', [Name]);
+  end;
+end;
+
+class function TSubsetConverter.EscapeText(const Value: string): string;
+begin
+  const Builder = TStringBuilder.Create;
+  try
+    for var Index := 1 to Length(Value) do
+    begin
+      if CharInSet(Value[Index], MarkdownSpecials) then
+        Builder.Append('\');
+
+      Builder.Append(Value[Index]);
+    end;
+
+    Result := Builder.ToString;
+  finally
+    Builder.Free;
+  end;
+end;
+
+// HTML collapses runs of whitespace, including newlines, into a single space.
+class function TSubsetConverter.NormalizeWhitespace(const Value: string): string;
+begin
+  const Builder = TStringBuilder.Create;
+  try
+    var InWhitespace := False;
+    for var Index := 1 to Length(Value) do
+    begin
+      if Value[Index].IsWhiteSpace then
+      begin
+        InWhitespace := True;
+        Continue;
+      end;
+
+      if InWhitespace then
+        Builder.Append(' ');
+
+      InWhitespace := False;
+      Builder.Append(Value[Index]);
+    end;
+
+    if InWhitespace then
+      Builder.Append(' ');
+
+    Result := Builder.ToString;
+  finally
+    Builder.Free;
+  end;
+end;
+
+class function TSubsetConverter.FormatDestination(const Value: string): string;
+begin
+  Result := THtmlTagReader.DecodeEntities(Value).Trim;
+  if Result.Contains(' ') then
+    Result := '<' + Result + '>';
+end;
+
+function TSubsetConverter.LinePrefix: string;
+begin
+  Result := DupeString('> ', FQuoteDepth);
+  if FListMarkers.Count > 0 then
+    Result := Result + DupeString(ListIndent, FListMarkers.Count);
+end;
+
+procedure TSubsetConverter.Write(const Value: string);
+begin
+  if Value = '' then
+    Exit;
+
+  if FPendingBlank and FHasContent then
+  begin
+    FOutput.Append(sLineBreak);
+    if FQuoteDepth > 0 then
+      FOutput.Append('>' + sLineBreak);
+
+    FAtLineStart := True;
+  end;
+
+  FPendingBlank := False;
+
+  if FAtLineStart then
+    FOutput.Append(LinePrefix);
+
+  FOutput.Append(Value);
+  FAtLineStart := False;
+  FHasContent := True;
+  FAfterOpener := False;
+end;
+
+procedure TSubsetConverter.WriteOpener(const Value: string);
+begin
+  Write(Value);
+  FAfterOpener := True;
+end;
+
+procedure TSubsetConverter.StartLine;
+begin
+  if FAtLineStart then
+    Exit;
+
+  FOutput.Append(sLineBreak);
+  FAtLineStart := True;
+end;
+
+procedure TSubsetConverter.StartBlock;
+begin
+  StartLine;
+  if FHasContent then
+    FPendingBlank := True;
+end;
+
+// <pre> keeps its line breaks and its spacing, so it is read raw and emitted as
+// a fenced code block.
+function TSubsetConverter.ReadPreformatted: string;
+begin
+  var Content := FReader.ReadRawUntil('pre');
+
+  // A <code> wrapper inside <pre> is conventional and carries nothing extra.
+  Content := Content.Replace('<code>', '', [rfReplaceAll, rfIgnoreCase]);
+  Content := Content.Replace('</code>', '', [rfReplaceAll, rfIgnoreCase]);
+
+  Result := THtmlTagReader.DecodeEntities(Content).Trim([LineFeed, CarriageReturn, ' ']);
 end;
 
 procedure TSubsetConverter.HandleImage(const Tag: TParsedTag);
@@ -639,7 +794,7 @@ begin
   var AltText := '';
   Tag.Attributes.TryGetValue('alt', AltText);
 
-  Write(Format('![%s](%s)', [EscapeText(DecodeEntities(AltText)), FormatDestination(Source)]));
+  Write(Format('![%s](%s)', [EscapeText(THtmlTagReader.DecodeEntities(AltText)), FormatDestination(Source)]));
 end;
 
 procedure TSubsetConverter.HandleListItem;
@@ -668,12 +823,7 @@ end;
 // it next to the triangle, instead of as bold text around a heading block.
 function TSubsetConverter.IsHeadingSummary: Boolean;
 begin
-  var SummaryEnd := PosEx('</summary', FLowered, FPosition);
-  const IsClosed = (SummaryEnd > 0);
-  if not IsClosed then
-    SummaryEnd := Length(FLowered) + 1;
-
-  const Content = Copy(FLowered, FPosition, SummaryEnd - FPosition);
+  const Content = FReader.LoweredUntil('summary');
   const Inner = Content.Trim;
   const IsOneHeading = TRegEx.IsMatch(Inner, '^<h([1-6])[\s>].*</h\1\s*>$', [roSingleLine]);
   const HeadingTags = TRegEx.Matches(Inner, '<h[1-6][\s>]');
@@ -688,7 +838,7 @@ begin
     TTagKind.Dropped:
       begin
         if not Tag.IsSelfClosing then
-          SkipTo(Tag.Name);
+          FReader.SkipTo(Tag.Name);
         Exit;
       end;
 
@@ -858,13 +1008,13 @@ end;
 
 function TSubsetConverter.Convert: string;
 begin
-  while FPosition <= Length(FSource) do
+  while not FReader.IsAtEnd do
   begin
-    if FSource[FPosition] = '<' then
+    if FReader.IsAtTag then
     begin
       var Tag: TParsedTag;
-      const Before = FPosition;
-      if TryReadTag(Tag) then
+      const Before = FReader.Position;
+      if FReader.TryReadTag(Tag) then
       begin
         try
           if Tag.IsClosing then
@@ -875,17 +1025,17 @@ begin
           Tag.Attributes.Free;
         end;
       end
-      else if FPosition = Before then
+      else if FReader.Position = Before then
       begin
         // Not a tag after all; treat the character as text.
         Write(EscapeText('<'));
-        Inc(FPosition);
+        FReader.Advance;
       end;
 
       Continue;
     end;
 
-    var Text := NormalizeWhitespace(DecodeEntities(ReadText));
+    var Text := NormalizeWhitespace(THtmlTagReader.DecodeEntities(FReader.ReadText));
 
     // A space at the start of a line would indent it, and one right after **
     // or [ stops markdown from seeing the emphasis or the link.
@@ -944,6 +1094,21 @@ begin
   const Align = TRegEx.Match(Attributes, AlignPattern, [roIgnoreCase]);
   if Align.Success then
     Result := AlignmentNamed(Align.Groups[1].Value);
+end;
+
+class function TMarkdownHtmlSubset.TryFindTarget(const Html, Name: string; out Position: Integer): Boolean;
+begin
+  Position := 0;
+  Result := False;
+  if Name.IsEmpty then
+    Exit;
+
+  const Finder = THtmlTargetFinder.Create(Html);
+  try
+    Result := Finder.TryFind(Name, Position);
+  finally
+    Finder.Free;
+  end;
 end;
 
 class function TMarkdownHtmlSubset.AlignmentNamed(const Name: string): TMarkdownHtmlAlignment;

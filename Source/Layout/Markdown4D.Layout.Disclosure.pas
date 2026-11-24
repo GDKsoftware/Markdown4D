@@ -61,6 +61,8 @@ type
     class function IsOpener(const Node: IMarkdownNode; out OpenByDefault: Boolean): Boolean; static;
     class function IsCloser(const Node: IMarkdownNode): Boolean; static;
     class function IsWholeSection(const Node: IMarkdownNode; out OpenByDefault: Boolean): Boolean; static;
+    // The block opens a section, either way it can be written.
+    class function IsSection(const Node: IMarkdownNode; out OpenByDefault: Boolean): Boolean; static;
     // The HTML of the block that opens a section, with the default summary
     // after the opening tag when it has none.
     class function OpenerHtml(const Node: IMarkdownNode): string; static;
@@ -95,6 +97,11 @@ type
       const State: IMarkdownDisclosureState): TArray<TMarkdownClosedSection>; static;
     // The blocks that open the sections around Node, outermost first.
     class function SectionsAround(const Document, Node: IMarkdownNode): TArray<IMarkdownNode>; static;
+    // The blocks that open the sections around a link target at
+    // LiteralPosition in the HTML of Node, outermost first: those around Node
+    // and, when Node is a whole section with the target in its content, Node.
+    class function SectionsAroundTarget(const Document, Node: IMarkdownNode;
+      const LiteralPosition: Integer): TArray<IMarkdownNode>; static;
   end;
 
 implementation
@@ -175,6 +182,11 @@ begin
 
   OpenByDefault := HasOpenAttribute(Literal);
   Result := True;
+end;
+
+class function TMarkdownDisclosures.IsSection(const Node: IMarkdownNode; out OpenByDefault: Boolean): Boolean;
+begin
+  Result := (IsOpener(Node, OpenByDefault) or IsWholeSection(Node, OpenByDefault));
 end;
 
 class function TMarkdownDisclosures.OpenerHtml(const Node: IMarkdownNode): string;
@@ -437,6 +449,22 @@ begin
   finally
     Openers.Free;
   end;
+end;
+
+class function TMarkdownDisclosures.SectionsAroundTarget(const Document, Node: IMarkdownNode;
+  const LiteralPosition: Integer): TArray<IMarkdownNode>;
+begin
+  Result := SectionsAround(Document, Node);
+
+  var OpenByDefault: Boolean;
+  var Literal: string;
+  const IsWhole = (IsWholeSection(Node, OpenByDefault) and TryGetHtmlLiteral(Node, Literal));
+  if not IsWhole then
+    Exit;
+
+  const IsInContent = (LiteralPosition > SummaryEnd(Literal));
+  if IsInContent then
+    Result := Result + [Node];
 end;
 
 // Walks the siblings the way HiddenChildren does, keeping the openers of the

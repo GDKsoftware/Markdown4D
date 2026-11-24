@@ -44,6 +44,9 @@ type
       SectionContentText = 'Body';
       ClosedSectionMarkdown = '<details>'#10'<summary>' + SummaryText + '</summary>'#10#10 + SectionContentText +
         #10#10'</details>';
+      HtmlTargetsMarkdown = '<div id="top"></div>'#10#10'# Title'#10#10'Text with <span id="spot">a target</span>.' +
+        #10#10'<a name="named"></a>'#10#10'More text.'#10#10'<details>'#10'<summary>' + SummaryText + '</summary>' +
+        #10#10'<a name="deep"></a>'#10#10 + SectionContentText + #10#10'</details>';
     var
       FTheme: TMarkdownTheme;
       FMeasurer: ITextMeasurer;
@@ -347,6 +350,24 @@ type
     procedure TryGetAnchorOffset_UnknownAnchor_ReturnsFalse;
 
     [Test]
+    [TestCase('IdOnEmptyDiv', '#top')]
+    [TestCase('IdOnInlineSpan', '#spot')]
+    [TestCase('NameOnAnchor', '#named')]
+    procedure TryGetAnchorOffset_HtmlTargetInView_IsFound(const Anchor: string);
+
+    [Test]
+    procedure TryGetAnchorOffset_IdOnSpanFarDown_ReturnsTopOfItsLine;
+
+    [Test]
+    procedure TryGetAnchorOffset_IdOnHtmlBlockFarDown_ReturnsTopOfTheBlock;
+
+    [Test]
+    procedure TryGetAnchorOffset_NamedAnchorInClosedSection_ReturnsFalse;
+
+    [Test]
+    procedure TryGetAnchorOffset_TagInCode_ReturnsFalse;
+
+    [Test]
     procedure SelectedMarkdown_WordInBold_TakesTheMarksAlong;
 
     [Test]
@@ -486,6 +507,18 @@ type
 
     [Test]
     procedure RevealAnchor_HeadingInView_ReturnsFalse;
+
+    [Test]
+    procedure RevealAnchor_NamedAnchorInClosedSection_OpensSectionSoTheAnchorIsFound;
+
+    [Test]
+    procedure RevealAnchor_IdInClosedWholeSection_OpensSectionSoTheAnchorIsFound;
+
+    [Test]
+    procedure RevealAnchor_IdOnSummaryOfClosedWholeSection_LeavesItClosed;
+
+    [Test]
+    procedure RevealAnchor_IdInWholeSectionOpenByDefault_LeavesItOpen;
 
     [Test]
     procedure SourceLineToScrollOffset_BlocksRegroupedByProcessor_IsTopOfThatLine;
@@ -1566,6 +1599,69 @@ begin
   Assert.IsFalse(IsFound);
 end;
 
+procedure TMarkdownViewerModelTests.TryGetAnchorOffset_HtmlTargetInView_IsFound(const Anchor: string);
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := HtmlTargetsMarkdown;
+
+  var Offset: Single;
+  const IsFound = FModel.TryGetAnchorOffset(Anchor, Offset);
+
+  Assert.IsTrue(IsFound);
+end;
+
+procedure TMarkdownViewerModelTests.TryGetAnchorOffset_IdOnSpanFarDown_ReturnsTopOfItsLine;
+begin
+  FModel.SetViewport(DefaultWidth, SmallHeight);
+  FModel.Text := BuildTallMarkdown + #10#10'Text with <span id="spot">a target</span>.';
+  const TargetRun = FModel.DisplayList.Items[FModel.FindText('a target')[0].ItemIndex];
+
+  var Offset: Single;
+  const IsFound = FModel.TryGetAnchorOffset('#spot', Offset);
+
+  Assert.IsTrue(IsFound);
+  AssertSingle(TargetRun.Bounds.Top, Offset);
+end;
+
+procedure TMarkdownViewerModelTests.TryGetAnchorOffset_IdOnHtmlBlockFarDown_ReturnsTopOfTheBlock;
+begin
+  FModel.SetViewport(DefaultWidth, SmallHeight);
+  FModel.Text := BuildTallMarkdown + #10#10'<div id="down">'#10'Down here'#10'</div>';
+  const BlockRun = FModel.DisplayList.Items[FModel.FindText('Down here')[0].ItemIndex];
+
+  var Offset: Single;
+  const IsFound = FModel.TryGetAnchorOffset('#down', Offset);
+
+  Assert.IsTrue(IsFound);
+  AssertSingle(BlockRun.Bounds.Top, Offset);
+end;
+
+procedure TMarkdownViewerModelTests.TryGetAnchorOffset_NamedAnchorInClosedSection_ReturnsFalse;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := HtmlTargetsMarkdown;
+
+  var Offset: Single;
+  const IsFound = FModel.TryGetAnchorOffset('#deep', Offset);
+
+  Assert.IsFalse(IsFound, 'a target in a closed section is not laid out');
+end;
+
+procedure TMarkdownViewerModelTests.TryGetAnchorOffset_TagInCode_ReturnsFalse;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  var Offset: Single;
+
+  FModel.Text := 'Write `<a name="code"></a>` to mark a place.';
+  const IsFoundInCodeSpan = FModel.TryGetAnchorOffset('#code', Offset);
+
+  FModel.Text := Fence + #10'<div id="code"></div>'#10 + Fence;
+  const IsFoundInCodeBlock = FModel.TryGetAnchorOffset('#code', Offset);
+
+  Assert.IsFalse(IsFoundInCodeSpan, 'code span');
+  Assert.IsFalse(IsFoundInCodeBlock, 'code block');
+end;
+
 procedure TMarkdownViewerModelTests.SelectedMarkdown_WordInBold_TakesTheMarksAlong;
 begin
   FModel.SetViewport(DefaultWidth, DefaultHeight);
@@ -2121,6 +2217,63 @@ begin
 
   Assert.IsFalse(Revealed);
   Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+end;
+
+procedure TMarkdownViewerModelTests.RevealAnchor_NamedAnchorInClosedSection_OpensSectionSoTheAnchorIsFound;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := HtmlTargetsMarkdown;
+
+  const Revealed = FModel.RevealAnchor('#deep');
+
+  var Offset: Single;
+  Assert.IsTrue(Revealed);
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+  Assert.IsTrue(FModel.TryGetAnchorOffset('#deep', Offset));
+end;
+
+procedure TMarkdownViewerModelTests.RevealAnchor_IdInClosedWholeSection_OpensSectionSoTheAnchorIsFound;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '<details><summary>' + SummaryText + '</summary><p id="deep">' + SectionContentText +
+    '</p></details>';
+  var Offset: Single;
+  const FoundWhileClosed = FModel.TryGetAnchorOffset('#deep', Offset);
+
+  const Revealed = FModel.RevealAnchor('#deep');
+
+  Assert.IsFalse(FoundWhileClosed, 'the content of a closed section is not laid out');
+  Assert.IsTrue(Revealed);
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+  Assert.IsTrue(FModel.TryGetAnchorOffset('#deep', Offset));
+end;
+
+procedure TMarkdownViewerModelTests.RevealAnchor_IdOnSummaryOfClosedWholeSection_LeavesItClosed;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '<details><summary id="sum">' + SummaryText + '</summary><p>' + SectionContentText +
+    '</p></details>';
+
+  const Revealed = FModel.RevealAnchor('#sum');
+
+  var Offset: Single;
+  Assert.IsFalse(Revealed);
+  Assert.IsFalse(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+  Assert.IsTrue(FModel.TryGetAnchorOffset('#sum', Offset));
+end;
+
+procedure TMarkdownViewerModelTests.RevealAnchor_IdInWholeSectionOpenByDefault_LeavesItOpen;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '<details open><summary>' + SummaryText + '</summary><p id="deep">' + SectionContentText +
+    '</p></details>';
+
+  const Revealed = FModel.RevealAnchor('#deep');
+
+  var Offset: Single;
+  Assert.IsFalse(Revealed);
+  Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(FModel.DisplayList, SectionContentText));
+  Assert.IsTrue(FModel.TryGetAnchorOffset('#deep', Offset));
 end;
 
 procedure TMarkdownViewerModelTests.Text_EditInOneBlock_LaysOutOnlyThatBlock;

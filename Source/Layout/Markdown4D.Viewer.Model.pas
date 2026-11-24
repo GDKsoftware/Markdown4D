@@ -64,6 +64,19 @@ type
         UnitStart: TMarkdownTextAnchor;
         UnitEnd: TMarkdownTextAnchor;
       end;
+      // An element in an HTML block or in inline HTML that a link points at
+      // by its id, or an <a> by its name, and where its tag starts in the
+      // literal of Node.
+      THtmlTarget = record
+        Node: IMarkdownNode;
+        LiteralPosition: Integer;
+      end;
+      // What a link such as #install points at: a heading when Heading is
+      // set, an element of HTML otherwise.
+      TAnchorTarget = record
+        Heading: IMarkdownHeading;
+        Html: THtmlTarget;
+      end;
       // What a press and a drag select by: characters after a single click,
       // whole words after a double click, whole lines after a triple click.
       TSelectionUnit = (Character, Word, Line);
@@ -208,7 +221,17 @@ type
     function TryGetDisclosureItem(const Key: Integer; out ItemIndex: Integer): Boolean;
     procedure OpenSectionAt(const ItemIndex: Integer);
     function CaretItemIndex(const WithoutCaret: Integer): Integer;
-    function TryFindAnchorHeading(const Anchor: string; out Heading: IMarkdownHeading): Boolean;
+    class function AnchorName(const Anchor: string): string; static;
+    function TryFindAnchorTarget(const Anchor: string; out Target: TAnchorTarget): Boolean;
+    class function TryFindHtmlTargetBelow(const Node: IMarkdownNode; const Name: string;
+      out Target: THtmlTarget): Boolean; static;
+    class function TryGetHtmlTarget(const Node: IMarkdownNode; const Name: string;
+      out Target: THtmlTarget): Boolean; static;
+    function TryGetHeadingOffset(const Heading: IMarkdownHeading; out Offset: Single): Boolean;
+    function TryGetHtmlTargetOffset(const Target: TAnchorTarget; out Offset: Single): Boolean;
+    function SourceLineOf(const Target: THtmlTarget): Integer;
+    function SectionsAroundAnchor(const Target: TAnchorTarget): TArray<IMarkdownNode>;
+    function HasClosedSection(const Openers: TArray<IMarkdownNode>): Boolean;
     procedure FlipDisclosure(const Key: Integer);
     function HasCaret: Boolean;
     procedure SelectMatch(const Match: TMarkdownFoundRange);
@@ -409,6 +432,7 @@ uses
   System.NetEncoding,
   Markdown4D,
   Markdown4D.Defines,
+  Markdown4D.Html.Subset,
   Markdown4D.Layout.ExtensionData,
   Markdown4D.Layout.ChangedBlocks,
   Markdown4D.Layout.Disclosure,
@@ -1370,9 +1394,21 @@ begin
   if FDisplayList = nil then
     Exit;
 
-  var Heading: IMarkdownHeading;
-  if not TryFindAnchorHeading(Anchor, Heading) then
+  var Target: TAnchorTarget;
+  if not TryFindAnchorTarget(Anchor, Target) then
     Exit;
+
+  const IsHeading = (Target.Heading <> nil);
+  if IsHeading then
+    Result := TryGetHeadingOffset(Target.Heading, Offset)
+  else
+    Result := TryGetHtmlTargetOffset(Target, Offset);
+end;
+
+function TMarkdownViewerModel.TryGetHeadingOffset(const Heading: IMarkdownHeading; out Offset: Single): Boolean;
+begin
+  Offset := 0;
+  Result := False;
 
   const Segment = Heading.Segment;
   for var Index := 0 to FDisplayList.ItemCount - 1 do
@@ -1392,19 +1428,70 @@ begin
   end;
 end;
 
+// The line the target's tag is on, so an empty <div id="top"> that takes no
+// room still lands where it stands in the text.
+function TMarkdownViewerModel.TryGetHtmlTargetOffset(const Target: TAnchorTarget; out Offset: Single): Boolean;
+begin
+  Offset := 0;
+  Result := False;
+
+  const Openers = SectionsAroundAnchor(Target);
+  if HasClosedSection(Openers) then
+    Exit;
+
+  RefreshSourceLines;
+  const SourceLine = SourceLineOf(Target.Html);
+  Offset := FSourceLines.SourceLineToOffset(SourceLine);
+  Result := True;
+end;
+
+function TMarkdownViewerModel.SectionsAroundAnchor(const Target: TAnchorTarget): TArray<IMarkdownNode>;
+begin
+  const IsHeading = (Target.Heading <> nil);
+  if IsHeading then
+    Result := TMarkdownDisclosures.SectionsAround(FDocument, Target.Heading)
+  else
+    Result := TMarkdownDisclosures.SectionsAroundTarget(FDocument, Target.Html.Node, Target.Html.LiteralPosition);
+end;
+
+function TMarkdownViewerModel.SourceLineOf(const Target: THtmlTarget): Integer;
+begin
+  const Html = Target.Node as IMarkdownText;
+  const Segment = Target.Node.Segment;
+  const BeforeNode = Copy(FText, 1, Segment.StartOffset - 1);
+  const BeforeTag = Copy(Html.Literal, 1, Target.LiteralPosition - 1);
+  Result := BeforeNode.CountChar(LineFeed) + BeforeTag.CountChar(LineFeed);
+end;
+
+function TMarkdownViewerModel.HasClosedSection(const Openers: TArray<IMarkdownNode>): Boolean;
+begin
+  Result := False;
+
+  for var Opener in Openers do
+  begin
+    var OpenByDefault: Boolean;
+    TMarkdownDisclosures.IsSection(Opener, OpenByDefault);
+    if not TMarkdownDisclosures.IsOpen(Self, Opener, OpenByDefault) then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
+end;
+
 function TMarkdownViewerModel.RevealAnchor(const Anchor: string): Boolean;
 begin
   Result := False;
 
-  var Heading: IMarkdownHeading;
-  if not TryFindAnchorHeading(Anchor, Heading) then
+  var Target: TAnchorTarget;
+  if not TryFindAnchorTarget(Anchor, Target) then
     Exit;
 
-  const Openers = TMarkdownDisclosures.SectionsAround(FDocument, Heading);
+  const Openers = SectionsAroundAnchor(Target);
   for var Opener in Openers do
   begin
     var OpenByDefault: Boolean;
-    TMarkdownDisclosures.IsOpener(Opener, OpenByDefault);
+    TMarkdownDisclosures.IsSection(Opener, OpenByDefault);
     if TMarkdownDisclosures.IsOpen(Self, Opener, OpenByDefault) then
       Continue;
 
@@ -1417,14 +1504,59 @@ begin
     RefreshLayout;
 end;
 
-function TMarkdownViewerModel.TryFindAnchorHeading(const Anchor: string; out Heading: IMarkdownHeading): Boolean;
+// A heading goes first, then an element of HTML with that id or name, as
+// GitHub gives a heading its anchor ahead of the HTML around it.
+function TMarkdownViewerModel.TryFindAnchorTarget(const Anchor: string; out Target: TAnchorTarget): Boolean;
 begin
-  Heading := nil;
+  Target := Default(TAnchorTarget);
+  Result := False;
   if FDocument = nil then
-    Exit(False);
+    Exit;
 
-  const Name = TNetEncoding.URL.Decode(Anchor.TrimLeft([AnchorMark]));
-  Result := TMarkdownToc.TryFindHeading(FDocument, Name, Heading);
+  const Name = AnchorName(Anchor);
+  Result := (TMarkdownToc.TryFindHeading(FDocument, Name, Target.Heading) or
+             TryFindHtmlTargetBelow(FDocument, Name, Target.Html));
+end;
+
+class function TMarkdownViewerModel.AnchorName(const Anchor: string): string;
+begin
+  Result := TNetEncoding.URL.Decode(Anchor.TrimLeft([AnchorMark]));
+end;
+
+// In document order, so the first element with the name wins, as in a browser.
+class function TMarkdownViewerModel.TryFindHtmlTargetBelow(const Node: IMarkdownNode; const Name: string;
+  out Target: THtmlTarget): Boolean;
+begin
+  Target := Default(THtmlTarget);
+  Result := False;
+
+  for var Index := 0 to Node.ChildCount - 1 do
+  begin
+    const Child = Node.Children[Index];
+    Result := (TryGetHtmlTarget(Child, Name, Target) or TryFindHtmlTargetBelow(Child, Name, Target));
+    if Result then
+      Exit;
+  end;
+end;
+
+class function TMarkdownViewerModel.TryGetHtmlTarget(const Node: IMarkdownNode; const Name: string;
+  out Target: THtmlTarget): Boolean;
+begin
+  Target := Default(THtmlTarget);
+  Result := False;
+
+  const IsHtml = (Node.Kind in [TMarkdownNodeKind.HtmlBlock, TMarkdownNodeKind.InlineHtml]);
+  var Html: IMarkdownText;
+  if not (IsHtml and Supports(Node, IMarkdownText, Html)) then
+    Exit;
+
+  var Position: Integer;
+  if not TMarkdownHtmlSubset.TryFindTarget(Html.Literal, Name, Position) then
+    Exit;
+
+  Target.Node := Node;
+  Target.LiteralPosition := Position;
+  Result := True;
 end;
 
 function TMarkdownViewerModel.SelectedMarkdown: string;

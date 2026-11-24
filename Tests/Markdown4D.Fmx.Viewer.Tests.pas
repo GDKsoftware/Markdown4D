@@ -208,6 +208,9 @@ type
     procedure Click_OnLinkToHeading_ScrollsThereInsteadOfOnLinkClick;
 
     [Test]
+    procedure Click_OnLinkToNamedAnchorInClosedSection_OpensItAndScrollsThere;
+
+    [Test]
     procedure Click_OnLinkToUnknownAnchor_RaisesOnLinkClick;
 
     [Test]
@@ -774,6 +777,19 @@ begin
 
   Assert.AreEqual(0, FLinkClickCount);
   Assert.IsTrue(FViewer.ScrollOffset > 0, 'The viewer should have scrolled to the heading');
+end;
+
+procedure TMarkdownFmxViewerTests.Click_OnLinkToNamedAnchorInClosedSection_OpensItAndScrollsThere;
+begin
+  ShowClickMarkdown('[down](#deep)'#10#10'one'#10#10'two'#10#10'three'#10#10'four'#10#10'five'#10#10'six'#10#10'<details>'#10'<summary>More</summary>'#10#10'<a name="deep"></a>'#10#10'Hidden text.'#10#10'</details>');
+  const Center = FirstTextRunCenter;
+
+  PressAt(Center, []);
+  ReleaseAt(Center);
+
+  Assert.AreEqual(0, FLinkClickCount);
+  Assert.IsTrue(FViewer.ScrollOffset > 0, 'The viewer should have scrolled to the anchor');
+  Assert.AreEqual(1, Integer(Length(FViewer.ToggledSections)), 'The section around the anchor should be open');
 end;
 
 procedure TMarkdownFmxViewerTests.Click_OnLinkToUnknownAnchor_RaisesOnLinkClick;
