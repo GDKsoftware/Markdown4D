@@ -33,6 +33,7 @@ type
       TallParagraphCount = 10;
       ImageMarkdown = '![alt](img.png)';
       ImageSource = 'img.png';
+      LinkedImageInUnclosedQuote = 'say <q>[![i](x.png)](https://u)';
       WrappingMarkdown = 'alpha beta gamma delta'#10#10'omega';
       LoadedImageWidth = 200.0;
       LoadedImageHeight = 100.0;
@@ -61,6 +62,7 @@ type
     procedure LoadImageDocument;
     function AllHighlightRects: TArray<TLayoutRectF>;
     function RunShowing(const Text: string): IDisplayTextRun;
+    function RunContaining(const Text: string): IDisplayTextRun;
     procedure ToggleFirstDisclosure;
 
   public
@@ -329,10 +331,42 @@ type
     [TestCase('Table cell', '| a |'#10'|---|'#10'| <q>hi</q> |~a'#13#10#$201C'hi'#$201D, '~')]
     [TestCase('Nested', '<q>a <q>b</q> c</q>~'#$201C'a '#$2018'b'#$2019' c'#$201D, '~')]
     [TestCase('Closing without opening', 'a </q>b~a b', '~')]
+    [TestCase('Across emphasis', '<q>a *b* c</q>~'#$201C'a b c'#$201D, '~')]
+    [TestCase('Across a line break', '<q>a<br>b</q>~'#$201C'a'#13#10'b'#$201D, '~')]
+    [TestCase('Closed on a later line', '<q>a'#10'b</q> c~'#$201C'a b'#$201D' c', '~')]
+    [TestCase('Unclosed', 'say <q>hi~say '#$201C'hi'#$201D, '~')]
+    [TestCase('Unclosed nested', '<q>a <q>b~'#$201C'a '#$2018'b'#$2019#$201D, '~')]
+    [TestCase('Unclosed inside emphasis', '*<q>a* b~'#$201C'a'#$201D' b', '~')]
+    [TestCase('Closed by an outer tag', '<b><q>a</b> b~'#$201C'a'#$201D' b', '~')]
+    [TestCase('Unclosed in a heading', '# say <q>hi~say '#$201C'hi'#$201D, '~')]
+    [TestCase('Unclosed in a table cell', '| a |'#10'|---|'#10'| <q>hi |~a'#13#10#$201C'hi'#$201D, '~')]
+    [TestCase('Unclosed in an Html block', '<p>say <q>hi</p>~say '#$201C'hi'#$201D, '~')]
+    [TestCase('Unclosed around a closed one', '<q>a <q>b</q> c~'#$201C'a '#$2018'b'#$2019' c'#$201D, '~')]
+    [TestCase('Unclosed at the end of strong emphasis', 'a **b <q>c** d~a b '#$201C'c'#$201D' d', '~')]
     procedure InlineHtml_Quote_ShowsQuotationMarks(const Markdown, Expected: string);
 
     [Test]
-    procedure SelectedMarkdown_Quote_KeepsTheTagsWithoutTheMarks;
+    [TestCase('Inside emphasis', '*<q>a* b~True~False', '~')]
+    [TestCase('Closed by an outer tag', '<b><q>a</b> b~False~True', '~')]
+    procedure InlineHtml_UnclosedQuote_ClosingMarkKeepsTheStyleOfTheQuote(const Markdown: string;
+      const IsItalic, IsBold: Boolean);
+
+    [Test]
+    [TestCase('Closed', 'say <q>hi</q> now~<q>hi</q>', '~')]
+    [TestCase('Unclosed', 'say <q>hi~<q>hi', '~')]
+    procedure SelectedMarkdown_Quote_KeepsTheTagsWithoutTheMarks(const Markdown, Expected: string);
+
+    [Test]
+    procedure SelectedMarkdown_UnclosedQuoteInsideEmphasis_TakesTheEmphasisWhole;
+
+    [Test]
+    procedure SelectedMarkdown_FromImpliedClosingMarkIntoNextParagraph_TakesWholeLines;
+
+    [Test]
+    procedure TryFindLink_ImpliedClosingMarkAfterLinkedImage_FindsNoLink;
+
+    [Test]
+    procedure SelectedMarkdown_UnclosedQuoteEndingInLinkedImage_TakesTheLinkWhole;
 
     [Test]
     procedure Text_TocMarker_ShowsTheHeadingsInsteadOfTheMarker;
@@ -536,6 +570,7 @@ uses
   Markdown4D.Extensions.Interfaces,
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Layout.FakeMeasurer,
+  Markdown4D.Layout.HitTest,
   Markdown4D.Tests.FailingExtensions,
   Markdown4D.Tests.DisplayList.Helpers;
 
@@ -1528,19 +1563,100 @@ end;
 
 // The marks come from the tags, so the markdown of a selection holds the tags
 // and not the marks as well.
-procedure TMarkdownViewerModelTests.SelectedMarkdown_Quote_KeepsTheTagsWithoutTheMarks;
+procedure TMarkdownViewerModelTests.SelectedMarkdown_Quote_KeepsTheTagsWithoutTheMarks(const Markdown, Expected: string);
 begin
   FModel.SetViewport(DefaultWidth, DefaultHeight);
-  FModel.Text := 'say <q>hi</q> now';
+  FModel.Text := Markdown;
   const OpeningMark = RunShowing(#$201C).Bounds;
-  const ClosingMark = RunShowing(#$201D).Bounds;
+  const ClosingMark = RunContaining(#$201D).Bounds;
   const LineMiddle = (OpeningMark.Top + OpeningMark.Bottom) / 2;
   FModel.SetSelectionAnchor(TLayoutPointF.Create(OpeningMark.Left, LineMiddle));
   FModel.SetSelectionExtent(TLayoutPointF.Create(ClosingMark.Right, LineMiddle));
 
   const Actual = FModel.SelectedMarkdown;
 
-  Assert.AreEqual('<q>hi</q>', Actual);
+  Assert.AreEqual(Expected, Actual);
+end;
+
+// Where a quote ends without its closing tag, the closing mark is in the style
+// of the quote itself, as a browser draws it.
+procedure TMarkdownViewerModelTests.InlineHtml_UnclosedQuote_ClosingMarkKeepsTheStyleOfTheQuote(
+  const Markdown: string; const IsItalic, IsBold: Boolean);
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := Markdown;
+
+  const ClosingMark = RunContaining(#$201D);
+  Assert.AreEqual(IsItalic, ClosingMark.Font.Italic, 'italic');
+  Assert.AreEqual(IsBold, ClosingMark.Font.Bold, 'bold');
+end;
+
+// The closing mark of a quote left open stands for the end of the quote's
+// text, so the emphasis around it comes along whole.
+procedure TMarkdownViewerModelTests.SelectedMarkdown_UnclosedQuoteInsideEmphasis_TakesTheEmphasisWhole;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := '*<q>a* b';
+  const OpeningMark = RunShowing(#$201C).Bounds;
+  const ClosingMark = RunContaining(#$201D).Bounds;
+  const LineMiddle = (OpeningMark.Top + OpeningMark.Bottom) / 2;
+  SelectFromTo(OpeningMark.Left, LineMiddle, ClosingMark.Right, LineMiddle);
+
+  const Actual = FModel.SelectedMarkdown;
+
+  Assert.AreEqual('*<q>a*', Actual);
+end;
+
+// A selection over several lines copies whole lines, from the closing mark of
+// a quote left open as from that of a closed one.
+procedure TMarkdownViewerModelTests.SelectedMarkdown_FromImpliedClosingMarkIntoNextParagraph_TakesWholeLines;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'say <q>hi'#10#10'next';
+  const ClosingRun = RunContaining(#$201D);
+  const MarkIndex = Pos(#$201D, ClosingRun.Text);
+  const TextBeforeMark = Copy(ClosingRun.Text, 1, MarkIndex - 1);
+  const WidthBeforeMark = FMeasurer.MeasureText(TextBeforeMark, ClosingRun.Font).Width;
+  const ClosingMarkLeft = ClosingRun.Bounds.Left + WidthBeforeMark;
+  const FirstLineMiddle = (ClosingRun.Bounds.Top + ClosingRun.Bounds.Bottom) / 2;
+  const NextParagraph = RunShowing('next').Bounds;
+  const NextLineMiddle = (NextParagraph.Top + NextParagraph.Bottom) / 2;
+  SelectFromTo(ClosingMarkLeft, FirstLineMiddle, NextParagraph.Right, NextLineMiddle);
+
+  const Actual = FModel.SelectedMarkdown;
+
+  Assert.AreEqual(Format('say <q>hi%0:s%0:snext', [sLineBreak]), Actual);
+end;
+
+// The closing mark after a linked image is drawn outside the link, so it does
+// not open the link either.
+procedure TMarkdownViewerModelTests.TryFindLink_ImpliedClosingMarkAfterLinkedImage_FindsNoLink;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := LinkedImageInUnclosedQuote;
+  const ClosingMark = RunShowing(#$201D).Bounds;
+  const MarkMiddle = TLayoutPointF.Create((ClosingMark.Left + ClosingMark.Right) / 2,
+                                          (ClosingMark.Top + ClosingMark.Bottom) / 2);
+
+  var Link: IMarkdownLink;
+  const IsLink = TMarkdownHitTester.TryFindLink(FModel.DisplayList, MarkMiddle, Link);
+
+  Assert.IsFalse(IsLink);
+end;
+
+procedure TMarkdownViewerModelTests.SelectedMarkdown_UnclosedQuoteEndingInLinkedImage_TakesTheLinkWhole;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := LinkedImageInUnclosedQuote;
+  const OpeningMark = RunShowing(#$201C).Bounds;
+  const ClosingMark = RunShowing(#$201D).Bounds;
+  const LineMiddle = (ClosingMark.Top + ClosingMark.Bottom) / 2;
+  SelectFromTo(OpeningMark.Left, LineMiddle, ClosingMark.Right, LineMiddle);
+
+  const Actual = FModel.SelectedMarkdown;
+
+  Assert.AreEqual('<q>[![i](x.png)](https://u)', Actual);
 end;
 
 procedure TMarkdownViewerModelTests.Text_TocMarker_ShowsTheHeadingsInsteadOfTheMarker;
@@ -2401,6 +2517,22 @@ begin
   end;
 
   Assert.Fail(Format('No run shows "%s"', [Text]));
+end;
+
+function TMarkdownViewerModelTests.RunContaining(const Text: string): IDisplayTextRun;
+begin
+  for var Index := 0 to FModel.DisplayList.ItemCount - 1 do
+  begin
+    var Run: IDisplayTextRun;
+    const IsRun = Supports(FModel.DisplayList.Items[Index], IDisplayTextRun, Run);
+    if IsRun and Run.Text.Contains(Text) then
+    begin
+      Result := Run;
+      Exit;
+    end;
+  end;
+
+  Assert.Fail(Format('No run contains "%s"', [Text]));
 end;
 
 function TMarkdownViewerModelTests.AllHighlightRects: TArray<TLayoutRectF>;

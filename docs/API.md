@@ -646,11 +646,12 @@ subset covers `p`, `div`, `center`, `section`, `article`, `h1`-`h6`, `hr`,
 `br`, `strong`/`b`, `em`/`i`, `code`/`kbd`/`samp`/`tt`, `del`/`s`/`strike`,
 `a`, `img`, `ul`/`ol`/`li`, `blockquote`, `details`/`summary` and `pre`;
 `sub`, `sup`, `ins`, `mark`, `small`, `var`, `cite`, `dfn` and `q` stay as
-inline HTML, which a paragraph draws as GitHub does. `script`, `style`, `head`, `iframe` and `object` are
-dropped along with their content; any other tag disappears while its content
-stays, the way a browser would show it with the styling removed. The
-translation is implemented in `Markdown4D.Html.Subset` and cached on the AST
-node, since layout runs again on every resize and every streamed chunk.
+inline HTML, which a paragraph draws as GitHub does. `script`, `style`,
+`head`, `iframe` and `object` are dropped along with their content; any other
+tag disappears while its content stays, the way a browser would show it with
+the styling removed. The translation is implemented in `Markdown4D.Html.Subset`
+and cached on the AST node, since layout runs again on every resize and every
+streamed chunk.
 
 `align="center"` or `align="right"` on the outer element of an HTML block,
 and a `center` tag, line up every line of the block, as GitHub does for a
@@ -691,10 +692,13 @@ below or above the baseline, `small` smaller, `mark` on
 `Theme.MarkBackgroundColor`, `q` between quotation marks (“ ”, and ‘ ’ for a
 quote inside a quote, as a browser shows them in English), `br` a line break
 and `a href` a link. The quotation marks are drawn text, so `SelectedText`
-copies them; `SelectedMarkdown` keeps the `q` tags instead. A comment
-shows nothing, and any other tag disappears while its text stays, `u` among
-them, as on GitHub. The document itself keeps the tags, so the editor and the
-markdown writer see them as written.
+copies them; `SelectedMarkdown` keeps the `q` tags instead. A tag left open
+ends with the inline element it stands in, such as emphasis or a link, or with
+its paragraph, heading or cell, or at the closing tag of an outer tag, and a
+`q` gets its closing mark there. A comment shows nothing, and any other tag
+disappears while its text stays, `u` among them, as on GitHub. The document
+itself keeps the tags, so the editor and the markdown writer see them as
+written.
 
 The mouse wheel scrolls the control only while its content overflows;
 otherwise the wheel passes through to the parent, so viewers stacked inside a
