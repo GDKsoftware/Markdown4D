@@ -22,6 +22,7 @@ type
     procedure SimulateMiddlePress;
     procedure SimulateKeyFromMessageLoop(const Key: Word);
     procedure SendMouse(const Message: Cardinal; const X, Y: Integer);
+    function IsWaitingToSettle: Boolean;
   end;
 
   [TestFixture]
@@ -50,6 +51,8 @@ type
       ToggleHostWidth = 809;
       ToggleHostHeight = 900;
       ToggleMargin = 16;
+      SettleTimeoutMilliseconds = 2000;
+      MessagePollMilliseconds = 5;
     var
       FHostForm: TForm;
       FReportedSender: TObject;
@@ -64,6 +67,9 @@ type
     // thread keeps it open for HoldMilliseconds.
     function CopiedOverHeldClipboard(const HoldMilliseconds: Cardinal): string;
     class function ScrollBarToggleMarkdown: string; static;
+    class function ScrollBarTogglesUntilSettled(const Viewer: TTestableVclViewer): Integer; static;
+    class function ShowsVerticalScrollBar(const Viewer: TMarkdownViewer): Boolean; static;
+    class function TryDispatchMessageOrWait: Boolean; static;
     function NewViewerOnPreviewingForm: TTestableVclViewer;
     procedure RecordFormKey(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure RecordAutoScrollChange(Sender: TObject);
@@ -160,7 +166,9 @@ type
     procedure TextRendering_Gdi_MeasuresTheTextAgain;
 
     [Test]
-    procedure Text_ContentThatTogglesTheScrollBar_FinishesWithTheBarShown;
+    [TestCase('QuickLayout', 'False')]
+    [TestCase('SlowLayout', 'True')]
+    procedure Text_ContentThatTogglesTheScrollBar_FinishesWithTheBarShown(const IsLayoutSlow: Boolean);
 
     [Test]
     [TestCase('ShopAt240', 'class-diagram-shop,240')]
@@ -227,12 +235,15 @@ uses
   Markdown4D.Layout.DisplayList,
   Markdown4D.Layout.BlockOverride,
   Markdown4D.Layout.Engine,
+  Markdown4D.Layout.ResizePacer,
+  Markdown4D.Extensions.Interfaces,
   Markdown4D.Extensions.Chart.BlockOverride,
   Markdown4D.Extensions.Mermaid,
   Markdown4D.Extensions.Mermaid.BlockOverride,
   Markdown4D.Mermaid.Corpus,
   Markdown4D.Tests.Pipeline.Helpers,
   Markdown4D.Tests.FailingExtensions,
+  Markdown4D.Tests.DelayingProcessor,
   Markdown4D.Tests.VclClipboard,
   Markdown4D.Tests.ClipboardHold,
   Markdown4D.Tests.ClipboardSnapshot,
@@ -242,6 +253,11 @@ uses
 function TTestableVclViewer.SimulateWheel(const WheelDelta: Integer; const Shift: TShiftState): Boolean;
 begin
   Result := DoMouseWheel(Shift, WheelDelta, TPoint.Create(0, 0));
+end;
+
+function TTestableVclViewer.IsWaitingToSettle: Boolean;
+begin
+  Result := inherited IsWaitingToSettle;
 end;
 
 procedure TTestableVclViewer.SimulateKeyDown(const Key: Word; const Shift: TShiftState);
@@ -665,10 +681,20 @@ begin
   Result := string.Join(#10, Lines);
 end;
 
-procedure TMarkdownVclViewerTests.Text_ContentThatTogglesTheScrollBar_FinishesWithTheBarShown;
+// A slow layout waits for the width to settle, which must not let the bar toggle
+// once per wait.
+procedure TMarkdownVclViewerTests.Text_ContentThatTogglesTheScrollBar_FinishesWithTheBarShown(
+  const IsLayoutSlow: Boolean);
 begin
-  TChartBlockOverride.RegisterOverride;
+  var LayoutDelayMilliseconds: Cardinal := 0;
+  if IsLayoutSlow then
+    LayoutDelayMilliseconds := 2 * TMarkdownResizePacer.LiveLayoutMilliseconds;
+
+  const DelayingProcessor: IMarkdownDocumentProcessor = TDelayingDocumentProcessor.Create(LayoutDelayMilliseconds);
   try
+    TChartBlockOverride.RegisterOverride;
+    TLayoutDocumentProcessorRegistry.Register(TDelayingDocumentProcessor.ProcessorName, DelayingProcessor);
+
     FHostForm := TForm.CreateNew(nil);
     FHostForm.Position := poDesigned;
     FHostForm.Left := -20000;
@@ -684,14 +710,73 @@ begin
     FHostForm.Show;
 
     Viewer.Text := ScrollBarToggleMarkdown;
-    Application.ProcessMessages;
+    const ToggleCount = ScrollBarTogglesUntilSettled(Viewer);
 
-    const Style = GetWindowLong(Viewer.Handle, GWL_STYLE);
-    const ShowsScrollBar = ((Style and WS_VSCROLL) <> 0);
-    Assert.IsTrue(ShowsScrollBar, 'The scroll bar must settle in its shown state');
+    const IsSettled = not Viewer.IsWaitingToSettle;
+    Assert.IsTrue(IsSettled, 'The viewer must finish laying out');
+    Assert.AreEqual(0, ToggleCount, 'The scroll bar must not keep toggling');
+    const IsShown = ShowsVerticalScrollBar(Viewer);
+    Assert.IsTrue(IsShown, 'The scroll bar must settle in its shown state');
   finally
     TMarkdownLayoutEngine.ClearBlockOverrides;
   end;
+end;
+
+// Runs the messages that arrive, timers included, until no layout of Viewer waits
+// any more or SettleTimeoutMilliseconds have passed, and counts how often its bar
+// appeared or disappeared meanwhile.
+class function TMarkdownVclViewerTests.ScrollBarTogglesUntilSettled(const Viewer: TTestableVclViewer): Integer;
+begin
+  Result := 0;
+
+  var WasShown := ShowsVerticalScrollBar(Viewer);
+  const Deadline = GetTickCount64 + SettleTimeoutMilliseconds;
+  while Viewer.IsWaitingToSettle do
+  begin
+    const IsPastDeadline = (GetTickCount64 >= Deadline);
+    if IsPastDeadline then
+      Exit;
+
+    if not TryDispatchMessageOrWait then
+      Exit;
+
+    const IsShown = ShowsVerticalScrollBar(Viewer);
+    const HasToggled = (IsShown <> WasShown);
+    if HasToggled then
+      Inc(Result);
+    WasShown := IsShown;
+  end;
+end;
+
+class function TMarkdownVclViewerTests.ShowsVerticalScrollBar(const Viewer: TMarkdownViewer): Boolean;
+begin
+  const Style = GetWindowLong(Viewer.Handle, GWL_STYLE);
+  Result := ((Style and WS_VSCROLL) <> 0);
+end;
+
+// Dispatches the next message, or waits a moment when there is none. False when
+// the message asks the application to quit; that one goes back on the queue.
+class function TMarkdownVclViewerTests.TryDispatchMessageOrWait: Boolean;
+begin
+  Result := True;
+
+  var Message: TMsg;
+  const HasMessage = PeekMessage(Message, 0, 0, 0, PM_REMOVE);
+  if not HasMessage then
+  begin
+    Sleep(MessagePollMilliseconds);
+    Exit;
+  end;
+
+  const IsQuit = (Message.message = WM_QUIT);
+  if IsQuit then
+  begin
+    PostQuitMessage(Message.wParam);
+    Exit(False);
+  end;
+
+  TranslateMessage(Message);
+  DispatchMessage(Message);
 end;
 
 procedure TMarkdownVclViewerTests.Text_ClassDiagramInNarrowViewer_StaysInsideClientWidth(const CaseName: string;
