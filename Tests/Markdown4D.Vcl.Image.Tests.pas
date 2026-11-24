@@ -6,9 +6,9 @@ interface
 
 uses
   DUnitX.TestFramework,
-  Vcl.Forms,
   Vcl.Graphics,
-  Markdown4D.Vcl.Viewer;
+  Markdown4D.Vcl.Viewer,
+  Markdown4D.Tests.HostForm;
 
 type
   TPixelPredicate = reference to function(const Pixel: TColor): Boolean;
@@ -39,7 +39,7 @@ type
       SvgPixelSize = 24;
     var
       FTempFolder: string;
-      FForm: TForm;
+      FForm: TTestHostForm;
       FViewer: TMarkdownViewer;
     procedure WriteRedPng;
     procedure WriteRedSvgFile;
@@ -92,7 +92,7 @@ begin
   FTempFolder := TPath.Combine(TPath.GetTempPath, 'Markdown4D.ImageTests.' + TGUID.NewGuid.ToString);
   TDirectory.CreateDirectory(FTempFolder);
 
-  FForm := TForm.CreateNew(nil);
+  FForm := TTestHostForm.Create(nil);
   FForm.ClientWidth := ViewerWidth;
   FForm.ClientHeight := ViewerHeight;
 

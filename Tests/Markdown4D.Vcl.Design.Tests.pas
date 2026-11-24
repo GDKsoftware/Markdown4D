@@ -8,12 +8,12 @@ uses
   System.Classes,
   System.TypInfo,
   Vcl.Controls,
-  Vcl.Forms,
   Vcl.Graphics,
   DUnitX.TestFramework,
   Markdown4D.Theme,
   Markdown4D.Vcl.Viewer,
-  Markdown4D.Vcl.Editor;
+  Markdown4D.Vcl.Editor,
+  Markdown4D.Tests.HostForm;
 
 type
   [TestFixture]
@@ -27,7 +27,7 @@ type
       SampleText = '## Streamed'#10#10'Body **bold** text.';
       SampleBaseUrl = 'https://cdn.example.com/assets/';
     var
-      FHostForm: TForm;
+      FHostForm: TTestHostForm;
     class function DistinctColorCount(const Bitmap: TBitmap): Integer; static;
     function RenderDesigning(const Control: TWinControl): TBitmap;
 
@@ -68,8 +68,9 @@ type
 
 procedure TMarkdownVclDesignTests.Setup;
 begin
-  FHostForm := TForm.CreateNew(nil);
-  FHostForm.SetBounds(0, 0, PreviewWidth + 40, PreviewHeight + 40);
+  FHostForm := TTestHostForm.Create(nil);
+  FHostForm.Width := PreviewWidth + 40;
+  FHostForm.Height := PreviewHeight + 40;
 end;
 
 procedure TMarkdownVclDesignTests.TearDown;

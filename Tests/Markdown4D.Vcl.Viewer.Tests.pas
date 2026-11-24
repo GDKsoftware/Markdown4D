@@ -8,11 +8,11 @@ uses
   System.SysUtils,
   System.Classes,
   System.Types,
-  Vcl.Forms,
   DUnitX.TestFramework,
   Markdown4D.Layout.Interfaces,
   Markdown4D.Vcl.Painter,
-  Markdown4D.Vcl.Viewer;
+  Markdown4D.Vcl.Viewer,
+  Markdown4D.Tests.HostForm;
 
 type
   TTestableVclViewer = class(TMarkdownViewer)
@@ -54,7 +54,7 @@ type
       SettleTimeoutMilliseconds = 2000;
       MessagePollMilliseconds = 5;
     var
-      FHostForm: TForm;
+      FHostForm: TTestHostForm;
       FReportedSender: TObject;
       FFormKeyCount: Integer;
       FAutoScrollChangeCount: Integer;
@@ -305,7 +305,7 @@ end;
 
 function TMarkdownVclViewerTests.NewHostedViewer: TTestableVclViewer;
 begin
-  FHostForm := TForm.CreateNew(nil);
+  FHostForm := TTestHostForm.Create(nil);
   FHostForm.ClientWidth := HostWidth;
   FHostForm.ClientHeight := HostHeight;
 
@@ -695,10 +695,7 @@ begin
     TChartBlockOverride.RegisterOverride;
     TLayoutDocumentProcessorRegistry.Register(TDelayingDocumentProcessor.ProcessorName, DelayingProcessor);
 
-    FHostForm := TForm.CreateNew(nil);
-    FHostForm.Position := poDesigned;
-    FHostForm.Left := -20000;
-    FHostForm.Top := -20000;
+    FHostForm := TTestHostForm.Create(nil);
     FHostForm.ClientWidth := ToggleHostWidth;
     FHostForm.ClientHeight := ToggleHostHeight;
 

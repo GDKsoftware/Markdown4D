@@ -142,6 +142,9 @@
         <DCCReference Include="Markdown4D.Tests.FailingExtensions.pas"/>
         <DCCReference Include="Markdown4D.Tests.DelayingProcessor.pas"/>
         <DCCReference Include="Markdown4D.Tests.Vcl.BitmapHelpers.pas"/>
+        <DCCReference Include="Markdown4D.Tests.HostForm.pas">
+            <Form>TestHostForm</Form>
+        </DCCReference>
         <DCCReference Include="Markdown4D.Charts.Corpus.pas"/>
         <DCCReference Include="Markdown4D.Extensions.Chart.Tests.pas"/>
         <DCCReference Include="Markdown4D.Extensions.Chart.Layout.Tests.pas"/>
