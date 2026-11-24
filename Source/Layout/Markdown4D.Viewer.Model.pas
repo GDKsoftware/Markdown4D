@@ -1417,7 +1417,12 @@ begin
     if not TrySelectableRun(Index, Run) then
       Continue;
 
-    const Start = Run.SourceNode.Segment.StartOffset;
+    const Source = Run.SourceNode;
+    const HasSource = (Source <> nil);
+    if not HasSource then
+      Continue;
+
+    const Start = Source.Segment.StartOffset;
     const IsInHeading = ((Start >= Segment.StartOffset) and (Start < Segment.EndOffset));
     if IsInHeading then
     begin

@@ -128,8 +128,10 @@ type
   // to go back to at its closing tag.
   TInlineHtmlOpening = record
     Name: string;
+    Effect: TInlineHtmlEffect;
     FrameDepth: Integer;
     Saved: TInlineStyle;
+    function IsQuote: Boolean;
   end;
 
   TInlineFrame = record
@@ -299,7 +301,6 @@ type
       // single quotes for a quote inside a quote and deeper.
       OpeningQuotationMarks: array[0..1] of string = (#$201C, #$2018);
       ClosingQuotationMarks: array[0..1] of string = (#$201D, #$2019);
-      QuoteTagName = 'q';
     var
       FMeasurer: ITextMeasurer;
       FTheme: TMarkdownTheme;
@@ -308,17 +309,22 @@ type
       FHtmlOpenings: TList<TInlineHtmlOpening>;
     procedure HandleInlineHtml(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
       const Child: IMarkdownNode);
-    procedure HandleQuote(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
-      const Child: IMarkdownNode; const Tag: TInlineHtmlTag);
-    function OpenQuoteLevel: Integer;
+    procedure AppendOpeningQuotationMark(const Atoms: TList<TInlineAtom>; const Style: TInlineStyle;
+      const Child: IMarkdownNode);
+    function QuoteDepth: Integer;
     procedure OpenHtmlStyle(const Frames: TList<TInlineFrame>; const Tag: TInlineHtmlTag);
-    function TryCloseHtmlStyle(const Frames: TList<TInlineFrame>; const Name: string): Boolean;
-    procedure DropHtmlOpeningsDeeperThan(const FrameDepth: Integer);
+    procedure CloseHtmlStyle(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
+      const Child: IMarkdownNode; const Name: string);
+    procedure CloseHtmlOpeningsDeeperThan(const Atoms: TList<TInlineAtom>; const FrameDepth: Integer);
+    procedure CloseHtmlOpeningsFrom(const Atoms: TList<TInlineAtom>; const Index: Integer);
+    procedure AppendImpliedClosingQuotationMark(const Atoms: TList<TInlineAtom>; const Style: TInlineStyle);
+    procedure AppendClosingQuotationMark(const Atoms: TList<TInlineAtom>; const Style: TInlineStyle;
+      const Source: IMarkdownNode; const SourceOffset: Integer);
     function StyledBy(const Tag: TInlineHtmlTag; const Style: TInlineStyle): TInlineStyle;
     procedure HandleInlineChild(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
       const Child: IMarkdownNode; const Style: TInlineStyle);
     procedure AppendTextAtoms(const Atoms: TList<TInlineAtom>; const Text: string; const Style: TInlineStyle;
-      const Leaf: IMarkdownNode);
+      const Leaf: IMarkdownNode; const LeafOffset: Integer = 0);
     procedure AppendCodeSpanAtoms(const Atoms: TList<TInlineAtom>; const Child: IMarkdownNode;
       const Style: TInlineStyle);
     procedure AppendHardBreakAtom(const Atoms: TList<TInlineAtom>);
@@ -2103,6 +2109,11 @@ begin
   Result := FCollector.Collect(Container, BaseFont, BaseColor);
 end;
 
+function TInlineHtmlOpening.IsQuote: Boolean;
+begin
+  Result := (Effect = TInlineHtmlEffect.Quote);
+end;
+
 constructor TInlineAtomCollector.Create(const Measurer: ITextMeasurer; const Theme: TMarkdownTheme;
   const ImageSizes: IMarkdownImageSizeProvider; const ContentRight: Single);
 begin
@@ -2144,7 +2155,7 @@ begin
         if Exhausted then
         begin
           Frames.Delete(LastIndex);
-          DropHtmlOpeningsDeeperThan(Frames.Count);
+          CloseHtmlOpeningsDeeperThan(Result, Frames.Count);
           Continue;
         end;
 
@@ -2209,8 +2220,9 @@ begin
   end;
 end;
 
+// LeafOffset is where Text starts inside the literal of Leaf.
 procedure TInlineAtomCollector.AppendTextAtoms(const Atoms: TList<TInlineAtom>; const Text: string;
-  const Style: TInlineStyle; const Leaf: IMarkdownNode);
+  const Style: TInlineStyle; const Leaf: IMarkdownNode; const LeafOffset: Integer);
 begin
   var Attribution := Style.Attribution;
   if Attribution = nil then
@@ -2241,7 +2253,7 @@ begin
     Atom.Highlight := Style.Highlight;
     Atom.Node := Attribution;
     Atom.SourceNode := Leaf;
-    Atom.StartOffset := Start - 1;
+    Atom.StartOffset := LeafOffset + Start - 1;
     Atom.Width := FMeasurer.MeasureText(Token, Style.Font).Width;
 
     Atoms.Add(Atom);
@@ -2288,6 +2300,7 @@ begin
   var Atom := Default(TInlineAtom);
   Atom.Kind := TInlineAtomKind.ImageToken;
   Atom.Node := Attribution;
+  Atom.SourceNode := Child;
   Atom.Width := FTheme.ImagePlaceholderWidth;
   Atom.Height := FTheme.ImagePlaceholderHeight;
   Atom.Source := ImageLink.Destination;
@@ -2389,52 +2402,41 @@ begin
       end;
     TInlineHtmlEffect.Quote:
       begin
-        HandleQuote(Atoms, Frames, Child, Tag);
-        Exit;
+        if not Tag.IsClosing then
+        begin
+          const Surrounding = Frames.Last;
+          AppendOpeningQuotationMark(Atoms, Surrounding.Style, Child);
+        end;
       end;
   else
-    // Every other effect styles the text up to the closing tag.
+    // Bold, italic and the other styles have no mark.
   end;
 
+  // Every tag that gets this far lasts up to its closing tag, which a quote
+  // needs for its closing mark.
   if Tag.IsClosing then
-    TryCloseHtmlStyle(Frames, Tag.Name)
+    CloseHtmlStyle(Atoms, Frames, Child, Tag.Name)
   else
     OpenHtmlStyle(Frames, Tag);
 end;
 
 // The quotation marks are text of the tags, in the style of the text around
-// them, so they are drawn and copied the way a browser shows them. A closing
-// tag without its opening tag puts no mark.
-procedure TInlineAtomCollector.HandleQuote(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
-  const Child: IMarkdownNode; const Tag: TInlineHtmlTag);
+// them, so they are drawn and copied the way a browser shows them.
+procedure TInlineAtomCollector.AppendOpeningQuotationMark(const Atoms: TList<TInlineAtom>;
+  const Style: TInlineStyle; const Child: IMarkdownNode);
 begin
-  if not Tag.IsClosing then
-  begin
-    const OpeningMark = OpeningQuotationMarks[OpenQuoteLevel];
-    const Surrounding = Frames.Last;
-    AppendTextAtoms(Atoms, OpeningMark, Surrounding.Style, Child);
-    OpenHtmlStyle(Frames, Tag);
-    Exit;
-  end;
-
-  const IsClosed = TryCloseHtmlStyle(Frames, Tag.Name);
-  if not IsClosed then
-    Exit;
-
-  const ClosingMark = ClosingQuotationMarks[OpenQuoteLevel];
-  const Surrounding = Frames.Last;
-  AppendTextAtoms(Atoms, ClosingMark, Surrounding.Style, Child);
+  const OpeningMark = OpeningQuotationMarks[QuoteDepth];
+  AppendTextAtoms(Atoms, OpeningMark, Style, Child);
 end;
 
 // How deep the next quote sits: 0 outside any quote, 1 inside one and deeper,
 // which is where the marks stop changing.
-function TInlineAtomCollector.OpenQuoteLevel: Integer;
+function TInlineAtomCollector.QuoteDepth: Integer;
 begin
   var OpenQuotes := 0;
   for var Opening in FHtmlOpenings do
   begin
-    const IsQuote = (Opening.Name = QuoteTagName);
-    if IsQuote then
+    if Opening.IsQuote then
       Inc(OpenQuotes);
   end;
 
@@ -2448,6 +2450,7 @@ begin
 
   var Opening := Default(TInlineHtmlOpening);
   Opening.Name := Tag.Name;
+  Opening.Effect := Tag.Effect;
   Opening.FrameDepth := Depth;
   Opening.Saved := Frame.Style;
   FHtmlOpenings.Add(Opening);
@@ -2457,10 +2460,11 @@ begin
 end;
 
 // A closing tag without its opening tag in the same frame is ignored; one that
-// closes over tags left open drops those as well.
-function TInlineAtomCollector.TryCloseHtmlStyle(const Frames: TList<TInlineFrame>; const Name: string): Boolean;
+// closes over tags left open closes those as well. A quote closed by its own
+// tag takes its closing mark from that tag.
+procedure TInlineAtomCollector.CloseHtmlStyle(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
+  const Child: IMarkdownNode; const Name: string);
 begin
-  Result := False;
   const Depth = Frames.Count;
 
   for var Index := FHtmlOpenings.Count - 1 downto 0 do
@@ -2470,21 +2474,75 @@ begin
     if not IsMatch then
       Continue;
 
+    CloseHtmlOpeningsFrom(Atoms, Index + 1);
+    FHtmlOpenings.Delete(Index);
+
     var Frame := Frames[Depth - 1];
     Frame.Style := Opening.Saved;
     Frames[Depth - 1] := Frame;
-    FHtmlOpenings.Count := Index;
-    Result := True;
+
+    if Opening.IsQuote then
+      AppendClosingQuotationMark(Atoms, Opening.Saved, Child, 0);
     Exit;
   end;
 end;
 
-procedure TInlineAtomCollector.DropHtmlOpeningsDeeperThan(const FrameDepth: Integer);
+// Tags left open inside a container end where the container ends, as a browser
+// closes them at the end of a paragraph.
+procedure TInlineAtomCollector.CloseHtmlOpeningsDeeperThan(const Atoms: TList<TInlineAtom>;
+  const FrameDepth: Integer);
 begin
-  while (FHtmlOpenings.Count > 0) and (FHtmlOpenings.Last.FrameDepth > FrameDepth) do
+  var FirstDeeper := FHtmlOpenings.Count;
+  while (FirstDeeper > 0) and (FHtmlOpenings[FirstDeeper - 1].FrameDepth > FrameDepth) do
   begin
-    FHtmlOpenings.Delete(FHtmlOpenings.Count - 1);
+    Dec(FirstDeeper);
   end;
+
+  CloseHtmlOpeningsFrom(Atoms, FirstDeeper);
+end;
+
+// Closes the openings from Index on, the innermost first, so a quote inside a
+// quote puts its closing mark before the one around it.
+procedure TInlineAtomCollector.CloseHtmlOpeningsFrom(const Atoms: TList<TInlineAtom>; const Index: Integer);
+begin
+  while FHtmlOpenings.Count > Index do
+  begin
+    const Opening = FHtmlOpenings.Last;
+    FHtmlOpenings.Delete(FHtmlOpenings.Count - 1);
+
+    if Opening.IsQuote then
+      AppendImpliedClosingQuotationMark(Atoms, Opening.Saved);
+  end;
+end;
+
+// A quote without its own closing tag has no source for its closing mark, so
+// the mark stands for the place right after what comes before it: a selection
+// that starts or ends on the mark copies the markdown up to that place. A hard
+// break has no source, so the search goes on before it; with no source at all
+// the mark still shows.
+procedure TInlineAtomCollector.AppendImpliedClosingQuotationMark(const Atoms: TList<TInlineAtom>;
+  const Style: TInlineStyle);
+begin
+  for var Index := Atoms.Count - 1 downto 0 do
+  begin
+    const Previous = Atoms[Index];
+    const HasSource = (Previous.SourceNode <> nil);
+    if not HasSource then
+      Continue;
+
+    const PreviousEnd = Previous.StartOffset + Length(Previous.Text);
+    AppendClosingQuotationMark(Atoms, Style, Previous.SourceNode, PreviousEnd);
+    Exit;
+  end;
+
+  AppendClosingQuotationMark(Atoms, Style, nil, 0);
+end;
+
+procedure TInlineAtomCollector.AppendClosingQuotationMark(const Atoms: TList<TInlineAtom>; const Style: TInlineStyle;
+  const Source: IMarkdownNode; const SourceOffset: Integer);
+begin
+  const ClosingMark = ClosingQuotationMarks[QuoteDepth];
+  AppendTextAtoms(Atoms, ClosingMark, Style, Source, SourceOffset);
 end;
 
 function TInlineAtomCollector.StyledBy(const Tag: TInlineHtmlTag; const Style: TInlineStyle): TInlineStyle;
