@@ -96,6 +96,9 @@ type
     procedure FormulaCopyText_Readable_CopiesFormulaAsText;
 
     [Test]
+    procedure HtmlBlock_Quote_CopiesTheQuotationMarks;
+
+    [Test]
     procedure Relayout_AfterExtensionDataChanged_LaysOutAgain;
 
     [Test]
@@ -474,6 +477,16 @@ begin
   Viewer.SelectAll;
 
   Assert.AreEqual(FormulaAsText, Viewer.SelectedText);
+end;
+
+procedure TMarkdownVclViewerTests.HtmlBlock_Quote_CopiesTheQuotationMarks;
+begin
+  const Viewer = NewHostedViewer;
+  Viewer.Text := '<p>she said <q>hi</q></p>';
+
+  Viewer.SelectAll;
+
+  Assert.AreEqual('she said '#$201C'hi'#$201D, Viewer.SelectedText);
 end;
 
 procedure TMarkdownVclViewerTests.Keyboard_ArrowDown_ScrollsOverflowingContent;

@@ -645,8 +645,8 @@ ordinary path, so it gets selection, hit-testing and theming for free. The
 subset covers `p`, `div`, `center`, `section`, `article`, `h1`-`h6`, `hr`,
 `br`, `strong`/`b`, `em`/`i`, `code`/`kbd`/`samp`/`tt`, `del`/`s`/`strike`,
 `a`, `img`, `ul`/`ol`/`li`, `blockquote`, `details`/`summary` and `pre`;
-`sub`, `sup`, `ins`, `mark` and `small` stay as inline HTML, which a paragraph
-draws as GitHub does. `script`, `style`, `head`, `iframe` and `object` are
+`sub`, `sup`, `ins`, `mark`, `small`, `var`, `cite`, `dfn` and `q` stay as
+inline HTML, which a paragraph draws as GitHub does. `script`, `style`, `head`, `iframe` and `object` are
 dropped along with their content; any other tag disappears while its content
 stays, the way a browser would show it with the styling removed. The
 translation is implemented in `Markdown4D.Html.Subset` and cached on the AST
@@ -681,11 +681,14 @@ and mark the matches in view. Without the viewer,
 each section shows as its tag asks.
 
 A tag inside a paragraph, heading or table cell is never painted either. The
-viewer follows the subset GitHub renders: `b`/`strong` bold, `i`/`em`/`var`
-italic, `code`/`kbd`/`samp`/`tt` in the code font, `s`/`del`/`strike` struck
-through, `ins` underlined, `sub` and `sup` smaller and below or above the
-baseline, `small` smaller, `mark` on `Theme.MarkBackgroundColor`, `br` a line
-break and `a href` a link. A comment
+viewer follows the subset GitHub renders: `b`/`strong` bold,
+`i`/`em`/`var`/`cite`/`dfn` italic, `code`/`kbd`/`samp`/`tt` in the code font,
+`s`/`del`/`strike` struck through, `ins` underlined, `sub` and `sup` smaller and
+below or above the baseline, `small` smaller, `mark` on
+`Theme.MarkBackgroundColor`, `q` between quotation marks (“ ”, and ‘ ’ for a
+quote inside a quote, as a browser shows them in English), `br` a line break
+and `a href` a link. The quotation marks are drawn text, so `SelectedText`
+copies them; `SelectedMarkdown` keeps the `q` tags instead. A comment
 shows nothing, and any other tag disappears while its text stays, `u` among
 them, as on GitHub. The document itself keeps the tags, so the editor and the
 markdown writer see them as written.

@@ -270,6 +270,11 @@ type
       SmallScale = 0.85;
       SuperscriptRise = 0.4;
       SubscriptDrop = 0.25;
+      // The marks a browser puts around <q> in English: double quotes, and
+      // single quotes for a quote inside a quote and deeper.
+      OpeningQuotationMarks: array[0..1] of string = (#$201C, #$2018);
+      ClosingQuotationMarks: array[0..1] of string = (#$201D, #$2019);
+      QuoteTagName = 'q';
     var
       FMeasurer: ITextMeasurer;
       FTheme: TMarkdownTheme;
@@ -278,8 +283,11 @@ type
       FHtmlOpenings: TList<TInlineHtmlOpening>;
     procedure HandleInlineHtml(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
       const Child: IMarkdownNode);
+    procedure HandleQuote(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
+      const Child: IMarkdownNode; const Tag: TInlineHtmlTag);
+    function OpenQuoteLevel: Integer;
     procedure OpenHtmlStyle(const Frames: TList<TInlineFrame>; const Tag: TInlineHtmlTag);
-    procedure CloseHtmlStyle(const Frames: TList<TInlineFrame>; const Name: string);
+    function TryCloseHtmlStyle(const Frames: TList<TInlineFrame>; const Name: string): Boolean;
     procedure DropHtmlOpeningsDeeperThan(const FrameDepth: Integer);
     function StyledBy(const Tag: TInlineHtmlTag; const Style: TInlineStyle): TInlineStyle;
     procedure HandleInlineChild(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
@@ -2328,14 +2336,58 @@ begin
           AppendHardBreakAtom(Atoms);
         Exit;
       end;
+    TInlineHtmlEffect.Quote:
+      begin
+        HandleQuote(Atoms, Frames, Child, Tag);
+        Exit;
+      end;
   else
     // Every other effect styles the text up to the closing tag.
   end;
 
   if Tag.IsClosing then
-    CloseHtmlStyle(Frames, Tag.Name)
+    TryCloseHtmlStyle(Frames, Tag.Name)
   else
     OpenHtmlStyle(Frames, Tag);
+end;
+
+// The quotation marks are text of the tags, in the style of the text around
+// them, so they are drawn and copied the way a browser shows them. A closing
+// tag without its opening tag puts no mark.
+procedure TInlineAtomCollector.HandleQuote(const Atoms: TList<TInlineAtom>; const Frames: TList<TInlineFrame>;
+  const Child: IMarkdownNode; const Tag: TInlineHtmlTag);
+begin
+  if not Tag.IsClosing then
+  begin
+    const OpeningMark = OpeningQuotationMarks[OpenQuoteLevel];
+    const Surrounding = Frames.Last;
+    AppendTextAtoms(Atoms, OpeningMark, Surrounding.Style, Child);
+    OpenHtmlStyle(Frames, Tag);
+    Exit;
+  end;
+
+  const IsClosed = TryCloseHtmlStyle(Frames, Tag.Name);
+  if not IsClosed then
+    Exit;
+
+  const ClosingMark = ClosingQuotationMarks[OpenQuoteLevel];
+  const Surrounding = Frames.Last;
+  AppendTextAtoms(Atoms, ClosingMark, Surrounding.Style, Child);
+end;
+
+// How deep the next quote sits: 0 outside any quote, 1 inside one and deeper,
+// which is where the marks stop changing.
+function TInlineAtomCollector.OpenQuoteLevel: Integer;
+begin
+  var OpenQuotes := 0;
+  for var Opening in FHtmlOpenings do
+  begin
+    const IsQuote = (Opening.Name = QuoteTagName);
+    if IsQuote then
+      Inc(OpenQuotes);
+  end;
+
+  Result := Min(OpenQuotes, High(OpeningQuotationMarks));
 end;
 
 procedure TInlineAtomCollector.OpenHtmlStyle(const Frames: TList<TInlineFrame>; const Tag: TInlineHtmlTag);
@@ -2355,8 +2407,9 @@ end;
 
 // A closing tag without its opening tag in the same frame is ignored; one that
 // closes over tags left open drops those as well.
-procedure TInlineAtomCollector.CloseHtmlStyle(const Frames: TList<TInlineFrame>; const Name: string);
+function TInlineAtomCollector.TryCloseHtmlStyle(const Frames: TList<TInlineFrame>; const Name: string): Boolean;
 begin
+  Result := False;
   const Depth = Frames.Count;
 
   for var Index := FHtmlOpenings.Count - 1 downto 0 do
@@ -2370,6 +2423,7 @@ begin
     Frame.Style := Opening.Saved;
     Frames[Depth - 1] := Frame;
     FHtmlOpenings.Count := Index;
+    Result := True;
     Exit;
   end;
 end;
@@ -2415,6 +2469,9 @@ begin
       Result.Font.Size := Style.Font.Size * SmallScale;
     TInlineHtmlEffect.Mark:
       Result.Highlight := FTheme.MarkBackgroundColor;
+    TInlineHtmlEffect.Quote:
+      // Only the marks around it set a quote apart; its text keeps the style.
+      Exit;
     TInlineHtmlEffect.Link:
       begin
         // An anchor without href only marks a place; its text stays as it is.

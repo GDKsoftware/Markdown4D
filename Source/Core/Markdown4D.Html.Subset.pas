@@ -13,8 +13,9 @@ unit Markdown4D.Html.Subset;
 // So instead of a second rendering path, the allowed subset is translated to
 // markdown and handed back to the parser. Everything downstream - layout,
 // selection, hit-testing, theming, image loading - then works on it unchanged.
-// The inline tags markdown has no form for, such as <sub> and <mark>, stay as
-// inline HTML, which a paragraph draws the way GitHub does.
+// The inline tags markdown has no form for, such as <sub>, <mark> and <q>, stay
+// as inline HTML, which a paragraph draws the way GitHub does. Which tags those
+// are, the paragraph decides: TInlineHtmlTag holds the one list.
 //
 // The list of tags this understands is deliberately short. A tag that is not on
 // it is dropped while its content is kept, which is what a browser would show
@@ -56,7 +57,8 @@ uses
   System.Classes,
   System.Generics.Collections,
   System.RegularExpressions,
-  Markdown4D.Html.Entities;
+  Markdown4D.Html.Entities,
+  Markdown4D.Layout.InlineHtml;
 
 type
   TTagKind = (
@@ -234,12 +236,6 @@ begin
     Result.Opener := '~~';
     Result.Closer := '~~';
   end
-  else if (Name = 'sub') or (Name = 'sup') or (Name = 'ins') or (Name = 'mark') or (Name = 'small') then
-  begin
-    Result.Kind := TTagKind.InlineHtml;
-    Result.Opener := Format('<%s>', [Name]);
-    Result.Closer := Format('</%s>', [Name]);
-  end
   else if Name = 'a' then
     Result.Kind := TTagKind.Anchor
   else if Name = 'img' then
@@ -277,6 +273,12 @@ begin
   begin
     Result.Kind := TTagKind.Preformatted;
     Result.IsBlock := True;
+  end
+  else if TInlineHtmlTag.EffectOf(Name) <> TInlineHtmlEffect.Hidden then
+  begin
+    Result.Kind := TTagKind.InlineHtml;
+    Result.Opener := Format('<%s>', [Name]);
+    Result.Closer := Format('</%s>', [Name]);
   end;
 end;
 

@@ -7,9 +7,9 @@ interface
 type
   // What a tag inside a paragraph does to the text after it, following the
   // subset GitHub renders. Hidden tags show nothing themselves; the text
-  // between them stays.
+  // between them stays. A quote puts quotation marks around its text.
   TInlineHtmlEffect = (Hidden, Bold, Italic, Code, Strikethrough, Underline, Subscript, Superscript, Small, Mark,
-    LineBreak, Link);
+    Quote, LineBreak, Link);
 
   TInlineHtmlTag = record
   private
@@ -24,6 +24,8 @@ type
     IsComment: Boolean;
     Href: string;
     class function Parse(const Literal: string): TInlineHtmlTag; static;
+    // The one list of tags a paragraph draws; an HTML block keeps the same tags.
+    class function EffectOf(const Name: string): TInlineHtmlEffect; static;
     function Effect: TInlineHtmlEffect;
   end;
 
@@ -67,11 +69,11 @@ begin
 end;
 
 // GitHub drops <u> and everything else outside its subset, keeping the text.
-function TInlineHtmlTag.Effect: TInlineHtmlEffect;
+class function TInlineHtmlTag.EffectOf(const Name: string): TInlineHtmlEffect;
 begin
   if MatchText(Name, ['b', 'strong']) then
     Result := TInlineHtmlEffect.Bold
-  else if MatchText(Name, ['i', 'em', 'var']) then
+  else if MatchText(Name, ['i', 'em', 'var', 'cite', 'dfn']) then
     Result := TInlineHtmlEffect.Italic
   else if MatchText(Name, ['code', 'kbd', 'samp', 'tt']) then
     Result := TInlineHtmlEffect.Code
@@ -87,12 +89,19 @@ begin
     Result := TInlineHtmlEffect.Small
   else if MatchText(Name, ['mark']) then
     Result := TInlineHtmlEffect.Mark
+  else if MatchText(Name, ['q']) then
+    Result := TInlineHtmlEffect.Quote
   else if MatchText(Name, ['br']) then
     Result := TInlineHtmlEffect.LineBreak
   else if MatchText(Name, ['a']) then
     Result := TInlineHtmlEffect.Link
   else
     Result := TInlineHtmlEffect.Hidden;
+end;
+
+function TInlineHtmlTag.Effect: TInlineHtmlEffect;
+begin
+  Result := EffectOf(Name);
 end;
 
 end.
