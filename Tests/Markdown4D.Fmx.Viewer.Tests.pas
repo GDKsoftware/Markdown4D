@@ -25,6 +25,8 @@ type
       ImageMarkdown = '![alt](img.png)';
       RepeatedWordMarkdown = 'Alpha beta alpha';
       RepeatedWord = 'alpha';
+      BoldWordMarkdown = 'A **bold** word';
+      BoldWord = 'bold';
       SecondParagraph = 'Paragraph 01';
       TallParagraphCount = 40;
       LastParagraph = 'Paragraph 39';
@@ -157,6 +159,9 @@ type
 
     [Test]
     procedure Keyboard_CtrlInsert_WritesAClipboardOfTheApplicationOnce;
+
+    [Test]
+    procedure Keyboard_CtrlInsert_WritesAgainWhenTheTextDidNotArrive;
 
     [Test]
     procedure CtrlWheel_Up_ZoomsInOneLevel;
@@ -453,9 +458,9 @@ begin
   var Clipboard: TFmxClipboardSwap;
   Clipboard.Replace;
   try
-    FViewer.Text := 'A **bold** word';
+    FViewer.Text := BoldWordMarkdown;
     FViewer.CopyAsMarkdown := CopyAsMarkdown;
-    FViewer.FindText('bold');
+    FViewer.FindText(BoldWord);
 
     PressKey(vkC, [ssCtrl, ssShift]);
 
@@ -470,12 +475,12 @@ begin
   var Clipboard: TFmxClipboardSwap;
   Clipboard.Replace;
   try
-    FViewer.Text := 'A **bold** word';
-    FViewer.FindText('bold');
+    FViewer.Text := BoldWordMarkdown;
+    FViewer.FindText(BoldWord);
 
     PressKey(vkInsert, [ssCtrl]);
 
-    Assert.AreEqual('bold', Clipboard.Text);
+    Assert.AreEqual(BoldWord, Clipboard.Text);
   finally
     Clipboard.Restore;
   end;
@@ -488,12 +493,30 @@ begin
   var Clipboard: TFmxClipboardSwap;
   Clipboard.Replace;
   try
-    FViewer.Text := 'A **bold** word';
-    FViewer.FindText('bold');
+    FViewer.Text := BoldWordMarkdown;
+    FViewer.FindText(BoldWord);
 
     PressKey(vkInsert, [ssCtrl]);
 
     Assert.AreEqual(1, Clipboard.WriteCount);
+  finally
+    Clipboard.Restore;
+  end;
+end;
+
+procedure TMarkdownFmxViewerTests.Keyboard_CtrlInsert_WritesAgainWhenTheTextDidNotArrive;
+begin
+  var Clipboard: TFmxClipboardSwap;
+  Clipboard.Replace;
+  try
+    Clipboard.Fake.LostWrites := 1;
+    FViewer.Text := BoldWordMarkdown;
+    FViewer.FindText(BoldWord);
+
+    PressKey(vkInsert, [ssCtrl]);
+
+    Assert.AreEqual(BoldWord, Clipboard.Text);
+    Assert.AreEqual(2, Clipboard.WriteCount);
   finally
     Clipboard.Restore;
   end;

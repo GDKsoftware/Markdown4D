@@ -14,6 +14,7 @@ uses
   Markdown4D.Fmx.Editor in '..\Source\Fmx\Markdown4D.Fmx.Editor.pas',
   Markdown4D.Fmx.Editor.Tests in 'Markdown4D.Fmx.Editor.Tests.pas',
   Markdown4D.Tests.FmxClipboard in 'Markdown4D.Tests.FmxClipboard.pas',
+  Markdown4D.Tests.ClipboardHold in 'Markdown4D.Tests.ClipboardHold.pas',
   Markdown4D.Fmx.Design.Tests in 'Markdown4D.Fmx.Design.Tests.pas',
   Markdown4D.Tests.Pipeline.Helpers in 'Markdown4D.Tests.Pipeline.Helpers.pas',
   Markdown4D.Tests.DisplayList.Helpers in 'Markdown4D.Tests.DisplayList.Helpers.pas',

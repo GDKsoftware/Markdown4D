@@ -106,6 +106,7 @@
         <DCCReference Include="Markdown4D.Layout.SelectedMarkdown.Tests.pas"/>
         <DCCReference Include="Markdown4D.Layout.InlineHtml.Tests.pas"/>
         <DCCReference Include="Markdown4D.Tests.VclClipboard.pas"/>
+        <DCCReference Include="Markdown4D.Tests.ClipboardHold.pas"/>
         <DCCReference Include="Markdown4D.Editor.PreviewPacer.Tests.pas"/>
         <DCCReference Include="Markdown4D.Layout.Renderer.Tests.pas"/>
         <DCCReference Include="Markdown4D.Theme.Tests.pas"/>

@@ -40,6 +40,7 @@ implementation
 uses
   System.SysUtils,
   Markdown4D.Tests.VclClipboard,
+  Markdown4D.Tests.ClipboardHold,
   Markdown4D.Viewer.Clipboard;
 
 // Word pastes the MathML formats as plain text when they end in a null.

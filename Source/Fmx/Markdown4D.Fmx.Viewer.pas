@@ -158,7 +158,6 @@ type
     function PointOnCopyButton(const Point: TLayoutPointF): Boolean;
     procedure ClearCodeHover;
     procedure CopyCodeToClipboard(const Text: string);
-    class procedure WriteClipboard(const Value: string); static;
     procedure SelectForPress(const Point: TLayoutPointF; const X, Y: Single; const IsDoubleClick: Boolean);
     procedure FinishLinkClick(const X, Y: Single);
     procedure FinishDisclosureClick(const X, Y: Single);
@@ -353,12 +352,11 @@ uses
   Markdown4D.Consts,
   Markdown4D.DesignSample,
   System.Math,
-  System.Rtti,
   System.IOUtils,
   System.Math.Vectors,
   FMX.Platform,
-  Markdown4D.Clipboard.Retry,
   Markdown4D.Image.Svg.Native,
+  Markdown4D.Fmx.Clipboard,
   Markdown4D.Fmx.Glyphs,
   Markdown4D.Fmx.ImageDecoder,
   Markdown4D.Layout.Defaults,
@@ -702,7 +700,7 @@ begin
   if IsPutWithMath then
     Exit;
 
-  WriteClipboard(Text);
+  TMarkdownFmxClipboard.TryWriteText(Text);
 end;
 
 procedure TMarkdownViewer.SelectAll;
@@ -1581,44 +1579,7 @@ begin
   if Text = '' then
     Exit;
 
-  WriteClipboard(Text);
-end;
-
-// Another program may hold the clipboard open for a moment: a clipboard
-// manager or a password manager reads it right after every change. The
-// clipboard service FMX has for Windows does not say when the text did not
-// get there for that, but Windows counts the changes of the clipboard, and the
-// count stands still then: the copy is tried again. The count stands still as
-// well under a service the application put in place of FMX's, which holds the
-// text all the same, and other platforms keep no count; either is written
-// once.
-class procedure TMarkdownViewer.WriteClipboard(const Value: string);
-begin
-  var Clipboard: IFMXClipboardService;
-  if not TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Clipboard) then
-    Exit;
-
-  try
-    TMarkdownClipboardRetry.TryRepeatedly(
-      function: Boolean
-      begin
-        const Before = TMarkdownMathClipboard.ChangeCount;
-        Clipboard.SetClipboard(Value);
-
-        Result := TMarkdownMathClipboard.HasChangedSince(Before);
-        if Result then
-          Exit;
-
-        const Held = Clipboard.GetClipboard;
-        Result := (Held.ToString = Value);
-      end);
-  except
-    // IFMXClipboardService has a separate implementation per platform, and none
-    // of them documents a shared specific exception for a failed write, so the
-    // catch stays broad: a clipboard failure must not take the viewer down.
-    on Exception do
-      Exit;
-  end;
+  TMarkdownFmxClipboard.TryWriteText(Text);
 end;
 
 procedure TMarkdownViewer.HandleCopyFeedbackTimer(Sender: TObject);
