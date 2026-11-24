@@ -309,6 +309,29 @@ type
     procedure InlineHtml_Mark_HighlightsTheText;
 
     [Test]
+    [TestCase('Paragraph cite', 'a <cite>Cited</cite> b~Cited', '~')]
+    [TestCase('Paragraph dfn', 'a <dfn>Defined</dfn> b~Defined', '~')]
+    [TestCase('Paragraph var', 'a <var>x</var> b~x', '~')]
+    [TestCase('Heading', '# a <cite>Cited</cite>~Cited', '~')]
+    [TestCase('Table cell', '| a |'#10'|---|'#10'| <dfn>Defined</dfn> |~Defined', '~')]
+    [TestCase('Html block cite', '<p>a <cite>Cited</cite> b</p>~Cited', '~')]
+    [TestCase('Html block dfn', '<p>a <dfn>Defined</dfn> b</p>~Defined', '~')]
+    [TestCase('Html block var', '<p>a <var>x</var> b</p>~x', '~')]
+    procedure InlineHtml_CiteDefinitionVariable_AreItalic(const Markdown, Shown: string);
+
+    [Test]
+    [TestCase('Paragraph', 'say <q>hi</q> now~say '#$201C'hi'#$201D' now', '~')]
+    [TestCase('Html block', '<p>say <q>hi</q> now</p>~say '#$201C'hi'#$201D' now', '~')]
+    [TestCase('Heading', '# say <q>hi</q>~say '#$201C'hi'#$201D, '~')]
+    [TestCase('Table cell', '| a |'#10'|---|'#10'| <q>hi</q> |~a'#13#10#$201C'hi'#$201D, '~')]
+    [TestCase('Nested', '<q>a <q>b</q> c</q>~'#$201C'a '#$2018'b'#$2019' c'#$201D, '~')]
+    [TestCase('Closing without opening', 'a </q>b~a b', '~')]
+    procedure InlineHtml_Quote_ShowsQuotationMarks(const Markdown, Expected: string);
+
+    [Test]
+    procedure SelectedMarkdown_Quote_KeepsTheTagsWithoutTheMarks;
+
+    [Test]
     procedure Text_TocMarker_ShowsTheHeadingsInsteadOfTheMarker;
 
     [Test]
@@ -1446,6 +1469,45 @@ begin
       IsHighlighted := True;
   end;
   Assert.IsTrue(IsHighlighted);
+end;
+
+procedure TMarkdownViewerModelTests.InlineHtml_CiteDefinitionVariable_AreItalic(const Markdown, Shown: string);
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+
+  FModel.Text := Markdown;
+
+  Assert.IsTrue(RunShowing(Shown).Font.Italic, 'italic');
+  Assert.IsFalse(RunShowing('a').Font.Italic, 'the text around it stays upright');
+end;
+
+// The marks are drawn but not typed: copying the text takes them along, as a
+// browser does.
+procedure TMarkdownViewerModelTests.InlineHtml_Quote_ShowsQuotationMarks(const Markdown, Expected: string);
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := Markdown;
+
+  FModel.SelectAll;
+
+  Assert.AreEqual(Expected, FModel.SelectedText);
+end;
+
+// The marks come from the tags, so the markdown of a selection holds the tags
+// and not the marks as well.
+procedure TMarkdownViewerModelTests.SelectedMarkdown_Quote_KeepsTheTagsWithoutTheMarks;
+begin
+  FModel.SetViewport(DefaultWidth, DefaultHeight);
+  FModel.Text := 'say <q>hi</q> now';
+  const OpeningMark = RunShowing(#$201C).Bounds;
+  const ClosingMark = RunShowing(#$201D).Bounds;
+  const LineMiddle = (OpeningMark.Top + OpeningMark.Bottom) / 2;
+  FModel.SetSelectionAnchor(TLayoutPointF.Create(OpeningMark.Left, LineMiddle));
+  FModel.SetSelectionExtent(TLayoutPointF.Create(ClosingMark.Right, LineMiddle));
+
+  const Actual = FModel.SelectedMarkdown;
+
+  Assert.AreEqual('<q>hi</q>', Actual);
 end;
 
 procedure TMarkdownViewerModelTests.Text_TocMarker_ShowsTheHeadingsInsteadOfTheMarker;

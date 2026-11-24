@@ -47,6 +47,10 @@ type
     [TestCase('Inserted', '<p>an <ins>added</ins> word</p>,an <ins>added</ins> word')]
     [TestCase('Mark', '<p>a <mark>marked</mark> word</p>,a <mark>marked</mark> word')]
     [TestCase('Small', '<p>a <small>small</small> print</p>,a <small>small</small> print')]
+    [TestCase('Cite', '<p>in <cite>The Book</cite></p>,in <cite>The Book</cite>')]
+    [TestCase('Definition', '<p>a <dfn>term</dfn> is</p>,a <dfn>term</dfn> is')]
+    [TestCase('Variable', '<p>set <var>x</var></p>,set <var>x</var>')]
+    [TestCase('Quote', '<p>said <q>hello</q></p>,said <q>hello</q>')]
     procedure Convert_InlineTagWithoutMarkdown_StaysInlineHtml(const Html, Expected: string);
 
     [Test]
