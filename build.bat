@@ -106,17 +106,22 @@ echo === Running FMX test suite ^(Win64x^) ===
 "%FMX_TEST_EXE_X64%" -xml:"%FMX_RESULTS_XML_X64%" -exit:continue
 set FMX_EXIT_X64=%ERRORLEVEL%
 
+rem A failed suite does not stop the script: the rest of the sweep still runs, so
+rem one run shows every error, and the script then ends with exit code 1.
 :report_results
+set TESTS_FAILED=
 echo.
 if "%MAIN_EXIT%"=="0" (
     echo === Main suite ^(Win32^): all tests passed ===
 ) else (
     echo === Main suite ^(Win32^): failures reported, exit code %MAIN_EXIT% ===
+    set TESTS_FAILED=1
 )
 if "%FMX_EXIT%"=="0" (
     echo === FMX suite ^(Win32^): all tests passed ===
 ) else (
     echo === FMX suite ^(Win32^): failures reported, exit code %FMX_EXIT% ===
+    set TESTS_FAILED=1
 )
 if defined DELPHI_CE goto update_dashboard
 
@@ -124,11 +129,13 @@ if "%MAIN_EXIT_X64%"=="0" (
     echo === Main suite ^(Win64x^): all tests passed ===
 ) else (
     echo === Main suite ^(Win64x^): failures reported, exit code %MAIN_EXIT_X64% ===
+    set TESTS_FAILED=1
 )
 if "%FMX_EXIT_X64%"=="0" (
     echo === FMX suite ^(Win64x^): all tests passed ===
 ) else (
     echo === FMX suite ^(Win64x^): failures reported, exit code %FMX_EXIT_X64% ===
+    set TESTS_FAILED=1
 )
 
 echo.
@@ -199,6 +206,12 @@ for %%K in (
 echo.
 echo === Updating conformance dashboard ===
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\Update-ConformanceDashboard.ps1"
+
+if defined TESTS_FAILED (
+    echo.
+    echo === TESTS FAILED: see the suite results above ===
+    exit /b 1
+)
 
 echo.
 echo === Build succeeded ===
