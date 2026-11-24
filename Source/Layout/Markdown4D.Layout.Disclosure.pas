@@ -41,11 +41,10 @@ type
     class function HasSummary(const Literal: string): Boolean; static;
     class function DefaultSummaryHtml: string; static;
     class function SummaryEnd(const Literal: string): Integer; static;
-    class procedure CollectKeys(const Container: IMarkdownNode;
+    class procedure CollectKeys(const Container: IMarkdownNode; const Scope: string;
       const Occurrences: TDictionary<string, Integer>); static;
     class function SummarySource(const Section: IMarkdownNode): string; static;
-    class function KeyFor(const Summary: string; const Occurrence: Integer): Integer; static;
-    class function IsContainer(const Node: IMarkdownNode): Boolean; static;
+    class function KeyFor(const Scope, Summary: string; const Occurrence: Integer): Integer; static;
     class procedure CollectClosedSections(const Container: IMarkdownNode; const Source: string;
       const State: IMarkdownDisclosureState; const Sections: TList<TMarkdownClosedSection>); static;
     class function TryGetClosedSection(const Container: IMarkdownNode; const Index: Integer; const Source: string;
@@ -58,6 +57,9 @@ type
     class function Encloses(const Outer, Inner: IMarkdownNode): Boolean; static;
 
   public
+    const
+      // The scope of the keys of a document that no block lays out.
+      DocumentScope = '';
     class function IsOpener(const Node: IMarkdownNode; out OpenByDefault: Boolean): Boolean; static;
     class function IsCloser(const Node: IMarkdownNode): Boolean; static;
     class function IsWholeSection(const Node: IMarkdownNode; out OpenByDefault: Boolean): Boolean; static;
@@ -74,8 +76,10 @@ type
     // Gives every section in Document the key a reader's choice to open or
     // close it is kept under: its summary, and which section with that summary
     // it is. Typing elsewhere leaves the key as it is, so an opened section
-    // stays open while the text around it changes.
-    class procedure AssignKeys(const Document: IMarkdownNode); static;
+    // stays open while the text around it changes. Scope keeps the keys of a
+    // document a block override lays out apart from all other keys; see
+    // TMarkdownNestedScopes.
+    class procedure AssignKeys(const Document: IMarkdownNode; const Scope: string = DocumentScope); static;
     // The key AssignKeys gave the section; before that, the key of the first
     // section with its summary.
     class function KeyOf(const Opener: IMarkdownNode): Integer; static;
@@ -97,6 +101,9 @@ type
       const State: IMarkdownDisclosureState): TArray<TMarkdownClosedSection>; static;
     // The blocks that open the sections around Node, outermost first.
     class function SectionsAround(const Document, Node: IMarkdownNode): TArray<IMarkdownNode>; static;
+    // Whether the children of Node are blocks laid out in its place: those of
+    // a block quote, a list and a list item.
+    class function IsContainer(const Node: IMarkdownNode): Boolean; static;
     // The blocks that open the sections around a link target at
     // LiteralPosition in the HTML of Node, outermost first: those around Node
     // and, when Node is a whole section with the target in its content, Node.
@@ -228,17 +235,17 @@ begin
   Result := Copy(Literal, ContentStart, ContentEnd - ContentStart);
 end;
 
-class procedure TMarkdownDisclosures.AssignKeys(const Document: IMarkdownNode);
+class procedure TMarkdownDisclosures.AssignKeys(const Document: IMarkdownNode; const Scope: string);
 begin
   const Occurrences = TDictionary<string, Integer>.Create;
   try
-    CollectKeys(Document, Occurrences);
+    CollectKeys(Document, Scope, Occurrences);
   finally
     Occurrences.Free;
   end;
 end;
 
-class procedure TMarkdownDisclosures.CollectKeys(const Container: IMarkdownNode;
+class procedure TMarkdownDisclosures.CollectKeys(const Container: IMarkdownNode; const Scope: string;
   const Occurrences: TDictionary<string, Integer>);
 begin
   for var Index := 0 to Container.ChildCount - 1 do
@@ -255,14 +262,14 @@ begin
       Inc(Occurrence);
       Occurrences.AddOrSetValue(Summary, Occurrence);
 
-      const Key = KeyFor(Summary, Occurrence);
+      const Key = KeyFor(Scope, Summary, Occurrence);
       const StoredKey: IDisclosureKey = TDisclosureKey.Create(Key);
       Child.SetExtensionData(KeyDataName, StoredKey);
       Continue;
     end;
 
     if IsContainer(Child) then
-      CollectKeys(Child, Occurrences);
+      CollectKeys(Child, Scope, Occurrences);
   end;
 end;
 
@@ -275,7 +282,7 @@ begin
     Exit(Key.Value);
 
   const Summary = SummarySource(Opener);
-  Result := KeyFor(Summary, 1);
+  Result := KeyFor(DocumentScope, Summary, 1);
 end;
 
 // The opening tag and the summary as written, so that a change anywhere
@@ -290,9 +297,9 @@ begin
   Result := Summary.Trim;
 end;
 
-class function TMarkdownDisclosures.KeyFor(const Summary: string; const Occurrence: Integer): Integer;
+class function TMarkdownDisclosures.KeyFor(const Scope, Summary: string; const Occurrence: Integer): Integer;
 begin
-  const Identity = Format('%s#%d', [Summary, Occurrence]);
+  const Identity = Format('%s%s#%d', [Scope, Summary, Occurrence]);
   Result := THashBobJenkins.GetHashValue(Identity);
 end;
 

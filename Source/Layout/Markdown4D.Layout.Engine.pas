@@ -24,6 +24,8 @@ type
     class procedure ValidateLayoutArguments(const Document: IMarkdownDocument; const AvailableWidth: Single;
       const Theme: TMarkdownTheme; const Measurer: ITextMeasurer);
     class procedure ValidateChangedRange(const ChangedRange: TLayoutBlockRange; const PreviousBlockCount: Integer);
+    class function RangeWithMovedHosts(const Document: IMarkdownDocument;
+      const ChangedRange: TLayoutBlockRange): TLayoutBlockRange;
 
   public
     // Disclosures says which <details> sections are open; without it each
@@ -36,6 +38,11 @@ type
       const ExtensionData: IMarkdownExtensionData = nil): IMarkdownDisplayList;
     // A block outside ChangedRange is reused as the previous layout left it,
     // so a section opened or closed since then needs its blocks in the range.
+    // Its display items point at the nodes it was laid out from, so outside
+    // the range Document holds the nodes of the previous document, as
+    // TMarkdownChangedBlocks.TryReuse arranges. A block among those that lays
+    // out a document of its own is laid out again when the change made it
+    // another block of its kind, as its sections then have other keys.
     class function UpdateLayout(const Previous: IMarkdownDisplayList; const Document: IMarkdownDocument;
       const ChangedRange: TLayoutBlockRange; const Theme: TMarkdownTheme; const Measurer: ITextMeasurer;
       const ImageSizes: IMarkdownImageSizeProvider = nil;
@@ -63,6 +70,7 @@ uses
   Markdown4D.Html.Subset,
   Markdown4D.Layout.HtmlAlignment,
   Markdown4D.Layout.Disclosure,
+  Markdown4D.Layout.NestedScope,
   Markdown4D.Layout.AlertIcons,
   Markdown4D.Layout.ExtensionCanvas,
   Markdown4D.Layout.InlineHtml,
@@ -205,16 +213,34 @@ type
     function Finish: Single;
   end;
 
+  // What a layout lays its blocks out with, handed on to the block overrides
+  // and to the documents they lay out.
+  TLayoutEnvironment = record
+    Theme: TMarkdownTheme;
+    Measurer: ITextMeasurer;
+    ImageSizes: IMarkdownImageSizeProvider;
+    ExtensionErrors: IMarkdownExtensionErrorSink;
+    Disclosures: IMarkdownDisclosureState;
+    ExtensionData: IMarkdownExtensionData;
+    // The scopes of the documents the blocks of the layout lay out; owned by
+    // whoever starts the layout.
+    NestedScopes: TMarkdownNestedScopes;
+    class function Create(const Theme: TMarkdownTheme; const Measurer: ITextMeasurer;
+      const ImageSizes: IMarkdownImageSizeProvider; const ExtensionErrors: IMarkdownExtensionErrorSink;
+      const Disclosures: IMarkdownDisclosureState; const ExtensionData: IMarkdownExtensionData;
+      const NestedScopes: TMarkdownNestedScopes): TLayoutEnvironment; static;
+  end;
+
+  // Valid only while the override's LayoutBlock runs: it adds to the items of
+  // the layout and uses its nested scopes, which live as long as that layout.
   TLayoutBlockContext = class(TInterfacedObject, ILayoutBlockContext)
   private
-    FMeasurer: ITextMeasurer;
-    FTheme: TMarkdownTheme;
+    FEnvironment: TLayoutEnvironment;
     FWidth: Single;
     FItems: TList<IDisplayItem>;
     FNode: IMarkdownNode;
     FCanvas: IExtensionCanvas;
-    FImageSizes: IMarkdownImageSizeProvider;
-    FExtensionData: IMarkdownExtensionData;
+    FNestedCount: Integer;
     function GetMeasurer: ITextMeasurer;
     function GetTheme: TMarkdownTheme;
     function GetWidth: Single;
@@ -223,9 +249,8 @@ type
     function GetExtensionData: IMarkdownExtensionData;
 
   public
-    constructor Create(const Measurer: ITextMeasurer; const Theme: TMarkdownTheme; const Width: Single;
-      const Items: TList<IDisplayItem>; const Node: IMarkdownNode; const ImageSizes: IMarkdownImageSizeProvider;
-      const ExtensionData: IMarkdownExtensionData);
+    constructor Create(const Environment: TLayoutEnvironment; const Width: Single; const Items: TList<IDisplayItem>;
+      const Node: IMarkdownNode);
     function LayoutNested(const Document: IMarkdownDocument; const Width: Single): IMarkdownDisplayList;
     procedure AppendNested(const DisplayList: IMarkdownDisplayList; const Left, Top: Single);
   end;
@@ -380,14 +405,9 @@ type
       DisclosureMarkerScale = 0.55;
       DisclosureIndentScale = 1.2;
     var
-      FTheme: TMarkdownTheme;
-      FMeasurer: ITextMeasurer;
+      FEnvironment: TLayoutEnvironment;
       FWidth: Single;
       FItems: TList<IDisplayItem>;
-      FImageSizes: IMarkdownImageSizeProvider;
-      FExtensionErrors: IMarkdownExtensionErrorSink;
-      FDisclosures: IMarkdownDisclosureState;
-      FExtensionData: IMarkdownExtensionData;
       FCommands: TList<TLayoutCommand>;
       FCollector: TInlineAtomCollector;
       FCurrentY: Single;
@@ -458,12 +478,20 @@ type
     class function SplitCodeLines(const Literal: string): TArray<string>;
     class function ShiftedItem(const Item: IDisplayItem; const DeltaX, DeltaY: Single): IDisplayItem;
     function ContentRight: Single;
+    property Theme: TMarkdownTheme read FEnvironment.Theme;
+    property Measurer: ITextMeasurer read FEnvironment.Measurer;
 
   public
-    constructor Create(const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Width: Single;
-      const Items: TList<IDisplayItem>; const ImageSizes: IMarkdownImageSizeProvider;
-      const ExtensionErrors: IMarkdownExtensionErrorSink; const Disclosures: IMarkdownDisclosureState;
-      const ExtensionData: IMarkdownExtensionData);
+    // Lays out every block of Document, its section keys in KeyScope.
+    // Environment.NestedScopes is not used: Document gets scopes of its own.
+    class function LayoutDocument(const Document: IMarkdownDocument; const Width: Single;
+      const Environment: TLayoutEnvironment; const KeyScope: string): IMarkdownDisplayList;
+    // Lays out the blocks in Range again and reuses the others from Previous;
+    // without Previous, Range holds every block.
+    class function LayoutBlocks(const Document: IMarkdownDocument; const Width: Single;
+      const Environment: TLayoutEnvironment; const Previous: IMarkdownDisplayList;
+      const Range: TLayoutBlockRange): IMarkdownDisplayList;
+    constructor Create(const Environment: TLayoutEnvironment; const Width: Single; const Items: TList<IDisplayItem>);
     destructor Destroy; override;
     function RecomputeBlock(const Node: IMarkdownNode; const Index: Integer; var Y: Single;
       const PreviousBelow: Single; const Alignment: TMarkdownHtmlAlignment): TLayoutBlockInfo;
@@ -476,6 +504,20 @@ type
       const DeltaY: Single);
     function ContentWidth: Single;
   end;
+
+class function TLayoutEnvironment.Create(const Theme: TMarkdownTheme; const Measurer: ITextMeasurer;
+  const ImageSizes: IMarkdownImageSizeProvider; const ExtensionErrors: IMarkdownExtensionErrorSink;
+  const Disclosures: IMarkdownDisclosureState; const ExtensionData: IMarkdownExtensionData;
+  const NestedScopes: TMarkdownNestedScopes): TLayoutEnvironment;
+begin
+  Result.Theme           := Theme;
+  Result.Measurer        := Measurer;
+  Result.ImageSizes      := ImageSizes;
+  Result.ExtensionErrors := ExtensionErrors;
+  Result.Disclosures     := Disclosures;
+  Result.ExtensionData   := ExtensionData;
+  Result.NestedScopes    := NestedScopes;
+end;
 
 class function TLayoutBlockRange.Create(const FirstBlockIndex, OldBlockCount, NewBlockCount: Integer): TLayoutBlockRange;
 begin
@@ -491,51 +533,9 @@ class function TMarkdownLayoutEngine.LayoutDocument(const Document: IMarkdownDoc
   const Disclosures: IMarkdownDisclosureState;
   const ExtensionData: IMarkdownExtensionData): IMarkdownDisplayList;
 begin
-  ValidateLayoutArguments(Document, AvailableWidth, Theme, Measurer);
-
-  const Items = TList<IDisplayItem>.Create;
-  try
-    const Worker = TLayoutWorker.Create(Theme, Measurer, AvailableWidth, Items, ImageSizes, ExtensionErrors,
-      Disclosures, ExtensionData);
-    try
-      const BlockCount = Document.ChildCount;
-      var Blocks: TArray<TLayoutBlockInfo>;
-      SetLength(Blocks, BlockCount);
-
-      var Recomputed: TArray<Integer>;
-      SetLength(Recomputed, BlockCount);
-
-      TMarkdownDisclosures.AssignKeys(Document);
-      const Hidden = TMarkdownDisclosures.HiddenChildren(Document, Disclosures);
-      const Alignments = TMarkdownHtmlAlignments.ChildAlignments(Document);
-      var Y: Single := Theme.ContentPadding;
-      var PreviousBelow: Single := 0.0;
-
-      for var Index := 0 to BlockCount - 1 do
-      begin
-        Recomputed[Index] := Index;
-        if Hidden[Index] then
-        begin
-          Blocks[Index] := Worker.HiddenBlock(Y);
-          Continue;
-        end;
-
-        const Info = Worker.RecomputeBlock(Document.Children[Index], Index, Y, PreviousBelow, Alignments[Index]);
-
-        Blocks[Index] := Info;
-        Y := Y + Info.Height;
-        PreviousBelow := Info.SpacingBelow;
-      end;
-
-      Y := Y + Theme.ContentPadding;
-
-      Result := TMarkdownDisplayList.Create(Items.ToArray, Blocks, AvailableWidth, Worker.ContentWidth, Y, Recomputed);
-    finally
-      Worker.Free;
-    end;
-  finally
-    Items.Free;
-  end;
+  const Environment = TLayoutEnvironment.Create(Theme, Measurer, ImageSizes, ExtensionErrors, Disclosures,
+    ExtensionData, nil);
+  Result := TLayoutWorker.LayoutDocument(Document, AvailableWidth, Environment, TMarkdownDisclosures.DocumentScope);
 end;
 
 class function TMarkdownLayoutEngine.UpdateLayout(const Previous: IMarkdownDisplayList;
@@ -558,56 +558,37 @@ begin
     raise EMarkdownError.CreateFmt('Document has %d blocks but the changed range expects %d',
       [Document.ChildCount, TotalBlockCount]);
 
-  const Items = TList<IDisplayItem>.Create;
+  const NestedScopes = TMarkdownNestedScopes.Create(Document, TMarkdownDisclosures.DocumentScope);
   try
-    const Worker = TLayoutWorker.Create(Theme, Measurer, Previous.Width, Items, ImageSizes, ExtensionErrors,
-      Disclosures, ExtensionData);
-    try
-      var Blocks: TArray<TLayoutBlockInfo>;
-      SetLength(Blocks, TotalBlockCount);
-
-      var Recomputed: TArray<Integer>;
-      SetLength(Recomputed, ChangedRange.NewBlockCount);
-
-      TMarkdownDisclosures.AssignKeys(Document);
-      const Hidden = TMarkdownDisclosures.HiddenChildren(Document, Disclosures);
-      const Alignments = TMarkdownHtmlAlignments.ChildAlignments(Document);
-      var Y: Single := Theme.ContentPadding;
-      var PreviousBelow: Single := 0.0;
-
-      for var Index := 0 to TotalBlockCount - 1 do
-      begin
-        const IsRecomputed = (Index >= ChangedRange.FirstBlockIndex) and
-          (Index < ChangedRange.FirstBlockIndex + ChangedRange.NewBlockCount);
-        if IsRecomputed then
-          Recomputed[Index - ChangedRange.FirstBlockIndex] := Index;
-
-        if Hidden[Index] then
-        begin
-          Blocks[Index] := Worker.HiddenBlock(Y);
-          Continue;
-        end;
-
-        var Info := Default(TLayoutBlockInfo);
-        if IsRecomputed then
-          Info := Worker.RecomputeBlock(Document.Children[Index], Index, Y, PreviousBelow, Alignments[Index])
-        else
-          Info := Worker.ReusePreviousBlock(Previous, ChangedRange, Index, Y, PreviousBelow);
-
-        Blocks[Index] := Info;
-        Y := Y + Info.Height;
-        PreviousBelow := Info.SpacingBelow;
-      end;
-
-      Y := Y + Theme.ContentPadding;
-
-      Result := TMarkdownDisplayList.Create(Items.ToArray, Blocks, Previous.Width, Worker.ContentWidth, Y, Recomputed);
-    finally
-      Worker.Free;
-    end;
+    const Environment = TLayoutEnvironment.Create(Theme, Measurer, ImageSizes, ExtensionErrors, Disclosures,
+      ExtensionData, NestedScopes);
+    const Range = RangeWithMovedHosts(Document, ChangedRange);
+    Result := TLayoutWorker.LayoutBlocks(Document, Previous.Width, Environment, Previous, Range);
   finally
-    Items.Free;
+    NestedScopes.Free;
   end;
+end;
+
+// The blocks before the range keep their places, as nothing before them
+// changed, and a reused block that laid out no document of its own has no
+// place to lose.
+class function TMarkdownLayoutEngine.RangeWithMovedHosts(const Document: IMarkdownDocument;
+  const ChangedRange: TLayoutBlockRange): TLayoutBlockRange;
+begin
+  Result := ChangedRange;
+
+  const SuffixStart = ChangedRange.FirstBlockIndex + ChangedRange.NewBlockCount;
+  if not TMarkdownNestedScopes.HoldsHostsFrom(Document, SuffixStart) then
+    Exit;
+
+  const LastMoved = TMarkdownNestedScopes.LastMovedHostBlock(Document);
+  const HasMovedAfterRange = (LastMoved >= SuffixStart);
+  if not HasMovedAfterRange then
+    Exit;
+
+  const Growth = LastMoved - SuffixStart + 1;
+  Result := TLayoutBlockRange.Create(ChangedRange.FirstBlockIndex, ChangedRange.OldBlockCount + Growth,
+                                     ChangedRange.NewBlockCount + Growth);
 end;
 
 class procedure TMarkdownLayoutEngine.RegisterBlockOverride(const Handler: ILayoutBlockOverride;
@@ -650,23 +631,90 @@ begin
       [ChangedRange.FirstBlockIndex, ChangedRange.OldBlockCount, ChangedRange.NewBlockCount, PreviousBlockCount]);
 end;
 
-constructor TLayoutWorker.Create(const Theme: TMarkdownTheme; const Measurer: ITextMeasurer; const Width: Single;
-  const Items: TList<IDisplayItem>; const ImageSizes: IMarkdownImageSizeProvider;
-  const ExtensionErrors: IMarkdownExtensionErrorSink; const Disclosures: IMarkdownDisclosureState;
-  const ExtensionData: IMarkdownExtensionData);
+class function TLayoutWorker.LayoutDocument(const Document: IMarkdownDocument; const Width: Single;
+  const Environment: TLayoutEnvironment; const KeyScope: string): IMarkdownDisplayList;
+begin
+  TMarkdownLayoutEngine.ValidateLayoutArguments(Document, Width, Environment.Theme, Environment.Measurer);
+
+  const NestedScopes = TMarkdownNestedScopes.Create(Document, KeyScope);
+  try
+    var Scoped := Environment;
+    Scoped.NestedScopes := NestedScopes;
+
+    const EveryBlock = TLayoutBlockRange.Create(0, 0, Document.ChildCount);
+    Result := LayoutBlocks(Document, Width, Scoped, nil, EveryBlock);
+  finally
+    NestedScopes.Free;
+  end;
+end;
+
+class function TLayoutWorker.LayoutBlocks(const Document: IMarkdownDocument; const Width: Single;
+  const Environment: TLayoutEnvironment; const Previous: IMarkdownDisplayList;
+  const Range: TLayoutBlockRange): IMarkdownDisplayList;
+begin
+  const Items = TList<IDisplayItem>.Create;
+  try
+    const Worker = TLayoutWorker.Create(Environment, Width, Items);
+    try
+      const BlockCount = Document.ChildCount;
+      var Blocks: TArray<TLayoutBlockInfo>;
+      SetLength(Blocks, BlockCount);
+
+      var Recomputed: TArray<Integer>;
+      SetLength(Recomputed, Range.NewBlockCount);
+
+      TMarkdownDisclosures.AssignKeys(Document, Environment.NestedScopes.Scope);
+      const Hidden = TMarkdownDisclosures.HiddenChildren(Document, Environment.Disclosures);
+      const Alignments = TMarkdownHtmlAlignments.ChildAlignments(Document);
+      const RangeEnd = Range.FirstBlockIndex + Range.NewBlockCount;
+      var Y: Single := Environment.Theme.ContentPadding;
+      var PreviousBelow: Single := 0.0;
+
+      for var Index := 0 to BlockCount - 1 do
+      begin
+        const IsRecomputed = ((Index >= Range.FirstBlockIndex) and (Index < RangeEnd));
+        if IsRecomputed then
+          Recomputed[Index - Range.FirstBlockIndex] := Index;
+
+        if Hidden[Index] then
+        begin
+          Blocks[Index] := Worker.HiddenBlock(Y);
+          Continue;
+        end;
+
+        var Info := Default(TLayoutBlockInfo);
+        if IsRecomputed then
+          Info := Worker.RecomputeBlock(Document.Children[Index], Index, Y, PreviousBelow, Alignments[Index])
+        else
+          Info := Worker.ReusePreviousBlock(Previous, Range, Index, Y, PreviousBelow);
+
+        Blocks[Index] := Info;
+        Y := Y + Info.Height;
+        PreviousBelow := Info.SpacingBelow;
+      end;
+
+      Y := Y + Environment.Theme.ContentPadding;
+
+      Result := TMarkdownDisplayList.Create(Items.ToArray, Blocks, Width, Worker.ContentWidth, Y, Recomputed);
+    finally
+      Worker.Free;
+    end;
+  finally
+    Items.Free;
+  end;
+end;
+
+constructor TLayoutWorker.Create(const Environment: TLayoutEnvironment; const Width: Single;
+  const Items: TList<IDisplayItem>);
 begin
   inherited Create;
 
-  FTheme := Theme;
-  FMeasurer := Measurer;
-  FWidth := Width;
-  FItems := Items;
-  FImageSizes := ImageSizes;
-  FExtensionErrors := ExtensionErrors;
-  FDisclosures := Disclosures;
-  FExtensionData := ExtensionData;
-  FCommands := TList<TLayoutCommand>.Create;
-  FCollector := TInlineAtomCollector.Create(FMeasurer, FTheme, FImageSizes, ContentRight);
+  FEnvironment := Environment;
+  FWidth       := Width;
+  FItems       := Items;
+  FCommands    := TList<TLayoutCommand>.Create;
+  FCollector   := TInlineAtomCollector.Create(Environment.Measurer, Environment.Theme, Environment.ImageSizes,
+    ContentRight);
 end;
 
 destructor TLayoutWorker.Destroy;
@@ -681,7 +729,7 @@ function TLayoutWorker.LayoutBlock(const Node: IMarkdownNode; const Top: Single)
 begin
   FCurrentY := Top;
 
-  PushBlock(Node, FTheme.ContentPadding, FTheme.TextColor);
+  PushBlock(Node, Theme.ContentPadding, Theme.TextColor);
 
   while FCommands.Count > 0 do
   begin
@@ -743,8 +791,8 @@ end;
 function TLayoutWorker.SpacingAboveOf(const Node: IMarkdownNode): Single;
 begin
   case Node.Kind of
-    TMarkdownNodeKind.Heading       : Result := FTheme.HeadingSpacingAbove[(Node as IMarkdownHeading).Level];
-    TMarkdownNodeKind.ThematicBreak : Result := FTheme.ThematicBreakSpacing;
+    TMarkdownNodeKind.Heading       : Result := Theme.HeadingSpacingAbove[(Node as IMarkdownHeading).Level];
+    TMarkdownNodeKind.ThematicBreak : Result := Theme.ThematicBreakSpacing;
   else
     Result := 0;
   end;
@@ -753,10 +801,10 @@ end;
 function TLayoutWorker.SpacingBelowOf(const Node: IMarkdownNode): Single;
 begin
   case Node.Kind of
-    TMarkdownNodeKind.Heading       : Result := FTheme.HeadingSpacingBelow[(Node as IMarkdownHeading).Level];
-    TMarkdownNodeKind.ThematicBreak : Result := FTheme.ThematicBreakSpacing;
+    TMarkdownNodeKind.Heading       : Result := Theme.HeadingSpacingBelow[(Node as IMarkdownHeading).Level];
+    TMarkdownNodeKind.ThematicBreak : Result := Theme.ThematicBreakSpacing;
   else
-    Result := FTheme.BlockSpacing;
+    Result := Theme.BlockSpacing;
   end;
 end;
 
@@ -794,7 +842,7 @@ end;
 
 function TLayoutWorker.ContentRight: Single;
 begin
-  Result := FWidth - FTheme.ContentPadding;
+  Result := FWidth - Theme.ContentPadding;
 end;
 
 procedure TLayoutWorker.ProcessCommand(const Command: TLayoutCommand);
@@ -920,7 +968,7 @@ begin
     TMarkdownNodeKind.Paragraph:
       LayoutParagraph(Command);
     TMarkdownNodeKind.Heading:
-      LayoutInlineBlock(Command.Node, Command.X, FTheme.HeadingFonts[(Command.Node as IMarkdownHeading).Level],
+      LayoutInlineBlock(Command.Node, Command.X, Theme.HeadingFonts[(Command.Node as IMarkdownHeading).Level],
         Command.Color);
     TMarkdownNodeKind.CodeBlock:
       EmitCodeBlock(Command);
@@ -951,8 +999,7 @@ function TLayoutWorker.TryApplyBlockOverride(const Command: TLayoutCommand; cons
 begin
   const FirstItemIndex = FItems.Count;
   const AvailableWidth = ContentRight - Command.X;
-  const Context: ILayoutBlockContext = TLayoutBlockContext.Create(FMeasurer, FTheme, AvailableWidth, FItems,
-    Command.Node, FImageSizes, FExtensionData);
+  const Context: ILayoutBlockContext = TLayoutBlockContext.Create(FEnvironment, AvailableWidth, FItems, Command.Node);
 
   try
     const Height = Handler.LayoutBlock(Command.Node, FCurrentY, Context);
@@ -961,11 +1008,11 @@ begin
   except
     on Error: Exception do
     begin
-      if not Assigned(FExtensionErrors) then
+      if not Assigned(FEnvironment.ExtensionErrors) then
         raise;
 
       DropItemsFrom(FirstItemIndex);
-      FExtensionErrors.ExtensionFailed(Handler.Name, Error);
+      FEnvironment.ExtensionErrors.ExtensionFailed(Handler.Name, Error);
       Result := False;
     end;
   end;
@@ -990,11 +1037,11 @@ begin
   const HasContent = (Command.Node.ChildCount > 0);
   if not HasContent then
   begin
-    FCurrentY := FCurrentY + FMeasurer.LineHeight(FTheme.BaseFont);
+    FCurrentY := FCurrentY + Measurer.LineHeight(Theme.BaseFont);
     Exit;
   end;
 
-  const ContentX = Command.X + FTheme.ListMarkerWidth;
+  const ContentX = Command.X + Theme.ListMarkerWidth;
   const Children = VisibleChildren(Command.Node);
 
   for var Index := High(Children) downto 0 do
@@ -1004,7 +1051,7 @@ begin
     var ChildX := ContentX;
     const IsNestedList = (Child.Kind = TMarkdownNodeKind.List);
     if IsNestedList then
-      ChildX := Command.X + FTheme.ListIndent;
+      ChildX := Command.X + Theme.ListIndent;
 
     PushBlock(Child, ChildX, Command.Color, Command.ListDepth, Command.Tight);
 
@@ -1019,12 +1066,12 @@ end;
 
 procedure TLayoutWorker.EmitListMarker(const Command: TLayoutCommand);
 begin
-  const MarkerSize = FMeasurer.MeasureText(Command.MarkerText, FTheme.BaseFont);
-  const MarkerHeight = FMeasurer.LineHeight(FTheme.BaseFont);
+  const MarkerSize = Measurer.MeasureText(Command.MarkerText, Theme.BaseFont);
+  const MarkerHeight = Measurer.LineHeight(Theme.BaseFont);
   const Bounds = TLayoutRectF.Create(Command.X, FCurrentY, Command.X + MarkerSize.Width, FCurrentY + MarkerHeight);
 
-  FItems.Add(TDisplayTextRun.Create(Bounds, Command.Node, Command.MarkerText, FTheme.BaseFont, Command.Color,
-    FMeasurer.Baseline(FTheme.BaseFont), 0, TDisplayTextRunRole.Marker));
+  FItems.Add(TDisplayTextRun.Create(Bounds, Command.Node, Command.MarkerText, Theme.BaseFont, Command.Color,
+    Measurer.Baseline(Theme.BaseFont), 0, TDisplayTextRunRole.Marker));
 end;
 
 procedure TLayoutWorker.EmitTaskCheckbox(const Command: TLayoutCommand; const Marker: IMarkdownCustomInline);
@@ -1033,9 +1080,9 @@ begin
   // before the text falls out of ListMarkerWidth already being wider than
   // CheckboxSize, so no separate spacing setting is needed.
   const Checked = (Marker.NodeName = TGfmInlineParser.TaskCheckedNodeName);
-  const LineHeight = FMeasurer.LineHeight(FTheme.BaseFont);
-  const Top = FCurrentY + Max(0, (LineHeight - FTheme.CheckboxSize) / 2);
-  const Bounds = TLayoutRectF.Create(Command.X, Top, Command.X + FTheme.CheckboxSize, Top + FTheme.CheckboxSize);
+  const LineHeight = Measurer.LineHeight(Theme.BaseFont);
+  const Top = FCurrentY + Max(0, (LineHeight - Theme.CheckboxSize) / 2);
+  const Bounds = TLayoutRectF.Create(Command.X, Top, Command.X + Theme.CheckboxSize, Top + Theme.CheckboxSize);
 
   FItems.Add(TDisplayCheckbox.Create(Bounds, Marker, Checked));
 end;
@@ -1049,23 +1096,23 @@ begin
     Exit;
   end;
 
-  PushQuoteBar(Command, FTheme.BlockQuoteBarColor);
-  PushContainerChildren(Command.Node, Command.X + FTheme.BlockQuoteInset, FTheme.BlockQuoteTextColor);
+  PushQuoteBar(Command, Theme.BlockQuoteBarColor);
+  PushContainerChildren(Command.Node, Command.X + Theme.BlockQuoteInset, Theme.BlockQuoteTextColor);
 end;
 
 // An alert is a quote with its bar in the colour of its kind, a title with an
 // icon above the text, and the text in the normal colour, as on GitHub.
 procedure TLayoutWorker.PushAlert(const Command: TLayoutCommand; const Kind: TMarkdownAlertKind);
 begin
-  const AlertColor = FTheme.AlertColors[Kind];
-  const ContentX = Command.X + FTheme.BlockQuoteInset;
+  const AlertColor = Theme.AlertColors[Kind];
+  const ContentX = Command.X + Theme.BlockQuoteInset;
 
   PushQuoteBar(Command, AlertColor);
-  PushContainerChildren(Command.Node, ContentX, FTheme.TextColor);
+  PushContainerChildren(Command.Node, ContentX, Theme.TextColor);
 
   const HasContent = (Command.Node.ChildCount > 0);
   if HasContent then
-    PushGap(FTheme.BlockSpacing);
+    PushGap(Theme.BlockSpacing);
 
   var TitleCommand := Default(TLayoutCommand);
   TitleCommand.Kind := TLayoutCommandKind.AlertTitle;
@@ -1094,7 +1141,7 @@ begin
   if Height <= 0 then
     Exit;
 
-  const Bounds = TLayoutRectF.Create(Command.X, Command.StartY, Command.X + FTheme.BlockQuoteBarWidth,
+  const Bounds = TLayoutRectF.Create(Command.X, Command.StartY, Command.X + Theme.BlockQuoteBarWidth,
     Command.StartY + Height);
   FItems.Insert(Command.InsertIndex, TDisplayRectangle.Create(Bounds, Command.Node, Command.Color, 0, 0));
 end;
@@ -1103,10 +1150,10 @@ end;
 // line, with half its width as the gap before the title.
 procedure TLayoutWorker.EmitAlertTitle(const Command: TLayoutCommand);
 begin
-  var TitleFont := FTheme.BaseFont;
+  var TitleFont := Theme.BaseFont;
   TitleFont.Bold := True;
 
-  const LineHeight = FMeasurer.LineHeight(TitleFont);
+  const LineHeight = Measurer.LineHeight(TitleFont);
   const IconSize = LineHeight * AlertIconScale;
   const IconTop = FCurrentY + (LineHeight - IconSize) / 2;
 
@@ -1120,9 +1167,9 @@ begin
 
   const Title = Command.AlertKind.Title;
   const TitleLeft = Command.X + IconSize * (1 + AlertIconGapScale);
-  const TitleSize = FMeasurer.MeasureText(Title, TitleFont);
+  const TitleSize = Measurer.MeasureText(Title, TitleFont);
   const Bounds = TLayoutRectF.Create(TitleLeft, FCurrentY, TitleLeft + TitleSize.Width, FCurrentY + LineHeight);
-  const TitleBaseline = FMeasurer.Baseline(TitleFont);
+  const TitleBaseline = Measurer.Baseline(TitleFont);
   const TitleRun: IDisplayItem = TDisplayTextRun.Create(Bounds, Command.Node, Title, TitleFont, Command.Color,
     TitleBaseline, 0);
   FItems.Add(TitleRun);
@@ -1136,7 +1183,7 @@ begin
   var Contents: IMarkdownNode;
   if not TMarkdownTocMarkers.TryGetContents(Command.Node, Contents) then
   begin
-    LayoutInlineBlock(Command.Node, Command.X, FTheme.BaseFont, Command.Color);
+    LayoutInlineBlock(Command.Node, Command.X, Theme.BaseFont, Command.Color);
     Exit;
   end;
 
@@ -1149,7 +1196,7 @@ procedure TLayoutWorker.PushList(const Command: TLayoutCommand);
 begin
   const List = Command.Node as IMarkdownList;
 
-  var ItemGap := FTheme.BlockSpacing;
+  var ItemGap := Theme.BlockSpacing;
   if List.IsTight then
     ItemGap := 0;
 
@@ -1240,7 +1287,7 @@ end;
 
 function TLayoutWorker.VisibleChildren(const Container: IMarkdownNode): TArray<IMarkdownNode>;
 begin
-  const Hidden = TMarkdownDisclosures.HiddenChildren(Container, FDisclosures);
+  const Hidden = TMarkdownDisclosures.HiddenChildren(Container, FEnvironment.Disclosures);
 
   Result := nil;
   for var Index := 0 to Container.ChildCount - 1 do
@@ -1286,8 +1333,8 @@ procedure TLayoutWorker.LayoutInlineBlock(const Container: IMarkdownNode; const 
 begin
   const Atoms = CollectInlineAtoms(Container, BaseFont, TextColor);
   try
-    const Wrapper = TInlineWrapper.Create(FMeasurer, FItems, X, FCurrentY, ContentRight - X, BaseFont,
-      FTheme.CodeSpanBackgroundColor);
+    const Wrapper = TInlineWrapper.Create(Measurer, FItems, X, FCurrentY, ContentRight - X, BaseFont,
+      Theme.CodeSpanBackgroundColor);
     try
       for var Atom in Atoms do
       begin
@@ -1307,12 +1354,12 @@ procedure TLayoutWorker.EmitCodeBlock(const Command: TLayoutCommand);
 begin
   const Code = Command.Node as IMarkdownCodeBlock;
   const Lines = SplitCodeLines(Code.Literal);
-  const LineHeight = FMeasurer.LineHeight(FTheme.CodeFont);
-  const Padding = FTheme.CodePadding;
+  const LineHeight = Measurer.LineHeight(Theme.CodeFont);
+  const Padding = Theme.CodePadding;
   const Height = Length(Lines) * LineHeight + 2 * Padding;
 
   const Background = TLayoutRectF.Create(Command.X, FCurrentY, ContentRight, FCurrentY + Height);
-  FItems.Add(TDisplayRectangle.Create(Background, Command.Node, FTheme.CodeBackgroundColor, 0, 0));
+  FItems.Add(TDisplayRectangle.Create(Background, Command.Node, Theme.CodeBackgroundColor, 0, 0));
 
   EmitCodeLines(Command, Code, Lines, LineHeight, Padding);
 
@@ -1382,15 +1429,15 @@ begin
 
   EmitCodeLineBackground(Command, Line, Top, LineHeight);
 
-  var Left := Command.X + FTheme.CodePadding;
+  var Left := Command.X + Theme.CodePadding;
   for var Token in Line.Tokens do
   begin
     const TokenText = Copy(LineText, Token.Start, Token.Length);
-    const Size = FMeasurer.MeasureText(TokenText, FTheme.CodeFont);
+    const Size = Measurer.MeasureText(TokenText, Theme.CodeFont);
     const Bounds = TLayoutRectF.Create(Left, Top, Left + Size.Width, Top + LineHeight);
 
-    FItems.Add(TDisplayTextRun.Create(Bounds, Command.Node, TokenText, FTheme.CodeFont,
-      FTheme.TokenColors[Token.Kind], FMeasurer.Baseline(FTheme.CodeFont), LineStart + Token.Start - 1));
+    FItems.Add(TDisplayTextRun.Create(Bounds, Command.Node, TokenText, Theme.CodeFont,
+      Theme.TokenColors[Token.Kind], Measurer.Baseline(Theme.CodeFont), LineStart + Token.Start - 1));
     Left := Left + Size.Width;
   end;
 end;
@@ -1408,9 +1455,9 @@ begin
   var Background: TLayoutColor;
   case FirstKind of
     TSyntaxTokenKind.Inserted:
-      Background := FTheme.DiffInsertedBackgroundColor;
+      Background := Theme.DiffInsertedBackgroundColor;
     TSyntaxTokenKind.Deleted:
-      Background := FTheme.DiffDeletedBackgroundColor;
+      Background := Theme.DiffDeletedBackgroundColor;
   else
     Exit;
   end;
@@ -1423,12 +1470,12 @@ end;
 procedure TLayoutWorker.EmitPlainCodeLine(const Command: TLayoutCommand; const LineText: string;
   const Top, LineHeight: Single; const LineStart: Integer);
 begin
-  const Padding = FTheme.CodePadding;
-  const Size = FMeasurer.MeasureText(LineText, FTheme.CodeFont);
+  const Padding = Theme.CodePadding;
+  const Size = Measurer.MeasureText(LineText, Theme.CodeFont);
   const Bounds = TLayoutRectF.Create(Command.X + Padding, Top, Command.X + Padding + Size.Width, Top + LineHeight);
 
-  FItems.Add(TDisplayTextRun.Create(Bounds, Command.Node, LineText, FTheme.CodeFont, FTheme.CodeTextColor,
-    FMeasurer.Baseline(FTheme.CodeFont), LineStart));
+  FItems.Add(TDisplayTextRun.Create(Bounds, Command.Node, LineText, Theme.CodeFont, Theme.CodeTextColor,
+    Measurer.Baseline(Theme.CodeFont), LineStart));
 end;
 
 class function TLayoutWorker.CodeLanguageOf(const Code: IMarkdownCodeBlock): string;
@@ -1469,14 +1516,18 @@ begin
   if Node.TryGetExtensionData(CacheKey, Cached) then
   begin
     Supports(Cached, IMarkdownDocument, Result);
-    Exit;
+  end
+  else
+  begin
+    const Translated = TMarkdownHtmlSubset.ToMarkdown(Html);
+    if Translated <> '' then
+      Result := TMarkdown.Parse(Translated, TMarkdownDialect.Gfm);
+
+    Node.SetExtensionData(CacheKey, Result);
   end;
 
-  const Translated = TMarkdownHtmlSubset.ToMarkdown(Html);
-  if Translated <> '' then
-    Result := TMarkdown.Parse(Translated, TMarkdownDialect.Gfm);
-
-  Node.SetExtensionData(CacheKey, Result);
+  if Result <> nil then
+    FEnvironment.NestedScopes.AddHtmlDocument(Node, CacheKey, Result);
 end;
 
 procedure TLayoutWorker.EmitHtmlBlock(const Command: TLayoutCommand);
@@ -1538,7 +1589,7 @@ end;
 
 procedure TLayoutWorker.EmitSectionOpener(const Command: TLayoutCommand; const OpenByDefault: Boolean);
 begin
-  const IsOpen = TMarkdownDisclosures.IsOpen(FDisclosures, Command.Node, OpenByDefault);
+  const IsOpen = TMarkdownDisclosures.IsOpen(FEnvironment.Disclosures, Command.Node, OpenByDefault);
   const OpenerHtml = TMarkdownDisclosures.OpenerHtml(Command.Node);
   const Summary = HtmlDocument(Command.Node, HtmlSubsetCacheKey, OpenerHtml);
 
@@ -1552,7 +1603,7 @@ end;
 // in the reverse order of pushing.
 procedure TLayoutWorker.EmitWholeSection(const Command: TLayoutCommand; const OpenByDefault: Boolean);
 begin
-  const IsOpen = TMarkdownDisclosures.IsOpen(FDisclosures, Command.Node, OpenByDefault);
+  const IsOpen = TMarkdownDisclosures.IsOpen(FEnvironment.Disclosures, Command.Node, OpenByDefault);
   if IsOpen then
     PushSectionContent(Command);
 
@@ -1598,7 +1649,7 @@ end;
 // heading's font.
 function TLayoutWorker.SummaryLineHeight(const Summary: IMarkdownDocument): Single;
 begin
-  Result := FMeasurer.LineHeight(FTheme.BaseFont);
+  Result := Measurer.LineHeight(Theme.BaseFont);
 
   const HasChildren = (Summary <> nil) and (Summary.ChildCount > 0);
   if not HasChildren then
@@ -1606,7 +1657,7 @@ begin
 
   var Heading: IMarkdownHeading;
   if Supports(Summary.Children[0], IMarkdownHeading, Heading) then
-    Result := FMeasurer.LineHeight(FTheme.HeadingFonts[Heading.Level]);
+    Result := Measurer.LineHeight(Theme.HeadingFonts[Heading.Level]);
 end;
 
 // A section always gets at least one line, so there is a triangle to click
@@ -1616,7 +1667,7 @@ begin
   const LineHeight = Command.SummaryLineHeight;
   FCurrentY := Max(FCurrentY, Command.StartY + LineHeight);
 
-  const MarkerSize = FTheme.BaseFont.Size * DisclosureMarkerScale;
+  const MarkerSize = Theme.BaseFont.Size * DisclosureMarkerScale;
   const MarkerTop = Command.StartY + (LineHeight - MarkerSize) / 2;
   const Marker = TLayoutRectF.Create(Command.X, MarkerTop, Command.X + MarkerSize, MarkerTop + MarkerSize);
   const Bounds = TLayoutRectF.Create(Command.X, Command.StartY, ContentRight, FCurrentY);
@@ -1627,18 +1678,18 @@ end;
 
 function TLayoutWorker.DisclosureIndent: Single;
 begin
-  Result := FTheme.BaseFont.Size * DisclosureIndentScale;
+  Result := Theme.BaseFont.Size * DisclosureIndentScale;
 end;
 
 procedure TLayoutWorker.EmitThematicBreak(const Command: TLayoutCommand);
 begin
-  const Thickness = FTheme.ThematicBreakThickness;
+  const Thickness = Theme.ThematicBreakThickness;
   const CenterY = FCurrentY + Thickness / 2;
   const StartPoint = TLayoutPointF.Create(Command.X, CenterY);
   const EndPoint = TLayoutPointF.Create(ContentRight, CenterY);
   const Bounds = TLayoutRectF.Create(Command.X, FCurrentY, ContentRight, FCurrentY + Thickness);
 
-  FItems.Add(TDisplayLine.Create(Bounds, Command.Node, StartPoint, EndPoint, FTheme.ThematicBreakColor, Thickness));
+  FItems.Add(TDisplayLine.Create(Bounds, Command.Node, StartPoint, EndPoint, Theme.ThematicBreakColor, Thickness));
 
   FCurrentY := FCurrentY + Thickness;
 end;
@@ -1652,23 +1703,23 @@ end;
 procedure TLayoutWorker.EmitMathBlock(const Command: TLayoutCommand);
 begin
   const Math = Command.Node as IMarkdownMath;
-  const Font = TMarkdownFontStyle.Create(FTheme.MathFont.FamilyName, FTheme.MathFont.Size);
-  const Options = TMathLayoutOptions.Create(Font, Command.Color, FTheme.MathErrorColor, True);
-  const Formula = TMathLayouter.Layout(Math.Literal, Options, FMeasurer);
+  const Font = TMarkdownFontStyle.Create(Theme.MathFont.FamilyName, Theme.MathFont.Size);
+  const Options = TMathLayoutOptions.Create(Font, Command.Color, Theme.MathErrorColor, True);
+  const Formula = TMathLayouter.Layout(Math.Literal, Options, Measurer);
 
-  const Padding = FTheme.BlockSpacing / 2;
+  const Padding = Theme.BlockSpacing / 2;
   const AvailableWidth = ContentRight - Command.X;
   const Left = Command.X + Max(0, (AvailableWidth - Formula.Width) / 2);
   const IsWide = (Formula.Width > AvailableWidth);
   var DrawnHeight := Formula.Ascent + Formula.Descent;
   if IsWide then
     DrawnHeight := DrawnHeight + TDisplayScroller.TrackSpace;
-  const Height = Max(DrawnHeight, FMeasurer.LineHeight(FTheme.BaseFont)) + 2 * Padding;
+  const Height = Max(DrawnHeight, Measurer.LineHeight(Theme.BaseFont)) + 2 * Padding;
 
   const Band = TLayoutRectF.Create(Command.X, FCurrentY, ContentRight, FCurrentY + Padding + DrawnHeight);
   const FirstItem = FItems.Count;
 
-  const Canvas: IExtensionCanvas = TDisplayListExtensionCanvas.Create(FMeasurer, FItems, Command.Node,
+  const Canvas: IExtensionCanvas = TDisplayListExtensionCanvas.Create(Measurer, FItems, Command.Node,
     TDisplayTextRunRole.Drawing, Command.Node);
   const Baseline = FCurrentY + Padding + Formula.Ascent;
   Formula.Draw(Canvas, Left, Baseline);
@@ -1725,7 +1776,7 @@ end;
 
 procedure TLayoutWorker.LayoutTable(const Command: TLayoutCommand);
 begin
-  const Table = TTableLayout.Create(FTheme, FMeasurer, FItems, FCollector);
+  const Table = TTableLayout.Create(Theme, Measurer, FItems, FCollector);
   try
     FCurrentY := Table.Layout(Command, FCurrentY, ContentRight - Command.X);
   finally
@@ -2554,27 +2605,28 @@ begin
   Result := Shift.Shifted(DeltaX, DeltaY);
 end;
 
-constructor TLayoutBlockContext.Create(const Measurer: ITextMeasurer; const Theme: TMarkdownTheme; const Width: Single;
-  const Items: TList<IDisplayItem>; const Node: IMarkdownNode; const ImageSizes: IMarkdownImageSizeProvider;
-  const ExtensionData: IMarkdownExtensionData);
+constructor TLayoutBlockContext.Create(const Environment: TLayoutEnvironment; const Width: Single;
+  const Items: TList<IDisplayItem>; const Node: IMarkdownNode);
 begin
   inherited Create;
 
-  FMeasurer := Measurer;
-  FTheme := Theme;
-  FWidth := Width;
-  FItems := Items;
-  FNode := Node;
-  FImageSizes := ImageSizes;
-  FExtensionData := ExtensionData;
+  FEnvironment := Environment;
+  FWidth       := Width;
+  FItems       := Items;
+  FNode        := Node;
 end;
 
 // An override that fails inside the nested document fails the block around it,
-// which then falls back as any failed override does.
+// which then falls back as any failed override does. Each call gets a scope of
+// its own, so two columns with the same section open and close apart.
 function TLayoutBlockContext.LayoutNested(const Document: IMarkdownDocument; const Width: Single): IMarkdownDisplayList;
 begin
-  Result := TMarkdownLayoutEngine.LayoutDocument(Document, Width, FTheme, FMeasurer, FImageSizes, nil, nil,
-    FExtensionData);
+  Inc(FNestedCount);
+  const KeyScope = FEnvironment.NestedScopes.RecordNestedScope(FNode, FNestedCount);
+
+  var Nested := FEnvironment;
+  Nested.ExtensionErrors := nil;
+  Result := TLayoutWorker.LayoutDocument(Document, Width, Nested, KeyScope);
 end;
 
 procedure TLayoutBlockContext.AppendNested(const DisplayList: IMarkdownDisplayList; const Left, Top: Single);
@@ -2588,12 +2640,12 @@ end;
 
 function TLayoutBlockContext.GetMeasurer: ITextMeasurer;
 begin
-  Result := FMeasurer;
+  Result := FEnvironment.Measurer;
 end;
 
 function TLayoutBlockContext.GetTheme: TMarkdownTheme;
 begin
-  Result := FTheme;
+  Result := FEnvironment.Theme;
 end;
 
 function TLayoutBlockContext.GetWidth: Single;
@@ -2603,18 +2655,18 @@ end;
 
 function TLayoutBlockContext.GetImageSizes: IMarkdownImageSizeProvider;
 begin
-  Result := FImageSizes;
+  Result := FEnvironment.ImageSizes;
 end;
 
 function TLayoutBlockContext.GetExtensionData: IMarkdownExtensionData;
 begin
-  Result := FExtensionData;
+  Result := FEnvironment.ExtensionData;
 end;
 
 function TLayoutBlockContext.GetCanvas: IExtensionCanvas;
 begin
   if FCanvas = nil then
-    FCanvas := TDisplayListExtensionCanvas.Create(FMeasurer, FItems, FNode);
+    FCanvas := TDisplayListExtensionCanvas.Create(FEnvironment.Measurer, FItems, FNode);
 
   Result := FCanvas;
 end;

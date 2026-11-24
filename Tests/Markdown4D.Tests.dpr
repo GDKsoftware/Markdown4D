@@ -83,6 +83,8 @@ uses
   Markdown4D.Viewer.Extensions.Cluster1.Tests in 'Markdown4D.Viewer.Extensions.Cluster1.Tests.pas',
   Markdown4D.Viewer.ExtensionContext.Tests in 'Markdown4D.Viewer.ExtensionContext.Tests.pas',
   Markdown4D.Tests.BoxOverride in 'Markdown4D.Tests.BoxOverride.pas',
+  Markdown4D.Viewer.NestedSections.Tests in 'Markdown4D.Viewer.NestedSections.Tests.pas',
+  Markdown4D.Tests.ColumnsOverride in 'Markdown4D.Tests.ColumnsOverride.pas',
   Markdown4D.Vcl.Wedge.Tests in 'Markdown4D.Vcl.Wedge.Tests.pas',
   Markdown4D.Vcl.Polygon.Tests in 'Markdown4D.Vcl.Polygon.Tests.pas',
   Markdown4D.Editor.Keys in '..\Source\Layout\Markdown4D.Editor.Keys.pas',

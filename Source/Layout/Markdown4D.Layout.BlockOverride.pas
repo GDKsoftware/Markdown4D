@@ -83,8 +83,13 @@ type
     function GetImageSizes: IMarkdownImageSizeProvider;
     function GetExtensionData: IMarkdownExtensionData;
     // Lays out a document of the extension's own, such as the content of a
-    // box or a column, with the theme, the image sizes and the extension data
-    // of the layout around it. The result starts at 0, 0, the theme's padding
+    // box or a column, with the theme, the image sizes, the extension data and
+    // the open and closed <details> sections of the layout around it. Its
+    // sections have keys apart from those of the document, of other blocks
+    // and of this block's other calls, made from the block's kind (with its
+    // info string for a code block), which block of that kind it is, and
+    // which call this is. Call it as often, and in the same order, on every
+    // layout of the block. The result starts at 0, 0, the theme's padding
     // included.
     function LayoutNested(const Document: IMarkdownDocument; const Width: Single): IMarkdownDisplayList;
     // Adds what LayoutNested laid out to this block, moved by Left and Top.
