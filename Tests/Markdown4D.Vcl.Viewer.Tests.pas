@@ -102,6 +102,9 @@ type
     procedure Relayout_AfterExtensionDataChanged_LaysOutAgain;
 
     [Test]
+    procedure ToggledSections_KeyOfSectionInABox_OpensIt;
+
+    [Test]
     [TestCase('On', 'True,**bold**')]
     [TestCase('Off', 'False,bold')]
     procedure Keyboard_CtrlShiftC_CopiesMarkdownWhenOffered(const CopyAsMarkdown: Boolean; const Expected: string);
@@ -447,6 +450,24 @@ begin
 
     Assert.IsTrue(Viewer.LayoutCount > LayoutsBefore, 'laid out again');
     Assert.IsTrue(Viewer.ContentHeight > HeightBefore, 'the taller box pushes the text down');
+  finally
+    TMarkdownLayoutEngine.ClearBlockOverrides;
+  end;
+end;
+
+// A section in content an extension lays out itself opens like one in the
+// document.
+procedure TMarkdownVclViewerTests.ToggledSections_KeyOfSectionInABox_OpensIt;
+begin
+  TMarkdownLayoutEngine.RegisterBlockOverride(TBoxBlockOverride.Create, TBoxBlockOverride.Priority);
+  try
+    const Viewer = NewHostedViewer;
+    Viewer.Text := TBoxBlockOverride.Markdown(ClosedSectionMarkdown);
+    const Keys = TMarkdownTestDisplayListHelpers.DisclosureKeys(Viewer.DisplayList);
+
+    Viewer.ToggledSections := Keys;
+
+    Assert.IsTrue(TMarkdownTestDisplayListHelpers.ShowsText(Viewer.DisplayList, SectionContentText));
   finally
     TMarkdownLayoutEngine.ClearBlockOverrides;
   end;

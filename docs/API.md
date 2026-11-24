@@ -678,7 +678,10 @@ inside it, and `ScrollToAnchor` and a click on a link to a heading or an HTML
 `HighlightMatches` count and mark the matches in view. Without the viewer,
 `TMarkdownLayoutEngine.LayoutDocument` and `UpdateLayout` take an
 `IMarkdownDisclosureState` that says which sections are open; without one,
-each section shows as its tag asks.
+each section shows as its tag asks. `UpdateLayout` reuses the blocks outside
+the changed range as the previous layout left them, so the document holds the
+previous document's nodes there, as `TMarkdownChangedBlocks.TryReuse`
+arranges.
 
 A tag inside a paragraph, heading or table cell is never painted either. The
 viewer follows the subset GitHub renders: `b`/`strong` bold,

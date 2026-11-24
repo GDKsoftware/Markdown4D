@@ -25,21 +25,27 @@ type
     function Height: Single;
   end;
 
-  // Draws a fence with the info string box: a bar as tall as the viewer's
-  // extension data says, and below it the content of the fence laid out as
-  // markdown of its own, indented by NestedLeft.
+  // Draws a fence with its info string, box unless the constructor names
+  // another: a bar as tall as the viewer's extension data says, and below it
+  // the content of the fence laid out as markdown of its own, indented by
+  // NestedLeft.
   TBoxBlockOverride = class(TInterfacedObject, ILayoutBlockOverride)
   private
+    FInfoString: string;
     class function BarHeightIn(const Data: IMarkdownExtensionData): Single; static;
 
   public
     const
       OverrideName = 'markdown4d.test.box';
-      InfoString = 'box';
+      DefaultInfoString = 'box';
       Priority = 100;
       DefaultBarHeight = 10.0;
       NestedLeft = 30.0;
       BarColor = TLayoutColor($FF808080);
+      DefaultFence = '```';
+    // A box with Content; a box inside it needs the longer fence.
+    class function Markdown(const Content: string; const Fence: string = DefaultFence): string; static;
+    constructor Create(const InfoString: string = DefaultInfoString);
     function GetName: string;
     function Handles(const Node: IMarkdownNode): Boolean;
     function LayoutBlock(const Node: IMarkdownNode; const Top: Single; const Context: ILayoutBlockContext): Single;
@@ -77,6 +83,18 @@ begin
     Result := Box.Height;
 end;
 
+class function TBoxBlockOverride.Markdown(const Content: string; const Fence: string): string;
+begin
+  Result := Format('%s%s'#10'%s'#10'%s', [Fence, DefaultInfoString, Content, Fence]);
+end;
+
+constructor TBoxBlockOverride.Create(const InfoString: string);
+begin
+  inherited Create;
+
+  FInfoString := InfoString;
+end;
+
 function TBoxBlockOverride.GetName: string;
 begin
   Result := OverrideName;
@@ -85,7 +103,7 @@ end;
 function TBoxBlockOverride.Handles(const Node: IMarkdownNode): Boolean;
 begin
   var Code: IMarkdownCodeBlock;
-  Result := (Supports(Node, IMarkdownCodeBlock, Code) and (Code.InfoString = InfoString));
+  Result := (Supports(Node, IMarkdownCodeBlock, Code) and (Code.InfoString = FInfoString));
 end;
 
 function TBoxBlockOverride.LayoutBlock(const Node: IMarkdownNode; const Top: Single;
