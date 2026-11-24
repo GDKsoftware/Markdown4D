@@ -4,7 +4,11 @@ unit Markdown4D.Vcl.ScrollBar;
 // content out again at the new width, and sets the scroll bar from the result, comes
 // back while the bar is still changing. Content that needs the bar at one width and
 // not at the other would then toggle it for ever. While the bar is changing, a nested
-// update therefore keeps it shown, disabled when the content fits.
+// update therefore keeps it shown, disabled when the content fits. That only holds
+// when the control lays out the new width during the change, so a control that
+// waits before it lays out a new width does not wait while IsChanging. While the
+// user drags the control wider or narrower, each time the bar appears or disappears
+// then costs one layout at once, however long that layout takes.
 
 interface
 
@@ -22,6 +26,10 @@ type
     /// content, <c>PageHeight</c> of it visible and scrolled to <c>Position</c>.
     /// </summary>
     procedure Update(const Handle: HWND; const ContentHeight, PageHeight, Position: Integer);
+    /// <summary>
+    /// True while <c>Update</c> shows or hides the bar, so a resize now comes from the bar.
+    /// </summary>
+    function IsChanging: Boolean;
   end;
 
 implementation
@@ -50,6 +58,11 @@ begin
   finally
     FIsChanging := IsNestedInChange;
   end;
+end;
+
+function TMarkdownVerticalScrollBar.IsChanging: Boolean;
+begin
+  Result := FIsChanging;
 end;
 
 end.

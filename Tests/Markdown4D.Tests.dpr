@@ -30,6 +30,7 @@ uses
   Markdown4D.Tests.Pipeline.Helpers in 'Markdown4D.Tests.Pipeline.Helpers.pas',
   Markdown4D.Tests.DisplayList.Helpers in 'Markdown4D.Tests.DisplayList.Helpers.pas',
   Markdown4D.Tests.FailingExtensions in 'Markdown4D.Tests.FailingExtensions.pas',
+  Markdown4D.Tests.DelayingProcessor in 'Markdown4D.Tests.DelayingProcessor.pas',
   Markdown4D.Tests.Vcl.BitmapHelpers in 'Markdown4D.Tests.Vcl.BitmapHelpers.pas',
   Markdown4D.Layout.Engine.Tests in 'Markdown4D.Layout.Engine.Tests.pas',
   Markdown4D.Html.Subset.Tests in 'Markdown4D.Html.Subset.Tests.pas',

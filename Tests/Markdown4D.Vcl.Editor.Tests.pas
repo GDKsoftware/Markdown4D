@@ -1434,7 +1434,8 @@ begin
       FEditor.Text := SelectableText;
       FEditor.SelectRange(0, FirstWordLength);
 
-      const Observed = TObservedClipboard.Create;
+      const Observed = TObservedClipboard.Instance;
+      Observed.ResetCounts;
       const Previous = SetClipboard(Observed);
       try
         Observed.FailingOpens := 1;
@@ -1446,7 +1447,6 @@ begin
         Assert.IsTrue(WasOpenedAfterRefusal);
       finally
         SetClipboard(Previous);
-        Observed.Free;
       end;
 
       var Copied: string;
@@ -1467,7 +1467,8 @@ begin
 
       FEditor.Text := '';
 
-      const Observed = TObservedClipboard.Create;
+      const Observed = TObservedClipboard.Instance;
+      Observed.ResetCounts;
       const Previous = SetClipboard(Observed);
       try
         Observed.FailingOpens := 1;
@@ -1479,7 +1480,6 @@ begin
         Assert.IsTrue(WasOpenedAfterRefusal);
       finally
         SetClipboard(Previous);
-        Observed.Free;
       end;
 
       Assert.AreEqual(FirstWord, FEditor.Text);
@@ -1498,7 +1498,8 @@ begin
 
       FEditor.Text := SelectableText;
 
-      const Observed = TObservedClipboard.Create;
+      const Observed = TObservedClipboard.Instance;
+      Observed.ResetCounts;
       const Previous = SetClipboard(Observed);
       try
         FEditor.PasteFromClipboard;
@@ -1506,7 +1507,6 @@ begin
         Assert.AreEqual(1, Observed.OpenCount);
       finally
         SetClipboard(Previous);
-        Observed.Free;
       end;
 
       Assert.AreEqual(SelectableText, FEditor.Text);

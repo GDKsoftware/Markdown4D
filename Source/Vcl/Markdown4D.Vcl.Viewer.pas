@@ -230,6 +230,8 @@ type
     function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean; override;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
     procedure DoContextPopup(MousePos: TPoint; var Handled: Boolean); override;
+    // True while a layout waits for the width or the zoom to settle.
+    function IsWaitingToSettle: Boolean;
 
   public
     constructor Create(Owner: TComponent); override;
@@ -780,7 +782,9 @@ end;
 procedure TMarkdownViewer.ApplyViewport;
 begin
   const IsNewWidth = (ClientWidth <> FAppliedWidth);
-  const ReflowsNow = ((not IsNewWidth) or FResizePacer.TryReflowNow(GetTickCount64, FModel.LastLayoutMilliseconds));
+  const ReflowsNow = ((not IsNewWidth) or
+                      FVerticalScrollBar.IsChanging or
+                      FResizePacer.TryReflowNow(GetTickCount64, FModel.LastLayoutMilliseconds));
   if ReflowsNow then
   begin
     ApplyViewportNow;
@@ -808,6 +812,11 @@ begin
   ResolvePendingImages;
   UpdateScrollBar;
   Invalidate;
+end;
+
+function TMarkdownViewer.IsWaitingToSettle: Boolean;
+begin
+  Result := (FResizeTimer.Enabled or FZoomTimer.Enabled);
 end;
 
 procedure TMarkdownViewer.ChangeScale(Multiplier, Divider: Integer; IsDpiChange: Boolean);
