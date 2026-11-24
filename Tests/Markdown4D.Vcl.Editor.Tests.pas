@@ -5,6 +5,7 @@ unit Markdown4D.Vcl.Editor.Tests;
 interface
 
 uses
+  System.SysUtils,
   System.Classes,
   System.UITypes,
   Vcl.Forms,
@@ -13,7 +14,8 @@ uses
   Markdown4D.Theme,
   Markdown4D.Vcl.Viewer,
   Markdown4D.Vcl.Editor,
-  Markdown4D.Tests.VclClipboard;
+  Markdown4D.Tests.VclClipboard,
+  Markdown4D.Tests.ClipboardHold;
 
 type
   TTestableVclEditor = class(TMarkdownEditor)
@@ -44,6 +46,14 @@ type
     const
       HeadingMarkdown = '# Heading';
       SelectableText = 'alpha beta';
+      FirstWord = 'alpha';
+      TextAfterFirstWord = ' beta';
+      FirstWordLength = Length(FirstWord);
+      WindowsLineBreakText = 'one'#13#10'two';
+      LineFeedText = 'one'#10'two';
+      TypedCharacter = 'x';
+      ClipboardHeldMessage = 'Clipboard held by another process throughout this test';
+      ClipboardUnavailableMessage = 'Clipboard service unavailable in this test session';
       AdoptedPrefix = 'new ';
       FormatKeySelectionLength = 5;
       EditText = ' appended body';
@@ -77,6 +87,7 @@ type
       FDoubleClickCount: Integer;
     function NewHostedEditor(const ControlHeight: Integer): TTestableVclEditor;
     function NewEditorOnPreviewingForm: TTestableVclEditor;
+    procedure RunOnRealClipboard(const Action: TProc);
     procedure RecordFormKey(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure RecordAutoScrollChange(Sender: TObject);
     procedure RecordZoomChange(Sender: TObject);
@@ -266,6 +277,33 @@ type
     procedure CtrlV_PastesClipboardText;
 
     [Test]
+    procedure CopyToClipboard_Selection_PutsSelectionOnClipboard;
+
+    [Test]
+    procedure CutToClipboard_Selection_MovesSelectionToClipboard;
+
+    [Test]
+    procedure CutToClipboard_ThenUndo_RestoresText;
+
+    [Test]
+    procedure CutToClipboard_ClipboardStaysHeld_KeepsText;
+
+    [Test]
+    procedure PasteFromClipboard_WindowsLineBreaks_InsertsLineFeeds;
+
+    [Test]
+    procedure PasteFromClipboard_ThenUndo_RestoresText;
+
+    [Test]
+    procedure PasteFromClipboard_ThenTyping_UndoesEachSeparately;
+
+    [Test]
+    procedure CanPaste_ClipboardHoldsText_ReturnsTrue;
+
+    [Test]
+    procedure CanPaste_EmptyClipboard_ReturnsFalse;
+
+    [Test]
     procedure MouseWheelDown_ScrollsContentDown;
 
     [Test]
@@ -329,7 +367,6 @@ type
 implementation
 
 uses
-  System.SysUtils,
   System.Types,
   Winapi.Windows,
   Winapi.Messages,
@@ -1129,7 +1166,7 @@ end;
 procedure TMarkdownVclEditorTests.CtrlC_CopiesSelectionToClipboard;
 begin
   if not TVclTestClipboard.IsAccessible then
-    Assert.Pass('Clipboard service unavailable in this test session');
+    Assert.Pass(ClipboardUnavailableMessage);
 
   var Saved: string;
   TVclTestClipboard.TryGetText(Saved);
@@ -1142,7 +1179,7 @@ begin
 
     var Copied: string;
     if not TVclTestClipboard.TryGetText(Copied) then
-      Assert.Pass('Clipboard held by another process throughout this test');
+      Assert.Pass(ClipboardHeldMessage);
 
     Assert.AreEqual('copy target', Copied);
   finally
@@ -1154,7 +1191,7 @@ end;
 procedure TMarkdownVclEditorTests.CtrlX_CutsSelectionToClipboard;
 begin
   if not TVclTestClipboard.IsAccessible then
-    Assert.Pass('Clipboard service unavailable in this test session');
+    Assert.Pass(ClipboardUnavailableMessage);
 
   var Saved: string;
   TVclTestClipboard.TryGetText(Saved);
@@ -1167,7 +1204,7 @@ begin
 
     var Cut: string;
     if not TVclTestClipboard.TryGetText(Cut) then
-      Assert.Pass('Clipboard held by another process throughout this test');
+      Assert.Pass(ClipboardHeldMessage);
 
     Assert.AreEqual('cut target', Cut);
     Assert.AreEqual('', Editor.Text);
@@ -1180,7 +1217,7 @@ end;
 procedure TMarkdownVclEditorTests.CtrlV_PastesClipboardText;
 begin
   if not TVclTestClipboard.IsAccessible then
-    Assert.Pass('Clipboard service unavailable in this test session');
+    Assert.Pass(ClipboardUnavailableMessage);
 
   var Saved: string;
   TVclTestClipboard.TryGetText(Saved);
@@ -1188,7 +1225,7 @@ begin
   const Editor = TTestableVclEditor.Create(nil);
   try
     if not TVclTestClipboard.TrySetText('pasted') then
-      Assert.Pass('Clipboard held by another process throughout this test');
+      Assert.Pass(ClipboardHeldMessage);
 
     Editor.Text := '';
     Editor.CaretPosition := 0;
@@ -1198,6 +1235,168 @@ begin
     Editor.Free;
     TVclTestClipboard.TrySetText(Saved);
   end;
+end;
+
+procedure TMarkdownVclEditorTests.CopyToClipboard_Selection_PutsSelectionOnClipboard;
+begin
+  RunOnRealClipboard(
+    procedure
+    begin
+      FEditor.Text := SelectableText;
+      FEditor.SelectRange(0, FirstWordLength);
+
+      FEditor.CopyToClipboard;
+
+      var Copied: string;
+      if not TVclTestClipboard.TryGetText(Copied) then
+        Assert.Pass(ClipboardHeldMessage);
+
+      Assert.AreEqual(FirstWord, Copied);
+      Assert.AreEqual(SelectableText, FEditor.Text);
+    end);
+end;
+
+procedure TMarkdownVclEditorTests.CutToClipboard_Selection_MovesSelectionToClipboard;
+begin
+  RunOnRealClipboard(
+    procedure
+    begin
+      FEditor.Text := SelectableText;
+      FEditor.SelectRange(0, FirstWordLength);
+
+      FEditor.CutToClipboard;
+
+      var Cut: string;
+      if not TVclTestClipboard.TryGetText(Cut) then
+        Assert.Pass(ClipboardHeldMessage);
+
+      Assert.AreEqual(FirstWord, Cut);
+      Assert.AreEqual(TextAfterFirstWord, FEditor.Text);
+    end);
+end;
+
+procedure TMarkdownVclEditorTests.CutToClipboard_ThenUndo_RestoresText;
+begin
+  RunOnRealClipboard(
+    procedure
+    begin
+      FEditor.Text := SelectableText;
+      FEditor.SelectRange(0, FirstWordLength);
+      FEditor.CutToClipboard;
+
+      FEditor.Undo;
+
+      Assert.AreEqual(SelectableText, FEditor.Text);
+    end);
+end;
+
+// A clipboard that stays busy must not cost the selection.
+procedure TMarkdownVclEditorTests.CutToClipboard_ClipboardStaysHeld_KeepsText;
+begin
+  RunOnRealClipboard(
+    procedure
+    begin
+      FEditor.Text := SelectableText;
+      FEditor.SelectRange(0, FirstWordLength);
+
+      const Hold = TClipboardHold.Create(TClipboardHold.UntilFreed);
+      try
+        if not Hold.IsHeld then
+          Assert.Pass(ClipboardHeldMessage);
+
+        FEditor.CutToClipboard;
+      finally
+        Hold.Free;
+      end;
+
+      Assert.AreEqual(SelectableText, FEditor.Text);
+    end);
+end;
+
+procedure TMarkdownVclEditorTests.PasteFromClipboard_WindowsLineBreaks_InsertsLineFeeds;
+begin
+  RunOnRealClipboard(
+    procedure
+    begin
+      if not TVclTestClipboard.TrySetText(WindowsLineBreakText) then
+        Assert.Pass(ClipboardHeldMessage);
+
+      FEditor.Text := '';
+
+      FEditor.PasteFromClipboard;
+
+      Assert.AreEqual(LineFeedText, FEditor.Text);
+      Assert.AreEqual(Length(LineFeedText), FEditor.CaretPosition);
+    end);
+end;
+
+procedure TMarkdownVclEditorTests.PasteFromClipboard_ThenUndo_RestoresText;
+begin
+  RunOnRealClipboard(
+    procedure
+    begin
+      if not TVclTestClipboard.TrySetText(AdoptedPrefix) then
+        Assert.Pass(ClipboardHeldMessage);
+
+      FEditor.Text := SelectableText;
+      FEditor.CaretPosition := 0;
+      FEditor.PasteFromClipboard;
+      Assert.AreEqual(AdoptedPrefix + SelectableText, FEditor.Text);
+
+      FEditor.Undo;
+
+      Assert.AreEqual(SelectableText, FEditor.Text);
+    end);
+end;
+
+// Typing right after a paste is an undo step of its own.
+procedure TMarkdownVclEditorTests.PasteFromClipboard_ThenTyping_UndoesEachSeparately;
+begin
+  RunOnRealClipboard(
+    procedure
+    begin
+      if not TVclTestClipboard.TrySetText(FirstWord) then
+        Assert.Pass(ClipboardHeldMessage);
+
+      const Editor = TTestableVclEditor.Create(nil);
+      try
+        Editor.PasteFromClipboard;
+        Editor.SimulateKeyChar(TypedCharacter);
+        Assert.AreEqual(FirstWord + TypedCharacter, Editor.Text);
+
+        Editor.Undo;
+        Assert.AreEqual(FirstWord, Editor.Text);
+
+        Editor.Undo;
+        Assert.AreEqual('', Editor.Text);
+      finally
+        Editor.Free;
+      end;
+    end);
+end;
+
+procedure TMarkdownVclEditorTests.CanPaste_ClipboardHoldsText_ReturnsTrue;
+begin
+  RunOnRealClipboard(
+    procedure
+    begin
+      if not TVclTestClipboard.TrySetText(FirstWord) then
+        Assert.Pass(ClipboardHeldMessage);
+
+      Assert.IsTrue(FEditor.CanPaste);
+    end);
+end;
+
+procedure TMarkdownVclEditorTests.CanPaste_EmptyClipboard_ReturnsFalse;
+begin
+  RunOnRealClipboard(
+    procedure
+    begin
+      if not TVclTestClipboard.TryClear then
+        Assert.Pass(ClipboardHeldMessage);
+
+      Assert.IsFalse(FEditor.CanPaste);
+    end);
 end;
 
 procedure TMarkdownVclEditorTests.MouseWheelDown_ScrollsContentDown;
@@ -1533,6 +1732,22 @@ begin
 
   FHostForm.KeyPreview := True;
   FHostForm.OnKeyDown := RecordFormKey;
+end;
+
+// The clipboard belongs to the whole desktop: a test skips when another process
+// keeps it, and puts back the text it found there.
+procedure TMarkdownVclEditorTests.RunOnRealClipboard(const Action: TProc);
+begin
+  if not TVclTestClipboard.IsAccessible then
+    Assert.Pass(ClipboardUnavailableMessage);
+
+  var Saved: string;
+  TVclTestClipboard.TryGetText(Saved);
+  try
+    Action;
+  finally
+    TVclTestClipboard.TrySetText(Saved);
+  end;
 end;
 
 procedure TMarkdownVclEditorTests.RecordFormKey(Sender: TObject; var Key: Word; Shift: TShiftState);

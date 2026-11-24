@@ -171,7 +171,6 @@ type
     procedure RaiseClick(const Kind: TMarkdownClickKind);
     procedure PopupContextMenu(const X, Y: Single);
     procedure HandleContextItemClick(Sender: TObject);
-    function ClipboardHasText: Boolean;
     function FoldGutterWidthPx: Single;
     function TokenColor(const Kind: TMarkdownSourceTokenKind): TLayoutColor;
     function GutterWidthPx(const Painter: IPainter): Single;
@@ -206,9 +205,6 @@ type
     procedure RestartCaretBlink;
     procedure MoveVertical(const RowDelta: Integer; const Extend: Boolean);
     procedure SetCaretTo(const Offset: Integer; const Extend: Boolean);
-    function CopyToClipboard: Boolean;
-    procedure CutToClipboard;
-    procedure PasteFromClipboard;
     function HandleKey(const Key: Word; const Shift: TShiftState): Boolean;
     function ApplyKeyStroke(const Stroke: TEditorKeyStroke): Boolean;
     function GetText: string;
@@ -267,6 +263,14 @@ type
     procedure Redo;
     function CanUndo: Boolean;
     function CanRedo: Boolean;
+    // Copy, cut and paste as Ctrl+C, Ctrl+X and Ctrl+V do, for a host that offers
+    // them in a menu or toolbar of its own. They try again while another program
+    // holds the clipboard, and a cut keeps the text when the copy did not get there.
+    procedure CopyToClipboard;
+    procedure CutToClipboard;
+    procedure PasteFromClipboard;
+    // True when the clipboard holds text, so a host can enable its Paste item.
+    function CanPaste: Boolean;
     procedure AttachPreview(const Viewer: TMarkdownViewer);
     procedure DetachPreview;
     procedure FlushPreview;
@@ -350,8 +354,8 @@ uses
   System.SysUtils,
   System.Math,
   System.Diagnostics,
-  System.Rtti,
   FMX.Platform,
+  Markdown4D.Fmx.Clipboard,
   Markdown4D.Editor.PreviewScroll,
   Markdown4D.Layout.Defaults;
 
@@ -588,6 +592,48 @@ end;
 function TMarkdownEditor.CanRedo: Boolean;
 begin
   Result := FModel.CanRedo;
+end;
+
+procedure TMarkdownEditor.CopyToClipboard;
+begin
+  const Selected = FModel.SelectedText;
+  if Selected = '' then
+    Exit;
+
+  TMarkdownFmxClipboard.TryWriteText(Selected);
+end;
+
+procedure TMarkdownEditor.CutToClipboard;
+begin
+  if not FModel.HasSelection then
+    Exit;
+
+  // Only cut what was safely copied, so a busy clipboard cannot swallow text.
+  if not TMarkdownFmxClipboard.TryWriteText(FModel.SelectedText) then
+    Exit;
+
+  FModel.DeleteBackward;
+  RefreshAfterEdit;
+end;
+
+procedure TMarkdownEditor.PasteFromClipboard;
+begin
+  var Pasted: string;
+  if not TMarkdownFmxClipboard.TryReadText(Pasted) then
+    Exit;
+
+  var Normalized := StringReplace(Pasted, CarriageReturn + LineFeed, LineFeed, [rfReplaceAll]);
+  Normalized := StringReplace(Normalized, CarriageReturn, LineFeed, [rfReplaceAll]);
+  // A paste is an undo step of its own, apart from the typing on either side.
+  FModel.BreakUndoCoalescing;
+  FModel.Insert(Normalized);
+  FModel.BreakUndoCoalescing;
+  RefreshAfterEdit;
+end;
+
+function TMarkdownEditor.CanPaste: Boolean;
+begin
+  Result := TMarkdownFmxClipboard.HasText;
 end;
 
 procedure TMarkdownEditor.SetPreview(const Value: TMarkdownViewer);
@@ -1332,7 +1378,7 @@ begin
 
   FContextMenu.Clear;
 
-  for var Item in TMarkdownEditorContextMenu.Build(FModel, ClipboardHasText) do
+  for var Item in TMarkdownEditorContextMenu.Build(FModel, CanPaste) do
   begin
     var Entry := TMenuItem.Create(FContextMenu);
     Entry.Parent := FContextMenu;
@@ -1372,19 +1418,6 @@ begin
   end;
 
   RefreshAfterEdit;
-end;
-
-function TMarkdownEditor.ClipboardHasText: Boolean;
-begin
-  var Clipboard: IFMXClipboardService;
-  if not TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Clipboard) then
-  begin
-    Result := False;
-    Exit;
-  end;
-
-  const Value = Clipboard.GetClipboard;
-  Result := not Value.IsEmpty and (Value.ToString <> '');
 end;
 
 function TMarkdownEditor.HandleFoldClick(const X, Y: Single): Boolean;
@@ -1727,50 +1760,6 @@ begin
   end
   else
     FModel.CaretPosition := Offset;
-end;
-
-function TMarkdownEditor.CopyToClipboard: Boolean;
-begin
-  Result := False;
-  const Selected = FModel.SelectedText;
-  if Selected = '' then
-    Exit;
-
-  var Clipboard: IFMXClipboardService;
-  if TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Clipboard) then
-  begin
-    Clipboard.SetClipboard(Selected);
-    Result := True;
-  end;
-end;
-
-procedure TMarkdownEditor.CutToClipboard;
-begin
-  if not FModel.HasSelection then
-    Exit;
-
-  if CopyToClipboard then
-    FModel.DeleteBackward;
-end;
-
-procedure TMarkdownEditor.PasteFromClipboard;
-begin
-  var Clipboard: IFMXClipboardService;
-  if not TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Clipboard) then
-    Exit;
-
-  const Value = Clipboard.GetClipboard;
-  if Value.IsEmpty then
-    Exit;
-
-  const Pasted = Value.ToString;
-  if Pasted = '' then
-    Exit;
-
-  var Normalized := StringReplace(Pasted, CarriageReturn + LineFeed, LineFeed, [rfReplaceAll]);
-  Normalized := StringReplace(Normalized, CarriageReturn, LineFeed, [rfReplaceAll]);
-  FModel.BreakUndoCoalescing;
-  FModel.Insert(Normalized);
 end;
 
 procedure TMarkdownEditor.Resize;

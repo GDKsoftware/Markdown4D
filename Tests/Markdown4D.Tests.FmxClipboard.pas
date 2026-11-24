@@ -15,11 +15,18 @@ type
   private
     FValue: TValue;
     FWriteCount: Integer;
+    FLostWrites: Integer;
+    FEmptyReads: Integer;
 
   public
     procedure SetClipboard(Value: TValue);
     function GetClipboard: TValue;
     property WriteCount: Integer read FWriteCount;
+    // The next writes that do not arrive and the next reads that give an empty
+    // text, as with the clipboard service FMX has for Windows while another
+    // program holds the clipboard.
+    property LostWrites: Integer read FLostWrites write FLostWrites;
+    property EmptyReads: Integer read FEmptyReads write FEmptyReads;
   end;
 
   // Puts the fake in place of the platform clipboard for one test and puts the
@@ -35,18 +42,33 @@ type
     function Text: string;
     // How often the fake was written since it took the platform's place.
     function WriteCount: Integer;
+    function Fake: TFakeClipboardService;
   end;
 
 implementation
 
 procedure TFakeClipboardService.SetClipboard(Value: TValue);
 begin
-  FValue := Value;
   Inc(FWriteCount);
+
+  if FLostWrites > 0 then
+  begin
+    Dec(FLostWrites);
+    Exit;
+  end;
+
+  FValue := Value;
 end;
 
 function TFakeClipboardService.GetClipboard: TValue;
 begin
+  if FEmptyReads > 0 then
+  begin
+    Dec(FEmptyReads);
+    Result := TValue.From<string>('');
+    Exit;
+  end;
+
   Result := FValue;
 end;
 
@@ -86,10 +108,14 @@ end;
 
 function TFmxClipboardSwap.WriteCount: Integer;
 begin
+  Result := Fake.WriteCount;
+end;
+
+function TFmxClipboardSwap.Fake: TFakeClipboardService;
+begin
   var Service: IFMXClipboardService;
   TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Service);
-  const Fake = Service as TFakeClipboardService;
-  Result := Fake.WriteCount;
+  Result := Service as TFakeClipboardService;
 end;
 
 end.

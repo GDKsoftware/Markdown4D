@@ -155,7 +155,6 @@ type
     procedure RaiseClick(const Kind: TMarkdownClickKind);
     procedure ShowContextMenu(const X, Y: Integer);
     procedure HandleContextItemClick(Sender: TObject);
-    function ClipboardHasText: Boolean;
     function TokenColor(const Kind: TMarkdownSourceTokenKind): TLayoutColor;
     function GutterWidthPx(const Painter: IPainter; const PixelsPerInch: Integer): Integer;
     function FoldGutterWidthPx(const PixelsPerInch: Integer): Integer;
@@ -186,9 +185,6 @@ type
     procedure RefreshAfterEdit;
     procedure MoveVertical(const RowDelta: Integer; const Extend: Boolean);
     procedure SetCaretTo(const Offset: Integer; const Extend: Boolean);
-    procedure CopyToClipboard;
-    procedure CutToClipboard;
-    procedure PasteFromClipboard;
     procedure EnsureBufferSize;
     procedure RecomputeMetrics;
     function GetText: string;
@@ -264,6 +260,14 @@ type
     procedure Redo;
     function CanUndo: Boolean;
     function CanRedo: Boolean;
+    // Copy, cut and paste as Ctrl+C, Ctrl+X and Ctrl+V do, for a host that offers
+    // them in a menu or toolbar of its own. They try again while another program
+    // holds the clipboard, and a cut keeps the text when the copy did not get there.
+    procedure CopyToClipboard;
+    procedure CutToClipboard;
+    procedure PasteFromClipboard;
+    // True when the clipboard holds text, so a host can enable its Paste item.
+    function CanPaste: Boolean;
     procedure AttachPreview(const Viewer: TMarkdownViewer);
     procedure DetachPreview;
     procedure FlushPreview;
@@ -561,6 +565,56 @@ end;
 function TMarkdownEditor.CanRedo: Boolean;
 begin
   Result := FModel.CanRedo;
+end;
+
+procedure TMarkdownEditor.CopyToClipboard;
+begin
+  const Selected = FModel.SelectedText;
+  if Selected = '' then
+    Exit;
+
+  TMarkdownVclClipboard.TryWriteText(Selected);
+end;
+
+procedure TMarkdownEditor.CutToClipboard;
+begin
+  if not FModel.HasSelection then
+    Exit;
+
+  // Only cut what was safely copied, so a busy clipboard cannot swallow text.
+  if not TMarkdownVclClipboard.TryWriteText(FModel.SelectedText) then
+    Exit;
+
+  FModel.DeleteBackward;
+  RefreshAfterEdit;
+end;
+
+procedure TMarkdownEditor.PasteFromClipboard;
+begin
+  var Pasted: string;
+  if not TMarkdownVclClipboard.TryReadText(Pasted) then
+    Exit;
+
+  if Pasted = '' then
+    Exit;
+
+  var Normalized := StringReplace(Pasted, CarriageReturn + LineFeed, LineFeed, [rfReplaceAll]);
+  Normalized := StringReplace(Normalized, CarriageReturn, LineFeed, [rfReplaceAll]);
+  // A paste is an undo step of its own, apart from the typing on either side.
+  FModel.BreakUndoCoalescing;
+  FModel.Insert(Normalized);
+  FModel.BreakUndoCoalescing;
+  RefreshAfterEdit;
+end;
+
+function TMarkdownEditor.CanPaste: Boolean;
+begin
+  try
+    Result := Clipboard.HasFormat(CF_UNICODETEXT);
+  except
+    on EClipboardException do
+      Result := False;
+  end;
 end;
 
 procedure TMarkdownEditor.SetPreview(const Value: TMarkdownViewer);
@@ -1282,7 +1336,7 @@ begin
 
   FContextMenu.Items.Clear;
 
-  for var Item in TMarkdownEditorContextMenu.Build(FModel, ClipboardHasText) do
+  for var Item in TMarkdownEditorContextMenu.Build(FModel, CanPaste) do
   begin
     if Item.StartsGroup and (FContextMenu.Items.Count > 0) then
     begin
@@ -1324,16 +1378,6 @@ begin
   end;
 
   RefreshAfterEdit;
-end;
-
-function TMarkdownEditor.ClipboardHasText: Boolean;
-begin
-  try
-    Result := Clipboard.HasFormat(CF_UNICODETEXT);
-  except
-    on EClipboardException do
-      Result := False;
-  end;
 end;
 
 function TMarkdownEditor.HandleFoldClick(const X, Y: Integer): Boolean;
@@ -1678,42 +1722,6 @@ begin
   end
   else
     FModel.CaretPosition := Offset;
-end;
-
-procedure TMarkdownEditor.CopyToClipboard;
-begin
-  const Selected = FModel.SelectedText;
-  if Selected = '' then
-    Exit;
-
-  TMarkdownVclClipboard.TryWriteText(Selected);
-end;
-
-procedure TMarkdownEditor.CutToClipboard;
-begin
-  if not FModel.HasSelection then
-    Exit;
-
-  // Only cut what was safely copied, so a busy clipboard cannot swallow text.
-  if not TMarkdownVclClipboard.TryWriteText(FModel.SelectedText) then
-    Exit;
-
-  FModel.DeleteBackward;
-end;
-
-procedure TMarkdownEditor.PasteFromClipboard;
-begin
-  var Pasted: string;
-  if not TMarkdownVclClipboard.TryReadText(Pasted) then
-    Exit;
-
-  if Pasted = '' then
-    Exit;
-
-  var Normalized := StringReplace(Pasted, CarriageReturn + LineFeed, LineFeed, [rfReplaceAll]);
-  Normalized := StringReplace(Normalized, CarriageReturn, LineFeed, [rfReplaceAll]);
-  FModel.BreakUndoCoalescing;
-  FModel.Insert(Normalized);
 end;
 
 procedure TMarkdownEditor.EnsureBufferSize;

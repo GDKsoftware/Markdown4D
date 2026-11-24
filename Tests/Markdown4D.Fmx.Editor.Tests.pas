@@ -56,6 +56,17 @@ type
       ClickX = 20.0;
       ClickY = 8.0;
       DragDistance = 40.0;
+      SelectableText = 'alpha beta';
+      FirstWord = 'alpha';
+      TextAfterFirstWord = ' beta';
+      PastedPrefix = 'new ';
+      FirstWordLength = Length(FirstWord);
+      WindowsLineBreakText = 'one'#13#10'two';
+      LineFeedText = 'one'#10'two';
+      TypedCharacter = 'x';
+      NonTextValue = 42;
+      ClipboardHeldMessage = 'The clipboard is held by another process';
+      ClipboardUnavailableMessage = 'The clipboard service is unavailable';
     var
       FEditor: TMarkdownEditor;
       FAutoScrollChangeCount: Integer;
@@ -232,6 +243,51 @@ type
     procedure CtrlV_PastesClipboardText;
 
     [Test]
+    procedure CopyToClipboard_Selection_PutsSelectionOnClipboard;
+
+    [Test]
+    procedure CutToClipboard_Selection_MovesSelectionToClipboard;
+
+    [Test]
+    procedure CutToClipboard_ThenUndo_RestoresText;
+
+    [Test]
+    procedure PasteFromClipboard_WindowsLineBreaks_InsertsLineFeeds;
+
+    [Test]
+    procedure PasteFromClipboard_ThenUndo_RestoresText;
+
+    [Test]
+    procedure PasteFromClipboard_ThenTyping_UndoesEachSeparately;
+
+    [Test]
+    procedure CanPaste_ClipboardHoldsText_ReturnsTrue;
+
+    [Test]
+    procedure CanPaste_EmptyClipboard_ReturnsFalse;
+
+    [Test]
+    procedure CanPaste_ClipboardHoldsNoText_ReturnsFalse;
+
+    [Test]
+    procedure CanPaste_HeldClipboardWithText_ReturnsTrue;
+
+    [Test]
+    procedure CopyToClipboard_ApplicationClipboard_WritesOnce;
+
+    [Test]
+    procedure CopyToClipboard_WriteLost_WritesAgain;
+
+    [Test]
+    procedure CutToClipboard_EveryWriteLost_KeepsText;
+
+    [Test]
+    procedure PasteFromClipboard_EmptyRead_ReadsAgain;
+
+    [Test]
+    procedure PasteFromClipboard_ClipboardHoldsNoText_LeavesTextAlone;
+
+    [Test]
     procedure MouseWheelDown_ScrollsContentDown;
 
     [Test]
@@ -287,6 +343,9 @@ uses
   System.Rtti,
   FMX.Types,
   FMX.Platform,
+  FMX.Clipboard,
+  Markdown4D.Clipboard.Retry,
+  Markdown4D.Tests.ClipboardHold,
   FMX.Graphics,
   Markdown4D.Tests.Pipeline.Helpers;
 
@@ -1056,6 +1115,272 @@ begin
     finally
       Editor.Free;
     end;
+  finally
+    FClipboard.Restore;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.CopyToClipboard_Selection_PutsSelectionOnClipboard;
+begin
+  FClipboard.Replace;
+  try
+    FEditor.Text := SelectableText;
+    FEditor.SelectRange(0, FirstWordLength);
+
+    FEditor.CopyToClipboard;
+
+    Assert.AreEqual(FirstWord, FClipboard.Text);
+    Assert.AreEqual(SelectableText, FEditor.Text);
+  finally
+    FClipboard.Restore;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.CutToClipboard_Selection_MovesSelectionToClipboard;
+begin
+  FClipboard.Replace;
+  try
+    FEditor.Text := SelectableText;
+    FEditor.SelectRange(0, FirstWordLength);
+
+    FEditor.CutToClipboard;
+
+    Assert.AreEqual(FirstWord, FClipboard.Text);
+    Assert.AreEqual(TextAfterFirstWord, FEditor.Text);
+  finally
+    FClipboard.Restore;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.CutToClipboard_ThenUndo_RestoresText;
+begin
+  FClipboard.Replace;
+  try
+    FEditor.Text := SelectableText;
+    FEditor.SelectRange(0, FirstWordLength);
+    FEditor.CutToClipboard;
+
+    FEditor.Undo;
+
+    Assert.AreEqual(SelectableText, FEditor.Text);
+  finally
+    FClipboard.Restore;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.PasteFromClipboard_WindowsLineBreaks_InsertsLineFeeds;
+begin
+  FClipboard.Replace;
+  try
+    var Service: IFMXClipboardService;
+    TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Service);
+    Service.SetClipboard(WindowsLineBreakText);
+    FEditor.Text := '';
+
+    FEditor.PasteFromClipboard;
+
+    Assert.AreEqual(LineFeedText, FEditor.Text);
+    Assert.AreEqual(Length(LineFeedText), FEditor.CaretPosition);
+  finally
+    FClipboard.Restore;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.PasteFromClipboard_ThenUndo_RestoresText;
+begin
+  FClipboard.Replace;
+  try
+    var Service: IFMXClipboardService;
+    TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Service);
+    Service.SetClipboard(PastedPrefix);
+    FEditor.Text := SelectableText;
+    FEditor.CaretPosition := 0;
+    FEditor.PasteFromClipboard;
+    Assert.AreEqual(PastedPrefix + SelectableText, FEditor.Text);
+
+    FEditor.Undo;
+
+    Assert.AreEqual(SelectableText, FEditor.Text);
+  finally
+    FClipboard.Restore;
+  end;
+end;
+
+// Typing right after a paste is an undo step of its own.
+procedure TMarkdownFmxEditorTests.PasteFromClipboard_ThenTyping_UndoesEachSeparately;
+begin
+  FClipboard.Replace;
+  try
+    var Service: IFMXClipboardService;
+    TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Service);
+    Service.SetClipboard(FirstWord);
+
+    const Editor = TTestableFmxEditor.Create(nil);
+    try
+      Editor.PasteFromClipboard;
+      Editor.SimulateKeyDown(0, TypedCharacter, []);
+      Assert.AreEqual(FirstWord + TypedCharacter, Editor.Text);
+
+      Editor.Undo;
+      Assert.AreEqual(FirstWord, Editor.Text);
+
+      Editor.Undo;
+      Assert.AreEqual('', Editor.Text);
+    finally
+      Editor.Free;
+    end;
+  finally
+    FClipboard.Restore;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.CanPaste_ClipboardHoldsText_ReturnsTrue;
+begin
+  FClipboard.Replace;
+  try
+    var Service: IFMXClipboardService;
+    TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Service);
+    Service.SetClipboard(FirstWord);
+
+    Assert.IsTrue(FEditor.CanPaste);
+  finally
+    FClipboard.Restore;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.CanPaste_EmptyClipboard_ReturnsFalse;
+begin
+  FClipboard.Replace;
+  try
+    Assert.IsFalse(FEditor.CanPaste);
+  finally
+    FClipboard.Restore;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.CanPaste_ClipboardHoldsNoText_ReturnsFalse;
+begin
+  FClipboard.Replace;
+  try
+    FClipboard.Fake.SetClipboard(NonTextValue);
+
+    Assert.IsFalse(FEditor.CanPaste);
+  finally
+    FClipboard.Restore;
+  end;
+end;
+
+// A clipboard manager holds the clipboard open for a moment after every
+// change, and a menu that opens in that moment still offers the text on it.
+// The test goes through the clipboard of Windows, not the fake.
+procedure TMarkdownFmxEditorTests.CanPaste_HeldClipboardWithText_ReturnsTrue;
+begin
+  var Clipboard: IFMXExtendedClipboardService;
+  if not TPlatformServices.Current.SupportsPlatformService(IFMXExtendedClipboardService, Clipboard) then
+    Assert.Pass(ClipboardUnavailableMessage);
+
+  const Saved = Clipboard.GetText;
+  try
+    Clipboard.SetText(FirstWord);
+    const IsSet = (Clipboard.GetText = FirstWord);
+    if not IsSet then
+      Assert.Pass(ClipboardHeldMessage);
+
+    const Hold = TClipboardHold.Create(TClipboardHold.UntilFreed);
+    try
+      if not Hold.IsHeld then
+        Assert.Pass(ClipboardHeldMessage);
+
+      Assert.IsTrue(FEditor.CanPaste);
+    finally
+      Hold.Free;
+    end;
+  finally
+    if Saved <> '' then
+      Clipboard.SetText(Saved);
+  end;
+end;
+
+// The clipboard of Windows does not change under a service the application
+// put in place of FMX's, which is no sign of a copy that has to be tried again.
+procedure TMarkdownFmxEditorTests.CopyToClipboard_ApplicationClipboard_WritesOnce;
+begin
+  FClipboard.Replace;
+  try
+    FEditor.Text := SelectableText;
+    FEditor.SelectRange(0, FirstWordLength);
+
+    FEditor.CopyToClipboard;
+
+    Assert.AreEqual(1, FClipboard.WriteCount);
+  finally
+    FClipboard.Restore;
+  end;
+end;
+
+// A write that left neither a change on the clipboard of Windows nor the text
+// in the service is what FMX's service for Windows does while another program
+// holds the clipboard.
+procedure TMarkdownFmxEditorTests.CopyToClipboard_WriteLost_WritesAgain;
+begin
+  FClipboard.Replace;
+  try
+    FClipboard.Fake.LostWrites := 1;
+    FEditor.Text := SelectableText;
+    FEditor.SelectRange(0, FirstWordLength);
+
+    FEditor.CopyToClipboard;
+
+    Assert.AreEqual(FirstWord, FClipboard.Text);
+    Assert.AreEqual(2, FClipboard.WriteCount);
+  finally
+    FClipboard.Restore;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.CutToClipboard_EveryWriteLost_KeepsText;
+begin
+  FClipboard.Replace;
+  try
+    FClipboard.Fake.LostWrites := TMarkdownClipboardRetry.Attempts;
+    FEditor.Text := SelectableText;
+    FEditor.SelectRange(0, FirstWordLength);
+
+    FEditor.CutToClipboard;
+
+    Assert.AreEqual(SelectableText, FEditor.Text);
+    Assert.AreEqual(TMarkdownClipboardRetry.Attempts, FClipboard.WriteCount);
+  finally
+    FClipboard.Restore;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.PasteFromClipboard_EmptyRead_ReadsAgain;
+begin
+  FClipboard.Replace;
+  try
+    FClipboard.Fake.SetClipboard(FirstWord);
+    FClipboard.Fake.EmptyReads := 1;
+    FEditor.Text := '';
+
+    FEditor.PasteFromClipboard;
+
+    Assert.AreEqual(FirstWord, FEditor.Text);
+  finally
+    FClipboard.Restore;
+  end;
+end;
+
+procedure TMarkdownFmxEditorTests.PasteFromClipboard_ClipboardHoldsNoText_LeavesTextAlone;
+begin
+  FClipboard.Replace;
+  try
+    FClipboard.Fake.SetClipboard(NonTextValue);
+    FEditor.Text := SelectableText;
+
+    FEditor.PasteFromClipboard;
+
+    Assert.AreEqual(SelectableText, FEditor.Text);
   finally
     FClipboard.Restore;
   end;

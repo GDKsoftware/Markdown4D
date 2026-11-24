@@ -770,6 +770,8 @@ control lives in `Markdown4D.Vcl.Editor`, the FMX control in
 | `Theme: TMarkdownTheme` | Assign a custom theme at run time |
 | `ExecuteCommand(const Command: TEditorCommand)` | Apply `Bold`, `Italic`, `Link` or `CodeBlock` to the selection. `Bold`, `Italic` and `Strikethrough` read the markdown first: a selection that half covers marks of the same style takes that whole stretch in, and a selection that already carries them throughout has them taken off, so running the command twice leaves the text as it was |
 | `Undo` / `Redo` / `CanUndo` / `CanRedo` | Undo stack |
+| `CopyToClipboard` / `CutToClipboard` / `PasteFromClipboard` | Copy, cut and paste as `Ctrl+C`, `Ctrl+X` and `Ctrl+V` do, for an Edit menu, toolbar or context menu of the host's own. A paste turns its line breaks into the editor's and replaces the selection. A cut and a paste are each an undo step of their own, apart from the typing around them. Both editors try again while another program holds the clipboard, as the viewers do, and a cut keeps the text when the copy did not get there |
+| `CanPaste: Boolean` | True when the clipboard holds text, to enable a Paste item. On Windows it looks at the formats on the clipboard without opening it, so it stays True while another program holds the clipboard; a clipboard service the application registered itself is asked for its text |
 | `AttachPreview(const Viewer: TMarkdownViewer)` / `DetachPreview` | Bind a live preview viewer |
 | `FlushPreview` | Force a pending preview refresh immediately |
 

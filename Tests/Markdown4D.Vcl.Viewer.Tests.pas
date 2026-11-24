@@ -228,6 +228,7 @@ uses
   Markdown4D.Tests.Pipeline.Helpers,
   Markdown4D.Tests.FailingExtensions,
   Markdown4D.Tests.VclClipboard,
+  Markdown4D.Tests.ClipboardHold,
   Markdown4D.Tests.DisplayList.Helpers,
   Markdown4D.Tests.BoxOverride;
 

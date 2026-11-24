@@ -42,6 +42,7 @@ uses
   Markdown4D.Layout.SelectedMarkdown.Tests in 'Markdown4D.Layout.SelectedMarkdown.Tests.pas',
   Markdown4D.Layout.InlineHtml.Tests in 'Markdown4D.Layout.InlineHtml.Tests.pas',
   Markdown4D.Tests.VclClipboard in 'Markdown4D.Tests.VclClipboard.pas',
+  Markdown4D.Tests.ClipboardHold in 'Markdown4D.Tests.ClipboardHold.pas',
   Markdown4D.Editor.PreviewPacer.Tests in 'Markdown4D.Editor.PreviewPacer.Tests.pas',
   Markdown4D.Layout.Renderer.Tests in 'Markdown4D.Layout.Renderer.Tests.pas',
   Markdown4D.Theme.Tests in 'Markdown4D.Theme.Tests.pas',
